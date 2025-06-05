@@ -151,3 +151,6 @@
     *   **Storage**: The fetched list (group ID, name) will be stored in a dedicated cache table (e.g., `ship_market_groups_cache`) or a key-value store.
     *   **API for UI**: An endpoint (e.g., `/api/v1/ships/market_groups`) will provide this cached list to the frontend for filter dropdowns.
     *   **Filtering**: When a user selects a category, the backend filters ships based on their `market_group_id` (available in `esi_type_cache` or via `universe/types` data).
+*   **Indicator/Filter for Contracts with Additional Items**: F001 will provide a `contains_additional_items` flag for each contract. Consider using this in F002's UI to:
+    *   Display an icon/indicator on list items if a ship contract also includes other non-ship items.
+    *   Potentially offer a filter option (e.g., "Show only contracts with additional items" or "Hide contracts with additional items"). This is a lower priority enhancement for now.
