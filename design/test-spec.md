@@ -11,6 +11,7 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   **Early Testing:** Write tests concurrently with feature development (Test-Driven Development - TDD, or Behavior-Driven Development - BDD, where appropriate).
 *   **Coverage:** Aim for high, meaningful test coverage of critical application logic. Coverage metrics will be tracked.
 *   **Security Testing:** Integrate security testing throughout the development lifecycle (see Section 7).
+*   **Accessibility Testing:** Integrate accessibility testing throughout the development lifecycle to ensure conformance with `accessibility-spec.md` (WCAG 2.1 AA minimum).
 
 ## 3. Types of Tests
 
@@ -27,6 +28,7 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 ### 3.3. End-to-End (E2E) Tests
 *   **Scope:** Test complete user flows through the deployed application (frontend through backend to database/cache).
 *   **Focus:** Verify critical user scenarios, such as searching for contracts, applying filters, authenticating via EVE SSO (mocked SSO provider), managing watchlists, and receiving alerts (simulated).
+*   **Responsive Design Testing:** E2E tests MUST cover various viewport sizes (desktop, tablet, mobile - portrait and landscape) to ensure UI elements render correctly, are usable, and that no content is broken or inaccessible. This includes testing navigation, forms, and data displays across different screen dimensions.
 *   **Caution:** E2E tests are typically slower and more brittle; reserve them for the most critical paths.
 
 ### 3.4. Performance Tests
@@ -35,7 +37,19 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   *(Placeholder: Specific performance targets and scenarios to be defined)*
 
 ### 3.5. Usability Tests
-*   *(Placeholder: To be considered, potentially manual or with user feedback sessions)*
+*   *(Placeholder: To be considered, potentially manual or with user feedback sessions).*
+*   **Responsive Design Aspect:** Usability testing SHOULD include evaluating the ease of use and overall experience on different devices and screen sizes, particularly mobile.
+
+### 3.6. Accessibility Tests (A11y)
+*   **Scope:** Verify conformance with WCAG 2.1 AA criteria as outlined in `accessibility-spec.md`.
+*   **Automated Testing:** Utilize tools (e.g., Axe-core, Lighthouse) to automatically scan for common A11y violations. These tests should be integrated into component/E2E tests and the CI/CD pipeline.
+*   **Manual Testing:** Essential for aspects that automated tools cannot fully cover:
+    *   **Keyboard-Only Navigation:** Comprehensive testing of all interactive elements, focus order, visible focus indicators, and absence of keyboard traps.
+    *   **Screen Reader Testing:** Test with major screen readers (NVDA, JAWS, VoiceOver on relevant platforms) to ensure content is announced correctly, ARIA attributes are effective, and user flows are understandable.
+    *   **Zoom & Reflow:** Test content readability and functionality at 200% zoom and in reflowed views.
+    *   **Color Contrast:** Verify contrasts manually or with tools where dynamic content might affect automated checks.
+    *   **Content & Structure:** Verify semantic HTML usage, heading structure, link purpose, and form labeling.
+*   **AI Coding Assistant Guidance:** The AI assistant should be prompted to generate code that passes automated A11y checks and to consider manual A11y testing scenarios when developing UI components.
 
 ## 4. Tools and Frameworks
 
@@ -45,10 +59,13 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
     *   **HTTP Client for API tests:** `httpx` (FastAPI's test client)
 *   **Frontend (Angular):**
     *   **Unit Tests:** Karma (test runner), Jasmine (testing framework)
-    *   **E2E Tests:** Protractor (though Angular is moving towards other solutions like Cypress or Playwright - *to be confirmed based on Angular best practices at implementation time*)
+    *   **E2E Tests:** Protractor (though Angular is moving towards other solutions like Cypress or Playwright - *to be confirmed based on Angular best practices at implementation time*). Tools should support viewport manipulation for responsive design testing.
 *   **Code Coverage:**
     *   Backend: `pytest-cov`
     *   Frontend: Istanbul (via Angular CLI)
+*   **Accessibility Testing Tools:**
+    *   **Automated:** Axe-core (e.g., `@axe-core/angular` for integration with Angular tests, browser extensions for manual checks), Lighthouse (browser developer tools).
+    *   **Screen Readers:** NVDA (Windows), JAWS (Windows), VoiceOver (macOS/iOS).
 
 ## 5. Test Data Management
 
@@ -61,6 +78,7 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   All automated tests (unit, integration, and critical E2E) MUST run as part of the Continuous Integration (CI) pipeline on every commit/merge request.
 *   Builds MUST fail if tests do not pass.
 *   Test coverage reports SHOULD be generated and monitored.
+*   Automated accessibility scans (e.g., Axe-core) SHOULD be part of the CI pipeline, and critical violations MUST fail the build.
 
 ## 7. Security Testing
 
@@ -77,3 +95,4 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   **Contract Aggregation:** Test fetching, filtering, and display of contracts.
 *   **Search & Filtering:** Test various search terms and filter combinations.
 *   **Watchlists & Alerts:** Test creation, modification, deletion of watchlists, and alert triggering logic.
+*   **(General for all features):** All feature test plans MUST include specific test cases for accessibility, covering keyboard navigation, screen reader compatibility, color contrast, and other relevant WCAG criteria from `accessibility-spec.md`.

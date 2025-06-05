@@ -60,4 +60,67 @@ This document records major design discussion points, considerations, and decisi
 *   **`design-log.md`:** This document, for chronological decision tracking.
 *   **`observability-spec.md`:** Created for logging, metrics, tracing (distinct from security-specific logs).
 
+## Feature Specification Management (Approx. 2025-06-05 01:46:46-05:00)
+
+*   **Approach:** To facilitate focused development and clear requirements for the Windsurf coding assistant, individual features will be detailed in separate markdown files.
+*   **Location:** These feature specifications will reside in the `design/features/` directory.
+*   **Template:** A standardized template, `design/features/00-feature-spec-template.md`, has been created to ensure consistency and comprehensiveness across all feature specs.
+    *   The template includes sections for overview, user stories, acceptance criteria, scope, data models, API interactions, workflow, UI/UX, error handling, security, performance, dependencies, and notes.
+    *   It distinguishes between **Required** and **Optional** sections, with instructions to complete all required sections and evaluate optional ones for applicability.
+*   **Process (Memory: e0009aae):** When creating a new feature spec, the `00-feature-spec-template.md` will be referenced. Required sections and applicable optional sections will be copied and filled with feature-specific details.
+
+## Feature Specification Elaboration: F001, F002 & F003 (Approx. 2025-06-05 03:11:17-05:00)
+
+*   **Focus:** Began detailed elaboration of feature specifications, starting with F001 (Public Contract Aggregation & Display), F002 (Ship Browsing & Advanced Search/Filtering), and then F003 (Detailed Ship Contract View).
+*   **F001 (Public Contract Aggregation & Display) Initial Decisions:**
+    *   **Data Storage:**
+        *   `issuer_name`: Store directly (resolved once at ingestion).
+        *   `start_location_name`: Resolve on display (via `start_location_id`).
+        *   `esi_type_cache`: Store all `dogma_attributes` and `dogma_effects` (using SQLite JSON1 for dev, PostgreSQL JSONB for prod).
+    *   **Error Handling:** For DB errors, implement retry with exponential backoff and jitter.
+    *   **Configuration:** EVE regions to poll will be admin-configurable.
+    *   **Contract Updates:** Handle updates to existing contracts (e.g., auction prices) via targeted re-fetches based on ESI cache timers and internal refresh intervals, not full re-scans.
+*   **F002 (Ship Browsing & Advanced Search/Filtering) Initial Decisions:**
+    *   **List View:**
+        *   Added user story for basic contract details in list view.
+        *   Defined initial fields: Ship Type, Quantity, Total Price, Contract Type, Location, Time Remaining, Issuer Name.
+        *   Default sort order: Expiration date (soonest first).
+    *   **Advanced Filtering:**
+        *   Ship attributes (meta level, tech level): Plan to use `dogma_attributes` from `esi_type_cache`.
+        *   Ship categories/groups: Source from ESI Market Groups, cache periodically, and expose via API.
+*   **F003 (Detailed Ship Contract View) Decisions:**
+    *   **Dogma Attributes Display:** A curated list of 'Key Ship Attributes' will be displayed prominently, with an option (e.g., 'All Attributes' toggle/tab) to view all others. Attributes to be grouped logically.
+    *   **Handling Multiple Items:** Main focus on primary ship(s). An 'Additional Included Items' section will list other non-primary-ship items (Name and Quantity).
+    *   **Image Server:** Use EVE Online's official image server (`https://images.evetech.net/`) for ship renders (e.g., `types/{type_id}/render?size=512`) and icons.
+*   **Cross-Feature Consistency & Iterative Refinement:**
+    *   Initial decisions for F001 and F002 were made. Subsequently, F003 was elaborated.
+    *   Decisions and requirements from F003, along with F002's needs, prompted revisions to F001. F002 was also updated to note potential enhancements based on F001/F003 changes.
+    *   **Updates to F001 (driven by F002 & F003):**
+        *   Added `market_group_id` to `esi_type_cache` (for F002 category filtering).
+        *   Clarified `contracts.title` usage (for F002 keyword search).
+        *   Noted dependency on a separate `location_details_cache` (for F002 location name search).
+        *   Added `contains_additional_items: BOOLEAN` to the `contracts` table schema (for F003 display of mixed contracts).
+        *   Clarified that `esi_type_cache` population must cover all item types in processed contracts, not just primary ship items (for F003).
+    *   **Updates to F002 (driven by F001/F003):**
+        *   Noted potential use of the `contains_additional_items` flag (from F001, for F003) for UI indicators or filtering in the list view.
+    *   **Rationale:** This iterative refinement ensures that feature specifications remain consistent and that dependencies between features are explicitly identified and addressed. This process is crucial for robust design, allowing insights from detailing one feature to inform and improve related features.
+
+## Mobile-Friendly Design & Accessibility Specification (Approx. 2025-06-05 03:54:40-05:00)
+
+*   **Context:** Recognizing the importance of broad usability and inclusivity for Hangar Bay.
+*   **Mobile-Friendly Design (Core Requirement):
+    *   **Decision:** The application MUST provide an excellent user experience on desktops, tablets, and mobile phones.
+    *   **Action:** `design-spec.md` (Section 10: UI/UX Considerations) was updated with detailed guidance for AI-assisted development, emphasizing leveraging Angular's responsive capabilities, fluid layouts, media queries, mobile-friendly navigation, touch interactions, performance optimization, readability, and progressive enhancement.
+    *   **Action:** `test-spec.md` (Sections 3.3, 3.5, 4) was updated to include requirements for testing responsive design across various viewports and devices, and to note tool considerations.
+*   **Accessibility (A11y) Specification (Core Requirement):
+    *   **Decision:** Accessibility is paramount. A dedicated specification, `accessibility-spec.md`, was created to define standards and provide actionable guidance for AI-assisted development.
+    *   **`accessibility-spec.md` Content:**
+        *   **Conformance Target:** WCAG 2.1 Level AA minimum, aspiring to AAA where feasible.
+        *   **Principles:** Detailed elaboration on Perceivable, Operable, Understandable, Robust (POUR) principles with AI-specific guidance.
+        *   **Technology Focus:** Specific guidance for Angular (Material/CDK, ARIA, focus management, `LiveAnnouncer`, forms).
+        *   **Testing:** Requirements for automated tools (Axe-core, Lighthouse) and manual testing (keyboard, screen readers, zoom, contrast).
+    *   **Action:** `design-spec.md` was updated to reference `accessibility-spec.md` in multiple relevant sections (Goals, Security, Tech Stack, Core Features, UI/UX, Deployment, Future Enhancements).
+    *   **Action:** `test-spec.md` was updated to create a new "Accessibility Tests (A11y)" section (3.6) and integrate A11y testing into the overall philosophy, tools, CI/CD, and feature test planning.
+*   **Rationale:** These updates ensure that mobile usability and comprehensive accessibility are foundational requirements, guiding development and testing to create a more inclusive and user-friendly application.
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*
