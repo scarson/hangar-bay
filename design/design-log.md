@@ -69,4 +69,31 @@ This document records major design discussion points, considerations, and decisi
     *   It distinguishes between **Required** and **Optional** sections, with instructions to complete all required sections and evaluate optional ones for applicability.
 *   **Process (Memory: e0009aae):** When creating a new feature spec, the `00-feature-spec-template.md` will be referenced. Required sections and applicable optional sections will be copied and filled with feature-specific details.
 
+## Feature Specification Elaboration: F001 & F002 (Approx. 2025-06-05 03:11:17-05:00)
+
+*   **Focus:** Began detailed elaboration of feature specifications, starting with F001 (Public Contract Aggregation & Display) and F002 (Ship Browsing & Advanced Search/Filtering).
+*   **F001 (Public Contract Aggregation & Display) Decisions:**
+    *   **Data Storage:**
+        *   `issuer_name`: Store directly (resolved once at ingestion).
+        *   `start_location_name`: Resolve on display (via `start_location_id`).
+        *   `esi_type_cache`: Store all `dogma_attributes` and `dogma_effects` (using SQLite JSON1 for dev, PostgreSQL JSONB for prod).
+    *   **Error Handling:** For DB errors, implement retry with exponential backoff and jitter.
+    *   **Configuration:** EVE regions to poll will be admin-configurable.
+    *   **Contract Updates:** Handle updates to existing contracts (e.g., auction prices) via targeted re-fetches based on ESI cache timers and internal refresh intervals, not full re-scans.
+*   **F002 (Ship Browsing & Advanced Search/Filtering) Decisions:**
+    *   **List View:**
+        *   Added user story for basic contract details in list view.
+        *   Defined initial fields: Ship Type, Quantity, Total Price, Contract Type, Location, Time Remaining, Issuer Name.
+        *   Default sort order: Expiration date (soonest first).
+    *   **Advanced Filtering:**
+        *   Ship attributes (meta level, tech level): Plan to use `dogma_attributes` from `esi_type_cache`. Requires backend mapping and API enhancements.
+        *   Ship categories/groups: Source from ESI Market Groups, cache periodically, and expose via API for UI filters.
+*   **Cross-Feature Consistency (Procedural Note):**
+    *   After making decisions for F002, F001 was revisited to ensure its data collection and schema would support F002's requirements.
+    *   **Updates to F001:**
+        *   Added `market_group_id` to `esi_type_cache` for F002 category filtering.
+        *   Clarified `contracts.title` usage for F002 keyword search.
+        *   Noted a dependency on a separate `location_details_cache` (mapping location IDs to names) to support F002's backend search on location names, as F001 only stores `start_location_id`.
+    *   **Rationale:** This iterative refinement ensures that feature specifications remain consistent and that dependencies between features are explicitly identified and addressed in the data-providing features. This process is crucial for robust design.
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*
