@@ -71,6 +71,7 @@
     *   `title`: VARCHAR(255) (From ESI, used for keyword search in F002), if available)
     *   `for_corp`: BOOLEAN
     *   `is_ship_contract`: BOOLEAN (derived by this feature's logic)
+    *   `contains_additional_items`: BOOLEAN (Derived by F001 logic, indicates if a ship contract includes non-ship items. Supports F003 display.)
     *   `last_esi_check`: TIMESTAMP (Timestamp of when contract items were last fetched/verified)
 *   **`contract_items` table:**
     *   `record_id`: BIGINT (Primary Key from ESI, or internal auto-increment if ESI doesn't provide a unique item ID within a contract response)
@@ -130,8 +131,9 @@
             2.  Determine if it's a ship contract based on defined criteria [NEEDS_DECISION: Logic for ship contract identification].
             3.  If it is a ship contract:
                 a.  Extract/transform relevant data.
-                b.  Fetch/update ship type details from `GET /v3/universe/types/{type_id}/` for items not in local cache or stale, store in `esi_type_cache`.
-                c.  Store/update contract and item details in the Hangar Bay database (`contracts`, `contract_items`).
+                b.  Fetch/update type details from `GET /v3/universe/types/{type_id}/` for *all items* (both ship and non-ship) not in local cache or stale, store in `esi_type_cache`.
+                c.  Determine and set the `contains_additional_items` flag based on whether non-primary-ship items are present.
+                d.  Store/update contract (including `is_ship_contract` and `contains_additional_items` flags) and item details in the Hangar Bay database (`contracts`, `contract_items`).
             4.  Update `last_esi_check` for the contract in the `contracts` table.
 3.  Handle ESI errors, rate limits, and caching throughout.
 
