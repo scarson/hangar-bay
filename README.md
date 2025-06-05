@@ -6,3 +6,5 @@ Inspired by a friend who plays EVE and said:
 It's going to give me some template code about a shopping cart or something and thats it. Right?"
 
 There's only one way to find out!
+
+Please refer to the design spec at https://github.com/scarson/hangar-bay/blob/main/design/design-spec.md for more information.
