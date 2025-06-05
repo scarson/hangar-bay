@@ -10,6 +10,7 @@ This document outlines the design specification for Hangar Bay, an e-commerce ap
 *   To provide an intuitive user interface for browsing, searching, and filtering public ship contracts.
 *   To integrate seamlessly with the EVE Online ESI API for up-to-date contract, ship, and market information.
 *   To help players efficiently find desirable ship contracts available in-game.
+*   To ensure the application is accessible and usable by people with a wide range of abilities, adhering to WCAG 2.1 AA as a minimum (see `accessibility-spec.md`).
 
 ## 3. Target Audience
 
@@ -43,7 +44,7 @@ EVE Online players, the target audience for Hangar Bay, are known for their inge
 *   **Data Privacy:** Consideration must be given to any player data stored (e.g., EVE character ID, watchlists), ensuring it is minimized, protected, and handled according to privacy best practices. Refer to `security-spec.md`.
 *   **Regular Security Audits:** Plan for regular security reviews and penetration testing.
 
-**(All other sections should also reference Section 4: Security, and where appropriate, `security-spec.md`, `test-spec.md`, `observability-spec.md`, and `design-log.md`.)* must include a reference to this Security section and, where applicable, to the `security-spec.md`, with instructions to consider them an integral part of their respective specifications.**
+**(All other sections should also reference Section 4: Security, and where appropriate, `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, `observability-spec.md`, and `design-log.md`.)* must include a reference to this Security section and, where applicable, to these detailed specifications, with instructions to consider them an integral part of their respective requirements.**
 
 ## 5. Application Architecture (High-Level)
 
@@ -56,7 +57,7 @@ The application will function as an aggregator of public EVE Online contracts, f
 *   **Database:** (e.g., PostgreSQL, MySQL, MongoDB, etc.) - Stores aggregated contract data, ship details (cached from ESI), and potentially user preferences if SSO is implemented.
 *   **EVE ESI API Integration Layer:** A dedicated module/service for interacting with the ESI API, handling requests for public contracts, contract items, ship details, caching, and error management.
 
-*Security Considerations: Refer to Section 4.* 
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`. Accessibility, as outlined in `accessibility-spec.md`, should be considered for any user-facing outputs or interactions originating from this layer.* 
 
 ## 6. Tech Stack
 
@@ -78,11 +79,11 @@ The following technology stack is proposed, with security, performance, and rapi
 *   **Caching Layer: Valkey**
     *   **Reasoning:** A community-driven fork of Redis, offering high performance in-memory caching suitable for ESI responses and frequently accessed data. Chosen for its open-source governance and compatibility with Redis clients.
 *   **Frontend Framework: Angular**
-    *   **Reasoning:** A comprehensive and structured framework with TypeScript support, aligning with the USER's interest in learning it. Capable of building a rich user interface. TypeScript's static typing can contribute to robustness and help avoid certain classes of errors.
+    *   **Reasoning:** A comprehensive and structured framework with TypeScript support, aligning with the USER's interest in learning it. Capable of building a rich user interface. TypeScript's static typing can contribute to robustness and help avoid certain classes of errors. Angular also has good support for accessibility (see `accessibility-spec.md`).
 *   **Web Server (for serving static frontend assets, if not using a CDN):**
     *   *(Placeholder: e.g., Nginx, Caddy, or cloud provider's static asset hosting. Often the backend API and frontend are served via different mechanisms/domains or through a reverse proxy.)*
 
-*Security Considerations: Refer to Section 4, `security-spec.md`, `test-spec.md`, and `observability-spec.md`. The security features and best practices for each chosen technology will be strictly adhered to. This includes secure configuration, regular patching, and leveraging built-in security mechanisms.* 
+*Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, and `observability-spec.md`. The security, accessibility, and testing best practices for each chosen technology will be strictly adhered to. This includes secure and accessible configuration, regular patching, and leveraging built-in mechanisms.* 
 
 ## 7. Core Features
 
@@ -117,7 +118,7 @@ Based on the **public contract aggregator model**:
     *   **Optional Authenticated Features (Consider for future - more scope):**
         *   Ability to see their own public contracts highlighted or managed within Hangar Bay (would require `esi-characters.read_contracts.v1` scope).
 
-*Security Considerations: Refer to Section 4 and `security-spec.md`. Secure handling of EVE SSO tokens (access and refresh) is paramount. User data associated with watchlists, alerts, and preferences must be protected.* 
+*Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md` and `accessibility-spec.md`. Secure handling of EVE SSO tokens is paramount. User data must be protected. All UI elements must be accessible. 
 
 ## 8. ESI API Integration Details
 
@@ -148,7 +149,7 @@ Primary ESI endpoints for the public contract aggregator model:
 *   **User-Agent Policy:**
     *   Set a descriptive User-Agent string for all ESI requests as per ESI best practices.
 
-*Security Considerations: Refer to Section 4. All ESI interactions must be secure (HTTPS). If SSO is used, token handling is paramount.* 
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`. All ESI interactions must be secure (HTTPS). If SSO is used, token handling is paramount. Ensure any error messages or data passed to the frontend from this layer are structured to support accessible presentation, as guided by `accessibility-spec.md`.* 
 
 ## 9. Database Schema (Initial Thoughts)
 
@@ -156,7 +157,7 @@ Primary ESI endpoints for the public contract aggregator model:
 
 *   Tables for users (if local accounts exist alongside EVE SSO), ship types (cached from ESI), listings/contracts, etc.
 
-*Security Considerations: Refer to Section 4.* 
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`. Data modeling should support accessibility requirements from `accessibility-spec.md` (e.g., storing full textual descriptions where needed for screen readers, rather than just codes).* 
 
 ## 10. UI/UX Considerations
 
@@ -164,7 +165,18 @@ Primary ESI endpoints for the public contract aggregator model:
 
 *   Intuitive navigation.
 *   Clear presentation of complex ship and market data.
-*   Responsive design for various screen sizes.
+*   **Mobile-Friendly and Responsive Design (Core Requirement):** The application MUST provide an excellent user experience on a wide range of devices, including desktops, tablets, and mobile phones (both portrait and landscape orientations).
+    *   **AI Implementation Guidance:**
+        *   **Leverage Angular's Capabilities:** Utilize Angular's features for responsive design, such as its component architecture, built-in directives, and integration with responsive grid systems (e.g., Angular Material's layout system, Bootstrap grid, or CSS Grid/Flexbox directly).
+        *   **Fluid Layouts:** Employ fluid grids and flexible images/media that adapt to different viewport sizes.
+        *   **Media Queries:** Use CSS media queries extensively to apply different styles and layouts based on screen characteristics.
+        *   **Navigation:** Implement mobile-friendly navigation patterns (e.g., collapsible hamburger menus, off-canvas navigation, bottom navigation bars for key actions where appropriate).
+        *   **Touch Interactions:** Ensure all interactive elements (buttons, links, form inputs) are adequately sized and spaced to be easily tappable on touchscreens. Avoid reliance on hover states for critical information disclosure.
+        *   **Performance Optimization:** Optimize assets (images, scripts, styles) for faster loading on mobile networks. Consider techniques like lazy loading for images and non-critical components.
+        *   **Readability:** Ensure text is legible across all screen sizes with appropriate font sizes, line heights, and contrast ratios.
+        *   **Accessibility (A11y):** Adherence to `accessibility-spec.md` (targeting WCAG 2.1 AA minimum) is a core requirement for all UI components and user experiences, across all devices and viewports. This includes, but is not limited to, semantic HTML, ARIA usage, keyboard navigation, focus management, and color contrast.
+        *   **Progressive Enhancement/Graceful Degradation:** Design with a mobile-first approach or ensure graceful degradation so core functionality remains accessible on less capable devices or browsers.
+        *   **Testing:** Thoroughly test on various emulated mobile viewports (using browser developer tools) and, where possible, on a range of real mobile devices. (Refer to `test-spec.md` for detailed testing requirements).
 *   Emphasis on trust and security in the UI elements.
 
 *Security Considerations: Refer to Section 4.* 
@@ -180,7 +192,7 @@ Primary ESI endpoints for the public contract aggregator model:
 *   **Hosting Agnosticism:** While a specific cloud provider (e.g., AWS, Azure, GCP) may be chosen for initial deployment, the containerized nature of the application should allow for migration to other providers or on-premise solutions if necessary, minimizing vendor lock-in.
 *   **CI/CD Pipeline:** A continuous integration and continuous deployment (CI/CD) pipeline will be implemented (e.g., using GitHub Actions, GitLab CI, Jenkins) to automate testing, building, and deployment of container images.
 
-*Security Considerations: Refer to Section 4 and `security-spec.md`. Secure container image management (e.g., scanning for vulnerabilities, using minimal base images, non-root containers) is crucial. CI/CD pipeline must have appropriate security controls.* 
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`. Secure container image management is crucial. CI/CD pipeline must have appropriate security controls. Accessibility of any user-facing deployment status pages or interfaces should also be considered (refer to `accessibility-spec.md`).* 
 
 ## 12. Future Enhancements
 
@@ -192,4 +204,4 @@ Primary ESI endpoints for the public contract aggregator model:
 *   Advanced market analytics based on aggregated contract data (e.g., price trends for specific ships within Hangar Bay's data).
 *   More sophisticated notification channels or user-customizable notification settings.
 
-*Security Considerations: Refer to Section 4, `security-spec.md`, `test-spec.md`, and `observability-spec.md`.* 
+*Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, and `observability-spec.md`.* 

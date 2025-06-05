@@ -105,4 +105,22 @@ This document records major design discussion points, considerations, and decisi
         *   Noted potential use of the `contains_additional_items` flag (from F001, for F003) for UI indicators or filtering in the list view.
     *   **Rationale:** This iterative refinement ensures that feature specifications remain consistent and that dependencies between features are explicitly identified and addressed. This process is crucial for robust design, allowing insights from detailing one feature to inform and improve related features.
 
+## Mobile-Friendly Design & Accessibility Specification (Approx. 2025-06-05 03:54:40-05:00)
+
+*   **Context:** Recognizing the importance of broad usability and inclusivity for Hangar Bay.
+*   **Mobile-Friendly Design (Core Requirement):
+    *   **Decision:** The application MUST provide an excellent user experience on desktops, tablets, and mobile phones.
+    *   **Action:** `design-spec.md` (Section 10: UI/UX Considerations) was updated with detailed guidance for AI-assisted development, emphasizing leveraging Angular's responsive capabilities, fluid layouts, media queries, mobile-friendly navigation, touch interactions, performance optimization, readability, and progressive enhancement.
+    *   **Action:** `test-spec.md` (Sections 3.3, 3.5, 4) was updated to include requirements for testing responsive design across various viewports and devices, and to note tool considerations.
+*   **Accessibility (A11y) Specification (Core Requirement):
+    *   **Decision:** Accessibility is paramount. A dedicated specification, `accessibility-spec.md`, was created to define standards and provide actionable guidance for AI-assisted development.
+    *   **`accessibility-spec.md` Content:**
+        *   **Conformance Target:** WCAG 2.1 Level AA minimum, aspiring to AAA where feasible.
+        *   **Principles:** Detailed elaboration on Perceivable, Operable, Understandable, Robust (POUR) principles with AI-specific guidance.
+        *   **Technology Focus:** Specific guidance for Angular (Material/CDK, ARIA, focus management, `LiveAnnouncer`, forms).
+        *   **Testing:** Requirements for automated tools (Axe-core, Lighthouse) and manual testing (keyboard, screen readers, zoom, contrast).
+    *   **Action:** `design-spec.md` was updated to reference `accessibility-spec.md` in multiple relevant sections (Goals, Security, Tech Stack, Core Features, UI/UX, Deployment, Future Enhancements).
+    *   **Action:** `test-spec.md` was updated to create a new "Accessibility Tests (A11y)" section (3.6) and integrate A11y testing into the overall philosophy, tools, CI/CD, and feature test planning.
+*   **Rationale:** These updates ensure that mobile usability and comprehensive accessibility are foundational requirements, guiding development and testing to create a more inclusive and user-friendly application.
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*
