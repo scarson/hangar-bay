@@ -11,7 +11,7 @@ This document outlines the observability strategy for the Hangar Bay application
     *   **Benefits:** Easier parsing, searching, and analysis by log management systems.
 *   **Log Levels:** Implement standard log levels (e.g., DEBUG, INFO, WARNING, ERROR, CRITICAL).
     *   Allow configurable log levels per environment.
-*   **Correlation IDs:** Generate/propagate a correlation ID for each incoming request (or initiated task) across all services and log messages related to that request/task. This is vital for tracing distributed operations.
+*   **Correlation IDs & Context Propagation:** Generate/propagate a correlation ID (e.g., trace ID from OpenTelemetry) for each incoming request (or initiated task) across all services and log messages. Ensure context propagation mechanisms (ideally OpenTelemetry-native) are used.
 *   **Key Information to Log:** Timestamp, log level, service name, correlation ID, message, and relevant context (e.g., endpoint, user ID if authenticated, ESI request details - sanitizing sensitive info).
 *   **Security:** Sensitive data (passwords, raw ESI tokens) MUST NOT be logged. Refer to `security-spec.md`.
 
@@ -32,9 +32,9 @@ This document outlines the observability strategy for the Hangar Bay application
     *   Number of contracts processed/displayed.
     *   Watchlist creation/alert triggering frequency.
 
-### 2.3. Tracing (Distributed Tracing)
+### 2.3. Tracing (Distributed Tracing - OpenTelemetry Preferred)
 *   **Goal:** To visualize the entire lifecycle of a request as it flows through different components of the application (e.g., frontend -> backend API -> ESI API -> database -> cache).
-*   **Implementation:** Utilize OpenTelemetry (or similar) compatible libraries to instrument code and propagate trace context.
+*   **Implementation:** Strongly prefer and prioritize the use of OpenTelemetry SDKs and APIs for instrumenting code and propagating trace context across all services (Python backend, Angular frontend if applicable).
 *   **Benefits:** Pinpoint bottlenecks, understand service dependencies, debug complex issues in a distributed environment.
 
 ### 2.4. Error Tracking & Alerting (Operational)
@@ -42,19 +42,19 @@ This document outlines the observability strategy for the Hangar Bay application
 *   **Alerting:** Set up alerts for critical errors, unusual spikes in error rates, performance degradation, or system resource exhaustion.
     *   Distinguish from user-facing application alerts (e.g., new contract found).
 
-## 3. Tools and Technologies (Proposed)
+## 3. Tools and Technologies (Proposed - Emphasizing OpenTelemetry Compatibility)
 
 *   **Logging Management:**
-    *   *(Placeholder: e.g., ELK Stack - Elasticsearch, Logstash, Kibana; Grafana Loki; or cloud provider solutions like AWS CloudWatch Logs, Google Cloud Logging)*
+    *   *(Placeholder: e.g., ELK Stack, Grafana Loki, OpenTelemetry Collector with backends like Jaeger/Elasticsearch. Prioritize solutions with strong OpenTelemetry OTLP ingest capabilities.)*
 *   **Metrics Collection & Visualization:**
-    *   **Backend:** Prometheus client libraries for FastAPI.
+    *   **Backend:** Prometheus client libraries for FastAPI. Consider OpenTelemetry SDKs for metrics as well, which can export to Prometheus.
     *   **System:** Prometheus Node Exporter or similar.
     *   **Storage & Visualization:** Prometheus (time-series database) & Grafana (dashboards).
 *   **Distributed Tracing:**
-    *   **Instrumentation:** OpenTelemetry SDKs for Python and JavaScript.
-    *   **Backend Collector/Storage:** *(Placeholder: e.g., Jaeger, Zipkin, or OpenTelemetry Collector with a compatible backend)*
+    *   **Instrumentation:** OpenTelemetry SDKs for Python (FastAPI) and JavaScript (Angular) are the primary choice.
+    *   **Backend Collector/Storage:** An OpenTelemetry Collector is highly recommended for receiving, processing, and exporting telemetry data. Backends like Jaeger, Zipkin, Prometheus, or managed cloud services (e.g., AWS X-Ray, Google Cloud Trace, Azure Monitor) that support OpenTelemetry are preferred.
 *   **Error Tracking:**
-    *   *(Placeholder: e.g., Sentry, Rollbar, Elastic APM, or cloud provider solutions)*
+    *   *(Placeholder: e.g., Sentry, Rollbar, Elastic APM. Evaluate for OpenTelemetry integration capabilities, such as correlating errors with traces.)*
 
 ## 4. Observability by Design
 
