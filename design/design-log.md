@@ -60,4 +60,13 @@ This document records major design discussion points, considerations, and decisi
 *   **`design-log.md`:** This document, for chronological decision tracking.
 *   **`observability-spec.md`:** Created for logging, metrics, tracing (distinct from security-specific logs).
 
+## Feature Specification Management (Approx. 2025-06-05 01:46:46-05:00)
+
+*   **Approach:** To facilitate focused development and clear requirements for the Windsurf coding assistant, individual features will be detailed in separate markdown files.
+*   **Location:** These feature specifications will reside in the `design/features/` directory.
+*   **Template:** A standardized template, `design/features/00-feature-spec-template.md`, has been created to ensure consistency and comprehensiveness across all feature specs.
+    *   The template includes sections for overview, user stories, acceptance criteria, scope, data models, API interactions, workflow, UI/UX, error handling, security, performance, dependencies, and notes.
+    *   It distinguishes between **Required** and **Optional** sections, with instructions to complete all required sections and evaluate optional ones for applicability.
+*   **Process (Memory: e0009aae):** When creating a new feature spec, the `00-feature-spec-template.md` will be referenced. Required sections and applicable optional sections will be copied and filled with feature-specific details.
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*
