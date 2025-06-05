@@ -21,7 +21,7 @@ These recommendations apply broadly when working with AI coding assistants:
 2.  **Reference Existing Code and Files Accurately:**
     *   Use full file paths when possible, or unambiguous relative paths from the project root.
     *   Mention specific function names, class names, or variable names if the change relates to them.
-    *   *Example:* "In `c:/Users/Sam/OneDrive/Documents/Code/hangar-bay/app/api/v1/endpoints/users.py`, modify the `create_user` function to..."
+    *   *Example:* "In `/hangar-bay/app/api/v1/endpoints/users.py`, modify the `create_user` function to..."
 
 3.  **Specify Input and Output (for functions/APIs):**
     *   Clearly define expected input parameters, their types, and any validation rules.

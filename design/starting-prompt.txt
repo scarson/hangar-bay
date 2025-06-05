@@ -209,8 +209,34 @@ Then, update design-log.md with a new entry describing the changes.
 
 ----------------
 
+
 I have reviewed the changes. Very impressive! I have a single feedback point.
 
 In security-spec.md 1.1 Encryption in Transit, please update the new "Ensure backend to PostgreSQL calls use TLS if over a non-trusted network." item to "Ensure backend to PostgreSQL calls use TLS". We should encrypt all data in transit. Network boundaries do not provide security guarantees and we should follow the modern security practice of an "assume breach" threat posture and zero-trust principles. These principles have broader importance beyond just PostgreSQL encryption in transit. Please also add references to zero-trust principles in an appropriate location or locations within security-spec.md.
 
 After updating security-spec.md, please prepare git commits for all the changed files with that good commit message.
+
+
+----------------
+
+
+Before we move onto coding, we have four more features, F004, F005, F006, and F007 to review. We should do that next. Before we proceed, please update all relevant project memories.
+
+
+----------------
+
+
+I am greatly enjoying our collaboration on this project so far and feel it has been mutually beneficial. I would like you to perform a comprehensive, honest assessment of all the feedback I've provided so far. As part of this, please provide an honest assessment of what you think my software engineering and design skill level is, and areas of strength and weakness (i.e., room for improvement. Then, provide your honest feedback on my own feedback, with a specific focus on recommendations and observations that could help me work even more effectively with you going forward. Remember, the goal of this review is to help us work better together.
+
+
+----------------
+
+
+Thanks for the helpful feedback! It gave me an idea. Could you please create a new "design\instruction-recs.md" file for the purpose to documenting clear, practical recommendations on crafting prompt instructions for AI coding assistant in both general and specific scenarios within the Hangar Bay project? Its primary purpose will be for human reference, but the information within could be useful for AIs as well. For that reason, prioritize utility to humans for this file and include a specific note within it to document that instruction, since nearly everywhere else will prioritize utility to AI coding assistants. Use your "Recommendations for Even More Effective Collaboration Going Forward" from the assessment as a starting point.
+
+After creating that file, update design-log.md with a new entry documenting both my request for an honest assessment of my feedback and the new instruction-recs.md file that came as a result of that assessment.
+
+
+----------------
+
+
