@@ -72,7 +72,7 @@
 *   Clear, well-organized layout to present a potentially large amount of information.
 *   Sections for contract terms, ship(s) details.
 *   Visual hierarchy to emphasize key information (price, ship name).
-*   Display of ship images/renders if feasible and type information provides it [NEEDS_RESEARCH: ESI image server links based on type_id].
+*   Display of ship renders using the EVE image server (e.g., `https://images.evetech.net/types/{type_id}/render?size=512`). A smaller icon might also be displayed.
 *   Responsive design.
 *   [NEEDS_DESIGN: Mockups/wireframes for the detailed contract view page.]
 
@@ -97,6 +97,14 @@
 *   Frontend framework (Angular).
 
 ## 13. Notes / Open Questions (Optional)
-*   [NEEDS_RESEARCH: How to best display ship attributes from `dogma_attributes`? Select key ones or show all? Formatting?]
-*   [NEEDS_DECISION: If a contract contains multiple items (e.g., a ship and some modules), how are non-ship items displayed, if at all, on this *ship* contract view? Current assumption is F001 filters for *primarily* ship contracts.]
-*   [NEEDS_RESEARCH: Availability and usage of EVE Online's image server for ship renders (e.g., `https://images.evetech.net/types/{type_id}/render?size=512`).]
+*   **Displaying Ship Attributes (`dogma_attributes`)**: A curated list of 'Key Ship Attributes' (e.g., resistances, EHP, capacitor, targeting, slots) will be displayed prominently. An option (e.g., 'All Attributes' toggle/tab) will allow users to view all other attributes. Attributes should be grouped logically (e.g., 'Tank', 'Capacitor').
+*   **Handling Multiple Items in a 'Ship Contract'**: 
+    *   The main focus will be on the primary ship item(s) with full details.
+    *   A section titled 'Additional Included Items' will list all other non-primary-ship items from the contract.
+    *   For these additional items, 'Item Name' (from `esi_type_cache`) and 'Quantity' will be displayed.
+    *   F001's `is_ship_contract` logic should correctly identify contracts primarily for ships. Consider adding a boolean like `contains_additional_items` at the contract level in the Hangar Bay DB, derived by F001.
+    *   `[POTENTIAL_ENHANCEMENT: Display a few key attributes for included non-ship items if they are modules, if data is readily available in esi_type_cache and UI impact is manageable.]`
+*   **EVE Online Image Server**: The official image server `https://images.evetech.net/` will be used. 
+    *   For ship renders: `types/{type_id}/render?size={size}` (e.g., size 256 or 512).
+    *   For icons: `types/{type_id}/icon?size={size}` (e.g., size 64).
+    *   These are CDN-backed and suitable for web use. Availability is good for ships.
