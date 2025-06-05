@@ -17,19 +17,44 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 
 ### 3.1. Unit Tests
 *   **Scope:** Test individual functions, methods, or components in isolation.
-*   **Backend (Python/FastAPI):** Test business logic, utility functions, individual API endpoint handlers (mocking external dependencies like ESI and database).
-*   **Frontend (Angular):** Test individual components, services, pipes, and directives.
+    *   **Backend (Python/FastAPI):** Test business logic, utility functions, individual API endpoint handlers (mocking external dependencies like ESI and database).
+
+        *   **AI Implementation Pattern (FastAPI Unit Tests - pytest):**
+            *   For new FastAPI endpoint functions, AI should generate test cases covering:
+                *   Successful responses (200 OK) with expected data structure.
+                *   Input validation errors (422 Unprocessable Entity).
+                *   Authentication/Authorization errors (401/403).
+                *   Mocking of service layer dependencies using `mocker` fixture from `pytest-mock`.
+    *   **Frontend (Angular):** Test individual components, services, pipes, and directives.
+
+        *   **AI Implementation Pattern (Angular Unit Tests - Jasmine/Karma):**
+            *   When generating a new Angular component/service, AI should also generate a `.spec.ts` file with:
+                *   Basic setup (`TestBed.configureTestingModule`, component fixture creation).
+                *   A test for component creation (`expect(component).toBeTruthy();`).
+                *   Placeholders or simple tests for public methods and key interactions.
+                *   Mocks for service dependencies using `jasmine.createSpyObj`.
 
 ### 3.2. Integration Tests
 *   **Scope:** Test interactions between components or modules.
 *   **Backend:** Test API endpoints with a real (test) database, interactions with the caching layer (Valkey), and potentially mocked ESI interactions to verify request/response handling.
-*   **Frontend:** Test component interactions, service integrations, and routing.
+    *   **Frontend:** Test component interactions, service integrations, and routing.
+
+        *   **AI Actionable Checklist (Angular Integration Tests):**
+            *   [ ] Test that a parent component correctly passes data to a child component via `@Input()`.
+            *   [ ] Test that a parent component correctly listens to events from a child component via `@Output()`.
+            *   [ ] Test that a service method is called when a component action is performed.
+            *   [ ] Test basic routing scenarios (e.g., navigating to a page displays the correct component).
 
 ### 3.3. End-to-End (E2E) Tests
 *   **Scope:** Test complete user flows through the deployed application (frontend through backend to database/cache).
 *   **Focus:** Verify critical user scenarios, such as searching for contracts, applying filters, authenticating via EVE SSO (mocked SSO provider), managing watchlists, and receiving alerts (simulated).
 *   **Responsive Design Testing:** E2E tests MUST cover various viewport sizes (desktop, tablet, mobile - portrait and landscape) to ensure UI elements render correctly, are usable, and that no content is broken or inaccessible. This includes testing navigation, forms, and data displays across different screen dimensions.
-*   **Caution:** E2E tests are typically slower and more brittle; reserve them for the most critical paths.
+    *   **Caution:** E2E tests are typically slower and more brittle; reserve them for the most critical paths.
+
+        *   **AI Implementation Pattern (E2E Test Generation - e.g., Cypress/Playwright):**
+            *   AI can be prompted to generate E2E test stubs for critical user flows described in feature specs.
+            *   Example prompt: "Generate a Cypress test for the user login flow: visit login page, fill username, fill password, click submit, expect redirect to dashboard, expect welcome message."
+            *   AI should use page object models (POM) for maintainability if feasible.
 
 ### 3.4. Performance Tests
 *   **Scope:** Evaluate application responsiveness, scalability, and stability under load.
@@ -51,6 +76,11 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
     *   **Content & Structure:** Verify semantic HTML usage, heading structure, link purpose, and form labeling.
 *   **AI Coding Assistant Guidance:** The AI assistant should be prompted to generate code that passes automated A11y checks and to consider manual A11y testing scenarios when developing UI components.
 
+    *   **AI Actionable Checklist (Accessibility Test Generation):**
+        *   [ ] When AI generates a new UI component, prompt it to include an Axe-core scan in its unit/integration tests.
+            *   Example (Angular with `@axe-core/angular`): `it('should pass accessibility scan', async () => { await TestBed.inject(AxeAngular).check(); });`
+        *   [ ] For E2E tests of UI features, remind AI to include checks for keyboard navigability (e.g., tabbing through elements, activating controls) and visible focus states.
+
 ## 4. Tools and Frameworks
 
 *   **Backend (Python/FastAPI):**
@@ -66,6 +96,10 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   **Accessibility Testing Tools:**
     *   **Automated:** Axe-core (e.g., `@axe-core/angular` for integration with Angular tests, browser extensions for manual checks), Lighthouse (browser developer tools).
     *   **Screen Readers:** NVDA (Windows), JAWS (Windows), VoiceOver (macOS/iOS).
+
+        *   **AI Implementation Pattern (Angular Test Setup for A11y):**
+            *   Ensure `AxeAngular` is configured in `test.ts` or a test setup file if using `@axe-core/angular`.
+            *   AI should be aware of how to import and inject `AxeAngular` into test suites.
 
 ## 5. Test Data Management
 
@@ -86,7 +120,11 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   **Dynamic Application Security Testing (DAST):** Consider DAST tools for testing the running application against common web vulnerabilities.
 *   **Dependency Scanning:** Use tools (e.g., `pip-audit` for Python, `npm audit` or Snyk for frontend) to check for known vulnerabilities in third-party libraries.
 *   **Manual Penetration Testing:** Plan for periodic manual penetration testing by security professionals, especially before major releases.
-*   Refer to `security-spec.md` for detailed security requirements that will inform security test cases.
+    *   Refer to `security-spec.md` for detailed security requirements that will inform security test cases.
+
+        *   **AI Actionable Checklist (Security Test Integration):**
+            *   [ ] When setting up CI, instruct AI to include SAST tools (e.g., `bandit run -r . -ll` for Python).
+            *   [ ] Instruct AI to include dependency vulnerability scanning (e.g., `pip-audit` for Python, `npm audit --audit-level=high` for Angular) in CI scripts.
 
 ## 8. Test Plan by Feature
 

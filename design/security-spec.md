@@ -2,6 +2,21 @@
 
 This document provides detailed security guidelines, standards, and technology-specific considerations for the Hangar Bay application. It complements the general Security section in the main `design-spec.txt`.
 
+## Core Security Principles
+
+The security posture of Hangar Bay is founded on modern principles designed to protect against evolving threats. These principles should guide all security-related decisions and implementations:
+
+*   **Assume Breach:** Operate under the assumption that attackers may have already compromised or will eventually compromise some part of the system. This mindset shifts focus from perimeter defense alone to include robust internal security, detection, and response capabilities.
+*   **Zero Trust Architecture (ZTA):** Do not inherently trust any user, device, application, or network, regardless of whether it is internal or external to the organization's traditional network perimeter.
+    *   **Verify Explicitly:** Always authenticate and authorize based on all available data points, including user identity, device health, service or workload context, and other relevant attributes.
+    *   **Least Privilege Access:** Grant only the minimum necessary access rights and permissions required for a user or service to perform its designated function. Review and revoke unnecessary privileges regularly.
+    *   **Microsegmentation:** Divide the network and application environment into smaller, isolated segments to limit the blast radius of a security incident. Enforce strict access controls between segments.
+*   **Defense in Depth:** Implement multiple layers of security controls. If one control fails or is bypassed, other controls are in place to continue protecting assets.
+*   **Security by Design:** Integrate security considerations into every phase of the software development lifecycle (SDLC), from initial design and requirements gathering through development, testing, deployment, and maintenance.
+*   **Data Minimization:** Collect and retain only the data that is strictly necessary for the application's functionality. Reduce the attack surface and the potential impact of a data breach.
+
+These principles, particularly "Assume Breach" and "Zero Trust," inform decisions such as encrypting all internal traffic (including to the database), strictly validating all inputs, and enforcing least privilege access.
+
 ## 1. Cryptography
 
 ### 1.1. Encryption in Transit
@@ -12,6 +27,19 @@ This document provides detailed security guidelines, standards, and technology-s
     *   For TLS 1.2, prefer ECDHE-based cipher suites (e.g., `ECDHE-ECDSA-AES128-GCM-SHA256`, `ECDHE-RSA-AES256-GCM-SHA384`). Avoid static key exchange ciphers (non-PFS).
 *   **Certificate Management:** Use strong, valid X.509 certificates from a reputable Certificate Authority (CA). Implement automated certificate renewal (e.g., via Let's Encrypt with Certbot or integrated cloud provider solutions).
 *   **HTTP Strict Transport Security (HSTS):** Implement HSTS to instruct browsers to only connect to the application via HTTPS. Include `preload` directive for maximum effectiveness.
+
+    *   **AI Actionable Checklist (TLS & HSTS):**
+        *   [ ] Verify TLS 1.3 is enabled and preferred on the web server (Nginx/Caddy/etc.).
+        *   [ ] Verify TLS 1.2 is supported with PFS cipher suites only.
+        *   [ ] Confirm HSTS header (`Strict-Transport-Security`) is set with `max-age` (e.g., 31536000), `includeSubDomains`, and `preload`.
+        *   [ ] Check for automated certificate renewal (e.g., Let's Encrypt cron job or cloud provider integration).
+        *   [ ] Ensure backend to ESI API calls use HTTPS.
+        *   [ ] Ensure backend to PostgreSQL calls use TLS (aligns with Zero Trust principles - all internal traffic encrypted).
+
+    *   **AI Implementation Pattern (TLS & HSTS):**
+        *   Use a library like `certbot` for automated certificate renewal.
+        *   Configure web server (e.g., Nginx) to prefer TLS 1.3 and use PFS cipher suites.
+        *   Set HSTS header in web server configuration.
 
 ### 1.2. Encryption at Rest
 
@@ -29,6 +57,13 @@ This document provides detailed security guidelines, standards, and technology-s
     *   **Key Management:** Securely manage all encryption keys. Avoid hardcoding keys. Use a dedicated key management service (KMS) if available (e.g., AWS KMS, Azure Key Vault, HashiCorp Vault) or secure configuration management practices.
 *   **Valkey Security:** While primarily a cache, if Valkey is configured for persistence or used to store sensitive session-like data, ensure its persistence files are protected by underlying file system permissions and disk encryption if possible. Valkey itself can be password protected.
 
+    *   **AI Actionable Checklist (Encryption at Rest):**
+        *   [ ] Identify all sensitive data fields requiring encryption (e.g., EVE SSO refresh tokens, specific user preferences).
+        *   [ ] For PostgreSQL, implement column-level encryption using `pgcrypto` for identified fields.
+        *   [ ] Ensure encryption keys are managed securely (e.g., environment variables, KMS), NOT hardcoded.
+        *   [ ] If Valkey persists sensitive data, ensure `requirepass` is configured and persistence files are on an encrypted volume if possible.
+        *   [ ] Verify application logic correctly encrypts data before writing and decrypts after reading.
+
 ### 1.3. Post-Quantum Cryptography (PQC) Aspiration
 
 *   **Goal:** To enhance long-term data security against potential future threats from quantum computers.
@@ -42,11 +77,73 @@ This document provides detailed security guidelines, standards, and technology-s
 
 ## 2. Authentication and Authorization
 
-*(To be detailed: EVE SSO token handling, session management, API key security, role-based access control if applicable)*
+Details on EVE SSO token handling, session management, and API key security.
+
+### 2.1. EVE SSO Integration
+*   **OAuth 2.0 Flow:** Strictly adhere to the EVE Online OAuth 2.0 flow for authentication.
+*   **State Parameter:** Use a cryptographically secure, unguessable `state` parameter to prevent CSRF attacks during the OAuth flow.
+*   **PKCE (Proof Key for Code Exchange):** Implement PKCE (RFC 7636) if supported by EVE SSO for public clients (like a web frontend) to mitigate authorization code interception attacks.
+*   **Token Storage (Backend):**
+    *   Access Tokens: May be stored in a secure server-side session or passed to the frontend for API calls. If passed to frontend, ensure they are short-lived.
+    *   Refresh Tokens: MUST be stored securely in the backend database, encrypted at rest (see Section 1.2). They should NEVER be exposed to the frontend.
+*   **Token Usage:** Access tokens are used to make authenticated calls to ESI. Refresh tokens are used by the backend to obtain new access tokens when they expire.
+*   **Scope Minimization:** Request only the minimum necessary ESI scopes required for the application's functionality.
+
+    *   **AI Implementation Pattern (EVE SSO Backend - FastAPI):**
+        *   Use a library like `Authlib` or `httpx-oauth` for handling OAuth 2.0 flow.
+        *   Store refresh tokens encrypted in the PostgreSQL database.
+        *   Implement endpoints for `/login`, `/callback`, `/logout`.
+        *   `/login`: Redirects user to EVE SSO authorization URL with `state` and `code_challenge` (for PKCE).
+        *   `/callback`: Verifies `state`, exchanges authorization code for tokens (with `code_verifier` for PKCE), stores refresh token, creates a session/JWT for the frontend.
+        *   `/logout`: Invalidates local session/JWT, potentially revokes EVE SSO tokens if ESI provides such an endpoint and it's appropriate.
+        *   Protect backend API endpoints requiring authentication using FastAPI's `Depends` with a security scheme (e.g., OAuth2PasswordBearer or custom JWT handler).
+
+### 2.2. Frontend Session Management (If applicable)
+*   If using JWTs passed to the frontend:
+    *   Store JWTs securely (e.g., `HttpOnly`, `Secure`, `SameSite=Lax` or `Strict` cookies). Avoid `localStorage` for JWTs due to XSS risks.
+    *   JWTs should be short-lived.
+    *   Implement silent refresh mechanism using the refresh token (via a secure backend endpoint) to get new JWTs before they expire.
+
+### 2.3. Authorization / Access Control
+*   Once authenticated, ensure users can only access their own data or perform actions permitted by their roles (if roles are defined beyond 'authenticated user').
+*   Example: A user should not be able to view or modify another user's watchlist.
+
+    *   **AI Implementation Pattern (FastAPI Authorization):**
+        *   In API endpoints dealing with user-specific resources, always fetch the resource based on the authenticated user's ID (obtained from the JWT/session) AND the resource ID from the path/query.
+        *   Example: `GET /watchlist/{item_id}` should ensure `item_id` belongs to the current `user_id`.
 
 ## 3. Input Validation and Output Encoding
 
-*(To be detailed: Specifics for chosen frameworks, prevention of XSS, SQLi, command injection, etc.)*
+Crucial for preventing injection attacks (XSS, SQLi, etc.).
+
+### 3.1. Input Validation (Backend - FastAPI)
+*   **Pydantic Models:** Leverage FastAPI's use of Pydantic models for automatic request body validation. Define strict types, constraints (e.g., `min_length`, `max_length`, `gt`, `lt`, `pattern`).
+*   **Path/Query Parameters:** FastAPI also validates path and query parameters based on type hints and `Query`/`Path` annotations.
+*   **ESI Data:** Treat data from ESI as untrusted input. Validate IDs, expected data types, and structure before processing or storing.
+*   **Business Logic Validation:** Perform additional validation based on business rules (e.g., ensuring a ship ID is a valid EVE Online ship type ID).
+
+    *   **AI Implementation Pattern (FastAPI Input Validation):**
+        *   Define Pydantic models for all request bodies.
+        *   Use type hints and validation decorators (`Query`, `Path`, `Body`) for all endpoint parameters.
+        *   Example: `async def get_item(item_id: int = Path(..., gt=0), q: Optional[str] = Query(None, min_length=3, max_length=50)):`
+        *   For ESI data, after fetching, pass it through a Pydantic model for validation before further use.
+
+### 3.2. Output Encoding (Frontend - Angular)
+*   **Angular's Built-in Sanitization:** Angular automatically sanitizes values interpolated into templates (`{{ value }}`) to prevent XSS. Trust Angular's built-in mechanisms.
+*   **`[innerHTML]` and `[outerHTML]`:** Avoid using these if possible. If absolutely necessary, ensure the HTML is sanitized using Angular's `DomSanitizer` (`bypassSecurityTrustHtml`).
+*   **Attribute Binding:** Be cautious when binding to attributes that can execute code (e.g., `href` with `javascript:` URLs, `style` with `url()`). Angular helps, but be mindful.
+
+    *   **AI Implementation Pattern (Angular Output Encoding):**
+        *   Primarily rely on Angular's default interpolation: `<div>{{ userProvidedContent }}</div>`.
+        *   If dynamic HTML is unavoidable: `constructor(private sanitizer: DomSanitizer) {} getSafeHtml(html: string) { return this.sanitizer.bypassSecurityTrustHtml(html); }` and use `[innerHTML]="getSafeHtml(userHtml)"`. Use with extreme caution.
+
+### 3.3. SQL Injection (SQLi) Prevention
+*   **ORM Usage:** Strictly use an ORM (SQLAlchemy for Python) for all database interactions. ORMs typically use parameterized queries or construct SQL safely, preventing most SQLi vulnerabilities.
+*   **No Raw SQL with User Input:** NEVER construct SQL queries by concatenating strings with user-supplied input. If raw SQL is absolutely unavoidable for a complex query, ensure all user input is passed as parameters to the query execution method, not interpolated into the query string.
+
+    *   **AI Implementation Pattern (SQLAlchemy):**
+        *   Always use ORM methods: `db.query(User).filter(User.id == user_id).first()`
+        *   If using `text()` for raw SQL: `from sqlalchemy import text; query = text("SELECT * FROM users WHERE id = :user_id"); result = db.execute(query, {"user_id": user_id})`
 
 ## 4. Application-Specific Vulnerabilities
 
@@ -54,11 +151,53 @@ This document provides detailed security guidelines, standards, and technology-s
 
 ## 5. Dependency Management
 
-*(To be detailed: Secure supply chain practices, vulnerability scanning)*
+Managing third-party libraries securely.
+
+*   **Minimize Dependencies:** Only include libraries that are actively needed.
+*   **Reputable Sources:** Use official package repositories (PyPI for Python, npm for Node.js/Angular).
+*   **Version Pinning:** Pin exact versions of dependencies in `requirements.txt` (Python) and `package-lock.json` (npm/Angular) to ensure reproducible and predictable builds.
+*   **Regular Updates:** Regularly update dependencies to their latest secure versions after checking changelogs for breaking changes.
+*   **Vulnerability Scanning:** Integrate automated vulnerability scanning tools into the CI/CD pipeline.
+    *   Python: `safety`, `pip-audit`.
+    *   Node.js/Angular: `npm audit`, Snyk, Dependabot (GitHub).
+
+    *   **AI Actionable Checklist (Dependency Management):**
+        *   [ ] Initialize project with `requirements.txt` (Python) and `package.json` (Angular).
+        *   [ ] Pin all direct dependencies to specific versions.
+        *   [ ] Generate and commit lock files (`requirements.txt` often serves this for Python if fully pinned, `package-lock.json` for npm).
+        *   [ ] Set up Dependabot or Snyk for automated vulnerability alerts on the repository.
+        *   [ ] Add `npm audit --audit-level=high` (Angular) and `pip-audit` (Python) steps to CI pipeline.
 
 ## 6. Logging and Monitoring
 
-*(To be detailed: Security event logging, audit trails, intrusion detection/prevention)*
+Essential for detecting and responding to security incidents.
+
+### 6.1. Security Event Logging
+*   **Log Key Events:**
+    *   Authentication success and failure (including IP address, user agent).
+    *   Authorization failures.
+    *   Significant ESI API errors (especially rate limiting, auth errors).
+    *   Critical application errors.
+    *   Changes to sensitive user data (e.g., watchlist modifications, if applicable).
+    *   Validation failures for critical inputs.
+*   **Log Content:** Include timestamp, event type, user ID (if authenticated), source IP, relevant details. AVOID logging sensitive data like passwords, full ESI tokens, or excessive PII in logs.
+*   **Log Storage:** Store logs securely, preferably centralized (e.g., ELK stack, cloud provider logging services). Protect logs from unauthorized access or tampering.
+
+    *   **AI Implementation Pattern (FastAPI Logging):**
+        *   Use Python's built-in `logging` module, configured in FastAPI.
+        *   Create structured logs (e.g., JSON format) for easier parsing by log management systems.
+        *   Example: `logger.info({"event": "login_success", "user_id": user.id, "ip_address": request.client.host})`
+
+### 6.2. Monitoring
+*   Monitor application performance, error rates, and resource usage.
+*   Set up alerts for unusual activity, high error rates, or security events (e.g., multiple failed login attempts from the same IP).
+
+    *   **AI Actionable Checklist (Logging & Monitoring Setup):**
+        *   [ ] Configure Python `logging` in FastAPI to output structured logs.
+        *   [ ] Ensure logs are written to a persistent location or streamed to a log management service.
+        *   [ ] Identify key security events to log (as listed above).
+        *   [ ] Implement logging for these events at appropriate points in the code.
+        *   [ ] Set up basic monitoring for application health and error rates (e.g., using Sentry, Prometheus/Grafana, or cloud provider tools).
 
 ## 7. Infrastructure Security
 

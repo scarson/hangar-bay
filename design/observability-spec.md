@@ -15,6 +15,16 @@ This document outlines the observability strategy for the Hangar Bay application
 *   **Key Information to Log:** Timestamp, log level, service name, correlation ID, message, and relevant context (e.g., endpoint, user ID if authenticated, ESI request details - sanitizing sensitive info).
 *   **Security:** Sensitive data (passwords, raw ESI tokens) MUST NOT be logged. Refer to `security-spec.md`.
 
+    *   **AI Implementation Pattern (Structured Logging - Python/FastAPI):**
+        *   Instruct AI to use Python's `logging` module configured with a JSON formatter (e.g., `python-json-logger`).
+        *   Example prompt: "Configure FastAPI logging to output JSON logs including timestamp, level, message, and logger name. Add a middleware to log request details (method, path, status code, duration) and include a correlation ID."
+        *   Ensure AI includes `correlation_id` in all log records related to a request.
+
+    *   **AI Implementation Pattern (Correlation ID - FastAPI Middleware with OpenTelemetry):**
+        *   If OpenTelemetry is used, the trace ID can serve as the correlation ID.
+        *   AI should be prompted to add middleware that extracts the trace ID from the current OpenTelemetry span and makes it available for logging contexts.
+        *   Example: `from opentelemetry import trace; tracer = trace.get_tracer(__name__); span = trace.get_current_span(); correlation_id = span.get_span_context().trace_id; logger.info("message", extra={"correlation_id": hex(correlation_id)})` (Simplified, actual integration would be more robust).
+
 ### 2.2. Metrics
 *   **Application Metrics (Backend - FastAPI):**
     *   Request rate, error rate, latency (overall and per-endpoint).
@@ -32,10 +42,33 @@ This document outlines the observability strategy for the Hangar Bay application
     *   Number of contracts processed/displayed.
     *   Watchlist creation/alert triggering frequency.
 
+    *   **AI Implementation Pattern (Backend Metrics - FastAPI with Prometheus):**
+        *   Instruct AI to use a Prometheus client library (e.g., `starlette-exporter` or `prometheus-fastapi-instrumentator`) to expose standard metrics (request count, latency, errors by path/status).
+        *   For custom metrics (e.g., ESI call latency): `my_custom_metric = Summary('my_metric_seconds', 'Description of my metric'); @my_custom_metric.time() def my_function(): ...`
+        *   AI should add relevant labels (e.g., ESI endpoint path) to custom metrics.
+
+    *   **AI Implementation Pattern (Frontend Metrics - Angular with OpenTelemetry):**
+        *   If using OpenTelemetry for tracing, it can also collect basic frontend performance metrics.
+        *   For custom metrics (e.g., component interaction time), AI can be prompted to use OpenTelemetry Metrics API or a simple custom solution sending data to a backend endpoint for aggregation if OpenTelemetry is not fully set up on frontend.
+        *   Example prompt: "Instrument Angular `HttpClient` calls using OpenTelemetry to capture client-side API call latency."
+
 ### 2.3. Tracing (Distributed Tracing - OpenTelemetry Preferred)
 *   **Goal:** To visualize the entire lifecycle of a request as it flows through different components of the application (e.g., frontend -> backend API -> ESI API -> database -> cache).
 *   **Implementation:** Strongly prefer and prioritize the use of OpenTelemetry SDKs and APIs for instrumenting code and propagating trace context across all services (Python backend, Angular frontend if applicable).
 *   **Benefits:** Pinpoint bottlenecks, understand service dependencies, debug complex issues in a distributed environment.
+
+    *   **AI Implementation Pattern (Tracing - FastAPI with OpenTelemetry):**
+        *   Instruct AI to use `opentelemetry-instrumentation-fastapi` to automatically trace incoming requests.
+        *   For outgoing HTTP calls (e.g., to ESI): use `opentelemetry-instrumentation-httpx`.
+        *   For database calls: use relevant OpenTelemetry instrumentation library (e.g., `opentelemetry-instrumentation-sqlalchemy`).
+        *   AI should ensure trace context is propagated correctly.
+        *   Example prompt: "Set up OpenTelemetry for a FastAPI application, instrumenting FastAPI, HTTPX, and SQLAlchemy. Configure an OTLP exporter."
+
+    *   **AI Implementation Pattern (Tracing - Angular with OpenTelemetry):**
+        *   Instruct AI to use `@opentelemetry/instrumentation-xml-http-request` and `@opentelemetry/instrumentation-fetch` for automatic tracing of API calls.
+        *   Use `@opentelemetry/instrumentation-document-load` for page load traces.
+        *   Configure trace context propagation (e.g., `W3CTraceContextPropagator`).
+        *   Example prompt: "Set up OpenTelemetry for an Angular application to trace HTTP requests and page loads. Ensure trace context is propagated to the backend."
 
 ### 2.4. Error Tracking & Alerting (Operational)
 *   **Centralized Error Aggregation:** Collect and aggregate exceptions and errors from both backend and frontend in a centralized system.
@@ -46,15 +79,31 @@ This document outlines the observability strategy for the Hangar Bay application
 
 *   **Logging Management:**
     *   *(Placeholder: e.g., ELK Stack, Grafana Loki, OpenTelemetry Collector with backends like Jaeger/Elasticsearch. Prioritize solutions with strong OpenTelemetry OTLP ingest capabilities.)*
+
+        *   **AI Actionable Checklist (Logging Tooling):**
+            *   [ ] When AI sets up logging, ensure logs are configured to be exportable/collectable by the chosen system.
+            *   [ ] If using OpenTelemetry Collector, AI should generate a config for OTLP receiver and appropriate exporter (e.g., Loki, Elasticsearch).
 *   **Metrics Collection & Visualization:**
     *   **Backend:** Prometheus client libraries for FastAPI. Consider OpenTelemetry SDKs for metrics as well, which can export to Prometheus.
     *   **System:** Prometheus Node Exporter or similar.
     *   **Storage & Visualization:** Prometheus (time-series database) & Grafana (dashboards).
+
+        *   **AI Actionable Checklist (Metrics Tooling):**
+            *   [ ] AI should ensure FastAPI app exposes a `/metrics` endpoint for Prometheus scraping.
+            *   [ ] When AI defines Grafana dashboards (e.g., via IaC), ensure queries match exposed Prometheus metrics.
 *   **Distributed Tracing:**
     *   **Instrumentation:** OpenTelemetry SDKs for Python (FastAPI) and JavaScript (Angular) are the primary choice.
     *   **Backend Collector/Storage:** An OpenTelemetry Collector is highly recommended for receiving, processing, and exporting telemetry data. Backends like Jaeger, Zipkin, Prometheus, or managed cloud services (e.g., AWS X-Ray, Google Cloud Trace, Azure Monitor) that support OpenTelemetry are preferred.
+
+        *   **AI Actionable Checklist (Tracing Tooling):**
+            *   [ ] AI should configure OpenTelemetry SDKs in both backend and frontend to export traces via OTLP (HTTP or gRPC) to an OpenTelemetry Collector or a compatible backend.
+            *   [ ] If using an OpenTelemetry Collector, AI should generate its configuration (receivers, processors, exporters).
 *   **Error Tracking:**
     *   *(Placeholder: e.g., Sentry, Rollbar, Elastic APM. Evaluate for OpenTelemetry integration capabilities, such as correlating errors with traces.)*
+
+        *   **AI Actionable Checklist (Error Tracking Tooling):**
+            *   [ ] When AI instruments error tracking (e.g., Sentry SDK), ensure trace IDs from OpenTelemetry are attached to error reports for correlation.
+            *   Example prompt: "Integrate Sentry with FastAPI and OpenTelemetry, ensuring Sentry errors include the OpenTelemetry trace ID."
 
 ## 4. Observability by Design
 
