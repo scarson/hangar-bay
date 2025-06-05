@@ -110,3 +110,37 @@ Let's address the items above before proceeding with detailing some of the other
 1. In the design log, the timestamps are in the format "2025-06-04T23:00:00-05:00". For easier reading, please remove the "T" that appears before the time section and replace it with a space. Update the instruction at the end of the document to reflect this updated timestamp format.
 
 2. I love your feedback on the feature spec details. Let's start by creating a template feature spec that contains those key elements that make them useful to AI coding assistants and beyond. Please first create the "features" directory, then create a "00-feature-spec-template.md" markdown file (we'll refer to it as the "feature spec template") and populate it with all the sections you proposed. Try to think of others that might be helpful as well. It's okay if some are only conditionally applicable, like API Endpoints Involved. Mark each section as Required or Optional. Make sure the feature spec template includes an instruction to always include Required sections, and evaluate each Optional section for applicability. When we create a new feature spec, start by looking at the feature spec template, assessing each Optional section for applicability, and then copying over all the Required and applicable Optional sections. If you have any enhancements to that procedure that could make the process more effective please propose them. Then, create a memory for feature creation that captures this feature spec template reference, assessment, and copying process.
+
+
+---------------
+
+
+1. Please update the design log with our approach for feature spec management.
+
+2. For the observability spec, let's prefer OpenTelemetry compatible options wherever possible. Update the spec as appropriate.
+
+3. I want you to review the design spec, identify features that should have their own feature spec, then create initial feature specs for each one with the information we have available so far. As we're still in the design stage, when you create these feature specs, explicitly note where additional information, discussion, and/or decision points are required in each feature spec section. 
+
+4. After creating the initial feature specs, we should prioritize which to work on first. One idea for this is to see which feature or features are common dependencies for others. That might suggest we should work on them first, since their details may have downstream impacts on other features that depend on them. However, there may be other good ways to prioritize what to work on first and I'm very open to any alternative ideas you have.
+
+
+---------------
+
+Let's go through some of the [NEEDS_DISCUSSION] / [NEEDS_DECISION] items, by feature, starting with F001.
+
+F001:
+5. Key Data Structures / Models: 
+* For "issuer_name", store the name. Changing character names is an uncommon and difficult task in EVE that requires opening a formal support request. For this reason, there's likely little value in making an extra call to resolve the name on display. 
+* For "start_location_name", resolve on display.
+* I am still unsure about "volume"
+* For the esi_type_cache table, we should store all dogma_attribute and dogma_effects. We don't know which might be relevant to users, this isn't sensitive information so there isn't a security issue storing it, and there are a relatively small number of ships to store data for in the context of a modern database. However, I do see this is a JSONB type. Does SQLite support JSONB?
+
+9. Error Handling & Edge Cases (Required)
+* For "[NEEDS_DISCUSSION: Retry strategy for DB errors]" - Please research common database retry strategies that are applicable to PostgreSQL, since we'll be using that for Production. Then add details for the strategies that seem appropriate for Hanger Bay's architecture.
+* For "[FURTHER_DETAIL_REQUIRED: More specific edge cases related to contract types (auction vs. item_exchange), item types, etc.]" - we'll deal with these later when we understand the contract types better.
+
+13. Notes / Open Questions
+* For "[NEEDS_DECISION: Which EVE regions to poll by default? Should this be configurable by an admin?]" this should be configurable. For prototyping we'll likely want to set that configuration to only one or two regions but it's important that region selection by admins is flexible.
+* For "[NEEDS_DISCUSSION: How to handle updates to existing contracts if ESI data changes before expiration (e.g., auction price changes)? Re-fetch items and update, or rely on full periodic re-scans?]" - Full scans sound expensive. However, with the re-fetch and update approach, how would we know when to update?
+
+Please discuss and update the feature spec accordingly.
