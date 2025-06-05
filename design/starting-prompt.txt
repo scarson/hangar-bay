@@ -1,0 +1,26 @@
+# Windsurf Editor using Gemini 2.5 Pro
+
+Hello, I have an idea for an ecommerce site (the "application" or "app") for selling ships in the video game EVE Online. It will be called "Hanger Bay", which is also the name of this project. I would like your assistance in creating a design specification ("design spec") for the application. The design spec should be structured to be a highly effective input into Windsurf / Cascade to use to write the application code once it's complete. We will work through aspects of the application architecture and design together. I have a some programming and software architecture experience and can make decisions if provided with high quality information to inform them. However, do not be hesitant to have strong opinions in design areas if they can be justified. I have not decided on any specific tech stack for this app. I pre-created an empty design spec markdown file for us to use, which can be found at path "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\design\design-spec.txt"
+
+Before doing anything else, create a memory emphasizing that SECURITY IS ABSOLUTELY PARAMOUNT for this application. EVE Online players, the target audience for Hangar Bay, are known for their ingenuity in exploiting systems. Theft, deceit, extortion, hacking, and scheming are considered legitimate parts of the EVE Online metagame.. This app will be targeted. Parties with malicious intent will try to exploit the app in every possible way. WE MUST NOT LET THAT HAPPEN. There must be NO tradeoffs where security is sacrificed for features or convenience. Security must be an overriding concern in every applicable design and implementation area. AT ABSOLUTE MINIMUM, THE APPLICATION MUST TAKE EXTREME PRECAUTIONS AGAINST (1) ALL OWASP TOP 10 WEB APPLICATION SECURITY RISKS AND (2) USE LEADING/BEST SECURE CODING PRACTICES FOR ALL LANGUAGES, FRAMEWORKS, AND TECHOLOGIES USED IN THE APP. Proactively think through potential attack vectors and risks for the application and aggressively eliminate them by design or implement effective mitigations wherever possible. Where attack vectors and risks cannot be effectively eliminated by design or mitigated, extensively think through possible alternatives, and if no alternatives are feasible, document the risk as clearly as possible. The design spec should have a Security section, and all other sections must include a reference to the Security section with instructions to consider it part of their spec too.
+
+We will start the process by having you learn about EVE so we can have a more informed design dialog afterward.
+
+First, review these links to learn about EVE in general:
+* https://en.wikipedia.org/wiki/Eve_Online
+* https://wiki.eveuniversity.org/EVE_Lexicon - this will teach you EVE terminology you might find in subsequent articles
+* https://wiki.eveuniversity.org/Getting_Started_in_EVE_Online
+* https://www.eveonline.com/eve-academy
+
+Then, review these articles about the modern EVE API called "ESI" that we will use to get ship pricing and other such market information from the game:
+* https://www.eveonline.com/news/view/eve-evolved-the-future-of-eves-api
+* https://www.eveonline.com/news/view/introducing-esi
+* https://developers.eveonline.com/blog/introducing-the-esi-api
+* https://developers.eveonline.com/docs/services/esi/overview/ - official developer documentation
+* https://developers.eveonline.com/docs/services/esi/best-practices/
+* https://esi.evetech.net/ui/ - ESI API swagger / OpenAPI spec
+
+There is a 3rd party site that has some of the fuctionality we're interested in called EVE Market Browser. You can review it here:
+* https://evemarketbrowser.com/region/
+
+After reviewing all this, think about if there's any additional information you might want before starting our design discussion and bring it up if so. 
