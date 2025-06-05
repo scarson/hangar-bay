@@ -154,4 +154,15 @@ This document records major design discussion points, considerations, and decisi
     *   The requirement for TLS encryption for backend-to-PostgreSQL connections was updated to mandate TLS always, explicitly aligning with Zero Trust principles, removing the previous condition of "if over a non-trusted network."
 *   **Rationale:** Formalizing these principles provides a clear foundation for all security-related decisions and implementations, ensuring a proactive and resilient security posture. This directly influences practical measures like encrypting all internal traffic and rigorously applying least privilege.
 
+
+## Collaboration Reflection & AI Prompting Guidance (Approx. 2025-06-05 05:47:21-05:00)
+
+*   **Context:** User initiated a reflection on the collaboration process, requesting an honest assessment of their software engineering/design skills and feedback effectiveness to enhance our working relationship.
+*   **Assessment Outcome:** The AI (Cascade) provided feedback highlighting the user's strong strategic vision, systematic approach to documentation, focus on AI collaboration, technical acumen, attention to detail, and clear communication. Recommendations for even more effective collaboration included continued specificity in prompts, elaborating on complex logic, breaking down large requests, and leveraging the project's AI-enhanced specifications.
+*   **Decision & New Artifact:** Inspired by the feedback, the user requested the creation of a new document to capture best practices for crafting AI prompt instructions.
+    *   **File Created:** `design/instruction-recs.md`
+    *   **Purpose:** To provide clear, practical recommendations for human users on crafting effective prompt instructions for AI coding assistants, covering both general scenarios and specific considerations for the Hangar Bay project. It explicitly notes its primary utility is for human reference.
+    *   **Content Basis:** The initial content for `instruction-recs.md` was derived from the AI's recommendations provided during the collaboration assessment.
+*   **Rationale:** This exercise in reflection and the creation of `instruction-recs.md` aim to further optimize the human-AI collaboration for the Hangar Bay project, ensuring clarity and efficiency in communication and task execution.
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*
