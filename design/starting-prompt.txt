@@ -24,3 +24,89 @@ There is a 3rd party site that has some of the fuctionality we're interested in 
 * https://evemarketbrowser.com/region/
 
 After reviewing all this, think about if there's any additional information you might want before starting our design discussion and bring it up if so. 
+
+
+----------------
+
+
+1. You raise great points with "User Authentication (EVE SSO): While not strictly required for users to browse public contracts (which are, by definition, public), EVE SSO could still be valuable for:
+* Allowing users to save searches or create watchlists for specific ships or contract types.
+* Potentially allowing users to see their own public contracts highlighted if they choose to log in.
+* We can consider SSO an optional feature for enhanced user experience, rather than a core requirement for the MVP."
+
+I think allowing users to save searches and create watchlists for specific ships or contract types would be a core value-add feature of the app, so let's make this a requirement. With regards to watchlists, users should be able to set up alerts to be notified when configurable watchlist criteria are met (for example, a contract for a desired ship is available below a specified price threshold).
+
+2. Backend framework: I would like to consider Python vs Go in more depth. My high-level understanding of Go is that it's designed for high performance, API-driven web applications and has highly opinionated security defaults. I have a little familiarity with Python from years ago but am most experienced with C#. That doesn't mean I want to use a .NET stack. Rather, I'm interested in how my C# / .NET experience might translate to Python or Go.
+
+3. Database: For the purposes of rapid prototyping and keeping things more self-contained, I'm interested in using SQLite during development. If we did that, how much risk and complexity would likely be involved in switching over to PostgreSQL later on?
+
+4. Caching layer: Redis recently had a major open source fork called Valkey. While largely the same code, they have now diversed somewhat in features. Please perform an assessment of the latest available versions of Redis (8.0.2) and Valkey (8.1.1) in the context of which may be better suited for this project. If there are no applicable functional differences, prefer Valkey. Here are some resources I found on the internet that might serve as starting points for your research:
+* https://redis.io/blog/what-is-valkey/ 
+* https://betterstack.com/community/comparisons/redis-vs-valkey/
+* https://www.dragonflydb.io/blog/redis-8-0-vs-valkey-8-1-a-technical-comparison
+* https://dimasyotama.medium.com/valkey-vs-redis-the-fork-awakens-understanding-the-split-key-differences-and-implementation-89c0123403eb
+* https://aws.amazon.com/elasticache/what-is-valkey/
+* https://github.com/valkey-io/valkey
+* https://valkey.io/topics/
+
+5. Frontend framework: Consider Angular as another alternative as I have an interest in learning it. What are the pros and cons vs React and Vue.js?
+
+6. Deployment: I agree the app must be able to be containerized for deployment. This should be done in way agnostic to hosting provider like AWS or Azure to keep our options open. Let's make sure this is an explicit requirement in the design spec.
+
+7. Because security is paramount and there will be many security-related details that are too specific for the more general principles in the design spec, I've created a separate markdown file called "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\design\security-spec.md". We'll call this the "security spec". Use this file to document important security considerations that are more detailed than appropriate for the design spec. For example, specific guideslines for Flask or other technologies, DoS prevention techniques relevant to the app, standards for secure handling of auth tokens and secrets, etc. UPDATE AND REFERENCE THIS FILE AS NEEDED TO HELP FULFILL THE SECURITY OBJECTIVES.
+
+Start by populating the security spec with information that is or will likely be relevant to the app. All data must be encrypted in transit with TLS 1.2 or 1.3, using only cipher suites that support Perfect Forward Secrecy. If there are opportunities to use NIST-approved quantum-resistant encryption algorithms, we should do so unless there are significant downsides. After making those updates, update your SECURITY IS PARAMOUNT memory to include the security spec file.
+
+
+---------------
+
+
+1. User Authentication (EVE SSO), Watchlists, and Alerts:
+Great. Please think about other high value-add features the app could potentially have now that EVE SSO is a foundational requirement. Try to identify low hanging fruit - features that could add meaningful value for users without significant scope creep or increases in implementation complexity, staying within the ship-centric focus of Hangar Bay. Eve Market Browser already exists and it'd be good to have some competitive differentiators. 
+
+2. Backend Framework: Python (FastAPI) vs. Go
+I'm sold on starting with Python/FastAPI. Let's tentatively spec it for now.
+
+2.1 I see you've specified Uvicorn as the ASGI server for FastAPI. I skimmed this article, which mentions a key takeaway of "ASGI Servers: Choose the right ASGI server (Uvicorn, Hypercorn, or Gunicorn with Uvicorn workers) based on your specific needs.":
+https://medium.com/@ramanbazhanau/preparing-fastapi-for-production-a-comprehensive-guide-d167e693aa2b (if you cannot read the full article online due the Medium paywall, let me know and I will save it as a PDF and provide the file)
+What might we consider about other ASGI server options before solidifying this decision?
+
+3. Database: SQLite for Development, PostgreSQL for Production
+I like the proposed ORM approach. Let's make sure to use an ORM and design our schemas and queries with PostgreSQL capabilities in mind. Add this to the design spec. We will not need to actually migrate data from SQLite to PostgreSQL. We'll deploy the schema and populate it with fresh data from appropriate sources. 
+
+4. Caching Layer: Redis vs. Valkey
+Thanks for the assessment. Let's spec Valkey based on your findings.
+
+5. Frontend Framework: Angular vs. React vs. Vue.js
+Let's go with Angular. While the simplicity of Vue.js is appealing, I like TypeScript's static typing (which I think can help us avoid type errors that could impact security) and there is significant value to me in learning Angular better.
+
+7. I agree with your assessment of the current state of PQC. Let's keep that aspirational as you've indicated in the security spec. However, please add an encryption at rest subsection of Cryptography. We should make sure to encrypt sensitive data at rest and consider approaches for this, which may be different for various parts of the app. Note that the best thing for data security is to not store sensitive data you don't need to hold onto in the first place, as you can't lose what you don't have. We should not retain any more data than is necessary to provide application functions.
+
+8. In the database response, you mentioned a test suite. A robust test strategy and suite is very important. Let's make sure we're adding methodical, useful test coverage from the beginning. Please create a test-spec.md file (the "test spec") alongside the security and design specs and populate it with relevant information so far. Add placeholders where appropriate to update later once relevant details are known.
+
+9. We're starting to make a lot of design decisions. I saw you mentioned some Reasoning and Alternatives Considered points in the design spec, which is fantastic, but I'd also like to keep a separate chronological record of major design discussion points, considerations, and decisions made. Let's call this the "design decision log", or "design log" for short. Please create design-log.md in the same directory as the design spec. Update it with all the major design discussion points, considerations, and decisions made so far, in generally chronological order. Ultimately, a person should be able to read it and come away with the "story" of how this design process developed. After populating the initial design log, create a memory for it, and continue to update the design log throughout the project whenever appropriate.
+
+10. The Preparing FastAPI for Production: A Comprehensive Guide also lists as a key point: "Logging and Monitoring: Set up comprehensive logging and monitoring to gain insights into your application’s behavior and quickly identify issues."
+Because we are security focused and as a matter of general good practice, let's make sure that we build in observability with logging and monitoring from the beginning. This should apply to the application as a whole, not just FastAPI. Please create a observability-spec.md file ("observ spec" for short) in the same directory as the design spec. This observ spec is focused primarily on observability, rather than the Security event logging, audit trails, intrusion detection/prevention in the Logging and Monitoring section of the security spec. Populate it with relevant information so far. Add placeholders where appropriate to update later once relevant details are known. Then update the design spec to include references to the logging spec wherever appropriate. However, if you think this is extraneous and has too much overlap with the design and security specs, please raise that concern so we can discuss the best way to ensure observability considerations are addressed throughout the project. 
+
+Let's address the items above before proceeding with detailing some of the other sections in the design and security specs.
+
+
+---------------
+
+
+1. I realize I'd intended to have the design spec be a markdown file like the others, but accidentally specified a .txt extension. Please copy its contents to a new design-spec.md file, apply markdown formatting like the other specs docs, verify that all the content is the same aside from the markdown formatting, then delete the design-spec.txt file. Then update any relevant memories to reference the new design-spec.md file instead of the old design-spec.txt.
+
+2. In the design log, please add a timestamp to each section block based on your knowledge of the system timestamps for your own responses. Record the datetimes in ISO 8601 format with the U.S. Central time zone. Update the "*(This log will be updated as more decisions are made.)*" note with an instruction to yourself to include these timestamps going forward.
+
+3. In the design spec, make a note in an appropriate location to further detail user notification mechanisms for watchlist and other alerts. We will presumably need an SMTP email integration of some sort. However, it would also be interesting to know if the ESI API provides any methods to send in-game notifications to players.
+
+4. As these individual feature areas get more implementation details, we may want to capture those in individual feature spec markdown files to facilitate Windsurf using them as references when writing and reviewing the related code. We could create a "features" directory within the existing "design" project directory to organize and store these files. What do you think of this approach? How could it be improved to better facilitate effective use of the Windsurf (with Gemini Pro 2.5) coding assistant? I'm very open to other ideas, so if you have any that could help accomplish this objective, please propose them.
+
+
+---------------
+
+
+1. In the design log, the timestamps are in the format "2025-06-04T23:00:00-05:00". For easier reading, please remove the "T" that appears before the time section and replace it with a space. Update the instruction at the end of the document to reflect this updated timestamp format.
+
+2. I love your feedback on the feature spec details. Let's start by creating a template feature spec that contains those key elements that make them useful to AI coding assistants and beyond. Please first create the "features" directory, then create a "00-feature-spec-template.md" markdown file (we'll refer to it as the "feature spec template") and populate it with all the sections you proposed. Try to think of others that might be helpful as well. It's okay if some are only conditionally applicable, like API Endpoints Involved. Mark each section as Required or Optional. Make sure the feature spec template includes an instruction to always include Required sections, and evaluate each Optional section for applicability. When we create a new feature spec, start by looking at the feature spec template, assessing each Optional section for applicability, and then copying over all the Required and applicable Optional sections. If you have any enhancements to that procedure that could make the process more effective please propose them. Then, create a memory for feature creation that captures this feature spec template reference, assessment, and copying process.
