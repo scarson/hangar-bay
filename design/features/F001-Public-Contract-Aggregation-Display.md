@@ -60,9 +60,9 @@
     *   `contract_id`: BIGINT (Primary Key, from ESI)
     *   `contract_type`: VARCHAR (e.g., 'item_exchange', 'auction')
     *   `issuer_id`: INTEGER (Character ID from ESI)
-    *   `issuer_name`: VARCHAR [NEEDS_DISCUSSION: Store name or resolve on display? Consider ESI `POST /v1/universe/ids/`]
+    *   `issuer_name`: VARCHAR (Resolved once during ingestion and stored directly. Character name changes are rare.)
     *   `start_location_id`: BIGINT (Station/Structure ID from ESI)
-    *   `start_location_name`: VARCHAR [NEEDS_DISCUSSION: Store name or resolve on display?]
+    *   `start_location_name`: VARCHAR (Resolved on display via `start_location_id`. Location names can change or be dynamic.)
     *   `region_id`: INTEGER
     *   `price`: DECIMAL
     *   `volume`: DOUBLE [NEEDS_CLARIFICATION: From ESI or sum of items? Relevant for ships?]
@@ -91,9 +91,9 @@
     *   `volume`: DOUBLE
     *   `capacity`: DOUBLE
     *   `published`: BOOLEAN
-    *   `dogma_attributes`: JSONB [NEEDS_DISCUSSION: Store all or select attributes? Structure?]
-    *   `dogma_effects`: JSONB [NEEDS_DISCUSSION: Store all or select effects? Structure?]
-    *   `last_esi_check`: TIMESTAMP
+    *   `dogma_attributes`: JSONB (Store all attributes. For SQLite in dev, this will be TEXT using JSON1 functions; for PostgreSQL in prod, native JSONB.)
+    *   `dogma_effects`: JSONB (Store all effects. For SQLite in dev, this will be TEXT using JSON1 functions; for PostgreSQL in prod, native JSONB.)
+    *   `last_esi_check`: TIMESTAMP (Timestamp of when contract items were last fetched/verified from ESI)
 *   [FURTHER_DETAIL_REQUIRED: Define relationships, indexing strategy, final decision on name resolution/storage.]
 
 ## 6. API Endpoints Involved (Optional)
@@ -138,7 +138,7 @@
 *   ESI API unavailable/errors: Implement retry logic (e.g., exponential backoff), log errors, potentially mark regions/contracts as temporarily un-pollable or data as stale.
 *   ESI rate limiting: Strictly respect error rate limits; gracefully back off.
 *   Unexpected ESI data format: Log error, attempt to continue if possible, flag data for review.
-*   Database errors during storage: Log error, implement retry strategy [NEEDS_DISCUSSION: Retry strategy for DB errors].
+*   Database errors during storage: Log error. Implement a retry strategy such as **retry with exponential backoff and jitter** for transient errors (e.g., connection issues, deadlocks). This involves increasing delays between retries and adding randomness to avoid thundering herd. Define max retries and differentiate retryable vs. non-retryable errors. Ensure operations are idempotent. Log all retry attempts and failures. A circuit breaker pattern could be a further enhancement if needed.
 *   Large number of contracts/items: Ensure processing is efficient and does not overwhelm resources (memory, CPU, DB connections).
 *   [FURTHER_DETAIL_REQUIRED: More specific edge cases related to contract types (auction vs. item_exchange), item types, etc.]
 
@@ -162,9 +162,15 @@
 *   EVE Online ESI API.
 
 ## 13. Notes / Open Questions (Optional)
-*   [NEEDS_DECISION: Which EVE regions to poll by default? Should this be configurable by an admin?]
+*   **EVE regions to poll**: This will be admin-configurable. For development/prototyping, it can be limited to a few regions, but production will require flexibility.
 *   [NEEDS_DISCUSSION: Detailed logic for identifying a "ship contract" – e.g., based on item category ID (e.g., categoryID 6 for Ships), percentage of items that are ships, specific ship group IDs? What if a contract has a ship and many non-ship items?]
 *   [NEEDS_DISCUSSION: Strategy for handling contracts with very many items – fetch all items, or cap at a certain number for performance reasons during initial filtering?]
-*   [NEEDS_DISCUSSION: How to handle updates to existing contracts if ESI data changes before expiration (e.g., auction price changes)? Re-fetch items and update, or rely on full periodic re-scans?]
+*   **Handling updates to existing contracts (e.g., auction prices)**: Avoid full periodic re-scans of all items for all contracts. Instead, use a targeted re-fetch strategy:
+    1.  Poll regional contract list endpoints (`/contracts/public/{region_id}/`) respecting ESI cache timers.
+    2.  For each contract from the list:
+        a.  If new, fetch its items via `/contracts/public/items/{contract_id}/`.
+        b.  If existing and active (not expired): Check if its item data is stale based on the ESI cache timer for its items OR a defined internal refresh interval (e.g., "check active auctions every 15 minutes") by comparing against our internally stored `last_esi_check` timestamp for that contract's items.
+        c.  If item data is deemed stale, re-fetch items from `/contracts/public/items/{contract_id}/` (respecting its ESI cache timer and using ETags).
+    3.  Update the Hangar Bay database if changes in items (e.g., auction bid price) are detected. This balances data freshness with ESI politeness and processing load.
 *   [NEEDS_DECISION: How to resolve and store/display location names (stations, structures)? Store IDs and resolve on display, or resolve during ingestion and store names? Consider frequency of name changes.]
 *   [NEEDS_DECISION: Same for issuer names.]
