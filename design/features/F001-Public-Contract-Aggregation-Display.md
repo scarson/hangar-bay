@@ -68,7 +68,7 @@
     *   `volume`: DOUBLE [NEEDS_CLARIFICATION: From ESI or sum of items? Relevant for ships?]
     *   `date_issued`: TIMESTAMP
     *   `date_expired`: TIMESTAMP
-    *   `title`: VARCHAR (from ESI, if available)
+    *   `title`: VARCHAR(255) (From ESI, used for keyword search in F002), if available)
     *   `for_corp`: BOOLEAN
     *   `is_ship_contract`: BOOLEAN (derived by this feature's logic)
     *   `last_esi_check`: TIMESTAMP (Timestamp of when contract items were last fetched/verified)
@@ -86,8 +86,12 @@
     *   `type_id`: INTEGER (Primary Key, EVE Online Type ID)
     *   `name`: VARCHAR
     *   `group_id`: INTEGER
-    *   `category_id`: INTEGER
-    *   `mass`: DOUBLE
+    *   `market_group_id`: INTEGER (From ESI type details, for F002 category filtering)
+    *   `icon_id`: INTEGER (Optional)
+    *   `mass`: DOUBLE (Optional)
+    *   `packaged_volume`: DOUBLE (Optional)
+    *   `portion_size`: INTEGER (Optional)
+    *   `radius`: DOUBLE (Optional)
     *   `volume`: DOUBLE
     *   `capacity`: DOUBLE
     *   `published`: BOOLEAN
@@ -174,3 +178,4 @@
     3.  Update the Hangar Bay database if changes in items (e.g., auction bid price) are detected. This balances data freshness with ESI politeness and processing load.
 *   [NEEDS_DECISION: How to resolve and store/display location names (stations, structures)? Store IDs and resolve on display, or resolve during ingestion and store names? Consider frequency of name changes.]
 *   [NEEDS_DECISION: Same for issuer names.]
+*   [CROSS_FEATURE_NOTE: F002 (Ship Browsing) requires efficient backend keyword searching on location names. While F001 provides `start_location_id`, a separate, periodically updated cache (e.g., `location_details_cache`) mapping `location_id` (stations, structures) to their current `name` will be necessary. This cache would be populated from relevant ESI `/universe/` endpoints and is a dependency for F002's full search functionality.]
