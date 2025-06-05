@@ -123,4 +123,35 @@ This document records major design discussion points, considerations, and decisi
     *   **Action:** `test-spec.md` was updated to create a new "Accessibility Tests (A11y)" section (3.6) and integrate A11y testing into the overall philosophy, tools, CI/CD, and feature test planning.
 *   **Rationale:** These updates ensure that mobile usability and comprehensive accessibility are foundational requirements, guiding development and testing to create a more inclusive and user-friendly application.
 
+
+## AI-Friendly Specification Enhancements (Approx. 2025-06-05 04:58:23-05:00)
+
+*   **Objective:** To improve the usefulness of project documentation for AI coding assistants, enabling more effective AI-assisted development while preserving human readability.
+*   **Scope:** All major specification documents and the project README were reviewed and enhanced.
+*   **Key Enhancements Made:**
+    *   **`design/features/00-feature-spec-template.md`:** Added a new "AI Implementation Guidance" section with subsections for key libraries, critical logic points, data validation checklists, and AI testing focus. Introduced structured comment blocks for data models and API endpoints.
+    *   **`design/design-spec.md`:** Added AI-focused notes in Tech Stack, Core Features, and ESI API Integration sections. Prefixed UI/UX considerations with `AI Action:` and added detailed AI guidance for UI/UX principles.
+    *   **`design/security-spec.md`:** Added detailed `AI Actionable Checklist` and `AI Implementation Pattern` subsections to critical areas including TLS/HSTS, Encryption at Rest, EVE SSO, Input Validation/Output Encoding (FastAPI & Angular), Dependency Management, and Logging/Monitoring.
+    *   **`design/accessibility-spec.md`:** Added `AI Actionable Checklist` and `AI Implementation Pattern` subsections to key areas based on POUR principles and Angular-specific guidance (Text Alternatives, Semantic HTML/ARIA, Distinguishable elements, Visible Focus, Navigation, Input Assistance, Name/Role/Value, Angular Material, Dynamic ARIA, Focus Management, LiveAnnouncer, Angular Forms A11y).
+    *   **`design/test-spec.md`:** Added `AI Actionable Checklist` and `AI Implementation Pattern` subsections for Unit Tests (Backend & Frontend), Integration Tests (Backend), E2E Tests, Accessibility Tests (Automated & Manual), and Security Testing integration into CI/CD.
+    *   **`design/observability-spec.md`:** Added `AI Implementation Pattern` and `AI Actionable Checklist` subsections for Logging (Structured Logging, Correlation IDs), Metrics (Backend & Frontend), Tracing (OpenTelemetry for FastAPI & Angular), and guidance for integrating with tooling (Logging, Metrics, Tracing, Error Tracking).
+    *   **`README.md`:** Significantly expanded with an "AI Assistant Guidance" section, including a project overview for AI, how to use the AI-enhanced specifications, notes on key technologies with an AI focus, a suggested development workflow with AI, and best practices for AI prompts specific to Hangar Bay.
+*   **Rationale:** These enhancements aim to provide explicit, structured, and actionable guidance to AI coding assistants, reducing ambiguity and improving the quality and relevance of AI-generated code. This should streamline the development process and help ensure that critical non-functional requirements (security, accessibility, testability, observability) are consistently addressed.
+
+
+## Adoption of Core Security Principles (Approx. 2025-06-05 05:20:20-05:00)
+
+*   **Context:** Further refining the security posture of Hangar Bay based on modern best practices.
+*   **Decision:** Explicitly adopted and documented core security principles in `security-spec.md`.
+*   **Key Principles Added:**
+    *   **Assume Breach:** Operating with the mindset that compromises are inevitable, focusing on robust internal security, detection, and response.
+    *   **Zero Trust Architecture (ZTA):** Not inherently trusting any entity, verifying explicitly, enforcing least privilege, and utilizing microsegmentation.
+    *   **Defense in Depth:** Implementing multiple layers of security controls.
+    *   **Security by Design:** Integrating security throughout the SDLC.
+    *   **Data Minimization:** Collecting and retaining only necessary data.
+*   **Impact on `security-spec.md`:**
+    *   A new "Core Security Principles" section was added at the beginning of the document.
+    *   The requirement for TLS encryption for backend-to-PostgreSQL connections was updated to mandate TLS always, explicitly aligning with Zero Trust principles, removing the previous condition of "if over a non-trusted network."
+*   **Rationale:** Formalizing these principles provides a clear foundation for all security-related decisions and implementations, ensuring a proactive and resilient security posture. This directly influences practical measures like encrypting all internal traffic and rigorously applying least privilege.
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*

@@ -40,7 +40,6 @@ EVE Online players, the target audience for Hangar Bay, are known for their inge
 *   **Session Management:** Secure session management practices must be followed if backend sessions are used in conjunction with SSO tokens. Refer to `security-spec.md`.
 *   **Cryptography:** All data in transit must be encrypted using TLS 1.2 or TLS 1.3 with Perfect Forward Secrecy. Refer to `security-spec.md` for detailed cryptographic standards, including aspirations for Post-Quantum Cryptography.
 *   **Dependency Security:** All third-party libraries and dependencies must be kept up-to-date and monitored for vulnerabilities. Refer to `security-spec.md`.
-*   **Secure Infrastructure:** The application must be deployed on a secure infrastructure with appropriate network security, logging, and monitoring. Refer to `security-spec.md`.
 *   **Data Privacy:** Consideration must be given to any player data stored (e.g., EVE character ID, watchlists), ensuring it is minimized, protected, and handled according to privacy best practices. Refer to `security-spec.md`.
 *   **Regular Security Audits:** Plan for regular security reviews and penetration testing.
 
@@ -83,9 +82,16 @@ The following technology stack is proposed, with security, performance, and rapi
 *   **Web Server (for serving static frontend assets, if not using a CDN):**
     *   *(Placeholder: e.g., Nginx, Caddy, or cloud provider's static asset hosting. Often the backend API and frontend are served via different mechanisms/domains or through a reverse proxy.)*
 
+### 6.7. AI Implementation Notes
+*   **General:** AI should prioritize code clarity, modularity, and adherence to specified patterns in feature specs (e.g., structured data models, API endpoint comments).
+*   **Backend (Python/FastAPI):** AI should leverage Pydantic for robust data validation and serialization. Focus on creating efficient database queries and asynchronous operations where appropriate (e.g., ESI calls).
+*   **Frontend (Angular):** AI should generate well-structured components, services, and modules. Utilize Angular Material and CDK for accessible and consistent UI elements. Employ RxJS for managing asynchronous data streams effectively.
+*   **Testing:** AI should assist in generating unit tests for all new logic (backend and frontend) and provide outlines for integration/E2E tests as guided by feature specs.
+
 *Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, and `observability-spec.md`. The security, accessibility, and testing best practices for each chosen technology will be strictly adhered to. This includes secure and accessible configuration, regular patching, and leveraging built-in mechanisms.* 
 
 ## 7. Core Features
+<!-- AI_NOTE_TO_HUMAN: This section outlines the primary functionalities. AI development should focus on implementing these robustly, with attention to the details in their respective feature specification documents. -->
 
 Based on the **public contract aggregator model**:
 
@@ -121,6 +127,7 @@ Based on the **public contract aggregator model**:
 *Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md` and `accessibility-spec.md`. Secure handling of EVE SSO tokens is paramount. User data must be protected. All UI elements must be accessible. 
 
 ## 8. ESI API Integration Details
+<!-- AI_NOTE_TO_HUMAN: For detailed, AI-parsable structures of ESI and Hangar Bay API endpoints, please refer to the 'API Endpoints Involved' section within individual feature specification documents (e.g., F001-*.md, F002-*.md). The feature specs will contain structured comment blocks like 'AI_ESI_API_ENDPOINT_START' and 'AI_HANGAR_BAY_API_ENDPOINT_START'. -->
 
 Primary ESI endpoints for the public contract aggregator model:
 
@@ -160,12 +167,13 @@ Primary ESI endpoints for the public contract aggregator model:
 *Considerations: Refer to Section 4 (Security) and `security-spec.md`. Data modeling should support accessibility requirements from `accessibility-spec.md` (e.g., storing full textual descriptions where needed for screen readers, rather than just codes).* 
 
 ## 10. UI/UX Considerations
+<!-- AI_NOTE_TO_HUMAN: These are guiding principles. AI should aim to implement UI components and flows that adhere to these considerations. -->
 
 *(To be detailed)*
 
-*   Intuitive navigation.
-*   Clear presentation of complex ship and market data.
-*   **Mobile-Friendly and Responsive Design (Core Requirement):** The application MUST provide an excellent user experience on a wide range of devices, including desktops, tablets, and mobile phones (both portrait and landscape orientations).
+*   **AI Action: Clarity and Intuitiveness:** Implement UI that is easy to understand and navigate, even for users unfamiliar with similar applications. Prioritize clear labeling and logical information hierarchy. Intuitive navigation is a key aspect of this.
+*   **AI Action: Effective Data Presentation:** Ensure clear presentation of complex ship and market data. Use appropriate visualizations and summaries where helpful.
+*   **AI Action: Mobile-Friendly / Responsive Design:** Ensure the application is usable and provides a good experience on various screen sizes (desktops, tablets, mobile phones). Implement responsive layouts (e.g., using Angular Flex-Layout or CSS Grid/Flexbox) and touch-friendly controls.
     *   **AI Implementation Guidance:**
         *   **Leverage Angular's Capabilities:** Utilize Angular's features for responsive design, such as its component architecture, built-in directives, and integration with responsive grid systems (e.g., Angular Material's layout system, Bootstrap grid, or CSS Grid/Flexbox directly).
         *   **Fluid Layouts:** Employ fluid grids and flexible images/media that adapt to different viewport sizes.
@@ -174,10 +182,14 @@ Primary ESI endpoints for the public contract aggregator model:
         *   **Touch Interactions:** Ensure all interactive elements (buttons, links, form inputs) are adequately sized and spaced to be easily tappable on touchscreens. Avoid reliance on hover states for critical information disclosure.
         *   **Performance Optimization:** Optimize assets (images, scripts, styles) for faster loading on mobile networks. Consider techniques like lazy loading for images and non-critical components.
         *   **Readability:** Ensure text is legible across all screen sizes with appropriate font sizes, line heights, and contrast ratios.
-        *   **Accessibility (A11y):** Adherence to `accessibility-spec.md` (targeting WCAG 2.1 AA minimum) is a core requirement for all UI components and user experiences, across all devices and viewports. This includes, but is not limited to, semantic HTML, ARIA usage, keyboard navigation, focus management, and color contrast.
+        *   **AI Action: Accessibility:** Design and implement with accessibility in mind from the start. Adhere to WCAG 2.1 Level AA guidelines. Refer to `accessibility-spec.md` for detailed requirements and ensure Angular Material/CDK accessibility features are leveraged.
         *   **Progressive Enhancement/Graceful Degradation:** Design with a mobile-first approach or ensure graceful degradation so core functionality remains accessible on less capable devices or browsers.
         *   **Testing:** Thoroughly test on various emulated mobile viewports (using browser developer tools) and, where possible, on a range of real mobile devices. (Refer to `test-spec.md` for detailed testing requirements).
-*   Emphasis on trust and security in the UI elements.
+*   **AI Action: Minimalism and Focus:** Design UIs that avoid clutter. Present only relevant information and actions to the user to maintain focus on the core tasks.
+*   **AI Action: Performance and Responsiveness:** Ensure the application loads quickly and responds promptly to user interactions. Implement optimized data loading and rendering strategies. See `performance-spec.md` (to be created).
+*   **AI Action: Consistency:** Maintain a consistent design language (colors, typography, layout, component behavior) throughout the application, leveraging Angular Material theming.
+*   **AI Action: Error Handling and Feedback:** Implement clear, user-friendly error messages and feedback mechanisms for user actions (e.g., loading indicators, success/failure notifications using snackbars or toasts).
+*   **AI Action: Trust and Security Cues:** Visually reinforce trust and security in the UI elements, especially around authentication and user data sections. Use iconography and language that conveys security.
 
 *Security Considerations: Refer to Section 4.* 
 

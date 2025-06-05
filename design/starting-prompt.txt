@@ -200,3 +200,17 @@ Then, stage and prepare git commits for design-log.md, design-spec.md, test-spec
 ---------------
 
 
+Before we proceed, please review all current spec files (which is all files except design-log.md) for potential enhancements in the context of making them more useful to an AI coding assistant. Propose any enhancements, describing in detail why you think they could make the specs more effective for an AI coding assistant. design-spec.md still has an important role for human reviewer understanding the project, so take special care to preserve human readability for the design spec. 
+
+Then, for any changes you are confident will make the specs more useful to an AI coding assistant, implement the changes. 
+
+Then, update design-log.md with a new entry describing the changes.
+
+
+----------------
+
+I have reviewed the changes. Very impressive! I have a single feedback point.
+
+In security-spec.md 1.1 Encryption in Transit, please update the new "Ensure backend to PostgreSQL calls use TLS if over a non-trusted network." item to "Ensure backend to PostgreSQL calls use TLS". We should encrypt all data in transit. Network boundaries do not provide security guarantees and we should follow the modern security practice of an "assume breach" threat posture and zero-trust principles. These principles have broader importance beyond just PostgreSQL encryption in transit. Please also add references to zero-trust principles in an appropriate location or locations within security-spec.md.
+
+After updating security-spec.md, please prepare git commits for all the changed files with that good commit message.
