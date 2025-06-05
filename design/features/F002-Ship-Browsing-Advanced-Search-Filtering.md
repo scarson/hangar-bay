@@ -26,7 +26,7 @@
 *   Story 5: As a user, I want to filter contracts by price range, so I can find contracts within my budget.
 *   Story 6: As a user, I want to filter contracts by contract type (item exchange, auction), so I can choose my preferred purchasing method.
 *   Story 7: As a user, I want to sort the displayed contracts by various criteria (e.g., price, expiration date, date issued), so I can organize the results to my preference.
-*   [FURTHER_DETAIL_REQUIRED: User story for viewing basic contract details in the list view.]
+*   Story 4: As a user, I want to see essential details for each ship contract in the list view—such as ship type, quantity, total price, contract type (auction/item exchange), location, and time remaining—so I can quickly assess its relevance and value.
 
 ## 3. Acceptance Criteria (Required)
 *   **Story 1 Criteria:**
@@ -129,7 +129,25 @@
 *   Frontend framework (Angular).
 
 ## 13. Notes / Open Questions (Optional)
-*   [NEEDS_DECISION: Specific fields to include in the list view for each contract.]
-*   [NEEDS_DECISION: Default sort order.]
-*   [NEEDS_DISCUSSION: How to handle filtering by ship attributes (e.g., meta level, tech level) if desired in the future? Requires more detailed `esi_type_cache` and backend logic.]
-*   [NEEDS_DISCUSSION: Exact list of filterable ship categories/groups. Should this be dynamic based on available data or a fixed list?]
+*   **Specific fields for list view**: Based on common EVE tools and F001 data, the list view will initially display:
+    *   Ship Type (e.g., "Tristan", "Raven")
+    *   Quantity (if >1 of same type, else 1)
+    *   Total Price (contract price)
+    *   Contract Type ("Auction" or "Item Exchange")
+    *   Location (e.g., "Jita IV - Moon 4 - Caldari Navy Assembly Plant")
+    *   Time Remaining (e.g., "2 days 4 hours", "12 hours")
+    *   Issuer Name (Character name)
+*   **Default sort order**: The default sort order for the contract list will be by **expiration date (soonest first)**. Users will be able to click column headers to change sorting.
+*   **Filtering by ship attributes (e.g., meta level, tech level)**: This is a desirable future enhancement.
+    *   **Data Source**: The `esi_type_cache` (from F001) will store all `dogma_attributes` for each ship type, which includes attributes like 'meta level' (dogma attribute ID 633) and 'tech level' (dogma attribute ID 422).
+    *   **Backend Logic Required**:
+        1.  **Attribute Mapping**: Maintain a backend configuration mapping user-friendly filter names (e.g., "meta_level") to their corresponding ESI dogma attribute IDs.
+        2.  **API Enhancements**: The `/api/v1/contracts/ships` endpoint will accept new filter parameters (e.g., `meta_level_eq`, `tech_level_eq`).
+        3.  **Database Query**: The backend will join `contracts` with `contract_items` and `esi_type_cache`. Queries will use JSON functions to extract and compare values from the `dogma_attributes` field in `esi_type_cache` against the provided filter parameters.
+        4.  **Performance**: Consider GIN indexes (PostgreSQL) or expression indexes on the JSON `dogma_attributes` field if query performance becomes a concern.
+*   **Filterable ship categories/groups**: The list of ship categories (e.g., Frigate, Cruiser, Battleship) will be sourced from ESI and cached.
+    *   **ESI Source**: `GET /v1/markets/groups/` ESI endpoint. Child groups under the main "Ships" market group (e.g., group ID 4) provide the categories.
+    *   **Polling & Caching**: A backend scheduled task (e.g., daily) will fetch these market groups.
+    *   **Storage**: The fetched list (group ID, name) will be stored in a dedicated cache table (e.g., `ship_market_groups_cache`) or a key-value store.
+    *   **API for UI**: An endpoint (e.g., `/api/v1/ships/market_groups`) will provide this cached list to the frontend for filter dropdowns.
+    *   **Filtering**: When a user selects a category, the backend filters ships based on their `market_group_id` (available in `esi_type_cache` or via `universe/types` data).
