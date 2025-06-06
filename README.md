@@ -1,4 +1,4 @@
-# Hanger Bay
+# Hangar Bay
 An ecommerce site for selling ships in the video game EVE Online.
 
 Inspired by a friend who plays EVE and said:
