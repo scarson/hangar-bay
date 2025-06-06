@@ -1402,24 +1402,26 @@ I have updated the "### 3.1. Directory Structure" section of the "00.1-project-i
 -----------------
 
 
-X
+I ran the commands in my own terminal. I updated pip to pip-25.1.1 and flake8 and black are successfully installed now. What's next?
+
+-----------------
+
+
+
+The command is hung. Pause for a minute. What's the implication of the Angular project name? The path \hangar-bay\app\frontend\hangar-bay-frontend looks rather redundant to me.
 
 
 -----------------
 
 
-X
-
-
------------------
-
-
-X
-
+Thanks for explaining. I understand the value of Option A (Current Plan - app/frontend/hangar-bay-frontend/) now and have chosen it. 
 
 -----------------
 
-X
+
+ng new hangar-bay-frontend --directory . --routing --style=scss --skip-install
+
+What do these flags do? Why do we need them for this project? --routing --style=scss --skip-install
 
 
 -----------------

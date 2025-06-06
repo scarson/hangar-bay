@@ -400,4 +400,17 @@ All task files in Phases 00-08 will be updated. Cascade's operational procedures
 
 ---
 
+## Frontend Project Structure (Approx. 2025-06-06 11:52:00-05:00)
+
+*   **Context:** Discussed the Angular project initialization path within `app/frontend/`.
+*   **Options Considered:**
+    1.  `app/frontend/hangar-bay-frontend/` (Angular CLI default, project name creates a subfolder).
+    2.  `app/frontend/` (Angular project files directly in `app/frontend/`, using `ng new hangar-bay-frontend --directory .`).
+    3.  `app/frontend/angular/` (Angular project files directly in a dedicated `angular` subfolder, using `ng new hangar-bay-frontend --directory .` from within `app/frontend/angular/`).
+*   **Decision: The Angular project will be initialized in `app/frontend/angular/`.**
+    *   **Reasoning:** This approach provides a clear separation if other frontend technologies or distinct frontend micro-applications are introduced later under `app/frontend/`. It addresses concerns about path redundancy (e.g., `app/frontend/hangar-bay-frontend/hangar-bay-frontend`) while clearly indicating the technology in use via the `angular/` directory. The Angular project's internal name will remain `hangar-bay-frontend`.
+    *   **Action:** The user created the `app/frontend/angular/` directory. The `ng new` command will be executed within this directory using the `--directory .` flag.
+
+---
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SS-05:00' (U.S. Central Time) for new major decision sections.)*
