@@ -10,7 +10,7 @@ There's only one way to find out!
 Presently, I'm using this as an example project in developing a sophisticated software design specification tailored for AI coding assistants. 
 There is a specific focus on ensuring that critical non-functional requirements (security, accessibility, testability, observability) are consistently addressed. Given concerns about AI coding assistant not producing especially secure code, I am especially interested in methods to get them to adhere to modern secure coding practices and incorporate security considerations into the design process. In this project, I'm attempting to do that by developing a security-spec.md that provides secure design principles tailored to the project, a checklist of security requirements, and AI implementation guidance for secure practices for the tech stack that it can (and must) reference while developing each feature. 
 
-Please refer to the main design specification in [`design/design-spec.md`](design/design-spec.md) for a comprehensive overview of the project. The `design` directory contains detailed specifications for various aspects of the application, which have been enhanced with AI-specific guidance.
+Please refer to the main design specification in [`design/design-spec.md`](design/design-spec.md) for a comprehensive overview of the project. The design log in [`design/design-log.md`](design/design-log.md) documents the design process and decisions made in chronological order. The `design` directory contains detailed specifications for various aspects of the application, which have been enhanced with AI-specific guidance.
 
 ## AI Assistant Guidance
 
