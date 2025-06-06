@@ -28,7 +28,7 @@
 ## 3. Acceptance Criteria (Required)
 *   **Story 1 Criteria:**
     *   Criterion 1.1: A backend process periodically checks active watchlists against current public ship contracts (from F001 data).
-    *   Criterion 1.2: If a contract for a watched `type_id` is found at or below the user's `max_price` (if set), a notification is generated for the user.
+    *   Criterion 1.2: If a contract for a watched `type_id` is found at or below the user's `max_price` (if set on the watchlist item), a notification is generated for the user.
     *   Criterion 1.3: A notification is generated only once for a specific contract matching a specific watchlist item for a user. If the contract details change significantly (e.g., price drops further below the user's target after an initial notification, or the contract is re-listed after a period), a new notification may be generated, subject to a cooldown (e.g., 24 hours).
 *   **Story 2 Criteria (Future Enhancement):**
     *   Criterion 2.1: (Future Enhancement) A backend process periodically executes saved searches for users who have opted-in for notifications on those searches.
@@ -73,7 +73,7 @@
       - user_id: INTEGER (Foreign Key to `users.id`, Indexed, Not Nullable)
       - type: VARCHAR(50) (Enum-like: 'watchlist_match', 'system_message', Not Nullable)
       - message_key: VARCHAR(255) (Optional, key for a localized message template)
-      - message_params: JSONB (Optional, parameters for the message template, e.g., {ship_name: 'Caracal', price: '1000000 ISK'})
+      - message_params: JSONB (Optional, parameters for the message template, e.g., {ship_name: 'Caracal', price: '1000000 ISK', location: 'Jita', contract_type: 'Auction'})
       - rendered_message: TEXT (The actual notification text, potentially pre-rendered using message_key and params in the backend, or a simple direct message)
       - related_item_id: BIGINT (Optional, e.g., `contract_id` for watchlist match, `saved_search_id` for search alert)
       - related_item_type: VARCHAR(50) (Optional, e.g., 'contract', 'saved_search', 'ship_type')
@@ -229,7 +229,7 @@
 *   **Notification De-duplication:** (Covered in Criterion 1.3) For MVP, a notification is generated when a contract first matches a user's watchlist criteria. Subsequent notifications for the exact same contract and watchlist item will not be sent unless the contract is re-listed or its price changes significantly in a way that re-triggers the match under more favorable terms (e.g., further price drop), typically after a cooldown period (e.g., 24 hours).
 *   **Saved Search Alerts Scope:** (Deferred post-MVP) Alerts for Saved Searches (F005) are deferred to simplify initial implementation. When implemented, this would involve defining criteria for 'new' items and user opt-in per search.
 *   **Auction Notifications:** Notifications for auctions will trigger when the current bid price meets or is lower than the user's `max_price`. If the bid price subsequently drops further below the user's `max_price`, a new notification may be generated subject to the de-duplication rules.
-*   **Notification Message Content:** Notification messages should clearly state the item (e.g., ship name), the price at which it was found, the location (e.g., system or region), and a direct link to view the contract. For example: 'Caracal found for 10,500,000 ISK in Jita. View contract.' The `rendered_message` in the `notifications` table will store this, ideally constructed from `message_key` and `message_params` for i18n (though direct rendering is simpler for MVP).
+*   **Notification Message Content:** Notification messages should clearly state the item (e.g., ship name), the contract type (Auction/ItemExchange), the price at which it was found, the location (e.g., system or region), and a direct link to view the contract. For example: 'Caracal (Auction) found for 10,500,000 ISK in Jita. View contract.' The `rendered_message` in the `notifications` table will store this, ideally constructed from `message_key` and `message_params` for i18n (though direct rendering is simpler for MVP).
 
 ## 16. AI Implementation Guidance (Optional)
 <!-- AI_NOTE_TO_HUMAN: This section is specifically for providing direct guidance to an AI coding assistant. -->

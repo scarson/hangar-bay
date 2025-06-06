@@ -31,11 +31,11 @@
     *   Criterion 1.2: Clicking the button redirects the user to the EVE Online SSO authorization page.
     *   Criterion 1.3: After successful EVE SSO authorization, the user is redirected back to Hangar Bay.
     *   Criterion 1.4: The system retrieves an authorization code, exchanges it for an access token and refresh token from EVE SSO.
-    *   Criterion 1.5: User's character information (CharacterID, Name) is retrieved using the access token (`GET /verify/` endpoint or similar from new ESI structure).
-    *   Criterion 1.6: A user account is created or updated in the Hangar Bay database linked to the EVE CharacterID.
+    *   Criterion 1.5: User's character information (CharacterID, CharacterName, CharacterOwnerHash) is retrieved by validating the ID token JWT received from EVE SSO (using the JWKS URI) and/or by calling the ESI `/oauth/verify` endpoint with the access token.
+    *   Criterion 1.6: A user account is created or updated in the Hangar Bay database linked to the EVE CharacterID. If an account exists for the CharacterID but the CharacterOwnerHash (obtained from the ID token/ESI `/oauth/verify`) mismatches the stored one, the existing record is updated with the new owner hash and tokens; Hangar Bay data associated with this user record follows the character.
     *   Criterion 1.7: The user is considered logged in, and the UI reflects this (e.g., shows character name, logout button).
 *   **Story 2 Criteria:**
-    *   Criterion 2.1: A secure session management mechanism is in place (e.g., secure HTTPOnly cookies, server-side session store).
+    *   Criterion 2.1: A secure session management mechanism is in place, utilizing secure, HTTPOnly cookies with a defined lifespan (e.g., 7 days), backed by a server-side session store (e.g., Valkey).
     *   Criterion 2.2: Users remain logged in across browser sessions until the session expires or they log out.
     *   Criterion 2.3: Access tokens are refreshed automatically using the refresh token before they expire if an ESI call is about to be made on behalf of the user and the current token is invalid or nearing expiry. For MVP, proactive background ESI calls (e.g., for watchlist updates when the user is not active) are not in scope for this feature; token refresh is primarily triggered by user activity requiring ESI interaction.
 *   **Story 3 Criteria:**
@@ -54,7 +54,7 @@
 *   Secure management of EVE SSO tokens (access and refresh tokens).
 *   Creation/management of basic user profiles in Hangar Bay DB (CharacterID, CharacterName, token info).
 *   Session management for logged-in users.
-*   Requesting a base set of ESI scopes suitable for initial user identification and potentially displaying basic public character data (e.g., `publicData`). The exact minimal scopes will be confirmed during EVE SSO application registration. The application will store and operate based on the scopes actually granted by the user.
+*   Requesting **no ESI scopes** for the F004 authentication feature itself. User identification (CharacterID, Name, OwnerHash) is obtained from the ID token. ESI scopes (e.g., for reading contracts, market data, etc.) will be requested by other features (F005-F007) as needed. The `users.esi_scopes` field will store any scopes granted for those subsequent features.
 ### 4.2. Out of Scope
 *   Requesting ESI scopes beyond basic authentication and character identification for this feature (other features may request more scopes).
 *   User registration via email/password (only EVE SSO).
@@ -79,7 +79,7 @@
       - esi_access_token: TEXT (Encrypted)
       - esi_access_token_expires_at: TIMESTAMP WITH TIME ZONE
       - esi_refresh_token: TEXT (Encrypted)
-      - esi_scopes: TEXT (Comma-separated list of granted ESI scopes)
+      - esi_scopes: TEXT (Comma-separated list of ESI scopes granted by the user for other features, e.g., F005-F007; F004 itself requests no scopes)
       - last_login_at: TIMESTAMP WITH TIME ZONE
       - created_at: TIMESTAMP WITH TIME ZONE (Default: CURRENT_TIMESTAMP)
       - updated_at: TIMESTAMP WITH TIME ZONE (Default: CURRENT_TIMESTAMP, On Update: CURRENT_TIMESTAMP)
@@ -112,14 +112,16 @@
       - [ ] **Developer Action:** Verify endpoint path, parameters, and expected flow against the official EVE SSO documentation: [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/)
       - [ ] **Developer Action:** Review EVE SSO Best Practices and Security guide: [https://developers.eveonline.com/docs/services/sso/best-practices-and-security/](https://developers.eveonline.com/docs/services/sso/best-practices-and-security/)
     *   *(Note: These checklist items are for developer verification during implementation. The specified endpoints are standard for EVE SSO.)*
-*   ESI Endpoint for Character Verification (after token acquisition):
-    *   `GET https://esi.evetech.net/verify/` (or equivalent in current ESI spec if path changed)
-        *   Requires authentication with the new access token.
-        *   Fields: `CharacterID`, `CharacterName`, `Scopes`, `TokenType`, `CharacterOwnerHash`.
+*   ESI Endpoint for Access Token Verification (Optional/Secondary):
+    *   `GET https://esi.evetech.net/oauth/verify`
+        *   Requires authentication with the access token.
+        *   Response includes: `CharacterID`, `CharacterName`, `ExpiresOn`, `Scopes`, `TokenType`, `CharacterOwnerHash`.
+        *   Primary user identification should come from validating the ID token JWT locally.
+        *   This endpoint can be used to verify an access token's validity or check its associated scopes if needed before an ESI call.
         AI_Actionable_Checklist:
-          - [ ] **Developer Action:** Verify endpoint path, parameters, request body (if any), and response schema against the official ESI Swagger UI: [https://esi.evetech.net/ui/](https://esi.evetech.net/ui/)
-          - [ ] **Developer Action:** Review ESI Best Practices for this endpoint/category: [https://developers.eveonline.com/docs/services/esi/best-practices/](https://developers.eveonline.com/docs/services/esi/best-practices/)
-        *(Note: These checklist items are for developer verification during implementation. The specified ESI verify endpoint is standard.)*
+          - [ ] **Developer Action:** Verify endpoint path, parameters, and response schema against the official ESI Swagger UI ([https://esi.evetech.net/ui/](https://esi.evetech.net/ui/)) and EVE SSO Documentation.
+          - [ ] **Developer Action:** Review ESI Best Practices for this endpoint.
+        *(Note: These checklist items are for developer verification during implementation.)*
 ### 6.2. Exposed Hangar Bay API Endpoints
 *   **Endpoint 1:** `/auth/sso/login` (GET)
     <!-- AI_HANGAR_BAY_API_ENDPOINT_START
@@ -127,7 +129,7 @@
     HTTP_Method: GET
     Brief_Description: Initiates the EVE SSO OAuth 2.0 flow by redirecting the user to the EVE Online authorization URL.
     Request_Path_Parameters_Schema_Ref: None
-    Request_Query_Parameters_Schema_Ref: Optional 'next' URL for redirect after successful login.
+    Request_Query_Parameters_Schema_Ref: Optional 'next' URL (string) for redirect after successful login. Must be validated by the backend to prevent open redirect vulnerabilities (e.g., ensure it's a relative path or points to an allowed domain).
     Success_Response_Schema_Ref: HTTP 302 Redirect to EVE Online SSO.
     Error_Response_Codes: 500 (If unable to generate state or construct redirect URL).
     AI_Action_Focus: Backend: Generate and store a CSRF `state` token. Construct the EVE SSO authorization URL with appropriate `client_id`, `redirect_uri`, `scope`, and `state`. Frontend: A simple link or button that directs the user to this backend endpoint.
@@ -141,7 +143,7 @@
     Request_Query_Parameters_Schema_Ref: `code` (authorization_code from EVE SSO), `state` (CSRF token from Hangar Bay).
     Success_Response_Schema_Ref: HTTP 302 Redirect to a logged-in area (e.g., dashboard or 'next' URL).
     Error_Response_Codes: 400 (Bad Request - e.g., state mismatch, missing code), 500 (Internal Server Error - e.g., failed token exchange, DB error).
-    AI_Action_Focus: Backend: CRITICAL. Verify `state`. Exchange `code` for tokens with EVE SSO. Call ESI `GET /verify/` (or JWT validation). Find/Create user in DB. Store tokens securely. Create session. Frontend: Generally no direct interaction; browser is redirected here by EVE SSO.
+    AI_Action_Focus: Backend: CRITICAL. Verify `state`. Exchange `code` for tokens (ID token, access token, refresh token) with EVE SSO. **Primarily, validate the ID token JWT locally using JWKS to get CharacterID, Name, OwnerHash.** Find/Create user in DB (handling CharacterOwnerHash changes as per Criterion 1.6). Store tokens securely. Create Hangar Bay session. Frontend: Generally no direct interaction; browser is redirected here by EVE SSO.
     I18n_Considerations: User-facing error pages resulting from failures in this flow must be internationalized.
     AI_HANGAR_BAY_API_ENDPOINT_END -->
 *   **Endpoint 3:** `/auth/sso/logout` (POST recommended, GET for simplicity if no side effects beyond logout)
@@ -177,7 +179,7 @@
 6.  Hangar Bay backend verifies the `state` parameter.
 7.  Backend makes a POST request to EVE SSO token URL with `grant_type=authorization_code`, `code`, `client_id`, and `client_secret` (if confidential client).
 8.  EVE SSO responds with `access_token`, `refresh_token`, `expires_in`.
-9.  Backend calls ESI `GET /verify/` (or equivalent) using the new `access_token` to get `CharacterID`, `CharacterName`, etc.
+9.  Backend validates the ID token JWT (using EVE SSO's JWKS URI) to obtain `CharacterID`, `CharacterName`, `CharacterOwnerHash`. (Optionally, it may also call ESI `/oauth/verify` with the access token for further verification or to get associated scopes if needed immediately, though scope checking is typically deferred until the scope is actually required by a feature).
 10. Backend finds or creates a user in its `users` table based on `CharacterID`.
 11. Securely store/update tokens and expiry for the user.
 12. Establish a session for the user (e.g., set secure HTTPOnly session cookie).
@@ -251,11 +253,11 @@
 *   OAuth 2.0 client library for the backend language/framework (e.g., Python's `requests-oauthlib` or framework-specific integrations).
 
 ## 15. Notes / Open Questions (Optional)
-*   [NEEDS_DECISION: Initial ESI scopes to request. Start minimal (e.g., `publicData` or just enough for character ID/name) and add more as features require them? Or request a broader set upfront? Minimal is generally better practice.]
-*   [NEEDS_DISCUSSION: Detailed strategy for handling refresh token failure/revocation by EVE. How to prompt user for re-auth gracefully?]
-*   [NEEDS_CLARIFICATION: Current ESI endpoint for JWT-based token verification if `GET /verify/` is deprecated or there's a newer preferred method. EVE SSO typically returns JWT access tokens which can be verified locally using the JWKS.]
-*   [NEEDS_DISCUSSION: Session duration for Hangar Bay. How long should users remain logged in?]
-*   [NEEDS_DISCUSSION: Should Hangar Bay store `CharacterOwnerHash` and verify it on each login? This helps detect character transfers but adds complexity.]
+*   **[DECIDED]:** Initial ESI scopes: **None**. F004 focuses on authentication. User identification (CharacterID, Name, OwnerHash) is derived from the ID token. Other features (F005-F007) will request specific ESI scopes as needed, which will then be stored in `users.esi_scopes`.
+*   **[DECIDED]:** Strategy for refresh token failure/revocation: If a refresh token is invalid (e.g., revoked by user, expired due to EVE policy): 1. Invalidate the Hangar Bay session for the user. 2. Clear the invalid refresh token and associated access token from the Hangar Bay database. 3. Redirect the user to the login page. 4. Display a clear message (e.g., "Your session has expired or authorization was revoked. Please log in again.").
+*   **[CLARIFIED]:** Token verification: Primarily rely on **local validation of the ID token JWT** using EVE SSO's JWKS URI (`https://login.eveonline.com/oauth/jwks`) to get user details (CharacterID, Name, OwnerHash). The ESI endpoint `GET /oauth/verify` can be used with an access token for secondary verification or to check its associated scopes. The access token itself is used for ESI calls and should generally be treated as opaque by Hangar Bay, though it might also be a JWT.
+*   **[DECIDED]:** Session duration for Hangar Bay: Implement a longer-lived session (e.g., 7 days) managed by a secure, HTTPOnly cookie. Actual ability to perform ESI-authenticated actions will depend on valid and refreshable EVE tokens.
+*   **[DECIDED]:** CharacterOwnerHash: Store and verify on each login. If the `CharacterOwnerHash` for a `CharacterID` mismatches the stored one, update the existing `users` record with the new `owner_hash` and new tokens. This allows Hangar Bay specific data (e.g., watchlists) to follow the character if it's transferred to another EVE account.
 
 ## 16. AI Implementation Guidance (Optional)
 <!-- AI_NOTE_TO_HUMAN: This section is specifically for providing direct guidance to an AI coding assistant. -->

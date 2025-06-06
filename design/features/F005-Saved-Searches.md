@@ -209,10 +209,10 @@
 *   Backend API & Database.
 
 ## 15. Notes / Open Questions (Optional)
-*   [NEEDS_DECISION: For MVP, does "Update Saved Search" mean just rename, or also update the criteria? Updating criteria is more complex. Initial thought: MVP = rename & delete; to change criteria, delete and re-save.]
-*   [NEEDS_DECISION: Allow duplicate names for saved searches for the same user? Probably best to enforce unique names per user.]
-*   [NEEDS_DISCUSSION: Maximum number of saved searches per user? Initially, probably no limit, but consider for future scaling.]
-*   [NEEDS_DISCUSSION: How to handle if a filter option used in a saved search becomes obsolete (e.g., a region is removed from EVE, or a ship type is removed)? The saved search might become un-runnable or return no results. Inform user? Silently ignore invalid parts of criteria?]
+*   All previous open questions for F005 have been addressed and incorporated into the specification during review.
+    *   *Handling of long search names in UI: To be addressed during detailed UI design, likely truncation with full name on hover/tooltip.*
+    *   *Max number of saved searches per user: No hard limit for MVP, but may be considered post-MVP based on usage.*
+    *   *Behavior for changed/removed filter options in F002: For MVP, if a saved filter option is no longer valid in F002, it will be silently ignored when the saved search is applied. A warning mechanism could be a post-MVP enhancement.*
 
 ## 16. AI Implementation Guidance (Optional)
 <!-- AI_NOTE_TO_HUMAN: This section is specifically for providing direct guidance to an AI coding assistant. -->

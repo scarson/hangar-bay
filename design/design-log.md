@@ -270,8 +270,6 @@ This document records major design discussion points, considerations, and decisi
 
 ---
 
----
-
 ## Refinement of AISP-002: Proactive AI-Assisted Session Logging (Approx. 2025-06-06 04:47:00-05:00)
 
 *   **Context:** Following the initial creation of `[AISP-002] AI-Assisted Session Summary Logging`, a need was identified to make the process more proactive, automated, and robust, reducing reliance on explicit USER commands for logging and improving the reliability of appending to `design/cascade-log.md`.
@@ -287,4 +285,107 @@ This document records major design discussion points, considerations, and decisi
 
 ---
 
-*(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*
+## Project Resource Review for MVP Readiness (Approx. 2025-06-06)
+
+*   **Purpose:** To conduct a comprehensive review and refinement of all Hangar Bay project documentation, including feature specifications (F001-F007), the main design specification, supporting documents (e.g., `security-spec.md`, `accessibility-spec.md`, `i18n-spec.md`, `performance-spec.md`, `test-spec.md`, `observability-spec.md`), and procedural documents (e.g., `ai-system-procedures.md`, `cascade-log.md`). The goal was to ensure all resources are up-to-date, consistent, sufficiently detailed, and "AI-ready" to support efficient and accurate MVP development.
+*   **Importance:**
+    *   **Clarity and Reduced Ambiguity:** Provides clear, unambiguous requirements and design details for both human developers and AI coding assistants, minimizing misunderstandings and rework.
+    *   **MVP Scope Alignment:** Confirms that all documented features and their specifications are aligned with the defined MVP scope (F001-F003 for implementation, F004-F007 refined for future work).
+    *   **Solid Foundation:** Establishes a robust and reliable information baseline for the implementation, testing, and future iteration phases of the project.
+    *   **Efficient Onboarding:** Facilitates smoother and faster onboarding for any new team members or AI assistant instances joining the project.
+    *   **Traceability:** Ensures that design decisions, feature refinements, and procedural updates are well-documented and traceable.
+*   **Process & Key Activities Undertaken:**
+    *   **Systematic Review of Feature Specifications (F001-F007):** Each feature specification document was reviewed.
+        *   Titles, descriptions, and statuses were updated in `design/features/feature-index.md` to "Refined" for all seven features.
+    *   **Detailed Refinement of F004-F007:**
+        *   **F004 (User Authentication - EVE SSO):** Clarified ESI scope policy (no scopes for F004 itself), ID token JWT validation, refresh token failure handling, session duration, CharacterOwnerHash update logic, and security of 'next' URL parameter.
+        *   **F005 (Saved Searches):** Confirmed MVP scope (create, rename, delete, execute; no criteria updates post-MVP), enforced unique names, and added notes on UI truncation and handling of invalid filter options.
+        *   **F006 (Watchlists):** Clarified `type_id` validation (must be a ship type), confirmed `(user_id, type_id)` uniqueness, noted live market data is out of scope for F006 (handled by F007), and added an optional `notes` field.
+        *   **F007 (Alerts/Notifications):** Focused MVP on in-app notifications for watchlist matches, defined de-duplication rules, enhanced notification message content (including contract type), and refined data models for `notifications` and `user_notification_settings`.
+    *   **Cross-Cutting Concerns Integration:** Ensured that all feature specifications adequately referenced or integrated considerations from dedicated documents for security, accessibility, internationalization, performance, testing, and observability.
+    *   **Documentation Updates:**
+        *   `cascade-log.md` was updated with detailed session summaries for the refinements of F004, F005, F006, and F007.
+        *   Relevant AI System Procedures (e.g., AISP-001, AISP-002) were followed for documentation updates and logging.
+*   **Practical Improvements & Outcomes:**
+    *   **Enhanced Clarity & Precision:** All reviewed feature specifications (F001-F007) are now clearer, more precise, and internally consistent.
+    *   **Accurate Feature Index:** `design/features/feature-index.md` accurately reflects the current "Refined" status and details of all defined features.
+    *   **Resolved Ambiguities:** Key open questions and ambiguities within F004-F007 were addressed and resolved.
+    *   **Improved AI-Readiness:** The documentation suite is better structured and detailed, enhancing its utility for AI-assisted development.
+    *   **MVP Readiness Confirmation:** This comprehensive review confirms that project documentation and feature specifications are in a mature state, providing a solid foundation for proceeding with MVP development (F001-F003) and for the subsequent implementation of deferred features (F004-F007).
+*   **Rationale:** This dedicated review and refinement phase was critical to consolidate all previous design work, ensure a high level of quality and consistency in project resources, and explicitly prepare the project for the transition into active MVP development. It serves as a key milestone, marking the conclusion of the intensive initial design and specification phase.
+
+---
+
+## AI-Focused MVP Implementation Plan Conceptualization (Approx. 2025-06-06 07:24)
+
+*   **Objective:** To conceptualize and initiate a detailed, AI-friendly MVP implementation plan for Hangar Bay, guiding development of features F001-F003.
+*   **Core Rationale for AI-Centric Plan:**
+    *   **Enhanced Clarity & Precision:** Provide explicit, step-by-step tasks to minimize AI ambiguity.
+    *   **Rich Contextual Grounding:** Link tasks directly to feature specs (F001-F003), design documents (`design-spec.md`, etc.), and specific sections/data models to give AI deep understanding.
+    *   **Embedded AI Guidance:** Include structured prompts and "AI Implementation Guidance" within each task file.
+    *   **Systematic Progression:** Ensure logical task ordering, manage dependencies, and integrate testability considerations from the start.
+    *   **Living Documentation:** The plan itself serves as a persistent, detailed record of the MVP construction process.
+*   **MVP Scope Covered:** The plan initially targets F001 (Public Contract Aggregation & Display), F002 (Ship Browsing & Advanced Search/Filtering), and F003 (Detailed Ship Contract View), which do not require user authentication (F004) for their MVP functionality.
+*   **Phased Structure Adopted:**
+    *   **Phase 0: Foundational Setup:** Covers project initialization, tooling (linters, formatters), dependency management (`requirements.txt`, `package.json`), version control (`.gitignore`), and initial `README.md` updates. Includes configuration management setup (Pydantic Settings, Angular environment files).
+    *   **Phase 1: Backend Core Infrastructure:** Establishes the FastAPI application skeleton, database setup (PostgreSQL with Alembic for migrations, SQLite for dev), and Valkey caching layer integration.
+    *   **Phase 2: Backend - F001: Public Contract Aggregation:** Develops the ESI API client for public endpoints, defines SQLAlchemy models for F001 data (contracts, items, type cache, etc.), implements the background aggregation service, and creates initial API endpoints for basic contract listing.
+    *   **Phase 3: Frontend Core Infrastructure:** Sets up the Angular application skeleton, creates a backend API service layer in Angular, and implements the basic application layout, routing, and navigation.
+    *   **Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering:** Develops the Angular component for displaying the contract list (F001) and implements UI elements for basic filtering (initial F002).
+    *   **Phase 5: Backend - F002: Advanced Search & Filtering Logic:** Enhances backend query capabilities to support advanced filters defined in F002 and updates API endpoints accordingly.
+    *   **Phase 6: Frontend - F002: Advanced Filtering Implementation:** Develops the Angular component for the advanced search/filter interface and integrates it with the backend.
+    *   **Phase 7: Backend - F003: Detailed Ship/Contract View:** Creates API endpoint(s) to serve detailed information for a specific contract, including items and ship attributes, as per F003.
+    *   **Phase 8: Frontend - F003: Detailed View Implementation:** Develops the Angular component to display the detailed contract view.
+    *   **Phase 9: Cross-Cutting Concerns (Integrated Throughout & Finalized):** Addresses security hardening (MVP scope), logging and basic observability, testing (unit and basic E2E), and foundational accessibility & i18n stubs.
+    *   **Phase 10: Deployment:** Covers Dockerization of backend and frontend applications and setting up a basic CI/CD pipeline.
+*   **Process:**
+    *   Created an overview document: `plans/implementation/00-mvp-implementation-plan-overview.md`.
+    *   Began populating detailed task files (e.g., `00.1-project-initialization-tooling.md`, `00.2-configuration-management.md`) within a hierarchical structure (`plans/implementation/phase-XX-phase-name/YY.Z-task-name.md`).
+*   **Significance:** This structured, AI-focused plan aims to streamline MVP development by providing unparalleled clarity, context, and actionable guidance for AI coding assistants and human developers alike.
+
+---
+
+---
+date: 2025-06-06
+author: Cascade (AI Assistant), Sam (User)
+status: Decided
+---
+
+**Decision: Proactive Integration of Cross-Cutting Concerns into All MVP Tasks**
+
+**Context:**
+A critical review of the MVP implementation plan revealed that while Phase 09 detailed tasks for cross-cutting concerns (Security, Observability, Testing, Accessibility, i18n), these were not explicitly integrated into earlier feature development phases (00-08). This risked them being treated as afterthoughts, leading to potential rework and deficiencies.
+
+**Proposals Considered:**
+1.  Modify all existing task files with explicit NFR checklists.
+2.  Create new "gate" sub-tasks for NFRs per feature task.
+3.  Leverage Cascade's AI memory system for implicit NFR prioritization.
+4.  Add a global reminder in the overview plan.
+5.  Hybrid: Combine AI memories, a standardized NFR checklist in each task, and a global reminder.
+
+**Decision:**
+The **Hybrid Approach (Proposal 5)** was adopted. This involves:
+1.  **Strong AI Memories:** Instilling in Cascade the requirement to always consider the five core cross-cutting concern specifications (`security-spec.md`, `observability-spec.md`, `test-spec.md`, `accessibility-spec.md`, `i18n-spec.md`) as primary inputs for all tasks. (Memories created).
+2.  **Standardized "Cross-Cutting Concerns Review" Section:** Adding a mandatory checklist to each task file in Phases 00-08. This checklist requires Cascade to document how each concern was addressed for that specific task.
+3.  **Global Reinforcement in `00-mvp-implementation-plan-overview.md`:** Adding a note to the overview plan explaining this integrated approach.
+
+**Rationale:**
+This multi-layered strategy ensures that critical non-functional requirements are not deferred but are an integral part of Cascade's workflow for every task. It combines direct AI behavioral influence (memories) with explicit, verifiable action items within each task (checklists), providing a robust framework for building a high-quality, secure, and maintainable application from the outset.
+
+**Impact:**
+All task files in Phases 00-08 will be updated. Cascade's operational procedures for task execution will now include completing the "Cross-Cutting Concerns Review" section. The `00-mvp-implementation-plan-overview.md` will be updated to reflect this process.
+
+---
+
+## 2025-06-06: Completion of MVP Implementation Task File Creation
+
+**Decision/Event:** All detailed task files for the Hangar Bay MVP Implementation Plan (Phases 00 through 10) have been successfully created and committed to the repository. This includes tasks covering foundational setup, backend core infrastructure, frontend core infrastructure, features F001, F002, F003 (backend and frontend aspects), cross-cutting concerns (security, logging, testing, accessibility, i18n), and deployment/documentation.
+
+**Rationale:** This completes a significant milestone in project planning, providing a comprehensive, actionable breakdown of work required for the MVP. These detailed task files, complete with AI implementation guidance, will facilitate both AI-assisted and human-driven development workflows.
+
+**Affected Components:**
+*   `plans/implementation/` (all subdirectories and files)
+
+---
+
+*(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SS-05:00' (U.S. Central Time) for new major decision sections.)*

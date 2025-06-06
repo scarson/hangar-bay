@@ -241,7 +241,7 @@ The USER can also still explicitly request a summary log at any time (e.g., "Cas
     *   Key learnings or insights.
 6.  **Draft Summary:** Compose a detailed summary of the reviewed interactions.
     *   The summary should be in Markdown format.
-    *   Start with a clear heading indicating the date/time or topic of the session being summarized (e.g., `### Session Summary - YYYY-MM-DD HH:MM - Topic: AISP Development`). The AI should obtain the current timestamp for this.
+    *   Start with a clear heading indicating the date/time or topic of the session being summarized (e.g., `### Session Summary - YYYY-MM-DD HH:MM:SS-05:00 - Topic: AISP Development`). The AI should obtain the current timestamp for this, formatted as `YYYY-MM-DD HH:MM:SS±hh:mm` (U.S. Central Time with offset, ISO 8601, matching `design-log.md`).
     *   Structure the summary logically (e.g., chronologically or thematically).
     *   Emphasize verbose and detailed explanations, capturing the "why" and "how."
     *   **USER Preference:** The USER strongly prefers highly verbose and comprehensive summaries, especially following sessions involving detailed planning, analysis, or significant decision-making. Ensure the summary captures the nuances of such discussions.

@@ -77,7 +77,7 @@
       - created_at: TIMESTAMP WITH TIME ZONE (Default: CURRENT_TIMESTAMP)
       - updated_at: TIMESTAMP WITH TIME ZONE (Default: CURRENT_TIMESTAMP, On Update: CURRENT_TIMESTAMP)
     Constraints: Unique constraint on (`user_id`, `type_id`) - a user cannot watch the same `type_id` multiple times.
-    AI_Action_Focus: Backend (SQLAlchemy model, Pydantic schema for API request/response). Ensure `user_id` is correctly linked to the authenticated user. `type_id` needs validation (is it a valid, watchable type?). `max_price` validation (positive). `notes` validation (e.g. length).
+    AI_Action_Focus: Backend (SQLAlchemy model, Pydantic schema for API request/response). Ensure `user_id` is correctly linked to the authenticated user. `type_id` needs validation (is it a valid, published **ship** type ID; check against `esi_type_cache` category/group ID). `max_price` validation (positive value if provided). `notes` validation (e.g. length).
     I18n_Considerations: `notes` is user data. `type_id` resolves to a name from ESI (language based on ESI request). `max_price` is numeric.
     AI_HANGAR_BAY_DATA_MODEL_END -->
 

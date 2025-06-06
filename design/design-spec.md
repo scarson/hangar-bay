@@ -49,16 +49,64 @@ EVE Online players, the target audience for Hangar Bay, are known for their inge
 
 ## 5. Application Architecture (High-Level)
 
-*(To be detailed further)*
+The Hangar Bay application follows a modern web application architecture, designed for modularity, scalability, and maintainability. It functions primarily as an aggregator and sophisticated browser for public EVE Online ship contracts.
 
-The application will function as an aggregator of public EVE Online contracts, focusing on ship sales. Transactions will occur in-game by players accepting these public contracts.
+The core components are:
 
-*   **Frontend:** (e.g., Web interface - React, Vue, Angular, Svelte, etc.) - Responsible for displaying contracts and search/filter UI.
-*   **Backend:** (e.g., API - Python/Django/Flask, Node.js/Express, Java/Spring, Ruby/Rails, etc.) - Responsible for fetching data from ESI, processing, storing, and serving it to the frontend.
-*   **Database:** (e.g., PostgreSQL, MySQL, MongoDB, etc.) - Stores aggregated contract data, ship details (cached from ESI), and potentially user preferences if SSO is implemented.
-*   **EVE ESI API Integration Layer:** A dedicated module/service for interacting with the ESI API, handling requests for public contracts, contract items, ship details, caching, and error management.
+*   **Frontend (Client-Side Application):**
+    *   **Technology:** Angular (with TypeScript).
+    *   **Responsibilities:** Provides the user interface (UI) for browsing, searching, filtering (F002), and viewing detailed ship contracts (F003). Handles user interactions, makes API requests to the Backend, and renders data. Manages client-side state and routing.
+    *   **Interaction:** Communicates exclusively with the Hangar Bay Backend API via HTTPS.
 
-*Considerations: Refer to Section 4 (Security) and `security-spec.md`. Accessibility, as outlined in `accessibility-spec.md`, and internationalization, as per `i18n-spec.md`, should be considered for any user-facing outputs or interactions originating from this layer.* 
+*   **Backend (Server-Side API & Logic):**
+    *   **Technology:** Python with FastAPI (ASGI).
+    *   **Responsibilities:**
+        *   Exposes a RESTful API for the Frontend.
+        *   Implements business logic for features F001, F002, F003, including data aggregation, filtering, and search.
+        *   Manages interaction with the Database for data persistence and retrieval.
+        *   Integrates with the ESI API Integration Layer to fetch data from EVE Online.
+        *   Handles user authentication (F004) and authorization for protected endpoints and features (F005-F007, when implemented).
+        *   Interacts with the Caching Layer to improve performance.
+
+*   **Database (Persistence Layer):**
+    *   **Technology:** PostgreSQL (Production), SQLite (Development).
+    *   **Responsibilities:** Stores aggregated public contract data (F001), cached ESI type details (ships, items), market group information, and potentially user-specific data such as saved searches (F005) and watchlists (F006) once authentication is implemented.
+    *   **Access:** Primarily accessed by the Backend API via an ORM (SQLAlchemy).
+
+*   **Caching Layer:**
+    *   **Technology:** Valkey (Redis-compatible).
+    *   **Responsibilities:** Caches frequently accessed data, such as ESI API responses (respecting ESI cache headers), pre-calculated data, and popular query results to reduce database load and improve API response times.
+    *   **Access:** Used by the Backend API.
+
+*   **EVE ESI API Integration Layer (Backend Module):**
+    *   **Responsibilities:** A dedicated module within the Backend responsible for all communications with the EVE Online ESI API. This includes:
+        *   Constructing and sending ESI requests.
+        *   Handling ESI responses, including pagination, error codes (4xx, 5xx), and rate limits.
+        *   Adhering to ESI caching policies (Cache-Control, ETag).
+        *   Transforming ESI data into formats suitable for the Hangar Bay application.
+        *   Managing EVE SSO OAuth 2.0 flow for user authentication (F004).
+
+### 5.1. High-Level Data Flow
+
+1.  **User Interaction:** A user accesses the Hangar Bay application via a web browser (Frontend).
+2.  **Frontend Request:** The Frontend makes API calls (e.g., to search for contracts) to the Backend API.
+3.  **Backend Processing:**
+    *   The Backend API receives the request, validates it, and processes it.
+    *   For data retrieval, it first checks the Caching Layer (Valkey).
+    *   If data is not in the cache or is stale, it queries the Database (PostgreSQL).
+    *   If the required data originates from EVE Online (e.g., new contracts, type details not yet cached), the ESI API Integration Layer is invoked.
+4.  **ESI Interaction (if needed):**
+    *   The ESI API Integration Layer makes secure HTTPS requests to the EVE ESI API.
+    *   It receives responses, respects cache headers, and handles potential errors or rate limits.
+    *   Fetched data is processed and may be stored in the Database and/or Caching Layer for future requests.
+5.  **Backend Response:** The Backend API formats the data and sends a response to the Frontend.
+6.  **Frontend Rendering:** The Frontend receives the API response and dynamically updates the UI to display the information to the user.
+
+**Scheduled/Background Processes (F001):**
+*   A separate process, managed by the Backend (e.g., using a task scheduler like Celery, or a simpler cron-like mechanism for MVP), periodically invokes the ESI API Integration Layer to fetch new public contracts from specified EVE Online regions.
+*   This data is then processed, filtered for ships, and stored in the Database.
+
+*Considerations: All interactions between components, especially over networks (Frontend-Backend, Backend-ESI), MUST be secured using HTTPS. Refer to Section 4 (Security) and `security-spec.md`. Accessibility, as outlined in `accessibility-spec.md`, and internationalization, as per `i18n-spec.md`, must be considered for any user-facing outputs or interactions originating from these components.* 
 
 ## 6. Tech Stack
 
@@ -222,7 +270,42 @@ A comprehensive testing strategy is crucial for ensuring the quality, security, 
 
 *Considerations: Refer to Section 4 (Security) and `security-spec.md`.* 
 
-## 13. Accessibility (A11y)
+## 13. MVP Scope and Deliverables
+
+This section defines the scope for the Minimum Viable Product (MVP) of Hangar Bay. The MVP focuses on delivering the core functionality of discovering and viewing public ship contracts without requiring user authentication.
+
+### 13.1. Core MVP Features (In Scope)
+
+The following features, as detailed in their respective specification documents, constitute the core of the MVP:
+
+*   **F001: Public Contract Aggregation & Display:** Automated fetching, processing, and storage of public ship contracts from EVE Online. (See `design/features/F001-Public-Contract-Aggregation-Display.md`)
+*   **F002: Ship Browsing & Advanced Search/Filtering:** User interface for browsing, searching, and filtering the aggregated ship contracts. (See `design/features/F002-Ship-Browsing-Advanced-Search-Filtering.md`)
+*   **F003: Detailed Ship Contract View:** Dedicated view displaying comprehensive details of a selected ship contract. (See `design/features/F003-Detailed-Ship-Contract-View.md`)
+
+### 13.2. Post-MVP Features (Deferred)
+
+The following features, while important for the long-term vision, are deferred beyond the initial MVP release. Their implementation typically depends on F004 (User Authentication).
+
+*   **F004: User Authentication (EVE SSO):** (See `design/features/F004-User-Authentication-SSO.md`)
+*   **F005: Saved Searches:** (See `design/features/F005-Saved-Searches.md`)
+*   **F006: Watchlists:** (See `design/features/F006-Watchlists.md`)
+*   **F007: Alerts/Notifications:** (See `design/features/F007-Alerts-Notifications.md`)
+
+### 13.3. MVP Deliverables - Cross-Cutting Concerns
+
+For the MVP, the following cross-cutting concerns will be addressed to the extent specified in their respective detailed documents, focusing on the implementation of F001, F002, and F003:
+
+*   **Security:** Foundational security measures as per `security-spec.md` will be implemented for all MVP components (Frontend, Backend API, Database, ESI integration). This includes input validation, output encoding, secure ESI communication, and protection against common web vulnerabilities.
+*   **Performance:** Core application performance for contract browsing, searching, and viewing will be optimized as per `performance-spec.md`. This includes efficient database queries, backend API response times, and frontend rendering for the MVP features.
+*   **Accessibility (A11y):** The user interfaces for F002 and F003 will adhere to WCAG 2.1 Level AA guidelines as detailed in `accessibility-spec.md`.
+*   **Internationalization (i18n):** The frontend (Angular) will be structured for internationalization using `@angular/localize` as per `i18n-spec.md`. English (en) will be the default and initially supported language for the MVP. The backend (FastAPI) will support locale negotiation for API responses where applicable (e.g., ESI data).
+*   **Observability:** Basic logging (application events, errors) and health checks for backend services will be implemented as a foundation, guided by `observability-spec.md`.
+*   **Testing:** Unit tests for critical backend and frontend logic for F001-F003 will be developed. Key API endpoints will have integration tests. End-to-end tests will cover core user flows for F002 and F003. All testing will follow `test-spec.md`.
+*   **Deployment:** The application (Frontend and Backend) will be containerized using Docker. Basic deployment scripts or configurations for a chosen environment will be prepared.
+
+*Considerations: All MVP development must adhere to the principles and requirements outlined in Section 4 (Security) and the referenced detailed specification documents for each cross-cutting concern.*
+
+## 14. Accessibility (A11y)
 
 Accessibility is a core requirement for Hangar Bay. The application MUST be designed and developed to be usable by people with a wide range of disabilities.
 
@@ -233,7 +316,7 @@ Accessibility is a core requirement for Hangar Bay. The application MUST be desi
 
 *Considerations: Refer to Section 4 (Security) and `security-spec.md`. All UI components must be built with accessibility in mind (following `accessibility-spec.md`) and designed for internationalization (following `i18n-spec.md`).*
 
-## 14. Future Enhancements
+## 15. Future Enhancements
 
 *(To be detailed - some items moved to Core Features with SSO)*
 
