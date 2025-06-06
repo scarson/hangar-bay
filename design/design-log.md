@@ -287,4 +287,35 @@ This document records major design discussion points, considerations, and decisi
 
 ---
 
+## Project Resource Review for MVP Readiness (Approx. 2025-06-06)
+
+*   **Purpose:** To conduct a comprehensive review and refinement of all Hangar Bay project documentation, including feature specifications (F001-F007), the main design specification, supporting documents (e.g., `security-spec.md`, `accessibility-spec.md`, `i18n-spec.md`, `performance-spec.md`, `test-spec.md`, `observability-spec.md`), and procedural documents (e.g., `ai-system-procedures.md`, `cascade-log.md`). The goal was to ensure all resources are up-to-date, consistent, sufficiently detailed, and "AI-ready" to support efficient and accurate MVP development.
+*   **Importance:**
+    *   **Clarity and Reduced Ambiguity:** Provides clear, unambiguous requirements and design details for both human developers and AI coding assistants, minimizing misunderstandings and rework.
+    *   **MVP Scope Alignment:** Confirms that all documented features and their specifications are aligned with the defined MVP scope (F001-F003 for implementation, F004-F007 refined for future work).
+    *   **Solid Foundation:** Establishes a robust and reliable information baseline for the implementation, testing, and future iteration phases of the project.
+    *   **Efficient Onboarding:** Facilitates smoother and faster onboarding for any new team members or AI assistant instances joining the project.
+    *   **Traceability:** Ensures that design decisions, feature refinements, and procedural updates are well-documented and traceable.
+*   **Process & Key Activities Undertaken:**
+    *   **Systematic Review of Feature Specifications (F001-F007):** Each feature specification document was reviewed.
+        *   Titles, descriptions, and statuses were updated in `design/features/feature-index.md` to "Refined" for all seven features.
+    *   **Detailed Refinement of F004-F007:**
+        *   **F004 (User Authentication - EVE SSO):** Clarified ESI scope policy (no scopes for F004 itself), ID token JWT validation, refresh token failure handling, session duration, CharacterOwnerHash update logic, and security of 'next' URL parameter.
+        *   **F005 (Saved Searches):** Confirmed MVP scope (create, rename, delete, execute; no criteria updates post-MVP), enforced unique names, and added notes on UI truncation and handling of invalid filter options.
+        *   **F006 (Watchlists):** Clarified `type_id` validation (must be a ship type), confirmed `(user_id, type_id)` uniqueness, noted live market data is out of scope for F006 (handled by F007), and added an optional `notes` field.
+        *   **F007 (Alerts/Notifications):** Focused MVP on in-app notifications for watchlist matches, defined de-duplication rules, enhanced notification message content (including contract type), and refined data models for `notifications` and `user_notification_settings`.
+    *   **Cross-Cutting Concerns Integration:** Ensured that all feature specifications adequately referenced or integrated considerations from dedicated documents for security, accessibility, internationalization, performance, testing, and observability.
+    *   **Documentation Updates:**
+        *   `cascade-log.md` was updated with detailed session summaries for the refinements of F004, F005, F006, and F007.
+        *   Relevant AI System Procedures (e.g., AISP-001, AISP-002) were followed for documentation updates and logging.
+*   **Practical Improvements & Outcomes:**
+    *   **Enhanced Clarity & Precision:** All reviewed feature specifications (F001-F007) are now clearer, more precise, and internally consistent.
+    *   **Accurate Feature Index:** `design/features/feature-index.md` accurately reflects the current "Refined" status and details of all defined features.
+    *   **Resolved Ambiguities:** Key open questions and ambiguities within F004-F007 were addressed and resolved.
+    *   **Improved AI-Readiness:** The documentation suite is better structured and detailed, enhancing its utility for AI-assisted development.
+    *   **MVP Readiness Confirmation:** This comprehensive review confirms that project documentation and feature specifications are in a mature state, providing a solid foundation for proceeding with MVP development (F001-F003) and for the subsequent implementation of deferred features (F004-F007).
+*   **Rationale:** This dedicated review and refinement phase was critical to consolidate all previous design work, ensure a high level of quality and consistency in project resources, and explicitly prepare the project for the transition into active MVP development. It serves as a key milestone, marking the conclusion of the intensive initial design and specification phase.
+
+---
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*
