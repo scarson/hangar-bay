@@ -130,6 +130,7 @@ Based on the **public contract aggregator model**:
 
 ## 8. ESI API Integration Details
 <!-- AI_NOTE_TO_HUMAN: For detailed, AI-parsable structures of ESI and Hangar Bay API endpoints, please refer to the 'API Endpoints Involved' section within individual feature specification documents (e.g., F001-*.md, F002-*.md). The feature specs will contain structured comment blocks like 'AI_ESI_API_ENDPOINT_START' and 'AI_HANGAR_BAY_API_ENDPOINT_START'. -->
+<!-- AI_ADDITIONAL_GUIDANCE: These feature specifications now consistently begin with a "0. Authoritative ESI & EVE SSO References" section, providing direct links to official ESI/SSO documentation. Furthermore, all ESI, EVE SSO, and exposed Hangar Bay API endpoint definitions within these feature specs are accompanied by AI actionable checklists to guide implementation and ensure adherence to best practices and project standards. This structured approach is crucial for AI-assisted development. -->
 
 Primary ESI endpoints for the public contract aggregator model:
 
