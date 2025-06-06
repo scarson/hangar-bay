@@ -2,7 +2,7 @@
 
 **Feature ID:** F004
 **Creation Date:** 2025-06-05
-**Last Updated:** 2025-06-05
+**Last Updated:** 2025-06-06
 **Status:** Draft
 
 ## 0. Authoritative ESI & EVE SSO References (Required Reading for ESI/SSO Integration)
@@ -37,11 +37,11 @@
 *   **Story 2 Criteria:**
     *   Criterion 2.1: A secure session management mechanism is in place (e.g., secure HTTPOnly cookies, server-side session store).
     *   Criterion 2.2: Users remain logged in across browser sessions until the session expires or they log out.
-    *   Criterion 2.3: Access tokens are refreshed automatically using the refresh token before they expire, without requiring user re-authentication, if active ESI calls are needed for the user. [NEEDS_DISCUSSION: Scope of background ESI calls for MVP features like saved searches/watchlists.]
+    *   Criterion 2.3: Access tokens are refreshed automatically using the refresh token before they expire if an ESI call is about to be made on behalf of the user and the current token is invalid or nearing expiry. For MVP, proactive background ESI calls (e.g., for watchlist updates when the user is not active) are not in scope for this feature; token refresh is primarily triggered by user activity requiring ESI interaction.
 *   **Story 3 Criteria:**
     *   Criterion 3.1: A "Logout" button/link is available to logged-in users.
     *   Criterion 3.2: Clicking logout invalidates the user's session on Hangar Bay.
-    *   Criterion 3.3: [NEEDS_DISCUSSION: Should logout also attempt to revoke the EVE SSO token? Generally not standard for OAuth clients unless specifically required.]
+    *   Criterion 3.3: Logout from Hangar Bay invalidates the Hangar Bay session. It does not attempt to revoke the EVE SSO refresh token at the provider, aligning with standard OAuth client behavior. Users can manage third-party application authorizations via their EVE Online account settings.
 *   **Story 4 Criteria:**
     *   Criterion 4.1: Access tokens and refresh tokens are stored securely (e.g., encrypted at rest).
     *   Criterion 4.2: Refresh tokens are used to obtain new access tokens when current ones expire.
@@ -54,7 +54,7 @@
 *   Secure management of EVE SSO tokens (access and refresh tokens).
 *   Creation/management of basic user profiles in Hangar Bay DB (CharacterID, CharacterName, token info).
 *   Session management for logged-in users.
-*   Requesting necessary ESI scopes for authentication (e.g., `publicData` or a minimal scope if only character ID/name is needed initially).
+*   Requesting a base set of ESI scopes suitable for initial user identification and potentially displaying basic public character data (e.g., `publicData`). The exact minimal scopes will be confirmed during EVE SSO application registration. The application will store and operate based on the scopes actually granted by the user.
 ### 4.2. Out of Scope
 *   Requesting ESI scopes beyond basic authentication and character identification for this feature (other features may request more scopes).
 *   User registration via email/password (only EVE SSO).
@@ -99,23 +99,27 @@
 *   EVE SSO OAuth Endpoints:
     *   Authorization URL: `https://login.eveonline.com/v2/oauth/authorize`
     AI_Actionable_Checklist:
-      - [ ] **AI Action:** Verify endpoint path, parameters, and expected flow against the official EVE SSO documentation: [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/)
-      - [ ] **AI Action:** Review EVE SSO Best Practices and Security guide: [https://developers.eveonline.com/docs/services/sso/best-practices-and-security/](https://developers.eveonline.com/docs/services/sso/best-practices-and-security/)
+      - [ ] **Developer Action:** Verify endpoint path, parameters, and expected flow against the official EVE SSO documentation: [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/)
+      - [ ] **Developer Action:** Review EVE SSO Best Practices and Security guide: [https://developers.eveonline.com/docs/services/sso/best-practices-and-security/](https://developers.eveonline.com/docs/services/sso/best-practices-and-security/)
+    *   *(Note: These checklist items are for developer verification during implementation. The specified endpoints are standard for EVE SSO.)*
     *   Token URL: `https://login.eveonline.com/v2/oauth/token`
     AI_Actionable_Checklist:
-      - [ ] **AI Action:** Verify endpoint path, parameters, and expected flow against the official EVE SSO documentation: [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/)
-      - [ ] **AI Action:** Review EVE SSO Best Practices and Security guide: [https://developers.eveonline.com/docs/services/sso/best-practices-and-security/](https://developers.eveonline.com/docs/services/sso/best-practices-and-security/)
+      - [ ] **Developer Action:** Verify endpoint path, parameters, and expected flow against the official EVE SSO documentation: [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/)
+      - [ ] **Developer Action:** Review EVE SSO Best Practices and Security guide: [https://developers.eveonline.com/docs/services/sso/best-practices-and-security/](https://developers.eveonline.com/docs/services/sso/best-practices-and-security/)
+    *   *(Note: These checklist items are for developer verification during implementation. The specified endpoints are standard for EVE SSO.)*
     *   JWKS URI (for token verification): `https://login.eveonline.com/oauth/jwks`
     AI_Actionable_Checklist:
-      - [ ] **AI Action:** Verify endpoint path, parameters, and expected flow against the official EVE SSO documentation: [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/)
-      - [ ] **AI Action:** Review EVE SSO Best Practices and Security guide: [https://developers.eveonline.com/docs/services/sso/best-practices-and-security/](https://developers.eveonline.com/docs/services/sso/best-practices-and-security/)
+      - [ ] **Developer Action:** Verify endpoint path, parameters, and expected flow against the official EVE SSO documentation: [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/)
+      - [ ] **Developer Action:** Review EVE SSO Best Practices and Security guide: [https://developers.eveonline.com/docs/services/sso/best-practices-and-security/](https://developers.eveonline.com/docs/services/sso/best-practices-and-security/)
+    *   *(Note: These checklist items are for developer verification during implementation. The specified endpoints are standard for EVE SSO.)*
 *   ESI Endpoint for Character Verification (after token acquisition):
     *   `GET https://esi.evetech.net/verify/` (or equivalent in current ESI spec if path changed)
         *   Requires authentication with the new access token.
         *   Fields: `CharacterID`, `CharacterName`, `Scopes`, `TokenType`, `CharacterOwnerHash`.
         AI_Actionable_Checklist:
-          - [ ] **AI Action:** Verify endpoint path, parameters, request body (if any), and response schema against the official ESI Swagger UI: [https://esi.evetech.net/ui/](https://esi.evetech.net/ui/)
-          - [ ] **AI Action:** Review ESI Best Practices for this endpoint/category: [https://developers.eveonline.com/docs/services/esi/best-practices/](https://developers.eveonline.com/docs/services/esi/best-practices/)
+          - [ ] **Developer Action:** Verify endpoint path, parameters, request body (if any), and response schema against the official ESI Swagger UI: [https://esi.evetech.net/ui/](https://esi.evetech.net/ui/)
+          - [ ] **Developer Action:** Review ESI Best Practices for this endpoint/category: [https://developers.eveonline.com/docs/services/esi/best-practices/](https://developers.eveonline.com/docs/services/esi/best-practices/)
+        *(Note: These checklist items are for developer verification during implementation. The specified ESI verify endpoint is standard.)*
 ### 6.2. Exposed Hangar Bay API Endpoints
 *   **Endpoint 1:** `/auth/sso/login` (GET)
     <!-- AI_HANGAR_BAY_API_ENDPOINT_START
