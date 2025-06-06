@@ -87,11 +87,12 @@ The MVP development is structured into the following phases. Each task links to 
     *   [09.3 Testing Strategy & Implementation (MVP)](./phase-09-cross-cutting-concerns-mvp-scope/09.3-testing-strategy-mvp.md)
     *   [09.4 Accessibility & i18n Stubs (MVP)](./phase-09-cross-cutting-concerns-mvp-scope/09.4-accessibility-i18n-stubs-mvp.md)
 
-### Phase 10: Deployment
-*   **Goal:** Containerize the application and set up a basic CI/CD pipeline.
+### Phase 10: Deployment & Final Documentation
+*   **Goal:** Containerize the application, set up a basic CI/CD pipeline, and finalize project documentation.
 *   **Tasks:**
-    *   [10.1 Dockerization](./phase-10-deployment/10.1-dockerization.md)
-    *   [10.2 Basic CI/CD Pipeline](./phase-10-deployment/10.2-basic-ci-cd-pipeline.md)
+    *   [10.1 Deployment Preparation & Packaging](./phase-10-deployment/10.1-deployment-prep-packaging.md)
+    *   [10.2 CI/CD Pipeline Setup](./phase-10-deployment/10.2-ci-cd-pipeline-setup.md)
+    *   [10.3 Final Documentation & README Update](./phase-10-deployment/10.3-final-documentation-readme.md)
 
 ## 3. General AI Implementation Guidance
 
