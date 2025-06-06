@@ -846,6 +846,290 @@ Then add a new entry to design-log.md that captures in detail this whole "Projec
 -----------------
 
 
+Would it be helpful to have an implementation plan for the MVP that's designed to be as helpful to Cascade as possible? How would you design such a plan? Why do you think it would be successful?
+I like our current strategy of using well-structured markdown files to capture information in a way that's easy for AI coding assistants to use, and suggest we continue with those for consistency within the project. I created a "\hangar-bay\plans\implementation" directory we can generally use for this purpose. 
+
+Please think comprehensively through the high-level implementation tasks we'll need to do to take the MVP from concept to working solution. Once you've done that, compare each task step to the next and try to identify if there are any gaps or assumptions about things that would need to happen between them that aren't captured, and update your task plan to include. Once you have an implementation plan, justify each significant part of it, explaining why you think it's necessary and why you think your implementation approach for it would be successful. Try very hard to identify any gaps or errors in the plan, because it is much better to identify and resolve those now in the planning stage than during implementation. This critical review will help both of us and make the Hangar Bay MVP implementation more successful. 
+
+Once you've completed that critical review and made any updates to the plan, think about how you can structure it within the "\hangar-bay\plans\implementation" directory in a way that's highly effective for Cascade. Explain why you think the structure would be effective. 
+
+You are welcome to use any files and subdirectory structure within "\hangar-bay\plans\implementation" that's helpful. Please keep to our all lower-case with dashes naming convention for any files and directories.
+
+
+-----------------
+
+
+First, log an entry to cascade-log.md about the MVP implementation plan development and evaluation process. Be extremely verbose - the details are important.
+Then log an entry to design-log.md about the MVP implementation plan development and evaluation process in the normal format for the log.
+
+Since you were having issues with the tool calls failing to create the subdirectories you wanted in "Proposed Structure for \plans\implementation", I have manually created them. You should now be able to use the original directory structure identified as ideal for Cascade. 
+Start by moving "phase-00-task-00.1-project-initialization-tooling.md" and "phase-00-task-00.2-configuration-management.md" to the newly created "plans\implementation\phase-00-foundational-setup" directory, then proceed with creating the next task files.
+
+
+-----------------
+
+
+
+I want you to revise both log entries. They focus currently on challenges around the directory structure creation, which are entirely irrelevant to the important logic and decision points. The cascade-log.md entry needs to be MUCH more verbose. Focus on capturing the details and process around the actual *Hangar Bay MVP implementation plan" conceptualization, which began with:
+"Benefits of an AI-Focused Implementation Plan
+An implementation plan tailored for an AI coding assistant like me offers several advantages:
+
+Clarity and Reduced Ambiguity: Explicit, step-by-step instructions minimize guesswork and ensure I focus on the correct tasks.
+Contextual Grounding: Linking tasks directly to relevant feature specifications (F001-*.md, F002-*.md, F003-*.md), design documents (design-spec.md, security-spec.md, etc.), and even specific sections within them provides rich context.
+Structured Prompts: The plan can embed or suggest effective prompts for code generation, updates, or reviews.
+Dependency Management: Clearly outlining task dependencies helps in generating code in the correct order.
+Testability Focus: Integrating testing steps and criteria directly into each task ensures testability is considered throughout.
+Iterative Progress: Breaking down the MVP into smaller, manageable tasks allows for iterative development and easier course correction.
+Knowledge Persistence: The plan itself becomes a valuable project artifact, documenting the "how" of the MVP build.
+High-Level MVP Implementation Tasks & Critical Review
+The MVP for Hangar Bay focuses on features F001 (Public Contract Aggregation & Display), F002 (Ship Browsing & Advanced Search/Filtering), and F003 (Detailed Ship Contract View). These features do not require user authentication (F004) for their core functionality in the MVP.
+
+Here's a breakdown of tasks, with critical review points integrated:
+
+Phase 0: Foundational Setup
+(other phases followed this)"
+
+
+-----------------
+
+
+Both the cascade-log.md and design-log.md entries do not accurately capture the 10 task phases you outlined. As a reminder, I've reproduced your 10 phase plan below. Please make sure both log entries are revise to accurately reflect the 10 phases:
+"Phase 0: Foundational Setup
+
+Task 0.1: Project Initialization & Tooling
+Steps:
+Finalize backend (Python/FastAPI) and frontend (Angular) directory structures.
+Initialize requirements.txt (backend) and package.json (frontend).
+Set up linters (e.g., Flake8, ESLint), formatters (e.g., Black, Prettier).
+Configure .gitignore.
+Update README.md with development setup instructions.
+Justification: Establishes a clean, consistent development environment. Essential for code quality and collaboration.
+Gap Check: Ensure versioning for major dependencies is considered (e.g., Python 3.10+, Node LTS).
+Task 0.2: Configuration Management Setup
+Steps:
+Implement a configuration system (e.g., Pydantic Settings for FastAPI, environment files for Angular).
+Define placeholders for ESI URLs, database connection strings, Valkey connection, regions to poll.
+Justification: Centralizes configuration, making it easy to manage different environments (dev, prod) without hardcoding. Critical for security and flexibility.
+Phase 1: Backend Core Infrastructure
+
+Task 1.1: FastAPI Application Skeleton
+Steps: Basic FastAPI app setup, core routers, utility modules.
+Justification: Establishes the entry point and structure for the backend.
+Task 1.2: Database Setup (PostgreSQL & SQLite for Dev)
+Steps:
+Define SQLAlchemy base models and session management.
+Set up Alembic for database migrations.
+Create initial migration for core tables (even if empty initially, to test Alembic).
+Justification: Essential for data persistence. Alembic ensures manageable schema evolution.
+Task 1.3: Valkey Caching Layer Integration
+Steps: Implement a Valkey client wrapper/service for easy use throughout the backend.
+Justification: Required for caching ESI responses and other computed data, as per design-spec.md.
+Phase 2: Backend - F001: Public Contract Aggregation
+
+Task 2.1: ESI API Client (Public Endpoints)
+Steps:
+Develop a robust ESI client module to fetch public contracts, item type details (including Dogma attributes/effects), market group information, and location data.
+Implement error handling (retries, rate limits based on ESI headers), and respect ESI cache timers.
+Justification: Central component for interacting with EVE Online data. Robustness is key.
+Task 2.2: Data Models for F001
+Steps: Define SQLAlchemy models for esi_type_cache, market_groups_cache, location_details_cache, contracts, contract_items based on F001-Public-Contract-Aggregation-Display.md.
+Justification: Structures how data is stored and queried.
+Gap Check: Ensure all fields required by F001, F002, and F003 are captured.
+Task 2.3: Background Aggregation Service
+Steps:
+Implement the background task logic (e.g., using APScheduler integrated with FastAPI) to periodically poll ESI for public contracts in configured regions.
+Logic to process contracts, populate/update esi_type_cache, contracts, and contract_items tables.
+Implement an admin-triggered manual refresh endpoint (as discussed for F001).
+Justification: Core of F001. Provides the data for the entire application.
+Task 2.4: API Endpoints for F001 (Basic Contract Listing)
+Steps: Create initial API endpoints to serve a paginated list of aggregated contracts.
+Justification: Exposes F001 data to the frontend.
+Phase 3: Frontend Core Infrastructure
+
+Task 3.1: Angular Application Skeleton
+Steps: Basic Angular app setup, core modules, services, initial components.
+Justification: Establishes the frontend structure.
+Task 3.2: Backend API Service Layer
+Steps: Create Angular services to communicate with the backend APIs, including typed interfaces for requests/responses.
+Justification: Decouples components from direct HTTP calls, promotes reusability.
+Task 3.3: Basic Layout, Routing, and Navigation
+Steps: Implement main app layout (header, content area, footer), set up basic routing for upcoming views.
+Justification: Provides the user interface shell.
+Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering
+
+Task 4.1: Contract List Component
+Steps: Develop the Angular component to display the list of contracts fetched from the backend (F001 data). Implement pagination.
+Justification: Visual representation of F001.
+Task 4.2: Basic Filtering UI
+Steps: Implement UI elements for basic filters as defined in F002 (e.g., keyword search on title, region filter if applicable at this stage).
+Justification: Initial step towards F002 functionality.
+Phase 5: Backend - F002: Advanced Search & Filtering Logic
+
+Task 5.1: Advanced Filtering Logic & Query Enhancements
+Steps: Enhance backend query capabilities to support advanced filters from F002-Ship-Browsing-Advanced-Search-Filtering.md (e.g., ship type, meta level, tech level, price range, contract type).
+Justification: Implements the core search power of F002.
+Task 5.2: Update API Endpoints for F002
+Steps: Modify contract listing API endpoints to accept and process advanced filter parameters.
+Justification: Exposes F002 capabilities to the frontend.
+Phase 6: Frontend - F002: Advanced Filtering Implementation
+
+Task 6.1: Advanced Filtering Component
+Steps: Develop the Angular component for the advanced search/filter interface. Integrate with the backend API.
+Justification: Provides the user interface for F002.
+Phase 7: Backend - F003: Detailed Ship/Contract View
+
+Task 7.1: API Endpoint for F003
+Steps: Create API endpoint(s) to serve detailed information for a specific contract, including all its items and relevant ship attributes from esi_type_cache, as per F003-Detailed-Ship-Contract-View.md.
+Justification: Provides data for the detailed view.
+Phase 8: Frontend - F003: Detailed View Implementation
+
+Task 8.1: Contract Detail Component
+Steps: Develop the Angular component to display the detailed contract view.
+Justification: User interface for F003.
+Phase 9: Cross-Cutting Concerns (Integrated Throughout & Finalized)
+
+Task 9.1: Security Hardening (MVP Scope)
+Steps: Implement input validation (Pydantic, Angular forms), output encoding, basic rate limiting (e.g., slowapi), HTTPS setup for deployment. Refer to security-spec.md.
+Justification: Essential even for public-facing MVP.
+Task 9.2: Logging & Basic Observability
+Steps: Configure structured logging for backend and frontend. Set up basic error tracking. Refer to observability-spec.md.
+Justification: Crucial for debugging and monitoring.
+Task 9.3: Testing (Unit & Basic E2E)
+Steps: Write unit tests for critical backend logic (FastAPI) and frontend components (Angular). Set up a basic E2E test for a core user flow (e.g., view contracts, apply a filter, view details). Refer to test-spec.md.
+Justification: Ensures code quality and catches regressions.
+Task 9.4: Accessibility & i18n Stubs
+Steps: Ensure basic accessibility (semantic HTML, keyboard navigation) for frontend components. Set up i18n infrastructure in Angular (e.g., ngx-translate) with placeholder keys. Refer to accessibility-spec.md and i18n-spec.md.
+Justification: Builds foundation for inclusive design.
+Phase 10: Deployment
+
+Task 10.1: Dockerization
+Steps: Create Dockerfile for backend (FastAPI + Uvicorn/Gunicorn) and frontend (Angular app served by Nginx). Create docker-compose.yml for local development (including PostgreSQL, Valkey).
+Justification: Ensures consistent environments, simplifies deployment.
+Task 10.2: Basic CI/CD Pipeline
+Steps: Set up a basic CI/CD pipeline (e.g., GitHub Actions) to build, test, and (optionally for MVP) deploy Docker images.
+Justification: Automates the build and test process."
+
+-----------------
+
+
+Since there were errors in the two log entries, I think it's prudent to check all other work you've recently done with plan .md files for errors as well.
+
+
+-----------------
+
+
+Please contnue creating all the remaining plan .md files. As a reminder, here is your proposed structure:
+
+c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\
+├── 00-mvp-implementation-plan-overview.md (This main file, outlining phases, goals, links)
+│
+├── phase-00-foundational-setup\
+│   ├── 00.1-project-initialization-tooling.md
+│   └── 00.2-configuration-management.md
+│
+├── phase-01-backend-core\
+│   ├── 01.1-fastapi-app-skeleton.md
+│   ├── 01.2-database-setup.md
+│   └── 01.3-valkey-cache-integration.md
+│
+├── phase-02-backend-f001-aggregation\
+│   ├── 02.1-esi-client-public.md
+│   ├── 02.2-data-models-f001.md
+│   ├── 02.3-background-aggregation-service.md
+│   └── 02.4-api-endpoints-f001.md
+│
+├── phase-03-frontend-core\
+│   ├── 03.1-angular-app-skeleton.md
+│   ├── 03.2-backend-api-service-layer.md
+│   └── 03.3-basic-layout-routing.md
+│
+├── phase-04-frontend-f001-f002-listing\
+│   ├── 04.1-contract-list-component.md
+│   └── 04.2-basic-filtering-ui.md
+│
+├── phase-05-backend-f002-filters\
+│   ├── 05.1-advanced-filtering-logic.md
+│   └── 05.2-api-endpoints-f002-update.md
+│
+├── phase-06-frontend-f002-filters\
+│   └── 06.1-advanced-filtering-component.md
+│
+├── phase-07-backend-f003-detail\
+│   └── 07.1-api-endpoints-f003.md
+│
+├── phase-08-frontend-f003-detail\
+│   └── 08.1-contract-detail-component.md
+│
+├── phase-09-cross-cutting-concerns\
+│   ├── 09.1-security-hardening-mvp.md
+│   ├── 09.2-logging-observability-mvp.md
+│   ├── 09.3-testing-strategy-mvp.md
+│   └── 09.4-accessibility-i18n-stubs-mvp.md
+│
+└── phase-10-deployment\
+    ├── 10.1-dockerization.md
+    └── 10.2-basic-ci-cd-pipeline.md
+
+
+-----------------
+
+
+I've created the directory. Your file plan labeled it as "phase-01-backend-core" but 00-mvp-implementation-plan-overview.md calls for "phase-01-backend-core-infrastructure" and I agree that's a better name. Please proceed.
+
+
+-----------------
+
+
+I referenced 00-mvp-implementation-plan-overview.md and have pre-created all expected phase directories. Please proceed.
+
+
+-----------------
+
+
+Yes, add a cascade-log.md entry. Also create a design-log.md entry for this significant milestone.
+
+
+-----------------
+
+
+Those log entries look good. Please make the log updates.
+Once that's done, we're going to do some internal validity checking. Here are your next instructions:
+1. Read 00-mvp-implementation-plan-overview.md and verify that you've created all the individual task files specified under each phase. If any are missing, create them. Once all are verified present, proceed.
+2. Review ALL task markdown .md files under the plans\implementation\ directory and its subdirectories and carefully compare them against each other for internal inconsistencies and conflicts. Pay special attention to look for any discrepancies between phases and tasks that have dependencies or otherwise could directly impact each other.
+3. If there are obvious, common-sense resolutions to address discrepancies that improves the internal consistency of the task plan documents, explain those proposed changes, then make them.
+
+If at any point during this process you think it's important to get my feedback before proceeding further, ask for it. For more minor questions, please make a list of them and ask them at the end.
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
 X
 
 
@@ -857,10 +1141,6 @@ X
 
 -----------------
 
-X
-
-
------------------
 
 X
 
@@ -872,6 +1152,10 @@ X
 
 -----------------
 
+X
+
+
+-----------------
 
 X
 
