@@ -106,8 +106,6 @@ Track the version and update history of this specific AISP entry.
 
 ---
 
----
-
 ## [AISP-001] Automated Maintenance of `feature-index.md`
 
 ### 1. Procedure ID
@@ -186,3 +184,99 @@ This procedure should be considered by the AI assistant (Cascade) after any succ
 *   **Last Updated:** 2025-06-06
 
 ---
+
+## [AISP-002] AI-Assisted Session Summary Logging
+
+### 1. Procedure ID
+AISP-002
+
+### 2. Problem Addressed
+Significant portions of project context, design rationale, decision-making processes, and nuanced details emerge during interactive sessions between the USER and the AI assistant (Cascade). While primary artifacts like specification documents and code are updated, the rich conversational context that led to those changes is often not persistently captured in a structured, project-internal way. This can lead to loss of valuable insights for future reference, onboarding, or understanding the evolution of project components.
+
+### 3. Rationale & Design Philosophy
+This procedure aims to create a persistent, AI-assisted log of key interaction summaries within the project itself (`design/cascade-log.md`).
+
+*   **Design Principles:**
+    *   **AI-Assisted Summary Generation:** Leverage the AI's ability to process and synthesize conversational context.
+    *   **Proactive AI Suggestion, User-Confirmed:** The AI proactively identifies suitable junctures (completion of non-trivial tasks) to suggest logging. The USER then confirms if a summary should be generated and logged. This balances automation with user control.
+    *   **Verbose and Detailed:** Summaries should prioritize capturing comprehensive details, rationale, key decisions, and significant conversational turns, rather than being overly concise. The goal is to retain as much useful context as possible.
+    *   **Append-Only Log:** New summaries are appended to `design/cascade-log.md`, creating a chronological record.
+    *   **Focus on "Why" and "How":** Summaries should not just list actions but also explain the reasoning behind them, alternatives considered (if discussed), and the implications of decisions.
+
+*   **Alternatives Considered:**
+    *   *Fully Explicit User Triggering:* Relies solely on the user remembering to request logs.
+    *   *Full Verbatim Log (AI-Managed):* Difficult for AI to capture its own "Thought Process" text accurately and could be overly verbose with non-essential conversational turns.
+    *   *Manual User Logging:* Places the full burden on the USER.
+    *   *External Chat Log Export:* May not be integrated into the project repository and might lack the AI's focused summarization capability.
+
+### 4. Trigger Conditions
+This procedure is initiated when the AI assistant (Cascade) identifies the completion of a significant, non-trivial block of interaction or work. The AI will then propose to the USER to summarize and log the session/task.
+
+*   **Examples of "Non-Trivial" Interactions (triggering a proposal to log):**
+    *   Creation of new files (especially specifications, core code modules).
+    *   Significant modifications to existing files involving logic changes, substantial content additions, or architectural adjustments.
+    *   Resolution of complex bugs or issues.
+    *   Completion of a multi-step design or implementation task.
+    *   Extended discussions leading to key design decisions.
+*   **Examples of "Trivial or Routine" Actions (NOT triggering a proposal to log):**
+    *   Minor edits (e.g., typo fixes, comment updates, minor formatting).
+    *   Routine Git operations (e.g., preparing commits, pushing changes) unless part of a larger, significant task completion.
+    *   Simple file views or searches without subsequent substantive action.
+    *   Running builds or tests unless it's the culmination of a significant debugging or feature implementation phase.
+
+The USER can also still explicitly request a summary log at any time (e.g., "Cascade, please summarize our work on X and log it.").
+
+### 5. Detailed Steps for AI Execution
+1.  **Identify Suitable Logging Juncture:** Based on the interaction flow and criteria in Section 4, determine if a significant, non-trivial block of work has likely concluded.
+2.  **Propose Logging to USER:** Ask the USER if they would like to log a summary of the recent interactions/task. Example: "We've just completed [brief description of task/milestone]. Would you like me to summarize and log this session to `design/cascade-log.md`?"
+3.  **Await USER Confirmation:** If the USER declines, the procedure ends for this juncture. If the USER confirms:
+4.  **Define Scope (If Necessary):** If the automatically identified scope seems ambiguous or if the USER provided a specific request, clarify with the USER what specific interactions or time period should be covered.
+5.  **Review Conversation Context:** Internally review the conversation history for the defined scope. Identify:
+    *   Key questions asked by the USER.
+    *   Significant information, explanations, or proposals provided by the AI.
+    *   Decisions made and the rationale behind them.
+    *   Files created, viewed, or modified, and the purpose of these actions.
+    *   Tools used and their outcomes.
+    *   Any problems encountered and how they were resolved.
+    *   Key learnings or insights.
+6.  **Draft Summary:** Compose a detailed summary of the reviewed interactions.
+    *   The summary should be in Markdown format.
+    *   Start with a clear heading indicating the date/time or topic of the session being summarized (e.g., `### Session Summary - YYYY-MM-DD HH:MM - Topic: AISP Development`). The AI should obtain the current timestamp for this.
+    *   Structure the summary logically (e.g., chronologically or thematically).
+    *   Emphasize verbose and detailed explanations, capturing the "why" and "how."
+    *   **USER Preference:** The USER strongly prefers highly verbose and comprehensive summaries, especially following sessions involving detailed planning, analysis, or significant decision-making. Ensure the summary captures the nuances of such discussions.
+    *   Include specific examples, code snippets (if brief and illustrative of a key point), or file names where relevant.
+7.  **Present Summary for Review (Recommended):** Present the drafted summary to the USER for review and potential amendments before writing to the log file. Ask: "Here is the summary I've drafted. Would you like any changes before I append it to `design/cascade-log.md`?"
+8.  **Read `cascade-log.md` (Optional but good practice):** Briefly use `view_file` to ensure the target footer is present, especially if there's any doubt or if it's the first time logging after a system update.
+9.  **Append to Log File:**
+    *   Use the `replace_file_content` tool to append the (potentially amended) summary to `design/cascade-log.md`.
+    *   The `TargetContent` for `replace_file_content` should be the standard footer: `\n\n---\n\n*(End of Cascade Interaction Log. New entries are appended above this line.)*`.
+    *   The `ReplacementContent` should be: `\n\n---\n\n[NEW SUMMARY CONTENT]\n\n---\n\n*(End of Cascade Interaction Log. New entries are appended above this line.)*`. (Ensure a newline separates the previous content from the new summary's preceding `---`).
+10. **Handle Append Failure:** If the `replace_file_content` tool call fails:
+    *   Inform the USER of the failure.
+    *   Provide the USER with the drafted summary text directly in the chat.
+    *   Suggest the USER manually append it or try the logging again later.
+11. **Confirm Completion (If Successful):** Inform the USER that the summary has been appended to `design/cascade-log.md`.
+
+### 6. Expected Outcome / Success Criteria
+A new, detailed summary of the AI-User interaction session is successfully appended to `design/cascade-log.md` after AI proposal and USER confirmation. The log file serves as an enriched, persistent record of project development and decision-making.
+
+### 7. Supporting Implementation Details
+*   **Associated Cascade Memories:** An operational Cascade Memory for AISP-002 (e.g., `42c9fb61-0933-428f-ad56-16e1f846afcf`) should be updated to reflect these revised steps.
+*   **Key Tools Involved:** `view_file`, `replace_file_content`. Potentially `run_command` (e.g., to get a timestamp if not internally available).
+*   **Relevant Configuration Files/Paths:** `design/cascade-log.md`.
+*   **Cross-references:** `[AISP-000] AISP Entry Template`.
+
+### 8. Notes for Human Reviewers & Maintainers
+*   The AI's judgment in identifying "non-trivial" interaction blocks will evolve. The USER should provide feedback if logging proposals are too frequent or infrequent.
+*   The USER retains ultimate control, confirming each logging action and reviewing summaries.
+*   Regularly committing `cascade-log.md` to version control is recommended.
+*   The effectiveness of this procedure relies on the AI's ability to accurately recall and synthesize recent conversational context. For very long or complex sessions, breaking them into smaller summarization chunks might still be beneficial, even with AI-initiated triggers.
+*   The "Rationale" for the operational Cascade Memory based on this AISP should emphasize: "To proactively assist in creating a persistent, detailed record of AI-User interactions, decisions, and project evolution within `design/cascade-log.md`, aiding future understanding, context recall, and onboarding, upon USER confirmation."
+
+### 9. Version & Last Updated
+*   **Version:** 1.1
+*   **Last Updated:** 2025-06-06 (Updated for proactive AI triggering and refined append logic)
+
+---
+

@@ -254,4 +254,37 @@ This document records major design discussion points, considerations, and decisi
 
 ---
 
+## AI-Assisted Session Summary Logging (Approx. 2025-06-06 04:22:00-05:00)
+
+*   **Context:** A need was identified to persistently capture the rich conversational context, key decisions, and rationale from AI-User interaction sessions within the project itself, beyond what is typically recorded in specification documents or commit messages.
+*   **Decision & New Artifacts/Procedures:**
+    *   A new log file, `design/cascade-log.md`, has been created. This file will store AI-generated summaries of interaction sessions, focusing on verbose and detailed accounts of the work performed, decisions made, and their underlying rationale.
+    *   A new AI System Procedure, `[AISP-002] AI-Assisted Session Summary Logging`, has been documented in `design/ai-system-procedures.md`. This procedure formalizes the process for the AI (Cascade) to:
+        1.  Understand a USER request to log a session.
+        2.  Review the relevant conversational context.
+        3.  Draft a detailed summary in Markdown format, including a timestamp.
+        4.  Optionally present the summary to the USER for review.
+        5.  Append the finalized summary to `design/cascade-log.md`.
+    *   **Rationale for Strategy:** This approach aims to create a valuable, project-internal historical record. It leverages the AI's ability to synthesize information while keeping the USER in control of when logging occurs and the final content. The emphasis on detailed, verbose summaries is intended to maximize the contextual information retained.
+*   **Next Steps:** An operational Cascade Memory will be created based on AISP-002 to enable the AI to perform this logging task upon USER request.
+
+---
+
+---
+
+## Refinement of AISP-002: Proactive AI-Assisted Session Logging (Approx. 2025-06-06 04:47:00-05:00)
+
+*   **Context:** Following the initial creation of `[AISP-002] AI-Assisted Session Summary Logging`, a need was identified to make the process more proactive, automated, and robust, reducing reliance on explicit USER commands for logging and improving the reliability of appending to `design/cascade-log.md`.
+*   **Decisions & Enhancements (AISP-002 v1.1):**
+    *   **Proactive AI Trigger:** AISP-002 was updated to instruct the AI (Cascade) to proactively identify significant, non-trivial blocks of work (e.g., new file creation, complex edits, bug fixes, design decisions) and propose logging a session summary to the USER.
+    *   **Exclusion Criteria for Trivial Actions:** The procedure now explicitly excludes minor edits, routine Git operations, simple views/searches, and routine tests from triggering logging proposals to avoid unnecessary interruptions.
+    *   **Robust Append Logic:** A consistent footer (`--- \n\n*(End of Cascade Interaction Log. New entries are appended above this line.)*`) was established in `design/cascade-log.md`, and AISP-002 was updated to use this footer as a reliable marker for appending new summaries.
+    *   **Error Handling:** Basic error handling for append failures was incorporated into the procedure, with instructions for the AI to inform the USER and suggest alternatives.
+    *   **Operational Memory Update:** Cascade's internal operational memory (ID: `42c9fb61-0933-428f-ad56-16e1f846afcf`) was updated to reflect these changes, ensuring its behavior aligns with AISP-002 v1.1.
+    *   **Documentation Order:** AISP-002 was correctly reordered in `design/ai-system-procedures.md` to maintain numerical sequence.
+*   **Rationale for Enhancements:** These changes aim to increase the utility and consistency of `cascade-log.md` by making the logging process more autonomous yet still USER-confirmed. The goal is to capture valuable contextual information more regularly and reliably, enhancing project history and future recall, while minimizing USER overhead.
+*   **Next Steps:** Begin operational use of the enhanced AISP-002. Monitor the frequency and relevance of AI-initiated logging proposals and provide feedback to further refine the heuristics for identifying "non-trivial" interactions. Regularly commit `cascade-log.md`.
+
+---
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*
