@@ -400,6 +400,54 @@ This session focused on the detailed review and refinement of the feature specif
 This review completes the initial detailed refinement pass for the core MVP features F001, F002, and F003.
 
 
+### Session Summary - 2025-06-06 - Topic: Refinement of F007-Alerts-Notifications.md
+
+**Objective:** Review and refine the feature specification for F007 (Alerts/Notifications) to ensure clarity, completeness, and alignment with MVP scope.
+
+**Key Refinements:**
+*   **Notification Message Content:** Enhanced to include the contract type (e.g., "Auction", "ItemExchange") in addition to item name, price, and location. Example: 'Caracal (Auction) found for 10,500,000 ISK in Jita. View contract.'
+*   **Data Model (`notifications` table):** The example for `message_params` was updated to include `contract_type` (e.g., `{ship_name: 'Caracal', price: '1000000 ISK', location: 'Jita', contract_type: 'Auction'}`) to support the enhanced message content.
+*   **Acceptance Criteria (Criterion 1.2):** Clarified that the `max_price` for watchlist alerts is sourced from the user's setting on the specific watchlist item.
+*   **Status:** Marked as "Refined" in `feature-index.md`.
+
+---
+
+### Session Summary - 2025-06-06 - Topic: Refinement of F006-Watchlists.md
+
+**Objective:** Review and refine the feature specification for F006 (Watchlists).
+
+**Key Refinements:**
+*   **Data Model (`watchlist_items` table):** Clarified in the `AI_Action_Focus` for the `type_id` field that validation should confirm it is a valid, published **ship** type ID, typically by checking against the `esi_type_cache` for appropriate category/group ID. This ensures watchlists are focused on shiptypes for MVP.
+*   **Status:** Marked as "Refined" in `feature-index.md`.
+
+---
+
+### Session Summary - 2025-06-06 - Topic: Refinement of F005-Saved-Searches.md
+
+**Objective:** Review and refine the feature specification for F005 (Saved Searches), resolving open questions.
+
+**Key Refinements:**
+*   **MVP Scope:** Confirmed that for MVP, updating the underlying search criteria of an existing saved search is deferred. MVP supports creating, renaming, executing, and deleting saved searches.
+*   **Open Questions Resolved (Notes Section Updated):**
+    *   **Long Saved Search Names:** UI will likely use truncation with tooltips for display.
+    *   **Limit on Saved Searches:** No hard limit per user for MVP.
+    *   **Invalid Filter Options:** If a saved search contains filter options that become invalid over time (e.g., due to game updates), these will be silently ignored when the search is applied, rather than causing an error.
+*   **Status:** Marked as "Refined" in `feature-index.md`.
+
+---
+
+### Session Summary - 2025-06-06 - Topic: Refinement of F004-User-Authentication-SSO.md
+
+**Objective:** Review and refine the feature specification for F004 (User Authentication - EVE SSO), clarifying several key aspects of the authentication flow and token management.
+
+**Key Refinements:**
+*   **ESI Scopes & Token Validation:** Clarified that no ESI scopes are requested during the authentication itself for F004's core purpose. User identification is derived from validating the ID token JWT locally using EVE SSO's JWKS URI. The ESI `/oauth/verify` endpoint is an optional secondary verification.
+*   **Refresh Token Failure:** If a refresh token fails, the Hangar Bay session will be invalidated, tokens cleared, and the user prompted to re-login with a clear message.
+*   **Session Duration:** Hangar Bay sessions will have a longer lifespan (e.g., 7 days), managed by secure, HTTPOnly cookies.
+*   **Character Transfer Handling:** The `CharacterOwnerHash` will be stored and verified on each login. If a mismatch occurs (indicating a potential character transfer), existing user records will be updated or handled according to a defined policy to maintain data integrity.
+*   **Open Redirect Prevention:** The `/auth/sso/login` endpoint will validate the optional `next` URL parameter to prevent open redirect vulnerabilities.
+*   **Status:** Marked as "Refined" in `feature-index.md`.
+
 ---
 
 *(End of Cascade Interaction Log. New entries are appended above this line.)*
