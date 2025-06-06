@@ -30,14 +30,16 @@
     *   Criterion 1.1: Clicking a contract in the F002 list view navigates the user to a unique URL for that contract's detailed view (e.g., `/contracts/{contract_id}`).
     *   Criterion 1.2: The detailed view page loads and displays information specific to the selected contract ID.
 *   **Story 2 Criteria:**
-    *   Criterion 2.1: For each ship item in the contract, its name, type, quantity, and relevant attributes (e.g., from `esi_type_cache`'s `dogma_attributes`) are displayed.
+    *   Criterion 2.1: For each ship item in the contract, its name, type, quantity, and relevant attributes (from `esi_type_cache.dogma_attributes`, displayed according to the 'Key Ship Attributes' and 'All Attributes' logic described in Section 15) are displayed.
     *   Criterion 2.2: The ship's ESI description is displayed.
     *   Criterion 2.3: If the contract contains multiple distinct ship types, details for each are shown.
 *   **Story 3 Criteria:**
-    *   Criterion 3.1: Contract price, type (auction/item_exchange), current bid (if auction and available), location name, issuer name, date issued, and date expired are clearly displayed.
+    *   Criterion 3.1: Contract price, type (auction/item_exchange), current bid (if auction and available from `contracts.current_bid`), location name, issuer name, date issued, and date expired are clearly displayed.
     *   Criterion 3.2: Contract title (if any) and total volume are displayed.
 *   **Story 4 Criteria:**
     *   Criterion 4.1: A clear 'Back to results' link or breadcrumb navigation is present and functional.
+*   **Story 2/3 Criteria (Additional Items):**
+    *   Criterion X.X: If the contract contains additional non-ship items (as indicated by `contracts.contains_additional_items` and detailed in `contract_items`), these are listed in a dedicated 'Additional Included Items' section, showing at least item name and quantity.
 
 ## 4. Scope (Required)
 ### 4.1. In Scope
@@ -70,7 +72,7 @@
     HTTP_Method: GET
     Brief_Description: Provides detailed information for a specific ship contract, including all items and resolved ship/item details.
     Request_Path_Parameters_Schema_Ref: contract_id: integer (Path parameter)
-    Success_Response_Schema_Ref: DetailedShipContract (Define Pydantic model for backend, TypeScript interface for frontend. Should include full contract details from `contracts` table, an array of all items from `contract_items`, and for each item, its resolved details from `esi_type_cache` - name, description, dogma_attributes, dogma_effects, EVE image server URLs for render and icon.)
+    Success_Response_Schema_Ref: DetailedShipContract (Define Pydantic model for backend, TypeScript interface for frontend. Should include full contract details from `contracts` table (including `contains_additional_items`), an array of all items from `contract_items` (both ship and non-ship), and for each item, its resolved details from `esi_type_cache` - name, description, dogma_attributes, dogma_effects, EVE image server URLs for render and icon.)
     Error_Response_Codes: 404 (Not Found - if contract_id does not exist or is not a ship contract), 500 (Internal Server Error)
     AI_Action_Focus: Backend: Implement endpoint to fetch the specified contract, join with its items, and for each item, join with `esi_type_cache` to provide comprehensive details. Frontend: Call this endpoint when navigating to the detailed view and use the response to populate the UI.
     I18n_Considerations: API error messages should be internationalized or provide keys. Data itself (ship names, descriptions) is from ESI, typically in English.
@@ -91,6 +93,7 @@
 *   Visual hierarchy to emphasize key information (price, ship name).
 *   Display of ship renders using the EVE image server (e.g., `https://images.evetech.net/types/{type_id}/render?size=512`). A smaller icon might also be displayed.
 *   Responsive design.
+*   A distinct section should clearly list any 'Additional Included Items' if present, separate from the primary ship(s) details.
 *   [NEEDS_DESIGN: Mockups/wireframes for the detailed contract view page.]
 *   **AI Assistant Guidance:** When generating UI components, ensure all display strings are prepared for localization using Angular's i18n mechanisms (e.g., `i18n` attribute, `$localize` tagged messages) as detailed in `../i18n-spec.md`. Ensure components are designed with accessibility in mind (keyboard navigation, ARIA attributes, semantic HTML for data sections) as per `../accessibility-spec.md`.
 
@@ -139,7 +142,7 @@
     *   The main focus will be on the primary ship item(s) with full details.
     *   A section titled 'Additional Included Items' will list all other non-primary-ship items from the contract.
     *   For these additional items, 'Item Name' (from `esi_type_cache`) and 'Quantity' will be displayed.
-    *   F001's `is_ship_contract` logic should correctly identify contracts primarily for ships. Consider adding a boolean like `contains_additional_items` at the contract level in the Hangar Bay DB, derived by F001.
+    *   F001 provides the `contracts.contains_additional_items` flag. This flag will be used by the backend to include all items in the API response and by the frontend to determine if the 'Additional Included Items' section should be displayed.
     *   `[POTENTIAL_ENHANCEMENT: Display a few key attributes for included non-ship items if they are modules, if data is readily available in esi_type_cache and UI impact is manageable.]`
 *   **EVE Online Image Server**: The official image server `https://images.evetech.net/` will be used. 
     *   For ship renders: `types/{type_id}/render?size={size}` (e.g., size 256 or 512).

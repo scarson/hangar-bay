@@ -27,21 +27,22 @@
 ## 2. User Stories (Required)
 *   Story 1: As a user, I want to see a paginated list of all available ship contracts, so I can browse current offerings.
 *   Story 2: As a user, I want to perform a keyword search (e.g., ship name, partial name, system name), so I can quickly find specific contracts.
-*   Story 3: As a user, I want to filter contracts by ship type (e.g., Frigate, Cruiser, Battleship, specific ship like "Caracal"), so I can narrow down results to ships I'm interested in.
-*   Story 4: As a user, I want to filter contracts by region or solar system, so I can find contracts in specific locations.
-*   Story 5: As a user, I want to filter contracts by price range, so I can find contracts within my budget.
-*   Story 6: As a user, I want to filter contracts by contract type (item exchange, auction), so I can choose my preferred purchasing method.
-*   Story 7: As a user, I want to sort the displayed contracts by various criteria (e.g., price, expiration date, date issued), so I can organize the results to my preference.
-*   Story 4: As a user, I want to see essential details for each ship contract in the list view—such as ship type, quantity, total price, contract type (auction/item exchange), location, and time remaining—so I can quickly assess its relevance and value.
+*   Story 3: As a user, I want to filter contracts by specific ship types (e.g., "Caracal", "Tristan") using dropdowns or autocomplete, so I can narrow down results to particular ships I'm interested in.
+*   Story 4: As a user, I want to filter contracts by broad ship categories (e.g., Frigate, Cruiser, Battleship), so I can quickly narrow down results to general classes of ships.
+*   Story 5: As a user, I want to filter contracts by region or solar system, so I can find contracts in specific locations.
+*   Story 6: As a user, I want to filter contracts by price range, so I can find contracts within my budget.
+*   Story 7: As a user, I want to filter contracts by contract type (item exchange, auction), so I can choose my preferred purchasing method.
+*   Story 8: As a user, I want to sort the displayed contracts by various criteria (e.g., price, expiration date, date issued), so I can organize the results to my preference.
+*   Story 9: As a user, I want to see an indicator on contracts that include additional non-ship items, and optionally filter by this, so I can distinguish between ship-only deals and packages.
 
 ## 3. Acceptance Criteria (Required)
 *   **Story 1 Criteria:**
     *   Criterion 1.1: A default view displays ship contracts in a paginated list.
-    *   Criterion 1.2: Each item in the list shows key information (e.g., ship name, price, location, expiration).
+    *   Criterion 1.2: Each item in the list shows key information as detailed in Section 15's 'Specific fields for list view' (Ship Type, Quantity, Total Price, Contract Type, Location, Time Remaining, Issuer Name).
     *   Criterion 1.3: Pagination controls (next, previous, page number) are functional.
 *   **Story 2 Criteria:**
     *   Criterion 2.1: A search bar is available for keyword input.
-    *   Criterion 2.2: Search results update to show contracts matching the keyword in relevant fields (ship name, title, location name [NEEDS_DISCUSSION: which fields?]).
+    *   Criterion 2.2: Search results update to show contracts matching the keyword in the following fields: `contracts.title`, `contracts.start_location_name` (from F001), and the primary ship's name (derived from `esi_type_cache.name` via `contract_items`).
 *   **Story 3 Criteria:**
     *   Criterion 3.1: Filtering options for ship categories (e.g., Frigate, Destroyer) and specific ship types (via dropdown or autocomplete) are available.
     *   Criterion 3.2: Applying a ship type filter updates the contract list accordingly.
@@ -57,6 +58,16 @@
 *   **Story 7 Criteria:**
     *   Criterion 7.1: Sorting controls are available for price (asc/desc), expiration date (asc/desc), and date issued (asc/desc).
     *   Criterion 7.2: Applying a sort order updates the contract list.
+*   **Story 4 & New Story (Ship Category Filtering) Criteria:**
+    *   Criterion 4.1 (was Story 3): Filtering options for specific ship types (via dropdown or autocomplete) are available.
+    *   Criterion 4.2 (was Story 3): Applying a specific ship type filter updates the contract list accordingly.
+    *   Criterion 4.3: Filtering options for broad ship market groups/categories (e.g., Frigate, Cruiser) are available, sourced from a cached list of EVE market groups.
+    *   Criterion 4.4: Applying a ship category filter updates the contract list accordingly.
+    *   Criterion 4.5: A backend endpoint (e.g., `/api/v1/ships/market_groups`) provides the list of filterable ship categories.
+*   **Story 9 (Additional Items Indicator/Filter) Criteria:**
+    *   Criterion 9.1: Contracts in the list view display a visual indicator if `contracts.contains_additional_items` (from F001) is true.
+    *   Criterion 9.2: A filtering option (e.g., checkbox 'Includes other items') is available to show only contracts with additional items, only contracts without them, or both.
+    *   Criterion 9.3: Applying this filter updates the contract list.
 
 ## 4. Scope (Required)
 ### 4.1. In Scope
@@ -67,6 +78,8 @@
 *   Pagination of contract list.
 *   Display of basic contract details in the list view.
 *   Interaction with backend API to fetch and filter contract data.
+*   Filtering by broad ship categories (e.g., Frigate, Cruiser).
+*   Displaying an indicator for contracts containing additional non-ship items, and filtering based on this.
 ### 4.2. Out of Scope
 *   Detailed contract view (F003).
 *   User authentication (F004) or personalized features (F005, F006, F007).
@@ -91,23 +104,35 @@
     API_Path: /api/v1/contracts/ships
     HTTP_Method: GET
     Brief_Description: Provides a list of aggregated ship contracts, supporting advanced search, filtering, sorting, and pagination.
-    Request_Query_Parameters_Schema_Ref: ShipContractQueryFilters (Define Pydantic model for backend validation if not already covered by F001's base, or describe query params here)
+    Request_Query_Parameters_Schema_Ref: ShipContractQueryFilters (Backend validation will use a Pydantic model named `ShipContractQueryFilters`.)
         - page: integer (optional, default 1)
         - limit: integer (optional, default 20)
         - q: string (optional, keyword search)
-        - ship_type_id: integer (optional)
-        - ship_category_id: integer (optional)
+        - ship_type_id: integer (optional) // For specific EVE Type ID of a ship
+        - ship_market_group_id: integer (optional) // For broad EVE Market Group ID (e.g., Frigate, Cruiser)
         - region_id: integer (optional)
         - system_id: integer (optional)
         - min_price: decimal (optional)
         - max_price: decimal (optional)
         - contract_type: string (enum: 'item_exchange', 'auction', optional)
+        - contains_additional_items: boolean (optional) // Filter based on the F001 flag
         - sort_by: string (enum: 'price', 'expiration_date', 'date_issued', optional, default 'expiration_date')
         - sort_order: string (enum: 'asc', 'desc', optional, default 'asc' for expiration_date, 'desc' for date_issued, 'asc' for price)
     Success_Response_Schema_Ref: PaginatedShipContractList (as per F001, containing key details for list view)
     Error_Response_Codes: 400 (Bad Request - validation error), 500 (Internal Server Error)
     AI_Action_Focus: Backend: Enhance F001's endpoint to support these additional query parameters for filtering and sorting against the `contracts` table and related data. Ensure efficient database queries with appropriate indexing. Frontend: Construct API requests based on user UI interactions.
     I18n_Considerations: API responses containing text for UI display (e.g., error messages not handled by frontend) should be internationalized or provide keys for frontend localization as per `../i18n-spec.md`. Data itself (ship names, etc.) is from ESI, typically in English.
+    AI_HANGAR_BAY_API_ENDPOINT_END -->
+*   **Endpoint 2:** `GET /api/v1/ships/market_groups`
+    <!-- AI_HANGAR_BAY_API_ENDPOINT_START
+    API_Path: /api/v1/ships/market_groups
+    HTTP_Method: GET
+    Brief_Description: Provides a list of filterable ship market groups/categories (e.g., Frigate, Cruiser) for UI dropdowns.
+    Request_Query_Parameters_Schema_Ref: N/A
+    Success_Response_Schema_Ref: List[ShipMarketGroup] (Pydantic model: ShipMarketGroup with fields like group_id, group_name, parent_group_id)
+    Error_Response_Codes: 500 (Internal Server Error, e.g., if cache is unavailable or data not populated)
+    AI_Action_Focus: Implement FastAPI endpoint to serve cached ship market group data. Data is populated by a separate backend task (defined in F002, Section 15 notes initially, now part of core logic).
+    I18n_Considerations: Group names are from ESI, typically in English.
     AI_HANGAR_BAY_API_ENDPOINT_END -->
 
 ## 7. Workflow / Logic Flow (Optional)
@@ -128,6 +153,8 @@
 *   Loading indicators during API calls.
 *   Clear pagination controls.
 *   Each contract entry in the list should be clickable to navigate to the detailed view (F003).
+*   A clear visual indicator (e.g., an icon or badge) should be present on list items for contracts that include additional non-ship items.
+*   The filter panel should include distinct options for filtering by specific ship types (e.g., autocomplete search for 'Caracal') and by broad ship categories (e.g., dropdown for 'Frigates', 'Cruisers'). It should also include a filter for 'includes other items'.
 *   [NEEDS_DESIGN: Mockups/wireframes for the browsing interface.]
 *   **AI Assistant Guidance:** When generating UI components, ensure all display strings are prepared for localization using Angular's i18n mechanisms (e.g., `i18n` attribute, `$localize` tagged messages) as detailed in `../i18n-spec.md`. Ensure components are designed with accessibility in mind (keyboard navigation, ARIA attributes) as per `../accessibility-spec.md`.
 
@@ -191,12 +218,7 @@
         2.  **API Enhancements**: The `/api/v1/contracts/ships` endpoint will accept new filter parameters (e.g., `meta_level_eq`, `tech_level_eq`).
         3.  **Database Query**: The backend will join `contracts` with `contract_items` and `esi_type_cache`. Queries will use JSON functions to extract and compare values from the `dogma_attributes` field in `esi_type_cache` against the provided filter parameters.
         4.  **Performance**: Consider GIN indexes (PostgreSQL) or expression indexes on the JSON `dogma_attributes` field if query performance becomes a concern.
-*   **Filterable ship categories/groups**: The list of ship categories (e.g., Frigate, Cruiser, Battleship) will be sourced from ESI and cached.
-    *   **ESI Source**: `GET /v1/markets/groups/` ESI endpoint. Child groups under the main "Ships" market group (e.g., group ID 4) provide the categories.
-    *   **Polling & Caching**: A backend scheduled task (e.g., daily) will fetch these market groups.
-    *   **Storage**: The fetched list (group ID, name) will be stored in a dedicated cache table (e.g., `ship_market_groups_cache`) or a key-value store.
-    *   **API for UI**: An endpoint (e.g., `/api/v1/ships/market_groups`) will provide this cached list to the frontend for filter dropdowns.
-    *   **Filtering**: When a user selects a category, the backend filters ships based on their `market_group_id` (available in `esi_type_cache` or via `universe/types` data).
+*   **Filterable ship categories/groups**: This is now part of the MVP scope. The backend will periodically fetch ship market groups from ESI (`GET /v1/markets/groups/`), cache them, and provide them to the frontend via the `/api/v1/ships/market_groups` endpoint. Filtering will use the `ship_market_group_id` parameter against data in `esi_type_cache`.
 *   **Indicator/Filter for Contracts with Additional Items**: F001 will provide a `contains_additional_items` flag for each contract. Consider using this in F002's UI to:
     *   Display an icon/indicator on list items if a ship contract also includes other non-ship items.
     *   Potentially offer a filter option (e.g., "Show only contracts with additional items" or "Hide contracts with additional items"). This is a lower priority enhancement for now.

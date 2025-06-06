@@ -191,4 +191,215 @@ Following the previous session where feature specifications F004-F007 were updat
 
 ---
 
+### Session Summary - 2025-06-06 05:56 - Topic: Project Resource Review for MVP Readiness
+
+The following is a detailed checkpoint summary outlining the review of Hangar Bay project resources for MVP readiness, including features, dependencies, design decisions, and next steps. This log entry records the full checkpoint content as requested by the USER.
+
+USER Objective:
+Reviewing Hangar Bay MVP Readiness
+The USER's main objective is to conduct a comprehensive review of all project resources with a focus on ensuring readiness to begin MVP development, identify any gaps or missing elements, and then propose a clear, justified set of next steps to advance the project effectively.
+
+Previous Session Summary:
+During this chat session, the USER and I made significant progress in refining and documenting the Hangar Bay project, focusing on ensuring robust specifications tailored for AI-assisted development (Cascade) and preparing for MVP implementation. Below is a comprehensive summary of key information, context, and next steps to enable seamless continuation of work in the future:
+
+---
+
+### Features Modified, Added, or Reviewed
+
+- **Feature Specifications F004 to F007:**
+  - Completed detailed reviews and clarifications for:
+    - F004: User Authentication with EVE SSO, including token refresh strategies, logout behavior, and OAuth scopes.
+    - F005: Saved Searches, defining MVP scope (rename/delete only), duplicate name handling, and API behavior.
+    - F006: Watchlists, clarifying live market data display scope, notes field inclusion, uniqueness constraints, and API details.
+    - F007: Alerts and Notifications, focusing on MVP scope (in-app notifications only), notification de-duplication, and simplified data models.
+  - Incorporated USER feedback explicitly regarding token refresh strategy for background ESI calls.
+
+- **Logging System and Procedure (AISP-002):**
+  - Diagnosed and fixed a Markdown formatting issue in `design/cascade-log.md` related to duplicate `---` separators when appending session summaries.
+  - Updated AISP-002 operational memory (ID: `42c9fb61-0933-428f-ad56-16e1f846afcf`) to include an explicit instruction preventing drafted summaries from ending with a `---` separator, avoiding future duplication.
+  - Appended a detailed session summary to `design/cascade-log.md` documenting the issue, diagnosis, and resolution.
+
+- **Other Feature Specs Reviewed:**
+  - Began reviewing early feature specs F001 to F003 and the overall `design-spec.md` to assess completeness and MVP readiness.
+
+---
+
+### Dependencies and APIs
+
+- **EVE Online ESI API:**
+  - Core endpoints utilized across features include:
+    - Public contracts fetching (`GET /v1/contracts/public/{region_id}/`)
+    - Contract items (`GET /v1/contracts/public/items/{contract_id}/`)
+    - Universe types for ship/item details (`GET /v3/universe/types/{type_id}/`)
+    - Universe IDs resolution (`POST /v1/universe/ids/`)
+  - OAuth 2.0 via EVE SSO for user authentication and token management.
+
+- **Internal APIs:**
+  - Backend API endpoints defined in feature specs, including:
+    - `/api/v1/contracts/ships` for aggregated ship contracts (F001, F002)
+    - `/api/v1/contracts/ships/{contract_id}` for detailed contract view (F003)
+    - User-related endpoints for watchlists, saved searches, notifications (F004-F007)
+
+---
+
+### Design Decisions
+
+- **MVP Scope Clarifications:**
+  - Defined MVP boundaries for features to balance complexity and value.
+  - Deferred certain advanced functionalities (e.g., email notifications, saved search criteria updates) to post-MVP phases.
+  - Emphasized event-driven token refresh rather than continuous background refresh for ESI tokens.
+
+- **Logging and Documentation Practices:**
+  - Adopted a robust, AI-assisted session summary logging system with a consistent footer and append strategy.
+  - Emphasized verbose, rationale-focused summaries to maximize contextual value.
+
+- **Security:**
+  - Security is paramount, with explicit references to OWASP Top 10, secure token handling, input validation, output encoding, and session management.
+  - Dedicated `security-spec.md` outlines detailed security standards and requirements.
+
+- **Technology Stack:**
+  - Backend: Python with FastAPI, asynchronous, with SQLAlchemy ORM.
+  - Frontend: Angular with TypeScript, Angular Material for UI components.
+  - Database: PostgreSQL for production, SQLite for development.
+  - Caching: Valkey (Redis fork) for in-memory caching.
+
+---
+
+### Environmental Variables and Configurations
+
+- No explicit environment variables were discussed during this session, but typical considerations include:
+  - ESI API keys or tokens (if required)
+  - OAuth client IDs/secrets for EVE SSO
+  - Database connection strings
+  - Cache server addresses
+
+---
+
+### Special User Requests and Preferences
+
+- USER requested detailed, verbose logging of AI-User interactions.
+- USER prefers explicit, detailed documentation suitable for AI-assisted coding.
+- USER requested a comprehensive review of project resources focused on MVP readiness.
+- USER emphasized the importance of security and robust design.
+
+---
+
+### Existing Blockers and Bugs
+
+- **Markdown Separator Issue:** Resolved the duplicate `---` separator in `cascade-log.md` when appending logs.
+- No other blockers or bugs were reported.
+
+---
+
+### Next Steps Proposed
+
+1. **Complete Review and Refinement of Early Feature Specs (F001-F003):**
+   - Ensure these foundational features have detailed, clear, and consistent specifications matching the quality of F004-F007.
+   - Address any open questions or ambiguities.
+
+2. **Update `feature-index.md`:**
+   - Populate accurate feature statuses and brief descriptions for all features.
+   - Use this as a living reference for project scope and progress tracking.
+
+3. **Expand `design-spec.md`:**
+   - Document a high-level architectural blueprint, including chosen tech stack, data flow, and non-functional requirements.
+   - Include MVP-specific deliverables for cross-cutting concerns (security, performance, accessibility, i18n).
+
+4. **Create Consolidated Data Model Overview:**
+   - Develop an ER diagram or unified data entity list showing relationships across features.
+   - Facilitate database schema design and integration planning.
+
+5. **Define MVP Scope for Cross-Cutting Concerns:**
+   - Specify minimal viable security, performance, accessibility, and i18n requirements.
+   - Prioritize essential features to avoid scope creep.
+
+6. **UI/UX Mockups or Wireframes:**
+   - If not already available, create basic UI mockups to guide frontend development.
+   - Consider leveraging Angular Material or similar component libraries for consistency.
+
+7. **Project Setup and Development Environment:**
+   - Plan initial project scaffolding, including dependency management, environment setup, and CI/CD pipeline basics.
+
+---
+
+### Summary
+
+The project is well-positioned to begin MVP development, with detailed specifications for key features and a strong foundation in AI-assisted documentation and logging. Addressing the above next steps will solidify readiness, reduce risks, and streamline development.
+
+---
+
+Please let me know if you'd like me to begin working on any of these next steps or if you have other priorities in mind.
+
+
+---
+
+### Session Summary - 2025-06-06 06:09 - Topic: F001 Spec Refinement
+
+This session focused on the detailed review and refinement of the feature specification `F001-Public-Contract-Aggregation-Display.md` to ensure its readiness for MVP development.
+
+**Key Activities and Decisions:**
+
+1.  **Initial Review:** `F001-Public-Contract-Aggregation-Display.md` was reviewed to identify areas requiring clarification or further detail, aiming to align its quality with more recently updated specifications (F004-F007).
+2.  **Identified Refinement Areas:** Several placeholders (e.g., `[NEEDS_DISCUSSION]`, `[NEEDS_DECISION]`) and areas for improvement were identified, including:
+    *   Precise logic for identifying a "ship contract."
+    *   Clarifications for data model fields (`contracts.start_location_name`, `contracts.volume`, `contract_items.record_id`).
+    *   Definition of data model relationships and an initial indexing strategy.
+    *   Specification of an ESI API error retry strategy.
+    *   Definition of Hangar Bay API error response structures.
+    *   Setting data freshness targets and incorporating a USER-requested feature for admin-triggered manual data refreshes.
+    *   Strategy for handling contracts with numerous items.
+    *   Clarifying database write strategies (individual vs. batch).
+    *   Refining user story scope and updating acceptance criteria accordingly.
+3.  **Discussion and Confirmation:** Proposed refinements for each identified area were presented to the USER. The USER provided feedback, notably requesting the inclusion of an admin-triggered manual data refresh capability, which was incorporated. All proposed changes were subsequently confirmed.
+4.  **Document Update:** `F001-Public-Contract-Aggregation-Display.md` was updated by applying all agreed-upon changes to resolve ambiguities and enhance the specification's completeness.
+
+This process has significantly improved the clarity and detail of F001, making it a more robust guide for development.
+
+
+---
+
+### Session Summary - 2025-06-06 06:15 - Topic: F002 Spec Refinement
+
+This session focused on the detailed review and refinement of the feature specification `F002-Ship-Browsing-Advanced-Search-Filtering.md`.
+
+**Key Activities and Decisions:**
+
+1.  **Initial Review:** `F002-Ship-Browsing-Advanced-Search-Filtering.md` was reviewed to identify areas for clarification, enhancement, and alignment with MVP goals.
+2.  **Identified Refinement Areas:** Several areas were targeted for improvement:
+    *   **User Stories:** Re-numbered existing stories to resolve duplicates. Added new user stories for filtering by broad ship categories and for indicating/filtering contracts with additional non-ship items.
+    *   **Acceptance Criteria:** Clarified criteria for information displayed in the list view (Story 1). Specified fields for keyword search (Story 2). Added new, detailed criteria for the new user stories related to ship category filtering and additional item indicators/filters.
+    *   **Scope (In Scope):** Expanded to include filtering by broad ship categories and handling of additional item indicators/filters.
+    *   **API Endpoints:** 
+        *   Extended query parameters for `GET /api/v1/contracts/ships` to include `ship_market_group_id` and `contains_additional_items`.
+        *   Added a new endpoint `GET /api/v1/ships/market_groups` to provide filterable ship categories to the UI.
+    *   **UI/UX Considerations:** Added notes for visual indicators for additional items and specific filter controls for ship categories and additional items.
+    *   **Notes / Open Questions (Section 15):** Updated to reflect that ship category filtering and additional item indicators/filters are now part of the MVP scope, moving details into core sections.
+3.  **Discussion and Confirmation:** All proposed refinements were presented to and confirmed by the USER.
+4.  **Document Update:** `F002-Ship-Browsing-Advanced-Search-Filtering.md` was updated by applying all agreed-upon changes, enhancing its clarity, detail, and readiness for MVP development.
+
+This process has made F002 a more comprehensive and robust guide for development, particularly for user-facing search and filtering capabilities.
+
+
+---
+
+### Session Summary - 2025-06-06 06:24 - Topic: F003 Spec Refinement
+
+This session focused on the detailed review and refinement of the feature specification `F003-Detailed-Ship-Contract-View.md`.
+
+**Key Activities and Decisions:**
+
+1.  **Initial Review:** `F003-Detailed-Ship-Contract-View.md` was reviewed to identify areas for clarification and enhancement, ensuring alignment with other refined MVP features.
+2.  **Identified Refinement Areas:** Minor refinements were proposed and accepted:
+    *   **Acceptance Criteria:** Clarified Criterion 2.1 regarding the display of ship attributes by referencing Section 15's logic. Updated Criterion 3.1 to specify the source of `current_bid`. Added a new criterion for displaying 'Additional Included Items' based on the `contracts.contains_additional_items` flag and details from `contract_items`.
+    *   **API Endpoints:** Ensured the `Success_Response_Schema_Ref` for `GET /api/v1/contracts/ships/{contract_id}` explicitly includes the `contains_additional_items` flag from the `contracts` table and covers all items (ship and non-ship).
+    *   **UI/UX Considerations:** Added a point about clearly displaying 'Additional Included Items' in a distinct section.
+    *   **Notes / Open Questions (Section 15):** Updated the note on 'Handling Multiple Items in a "Ship Contract"' to confirm that F003 will use the `contracts.contains_additional_items` flag already established in F001.
+3.  **Discussion and Confirmation:** All proposed refinements were presented to and confirmed by the USER.
+4.  **Document Update:** `F003-Detailed-Ship-Contract-View.md` was updated by applying all agreed-upon changes, improving its precision for development.
+
+This review completes the initial detailed refinement pass for the core MVP features F001, F002, and F003.
+
+
+---
+
 *(End of Cascade Interaction Log. New entries are appended above this line.)*

@@ -28,20 +28,20 @@
 *   Story 1: As a Hangar Bay system, I want to periodically fetch all public contracts from configured EVE Online regions, so that I have up-to-date contract data.
 *   Story 2: As a Hangar Bay system, I want to filter fetched contracts to identify those primarily containing ships, so that the platform focuses on its core offering.
 *   Story 3: As a user, I want to see a list of available public ship contracts with key details (ship type, name, quantity, price, contract type, location, issuer, expiration), so I can quickly scan for interesting offers.
-*   [FURTHER_DETAIL_REQUIRED: Additional user stories for different views or interactions with the aggregated data.]
+*   User stories related to direct user interaction with this aggregated data (e.g., browsing, searching, viewing details) are covered in F002 and F003.
 
 ## 3. Acceptance Criteria (Required)
 *   **Story 1 Criteria:**
     *   Criterion 1.1: The system successfully fetches public contracts from all configured EVE regions via the ESI API (`GET /v1/contracts/public/{region_id}/`).
     *   Criterion 1.2: Fetching respects ESI cache timers and ETag headers.
-    *   Criterion 1.3: Errors during ESI fetching are logged, and appropriate retry mechanisms are in place [NEEDS_DISCUSSION: Define retry strategy].
+    *   Criterion 1.3: Errors during ESI fetching are logged. ESI API calls will implement a retry mechanism using exponential backoff with jitter for transient errors (e.g., HTTP 5xx, timeouts). A maximum of 3 retries will be attempted before logging a persistent failure for that specific call.
     *   Criterion 1.4: The system can handle paginated ESI responses for contracts.
 *   **Story 2 Criteria:**
-    *   Criterion 2.1: A clear definition of what constitutes a "ship contract" is established and implemented [NEEDS_DECISION: How to identify ship contracts? Based on item types within? Single item contracts only? Threshold for non-ship items? Must fetch items via `GET /v1/contracts/public/items/{contract_id}/`].
+    *   Criterion 2.1: A contract is identified as a "ship contract" (setting `contracts.is_ship_contract` to TRUE) if its items (fetched via `GET /v1/contracts/public/items/{contract_id}/`) include at least one item belonging to the EVE Online "Ship" category (categoryID 6). The `contracts.contains_additional_items` flag will be TRUE if a "ship contract" also contains items not in the "Ship" category.
     *   Criterion 2.2: The system fetches contract items for potentially relevant contracts to determine if they are ship contracts.
     *   Criterion 2.3: Non-ship contracts are filtered out or marked appropriately.
 *   **Story 3 Criteria:**
-    *   Criterion 3.1: Key contract details (ship type, name, quantity, price, contract type, location, issuer, expiration date) are extracted and stored in the database [NEEDS_DETAIL: Finalize specific DB fields].
+    *   Criterion 3.1: Key contract details as defined in Section 5 (Key Data Structures / Models) are extracted and stored in the application's database.
     *   Criterion 3.2: Ship type details (name, category) are resolved using ESI `universe/types` and cached.
     *   Criterion 3.3: An API endpoint exists to provide a list of aggregated ship contracts with basic details.
 
@@ -53,6 +53,7 @@
 *   Storing relevant details of these ship contracts in the application's database.
 *   Basic data transformation for consistent storage (e.g., resolving type IDs to names).
 *   Adherence to ESI caching, rate limiting, and error handling best practices for these specific ESI calls.
+*   Mechanism for an administrator to manually trigger the contract data refresh process for specified regions or all configured regions.
 ### 4.2. Out of Scope
 *   User interface for displaying contracts (covered by F002).
 *   Advanced searching and filtering logic beyond basic identification (covered by F002).
@@ -73,10 +74,10 @@
     *   `issuer_id`: INTEGER (Character ID from ESI)
     *   `issuer_name`: VARCHAR (Resolved once during ingestion and stored directly. Character name changes are rare.)
     *   `start_location_id`: BIGINT (Station/Structure ID from ESI)
-    *   `start_location_name`: VARCHAR (Resolved on display via `start_location_id`. Location names can change or be dynamic.)
+    *   `start_location_name`: VARCHAR (For MVP, this name is resolved once during ingestion using ESI's `POST /v1/universe/ids/` for stations or other ESI means for structures, and then stored. This name may become stale if the location name changes in EVE. Future enhancements could add a refresh mechanism.)
     *   `region_id`: INTEGER
     *   `price`: DECIMAL
-    *   `volume`: DOUBLE [NEEDS_CLARIFICATION: From ESI or sum of items? Relevant for ships?]
+    *   `volume`: DOUBLE (This is the `volume` field directly from the ESI contract data, `GET /v1/contracts/public/{region_id}/`. For individual ship volumes, `esi_type_cache.packaged_volume` will be used in features like F003.)
     *   `date_issued`: TIMESTAMP
     *   `date_expired`: TIMESTAMP
     *   `title`: VARCHAR(255) (From ESI, used for keyword search in F002), if available)
@@ -85,7 +86,8 @@
     *   `contains_additional_items`: BOOLEAN (Derived by F001 logic, indicates if a ship contract includes non-ship items. Supports F003 display.)
     *   `last_esi_check`: TIMESTAMP (Timestamp of when contract items were last fetched/verified)
 *   **`contract_items` table:**
-    *   `record_id`: BIGINT (Primary Key from ESI, or internal auto-increment if ESI doesn't provide a unique item ID within a contract response)
+    *   `internal_item_id`: BIGINT (Primary Key, auto-incrementing integer for internal use)
+    *   `record_id`: BIGINT (From ESI's contract items response, represents `item_id` within the contract. The combination of `(contract_id, record_id)` will have a unique constraint.)
     *   `contract_id`: BIGINT (Foreign Key to `contracts`)
     *   `type_id`: INTEGER (EVE Online Type ID)
     *   `quantity`: INTEGER
@@ -110,7 +112,13 @@
     *   `dogma_attributes`: JSONB (Store all attributes. For SQLite in dev, this will be TEXT using JSON1 functions; for PostgreSQL in prod, native JSONB.)
     *   `dogma_effects`: JSONB (Store all effects. For SQLite in dev, this will be TEXT using JSON1 functions; for PostgreSQL in prod, native JSONB.)
     *   `last_esi_check`: TIMESTAMP (Timestamp of when contract items were last fetched/verified from ESI)
-*   [FURTHER_DETAIL_REQUIRED: Define relationships, indexing strategy, final decision on name resolution/storage.]
+*   **Relationships:**
+    *   `contract_items.contract_id` has a FOREIGN KEY relationship to `contracts.contract_id`.
+    *   `contract_items.type_id` has a FOREIGN KEY relationship to `esi_type_cache.type_id`.
+*   **Initial Indexing Strategy (subject to performance tuning):**
+    *   `contracts`: `contract_id` (PK), `date_expired`, `is_ship_contract`, `region_id`, `price`.
+    *   `contract_items`: `internal_item_id` (PK), `(contract_id, record_id)` (Unique), `type_id`.
+    *   `esi_type_cache`: `type_id` (PK), `group_id`, `name`.
 
 ## 6. API Endpoints Involved (Optional)
 ### 6.1. Consumed ESI API Endpoints
@@ -141,8 +149,8 @@
 ### 6.2. Exposed Hangar Bay API Endpoints
 *   **Endpoint 1:** `GET /api/v1/contracts/ships`
     *   Request: Query parameters for pagination (e.g., `page`, `limit`), basic filtering (e.g., `region_id`).
-    *   Success Response: JSON array of ship contracts with key details (e.g., `contract_id`, `ship_name`, `price`, `location_name`, `date_expired`). Status 200.
-    *   Error Responses: [NEEDS_DETAIL: Define standard error responses for invalid parameters, etc.]
+    *   Success Response: JSON array of ship contracts. Each contract object will include fields such as `contract_id`, `ship_name` (derived, primary ship), `price`, `location_name`, `date_expired`, `issuer_name`, `contract_type`, `contains_additional_items`. Status 200. (Pydantic model: `PaginatedShipContractList`)
+    *   Error Responses: Error responses will follow the format: `{"error_code": "UNIQUE_ERROR_CODE", "message": "A user-friendly error message."}`. For validation errors (400), `message` might contain more specific field issues. Common codes: 400 (Bad Request), 404 (Not Found), 500 (Internal Server Error).
     <!-- AI_HANGAR_BAY_API_ENDPOINT_START
     API_Path: /api/v1/contracts/ships
     HTTP_Method: GET
@@ -161,7 +169,7 @@
     b.  For each contract received:
         i.  If contract is new or `last_esi_check` is stale (or contract is of interest based on initial data):
             1.  Fetch its items using `GET /v1/contracts/public/items/{contract_id}/`.
-            2.  Determine if it's a ship contract based on defined criteria [NEEDS_DECISION: Logic for ship contract identification].
+            2.  Determine if it's a "ship contract" by checking if any item belongs to the EVE Online "Ship" category (categoryID 6). Set `contracts.is_ship_contract` accordingly.
             3.  If it is a ship contract:
                 a.  Extract/transform relevant data.
                 b.  Fetch/update type details from `GET /v3/universe/types/{type_id}/` for *all items* (both ship and non-ship) not in local cache or stale, store in `esi_type_cache`.
@@ -190,8 +198,8 @@
 
 ## 11. Performance Considerations (Optional, but Recommended - Consult `../performance-spec.md`)
 *   Efficient ESI polling (minimize redundant calls, maximize cache use).
-*   Database writes should be optimized (batching if appropriate and if the ORM/DB driver supports it efficiently [NEEDS_DISCUSSION]).
-*   Time taken to process all configured regions should be reasonable and not lead to excessive data staleness [NEEDS_DECISION: Define acceptable processing window/data freshness target].
+    *   Database writes will initially be performed individually per contract/item. Batching writes can be considered as a post-MVP performance optimization if profiling indicates a bottleneck.
+    *   For MVP, the system will aim to refresh contract data from all configured EVE regions automatically at least once every 4-6 hours. This target will be monitored and adjusted based on system performance and ESI load. Additionally, an administrator MUST be able to manually trigger a data refresh process for specified regions or all configured regions on demand to facilitate testing and immediate data updates.
 *   Indexing strategy for database tables (`contracts`, `contract_items`, `esi_type_cache`) to support efficient querying by F002 and other features.
 
 ## 12. Accessibility Considerations (Optional, but Recommended - Consult `../accessibility-spec.md`)
@@ -215,8 +223,8 @@
 
 ## 15. Notes / Open Questions (Optional)
 *   **EVE regions to poll**: This will be admin-configurable. For development/prototyping, it can be limited to a few regions, but production will require flexibility.
-*   [NEEDS_DISCUSSION: Detailed logic for identifying a "ship contract" – e.g., based on item category ID (e.g., categoryID 6 for Ships), percentage of items that are ships, specific ship group IDs? What if a contract has a ship and many non-ship items?]
-*   [NEEDS_DISCUSSION: Strategy for handling contracts with very many items – fetch all items, or cap at a certain number for performance reasons during initial filtering?]
+*   **Ship Contract Identification:** A contract is identified as a "ship contract" if its items include at least one item belonging to the EVE Online "Ship" category (categoryID 6). The `contracts.contains_additional_items` flag will be TRUE if such a contract also contains items *not* in the "Ship" category. This logic requires fetching items via `GET /v1/contracts/public/items/{contract_id}/` and resolving item categories via `esi_type_cache` (which in turn uses `GET /v3/universe/types/{type_id}/` to get `group_id`, then group details to get `category_id`).
+*   **Handling Contracts with Many Items:** For identifying ship contracts (F001) and detailed display (F003), all items within a contract will be fetched from ESI. Performance implications will be monitored.
 *   **Handling updates to existing contracts (e.g., auction prices)**: Avoid full periodic re-scans of all items for all contracts. Instead, use a targeted re-fetch strategy:
     1.  Poll regional contract list endpoints (`/contracts/public/{region_id}/`) respecting ESI cache timers.
     2.  For each contract from the list:
