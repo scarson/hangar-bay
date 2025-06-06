@@ -57,6 +57,7 @@ The MVP development is structured into the following phases. Each task links to 
 *   **Tasks:**
     *   [04.1 Contract List Component](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.1-contract-list-component.md)
     *   [04.2 Basic Filtering UI](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.2-basic-filtering-ui.md)
+    *   [04.3 Integrating Basic Filters with Contract List](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.3-integrating-filters-with-list.md)
 
 ### Phase 5: Backend - F002: Advanced Search & Filtering Logic
 *   **Goal:** Enhance backend capabilities to support advanced search and filtering as per F002.
@@ -102,6 +103,7 @@ The MVP development is structured into the following phases. Each task links to 
 *   **Error Handling:** Implement robust error handling as per `design-spec.md` and feature-specific error handling sections.
 *   **Security First:** Adhere to guidelines in `security-spec.md` for all code generation.
 *   **Testing:** Generate unit tests alongside feature code. Follow guidance in `test-spec.md`.
+*   **Integrated Cross-Cutting Concerns:** Beyond the dedicated tasks in Phase 09, all five cross-cutting concerns (Security, Observability, Testing, Accessibility, Internationalization) as detailed in their respective specification documents (`../../design/security-spec.md`, `../../design/observability-spec.md`, `../../design/test-spec.md`, `../../design/accessibility-spec.md`, `../../design/i18n-spec.md`) MUST be proactively and systematically integrated into **every task** throughout Phases 00-08. This is a non-negotiable requirement. Cascade will leverage its AI memories established for this purpose and will complete the mandatory "Cross-Cutting Concerns Review" checklist section within each task file to document how these considerations were applied to the specific work of that task.
 
 ## 4. Plan Maintenance
 
