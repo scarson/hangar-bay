@@ -11,12 +11,13 @@ This document outlines the design specification for Hangar Bay, an e-commerce ap
 *   To integrate seamlessly with the EVE Online ESI API for up-to-date contract, ship, and market information.
 *   To help players efficiently find desirable ship contracts available in-game.
 *   To ensure the application is accessible and usable by people with a wide range of abilities, adhering to WCAG 2.1 AA as a minimum (see `accessibility-spec.md`).
+*   To design the application with internationalization (i18n) capabilities from the outset, enabling future localization for EVE Online's global player base (see `i18n-spec.md`).
 
 ## 3. Target Audience
 
-*   EVE Online players looking to find and acquire ships through public contracts.
-*   EVE Online players who have listed ships on public contracts and want to see them (or for others to find them easily).
-*   Players interested in current ship availability and pricing via public contracts.
+*   EVE Online players worldwide looking to find and acquire ships through public contracts.
+*   EVE Online players globally who have listed ships on public contracts and want them to be discoverable.
+*   Players interested in current ship availability and pricing via public contracts, potentially in their preferred language.
 
 ## 4. Security
 
@@ -43,7 +44,7 @@ EVE Online players, the target audience for Hangar Bay, are known for their inge
 *   **Data Privacy:** Consideration must be given to any player data stored (e.g., EVE character ID, watchlists), ensuring it is minimized, protected, and handled according to privacy best practices. Refer to `security-spec.md`.
 *   **Regular Security Audits:** Plan for regular security reviews and penetration testing.
 
-**(All other sections should also reference Section 4: Security, and where appropriate, `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, `observability-spec.md`, and `design-log.md`.)* must include a reference to this Security section and, where applicable, to these detailed specifications, with instructions to consider them an integral part of their respective requirements.**
+**(All other sections should also reference Section 4: Security, and where appropriate, `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, `observability-spec.md`, `i18n-spec.md`, and `design-log.md`.)* must include a reference to this Security section and, where applicable, to these detailed specifications, with instructions to consider them an integral part of their respective requirements.**
 
 ## 5. Application Architecture (High-Level)
 
@@ -56,7 +57,7 @@ The application will function as an aggregator of public EVE Online contracts, f
 *   **Database:** (e.g., PostgreSQL, MySQL, MongoDB, etc.) - Stores aggregated contract data, ship details (cached from ESI), and potentially user preferences if SSO is implemented.
 *   **EVE ESI API Integration Layer:** A dedicated module/service for interacting with the ESI API, handling requests for public contracts, contract items, ship details, caching, and error management.
 
-*Considerations: Refer to Section 4 (Security) and `security-spec.md`. Accessibility, as outlined in `accessibility-spec.md`, should be considered for any user-facing outputs or interactions originating from this layer.* 
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`. Accessibility, as outlined in `accessibility-spec.md`, and internationalization, as per `i18n-spec.md`, should be considered for any user-facing outputs or interactions originating from this layer.* 
 
 ## 6. Tech Stack
 
@@ -85,10 +86,10 @@ The following technology stack is proposed, with security, performance, and rapi
 ### 6.7. AI Implementation Notes
 *   **General:** AI should prioritize code clarity, modularity, and adherence to specified patterns in feature specs (e.g., structured data models, API endpoint comments).
 *   **Backend (Python/FastAPI):** AI should leverage Pydantic for robust data validation and serialization. Focus on creating efficient database queries and asynchronous operations where appropriate (e.g., ESI calls).
-*   **Frontend (Angular):** AI should generate well-structured components, services, and modules. Utilize Angular Material and CDK for accessible and consistent UI elements. Employ RxJS for managing asynchronous data streams effectively.
+*   **Frontend (Angular):** AI should generate well-structured components, services, and modules. Utilize Angular Material and CDK for accessible and consistent UI elements. Employ RxJS for managing asynchronous data streams effectively. Ensure internationalization support using `@angular/localize`.
 *   **Testing:** AI should assist in generating unit tests for all new logic (backend and frontend) and provide outlines for integration/E2E tests as guided by feature specs.
 
-*Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, and `observability-spec.md`. The security, accessibility, and testing best practices for each chosen technology will be strictly adhered to. This includes secure and accessible configuration, regular patching, and leveraging built-in mechanisms.* 
+*Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, `observability-spec.md`, and `i18n-spec.md`. The security, accessibility, internationalization, and testing best practices for each chosen technology will be strictly adhered to. This includes secure and accessible configuration, regular patching, and leveraging built-in mechanisms (e.g., `@angular/localize` for Angular i18n, `fastapi-babel` for FastAPI i18n).* 
 
 ## 7. Core Features
 <!-- AI_NOTE_TO_HUMAN: This section outlines the primary functionalities. AI development should focus on implementing these robustly, with attention to the details in their respective feature specification documents. -->
@@ -124,7 +125,7 @@ Based on the **public contract aggregator model**:
     *   **Optional Authenticated Features (Consider for future - more scope):**
         *   Ability to see their own public contracts highlighted or managed within Hangar Bay (would require `esi-characters.read_contracts.v1` scope).
 
-*Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md` and `accessibility-spec.md`. Secure handling of EVE SSO tokens is paramount. User data must be protected. All UI elements must be accessible. 
+*Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md`, `accessibility-spec.md`, and `i18n-spec.md`. Secure handling of EVE SSO tokens is paramount. User data must be protected. All UI elements must be accessible and translatable. 
 
 ## 8. ESI API Integration Details
 <!-- AI_NOTE_TO_HUMAN: For detailed, AI-parsable structures of ESI and Hangar Bay API endpoints, please refer to the 'API Endpoints Involved' section within individual feature specification documents (e.g., F001-*.md, F002-*.md). The feature specs will contain structured comment blocks like 'AI_ESI_API_ENDPOINT_START' and 'AI_HANGAR_BAY_API_ENDPOINT_START'. -->
@@ -156,7 +157,7 @@ Primary ESI endpoints for the public contract aggregator model:
 *   **User-Agent Policy:**
     *   Set a descriptive User-Agent string for all ESI requests as per ESI best practices.
 
-*Considerations: Refer to Section 4 (Security) and `security-spec.md`. All ESI interactions must be secure (HTTPS). If SSO is used, token handling is paramount. Ensure any error messages or data passed to the frontend from this layer are structured to support accessible presentation, as guided by `accessibility-spec.md`.* 
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`. All ESI interactions must be secure (HTTPS). If SSO is used, token handling is paramount. Ensure any error messages or data passed to the frontend from this layer are structured to support accessible presentation (as per `accessibility-spec.md`) and internationalization (as per `i18n-spec.md`). ESI API calls for localized data (e.g., item names) should utilize the `language` parameter based on the user's selected locale, with appropriate fallbacks.* 
 
 ## 9. Database Schema (Initial Thoughts)
 
@@ -164,7 +165,7 @@ Primary ESI endpoints for the public contract aggregator model:
 
 *   Tables for users (if local accounts exist alongside EVE SSO), ship types (cached from ESI), listings/contracts, etc.
 
-*Considerations: Refer to Section 4 (Security) and `security-spec.md`. Data modeling should support accessibility requirements from `accessibility-spec.md` (e.g., storing full textual descriptions where needed for screen readers, rather than just codes).* 
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`. Data modeling should support accessibility requirements from `accessibility-spec.md` (e.g., storing full textual descriptions) and internationalization needs from `i18n-spec.md` (e.g., avoiding storage of translated UI strings directly in primary data tables, storing user language preferences).* 
 
 ## 10. UI/UX Considerations
 <!-- AI_NOTE_TO_HUMAN: These are guiding principles. AI should aim to implement UI components and flows that adhere to these considerations. -->
@@ -173,25 +174,27 @@ Primary ESI endpoints for the public contract aggregator model:
 
 *   **AI Action: Clarity and Intuitiveness:** Implement UI that is easy to understand and navigate, even for users unfamiliar with similar applications. Prioritize clear labeling and logical information hierarchy. Intuitive navigation is a key aspect of this.
 *   **AI Action: Effective Data Presentation:** Ensure clear presentation of complex ship and market data. Use appropriate visualizations and summaries where helpful.
-*   **AI Action: Mobile-Friendly / Responsive Design:** Ensure the application is usable and provides a good experience on various screen sizes (desktops, tablets, mobile phones). Implement responsive layouts (e.g., using Angular Flex-Layout or CSS Grid/Flexbox) and touch-friendly controls.
+
+*   **AI Action: Responsive and Mobile-Friendly Design:** Ensure the application is usable and provides a good experience on various screen sizes (desktops, tablets, mobile phones).
     *   **AI Implementation Guidance:**
-        *   **Leverage Angular's Capabilities:** Utilize Angular's features for responsive design, such as its component architecture, built-in directives, and integration with responsive grid systems (e.g., Angular Material's layout system, Bootstrap grid, or CSS Grid/Flexbox directly).
-        *   **Fluid Layouts:** Employ fluid grids and flexible images/media that adapt to different viewport sizes.
+        *   **Fluid Layouts:** Use relative units (percentages, `em`, `rem`, `vw`, `vh`) and flexible containers to allow content to reflow gracefully.
         *   **Media Queries:** Use CSS media queries extensively to apply different styles and layouts based on screen characteristics.
         *   **Navigation:** Implement mobile-friendly navigation patterns (e.g., collapsible hamburger menus, off-canvas navigation, bottom navigation bars for key actions where appropriate).
         *   **Touch Interactions:** Ensure all interactive elements (buttons, links, form inputs) are adequately sized and spaced to be easily tappable on touchscreens. Avoid reliance on hover states for critical information disclosure.
-        *   **Performance Optimization:** Optimize assets (images, scripts, styles) for faster loading on mobile networks. Consider techniques like lazy loading for images and non-critical components.
-        *   **Readability:** Ensure text is legible across all screen sizes with appropriate font sizes, line heights, and contrast ratios.
-        *   **AI Action: Accessibility:** Design and implement with accessibility in mind from the start. Adhere to WCAG 2.1 Level AA guidelines. Refer to `accessibility-spec.md` for detailed requirements and ensure Angular Material/CDK accessibility features are leveraged.
+        *   **Performance Optimization (Mobile):** Optimize assets (images, scripts, styles) for faster loading on mobile networks. Consider techniques like lazy loading for images and non-critical components.
+        *   **Readability (Mobile & Desktop):** Ensure text is legible across all screen sizes with appropriate font sizes, line heights, and contrast ratios.
+        *   **Accessibility (Mobile & Desktop):** Design and implement with accessibility in mind from the start. Adhere to WCAG 2.1 Level AA guidelines. Refer to `accessibility-spec.md` for detailed requirements and ensure Angular Material/CDK accessibility features are leveraged.
         *   **Progressive Enhancement/Graceful Degradation:** Design with a mobile-first approach or ensure graceful degradation so core functionality remains accessible on less capable devices or browsers.
-        *   **Testing:** Thoroughly test on various emulated mobile viewports (using browser developer tools) and, where possible, on a range of real mobile devices. (Refer to `test-spec.md` for detailed testing requirements).
+        *   **Testing (Mobile):** Thoroughly test on various emulated mobile viewports (using browser developer tools) and, where possible, on a range of real mobile devices. (Refer to `test-spec.md` for detailed testing requirements).
+
 *   **AI Action: Minimalism and Focus:** Design UIs that avoid clutter. Present only relevant information and actions to the user to maintain focus on the core tasks.
-*   **AI Action: Performance and Responsiveness:** Ensure the application loads quickly and responds promptly to user interactions. Implement optimized data loading and rendering strategies. See `performance-spec.md` (to be created).
+*   **AI Action: Performance and Responsiveness (General):** Ensure the application loads quickly and responds promptly to user interactions. Implement optimized data loading and rendering strategies. (See `performance-spec.md`, to be created).
 *   **AI Action: Consistency:** Maintain a consistent design language (colors, typography, layout, component behavior) throughout the application, leveraging Angular Material theming.
 *   **AI Action: Error Handling and Feedback:** Implement clear, user-friendly error messages and feedback mechanisms for user actions (e.g., loading indicators, success/failure notifications using snackbars or toasts).
 *   **AI Action: Trust and Security Cues:** Visually reinforce trust and security in the UI elements, especially around authentication and user data sections. Use iconography and language that conveys security.
+*   **AI Action: Internationalization (i18n) Support:** Design UI components to be easily localizable. Ensure layouts can accommodate varying text lengths from different languages. Provide a clear mechanism for users to switch languages. All user-facing text must be externalized for translation. (Refer to `i18n-spec.md` for detailed guidance).
 
-*Security Considerations: Refer to Section 4.* 
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`. All UI components must be built with accessibility in mind (following `accessibility-spec.md`) and designed for internationalization (following `i18n-spec.md`).* 
 
 ## 11. Deployment
 
@@ -206,7 +209,28 @@ Primary ESI endpoints for the public contract aggregator model:
 
 *Considerations: Refer to Section 4 (Security) and `security-spec.md`. Secure container image management is crucial. CI/CD pipeline must have appropriate security controls. Accessibility of any user-facing deployment status pages or interfaces should also be considered (refer to `accessibility-spec.md`).* 
 
-## 12. Future Enhancements
+## 12. Testing
+
+A comprehensive testing strategy is crucial for ensuring the quality, security, reliability, and usability of Hangar Bay.
+
+*   **Detailed Specification:** A `test-spec.md` document is located in the `design` directory. It outlines the testing philosophy, types of tests (unit, integration, E2E, security, accessibility, performance, internationalization), tools, and CI/CD integration.
+*   **Internationalization Testing:** Specific tests will be required to verify translations, locale-specific formatting, and UI adaptability across different languages. Refer to `i18n-spec.md` for i18n testing guidelines.
+*   **AI Assistant Guidance:** AI coding assistants are expected to generate unit tests for new logic and assist in outlining integration and E2E tests, following the patterns in `test-spec.md` and considering test aspects from `i18n-spec.md`.
+
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`.* 
+
+## 13. Accessibility (A11y)
+
+Accessibility is a core requirement for Hangar Bay. The application MUST be designed and developed to be usable by people with a wide range of disabilities.
+
+*   **Conformance Target:** WCAG 2.1 Level AA minimum. Aspire to Level AAA where feasible.
+*   **Detailed Specification:** A comprehensive `accessibility-spec.md` document is located in the `design` directory. It outlines specific principles (POUR), technology-focused guidance (Angular), and testing requirements.
+*   **Interaction with Internationalization:** Ensure that accessibility features (e.g., ARIA labels, `alt` text) are translatable and that the page's `lang` attribute is correctly set. Refer to `i18n-spec.md` for details on localizing accessible content.
+*   **AI Assistant Guidance:** AI coding assistants MUST strictly adhere to the guidelines and patterns provided in `accessibility-spec.md` and `i18n-spec.md` when generating or modifying any frontend code or UI-related backend logic.
+
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`.* 
+
+## 14. Future Enhancements
 
 *(To be detailed - some items moved to Core Features with SSO)*
 
