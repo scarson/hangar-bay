@@ -87,4 +87,108 @@ This session segment featured a comprehensive test of the `[AISP-001] Automated 
 
 ---
 
+### Session Log: 2025-06-06
+
+**AI Assistant:** Cascade
+**User:** Sam
+**Objective:** Systematically review and resolve open design points and ambiguities in feature specifications F004 through F007, update documentation, and incorporate user feedback for clarity.
+
+**Summary of Activities & Resolutions:**
+
+During this session, we completed the review and update of feature specifications F004, F005, F006, and F007, addressing all identified open design points and ambiguities. The "Last Updated" date for all modified documents was set to 2025-06-06.
+
+1.  **F004 - User Authentication with EVE SSO (`design/features/F004-User-Authentication-SSO.md`)**
+    *   **Token Refresh Scope (MVP):**
+        *   Clarified that for MVP, token refresh will primarily be event-driven, occurring just before an ESI call is made on behalf of the user if the current access token is expired or near expiry. This approach avoids the complexity of a continuous background speculative refresh service for all users.
+        *   **Detailed Discussion on F004 Token Refresh in Relation to F006/F007 Background ESI Calls:**
+            *   The user raised a critical point about the Watchlist feature (F006) inherently requiring proactive background activity to be useful, questioning if F004's MVP token refresh strategy adequately supports this.
+            *   **Resolution & Clarification:**
+                1.  **F004's Core Philosophy:** The F004 MVP aims for an "on-demand" or "event-driven" token refresh. An "event" can be a direct user UI action or a scheduled background task (like for F007 alerts) that needs to make an ESI call using a specific user's token. F004 provides the *capability* (the logic and function) to refresh a token.
+                2.  **Avoidance of Continuous Global Refresh:** F004 MVP deliberately avoids a separate, continuous background service that speculatively refreshes *all* user tokens *all the time*, irrespective of immediate need, to reduce initial complexity.
+                3.  **F006/F007 MVP ESI Token Interaction:** For the current MVP scope, F007 (Alerts) uses F006 (Watchlists) and F001 (Public Contract Data). The background task for F007 compares user watchlist criteria against *locally stored public contract data from F001*. The process populating F001 typically uses an application-level ESI token or unauthenticated calls for public data, *not individual user access tokens*. Thus, the F006/F007 MVP background alerting task itself might not directly make ESI calls requiring individual user tokens.
+                4.  **F004's Support for Background User-Specific ESI Calls:** F004's design *does account for and support* the scenario where background tasks might need to refresh user-specific tokens. If a background task (for F006/F007 or future features) *does* need to make an ESI call requiring a specific user's token (e.g., if watchlists were expanded to monitor private assets), that task would use the F004-provided mechanism: check token validity, refresh if needed.
+                5.  **Conclusion:** F004 provides the *tool* for token refresh. Any system component (foreground UI-triggered or background task-triggered) needing to make a user-specific ESI call can and should use this tool. The F004 approach is adaptable for future features or expansions of F006/F007 that require background, user-specific ESI calls. The key is that the refresh is triggered by a need, not by continuous speculation.
+    *   **Logout Behavior:** Confirmed that Hangar Bay logout invalidates the local application session only and does not revoke the EVE SSO refresh token at the identity provider, aligning with standard OAuth 2.0 practices.
+    *   **ESI Scopes Requested:** A minimal base set of scopes (e.g., `publicData`) will be requested during initial authentication primarily for user identification. The application will store and operate based on the scopes actually granted by the user.
+    *   **AI Checklist Items:** Updated relevant AI checklist items for EVE SSO OAuth endpoints to "Developer Action" with notes emphasizing these are developer verification steps against official documentation.
+
+2.  **F005 - Saved Searches (`design/features/F005-Saved-Searches.md`)**
+    *   **MVP Scope for Updates:** Resolved that for MVP, users can only rename and delete existing saved searches. Updating the underlying search criteria of a saved search is deferred to post-MVP.
+    *   **Duplicate Saved Search Names:** Confirmed that duplicate saved search names per user will be prevented via a unique database constraint on `(user_id, name)`. The API will return a 409 Conflict status with a user-friendly error message.
+    *   **AI Note on UI Mockups:** Added an AI note clarifying that UI mockups for saved search interactions are a design phase responsibility.
+
+3.  **F006 - Watchlists (`design/features/F006-Watchlists.md`)**
+    *   **Live Market Data Display:** Clarified that displaying live market data (e.g., current lowest price) directly in the watchlist view is out of scope for F006 itself. This functionality is primarily handled by F007 (Alerts/Notifications) which processes watchlist criteria against market data.
+    *   **`notes` Field:** Confirmed the inclusion of an optional `notes` text field in the `watchlist_items` table for user annotations.
+    *   **Duplicate Watchlist Items:** Confirmed a uniqueness constraint on `(user_id, type_id)` in the `watchlist_items` table to prevent duplicate entries for the same item type per user. API will respond with 409 Conflict.
+    *   **AI Checklist Items:** Changed AI checklist items related to ESI universe type endpoints to "Developer Action" with explanatory notes for developer verification.
+    *   **AI Note on UI Mockups:** Added an AI note that UI mockups for watchlist pages and interactions are a design phase responsibility.
+
+4.  **F007 - Alerts and Notifications (`design/features/F007-Alerts-Notifications.md`)**
+    *   **Email Notifications:** Deferred to post-MVP to reduce initial complexity. MVP will focus on in-app notifications.
+    *   **Saved Search Alerts:** Deferred to post-MVP. MVP alerts will be based on watchlist criteria.
+    *   **Notification De-duplication (MVP):** A notification is generated once for a unique `(user_id, contract_id, watchlist_item_id)` match. Re-notification for the same contract may occur if it's re-listed after a significant period or if its price drops further significantly below the user's `max_price`, subject to a cooldown (e.g., 24 hours).
+    *   **Auction Notifications (MVP):** Notifications trigger if the current auction bid meets or is below the user's `max_price`. Further significant price drops can trigger new notifications per de-duplication rules.
+    *   **Notification Content (MVP):** Messages will include item name, price found, location (if available), and a direct link to the contract.
+    *   **Data Models:**
+        *   `notifications` table: `type` field enum simplified to `'watchlist_match'`, `'system_message'`. 
+        *   `user_notification_settings` table: Simplified to include `user_id`, `enable_watchlist_alerts` (default true), and `updated_at`. Fields for saved search alerts and email notifications removed for MVP.
+    *   **API Endpoints:** `GET /api/v1/me/notification-settings` and `PUT /api/v1/me/notification-settings` updated to reflect the simplified `UserNotificationSettingDisplay` and `UserNotificationSettingUpdate` Pydantic models (only `enable_watchlist_alerts`).
+    *   **Workflow:** Backend check frequency for watchlist alerts set to "e.g., every 15-30 minutes for MVP, configurable."
+    *   **UI/UX:** Added standard AI note regarding design team responsibility for mockups.
+    *   **Section 15 ("Notes / Open Questions"):** Retitled to "Design Clarifications and Resolutions." Content updated to reflect that previously open points (MVP notification channels, check frequency) are now resolved and other points are clarifications of MVP scope.
+
+**User Feedback Incorporated:**
+*   The detailed explanation regarding F004 token refresh strategy and its support for potential background ESI calls required by features like F006/F007 was explicitly requested for inclusion in this summary for future reference.
+
+**Files Modified:**
+*   `design/features/F004-User-Authentication-SSO.md`
+*   `design/features/F005-Saved-Searches.md`
+*   `design/features/F006-Watchlists.md`
+*   `design/features/F007-Alerts-Notifications.md`
+
+**Next Steps (per user request):**
+*   Stage and prepare commits for all pending changes.
+
+---
+
+### Session Summary - 2025-06-06 05:40 - Topic: Refinement of AISP-002 Logging Procedure to Prevent Separator Issues
+
+**Objective:** To diagnose and resolve a recurring formatting issue in `design/cascade-log.md` related to duplicate Markdown separators (`---`) and to update the guiding AI System Procedure (AISP-002) to prevent future occurrences.
+
+**Background:**
+Following the previous session where feature specifications F004-F007 were updated and a summary was logged to `design/cascade-log.md`, a formatting error was observed: an extra `---` separator appeared between the newly appended log entry and the standard log footer.
+
+**Diagnosis and Iterative Correction of `cascade-log.md`:**
+1.  **Initial Problem:** The `cascade-log.md` file showed the pattern: `[Previous Log Content]\n\n---\n\n---\n\n*(End of Cascade Interaction Log...)*`.
+2.  **Root Cause Analysis:**
+    *   Cascade's drafted session summary (the content for "[Previous Log Content]") had inadvertently included a `---` at its very end.
+    *   The AISP-002 procedure for appending logs (Step 9) correctly specifies that the `ReplacementContent` should be `\n\n---\n\n[NEW SUMMARY CONTENT]\n\n---\n\n*(Footer)*`. This means the append logic itself introduces a `---` separator before the new content and another one after it (which becomes the new separator before the footer).
+    *   When the `[NEW SUMMARY CONTENT]` also ended with `---`, the sequence became `...summary_text---\n\n---\n\n*(Footer)*`, leading to the double separator.
+3.  **Correction Attempts:**
+    *   An initial `replace_file_content` attempt by Cascade to fix the `cascade-log.md` file was not perfectly accurate due to slight mismatches in the `TargetContent` argument, a common challenge when dealing with exact string replacements involving newlines and whitespace.
+    *   Cascade used the `view_file` tool multiple times to inspect the precise problematic lines in `cascade-log.md`, ensuring the `TargetContent` for subsequent `replace_file_content` calls was an exact match of the erroneous section.
+    *   After a few iterations, the `cascade-log.md` file was successfully corrected to the proper format: `[Log Content]\n\n---\n\n*(Footer)*`.
+
+**Proactive Refinement of AISP-002:**
+1.  **User Prompt for Reflection:** The USER astutely asked if AISP-002 itself needed an update to prevent this issue in the future.
+2.  **Cascade's Analysis:**
+    *   Cascade reviewed its internal instructions for AISP-002 (Memory ID `42c9fb61-0933-428f-ad56-16e1f846afcf`).
+    *   It was determined that Step 6 ("Draft Summary") was the most appropriate place to introduce a preventative measure. The existing instruction was: "Compose a verbose, detailed Markdown summary... Structure logically, emphasizing 'why' and 'how.'"
+3.  **Proposed Solution for AISP-002:**
+    *   Cascade proposed modifying Step 6 to include an explicit instruction: "**Important: Ensure the drafted summary content itself does not end with a `---` Markdown horizontal rule, as the appending process (Step 9) will correctly add the necessary separator.**"
+4.  **Implementation of AISP-002 Update:**
+    *   The USER approved the proposed change.
+    *   Cascade executed a `create_memory` tool call with `Action: "update"` to modify Memory ID `42c9fb61-0933-428f-ad56-16e1f846afcf`. The entire content of the memory was re-submitted with the updated Step 6.
+
+**Outcome:**
+*   The `cascade-log.md` file's formatting has been corrected.
+*   The AISP-002 procedure within Cascade's operational memory has been enhanced to prevent the AI from drafting summaries that would lead to future separator duplication, making the logging process more robust.
+
+**Files Modified:**
+*   `design/cascade-log.md` (corrected formatting and new log entry added)
+*   Memory `42c9fb61-0933-428f-ad56-16e1f846afcf` (AISP-002 updated)
+
+---
+
 *(End of Cascade Interaction Log. New entries are appended above this line.)*

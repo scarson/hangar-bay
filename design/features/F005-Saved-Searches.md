@@ -2,7 +2,7 @@
 
 **Feature ID:** F005
 **Creation Date:** 2025-06-05
-**Last Updated:** 2025-06-05
+**Last Updated:** 2025-06-06
 **Status:** Draft
 
 ## 0. Authoritative ESI & EVE SSO References (Required Reading for ESI/SSO Integration)
@@ -24,7 +24,7 @@
 *   Story 2: As a logged-in user, I want to see a list of my saved searches, so I can choose one to execute.
 *   Story 3: As a logged-in user, when I click on a saved search, I want the search criteria to be applied and the results displayed (as in F002), so I don't have to manually re-enter them.
 *   Story 4: As a logged-in user, I want to be able to delete a saved search I no longer need, so I can manage my list of saved searches.
-*   Story 5: As a logged-in user, I might want to update an existing saved search (e.g., rename it, or update its criteria) [NEEDS_DISCUSSION: Scope for MVP - update criteria or just rename/delete?].
+*   Story 5: As a logged-in user, I want to be able to rename or delete an existing saved search. (Updating the criteria of an existing search is a future enhancement; for MVP, users can save a new search with modified criteria if needed).
 
 ## 3. Acceptance Criteria (Required)
 *   **Story 1 Criteria:**
@@ -43,7 +43,7 @@
 *   **Story 5 Criteria (If in scope for MVP):**
     *   Criterion 5.1: An option to "Edit" or "Rename" a saved search is available.
     *   Criterion 5.2: Renaming updates the saved search's name.
-    *   Criterion 5.3: [If updating criteria is in scope] Editing allows modification of the saved search parameters and re-saving.
+    *   Criterion 5.3: (Updating search criteria is deferred post-MVP. Users can save a new search with different criteria.)
 
 ## 4. Scope (Required)
 ### 4.1. In Scope
@@ -56,7 +56,7 @@
 *   Sharing saved searches with other users.
 *   Automatic notifications based on saved searches (this is F007 - Alerts/Notifications).
 *   Complex management features like tagging or organizing saved searches into folders (future enhancement).
-*   Updating the criteria of an existing saved search by overwriting with current filters (MVP might only support rename/delete, then re-save as new). [NEEDS_DECISION]
+*   Updating the criteria of an existing saved search by overwriting with current filters (Deferred post-MVP. For MVP, users can save a new search if criteria need to change).
 
 ## 5. Key Data Structures / Models (Optional, but often Required)
 <!-- AI_NOTE_TO_HUMAN: For AI processing, please try to include a structured comment block like the example below for each significant data model. -->
@@ -123,7 +123,7 @@
     HTTP_Method: PUT
     Brief_Description: Updates an existing saved search (e.g., rename) for the authenticated user.
     Request_Path_Parameters_Schema_Ref: search_id: int
-    Request_Body_Schema_Ref: SavedSearchUpdate (Pydantic model: { name: Optional[str], search_parameters: Optional[dict] } - Note: Updating search_parameters might be deferred post-MVP).
+    Request_Body_Schema_Ref: SavedSearchUpdate (Pydantic model: { name: Optional[str] } - Note: Updating search_parameters is deferred post-MVP).
     Success_Response_Schema_Ref: SavedSearch
     Error_Response_Codes: 200 (OK), 400 (Bad Request), 401 (Unauthorized), 403 (Forbidden), 404 (Not Found), 409 (Conflict - if new name already exists), 500.
     AI_Action_Focus: Backend: Requires authentication. Verify ownership. Update specified fields. Frontend: Allow user to rename. (Updating criteria is complex, MVP might be rename only).
@@ -164,12 +164,12 @@
 *   Accessible list of saved searches (e.g., dropdown in nav, dedicated page in user profile).
 *   Clear options to apply, rename, and delete each saved search in the list.
 *   Confirmation before deleting a saved search.
-*   [NEEDS_DESIGN: Mockups for saved search interactions.]
+*   [NEEDS_DESIGN: Mockups for saved search interactions.] *(AI Note: This item is a reminder for the design phase. Detailed mockups will be developed by the design team.)*
 *   **AI Assistant Guidance:** When generating UI components, ensure all display strings (button labels like "Save Search", "Rename", "Delete"; prompts like "Enter a name for your search"; confirmation messages; list titles like "My Saved Searches") are prepared for localization using Angular's i18n mechanisms as detailed in `../i18n-spec.md`. Ensure forms for naming/renaming and lists of saved searches are accessible as per `../accessibility-spec.md`.
 
 ## 9. Error Handling & Edge Cases (Required)
 *   Attempting to save a search without a name: Prompt user for a name.
-*   Saving a search with a duplicate name for the same user: [NEEDS_DECISION: Allow or prevent? If prevent, inform user.]
+*   Saving a search with a duplicate name for the same user: Prevent via database unique constraint (`user_id`, `name`). Inform user with a clear message (e.g., 'A saved search with this name already exists. Please choose a different name.'). API should return 409 Conflict.
 *   API errors (not authenticated, server error): Display user-friendly messages.
 *   User tries to access/delete a saved search not belonging to them: API should return 403 Forbidden or 404 Not Found.
 *   No saved searches: Display an appropriate message in the list view.

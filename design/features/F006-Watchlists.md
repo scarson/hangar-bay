@@ -2,7 +2,7 @@
 
 **Feature ID:** F006
 **Creation Date:** 2025-06-05
-**Last Updated:** 2025-06-05
+**Last Updated:** 2025-06-06
 **Status:** Draft
 
 ## 0. Authoritative ESI & EVE SSO References (Required Reading for ESI/SSO Integration)
@@ -36,7 +36,7 @@
 *   **Story 3 Criteria:**
     *   Criterion 3.1: A logged-in user can access a page or section displaying their watchlist items.
     *   Criterion 3.2: Each item shows the ship name/type and the user-defined maximum price (if set).
-    *   Criterion 3.3: [NEEDS_DISCUSSION: Should this view also show current market availability or lowest price for watched items? This adds complexity and dependency on F001/F002 data feeds directly into this view.]
+    *   Criterion 3.3: The watchlist view primarily displays user-defined information (ship type, user's max price, notes). Displaying live market data (e.g., current lowest price) directly within this view is out of scope for F006 and will be handled by features that consume watchlist data, such as F007 (Alerts/Notifications).
 *   **Story 4 Criteria:**
     *   Criterion 4.1: Each watchlist item has a "Remove" or "Delete" option.
     *   Criterion 4.2: Confirming removal deletes the item from the user's watchlist.
@@ -73,10 +73,10 @@
       - user_id: INTEGER (Foreign Key to `users.id` from F004, Indexed, Not Nullable)
       - type_id: INTEGER (EVE Online Type ID of the item, typically a ship, Indexed, Not Nullable)
       - max_price: DECIMAL(19,2) (Optional, user-defined maximum price willing to pay)
-      - notes: TEXT (Optional, user-defined notes for this watchlist item) [NEEDS_DISCUSSION: Add notes field? - Assuming YES for AI guidance below]
+      - notes: TEXT (Optional, user-defined notes for this watchlist item)
       - created_at: TIMESTAMP WITH TIME ZONE (Default: CURRENT_TIMESTAMP)
       - updated_at: TIMESTAMP WITH TIME ZONE (Default: CURRENT_TIMESTAMP, On Update: CURRENT_TIMESTAMP)
-    Constraints: Unique constraint on (`user_id`, `type_id`) - a user cannot watch the same type_id multiple times. [NEEDS_DECISION: Allow duplicate `type_id` entries per user on watchlist? Recommendation: No, make `(user_id, type_id)` unique.]
+    Constraints: Unique constraint on (`user_id`, `type_id`) - a user cannot watch the same `type_id` multiple times.
     AI_Action_Focus: Backend (SQLAlchemy model, Pydantic schema for API request/response). Ensure `user_id` is correctly linked to the authenticated user. `type_id` needs validation (is it a valid, watchable type?). `max_price` validation (positive). `notes` validation (e.g. length).
     I18n_Considerations: `notes` is user data. `type_id` resolves to a name from ESI (language based on ESI request). `max_price` is numeric.
     AI_HANGAR_BAY_DATA_MODEL_END -->
@@ -90,8 +90,8 @@
     *   **Caching_Considerations:** ESI cache headers should be respected. Data is relatively static but can change with game updates.
     *   **AI_Action_Focus:** If implementing, ensure calls are made only when necessary (e.g., `type_id` not found in local `esi_type_cache` or if more detail than cached is required). Leverage existing `esi_type_cache` from F001 first. Validate `type_id` is for a published item suitable for a watchlist (e.g., a ship).
     AI_Actionable_Checklist:
-      - [ ] **AI Action:** Verify endpoint path, parameters, request body (if any), and response schema against the official ESI Swagger UI: [https://esi.evetech.net/ui/](https://esi.evetech.net/ui/)
-      - [ ] **AI Action:** Review ESI Best Practices for this endpoint/category: [https://developers.eveonline.com/docs/services/esi/best-practices/](https://developers.eveonline.com/docs/services/esi/best-practices/)
+      - [ ] **Developer Action:** Verify endpoint path, parameters, request body (if any), and response schema against the official ESI Swagger UI: [https://esi.evetech.net/ui/](https://esi.evetech.net/ui/)
+      - [ ] **Developer Action:** Review ESI Best Practices for this endpoint/category: [https://developers.eveonline.com/docs/services/esi/best-practices/](https://developers.eveonline.com/docs/services/esi/best-practices/)
 ### 6.2. Exposed Hangar Bay API Endpoints
 *   **Endpoint 1:** `POST /api/v1/me/watchlist-items`
     <!-- AI_HANGAR_BAY_API_ENDPOINT_START
@@ -170,12 +170,12 @@
 *   Clear display of watchlist items, including ship name, image (if available from ESI type info), and user's set price.
 *   Intuitive controls for editing price and removing items.
 *   A dedicated page for managing the watchlist.
-*   [NEEDS_DESIGN: Mockups for watchlist page and add-to-watchlist interactions.]
+*   [NEEDS_DESIGN: Mockups for watchlist page and add-to-watchlist interactions.] *(AI Note: This item is a reminder for the design phase. Detailed mockups will be developed by the design team.)*
 *   **AI Assistant Guidance:** When generating UI components, ensure all display strings (button labels like "Add to Watchlist", "Edit", "Remove"; form labels for "Max Price", "Notes"; titles like "My Watchlist"; confirmation messages) are prepared for localization using Angular's i18n mechanisms as detailed in `../i18n-spec.md`. Ensure forms for adding/editing watchlist items and lists of these items are accessible as per `../accessibility-spec.md`.
 
 ## 9. Error Handling & Edge Cases (Required)
 *   Attempting to add a non-ship item or invalid `type_id`: API should validate `type_id` against known ship types (e.g., check categoryID from `esi_type_cache`).
-*   User tries to add the same `type_id` multiple times: [NEEDS_DECISION: Allow (e.g., if different notes/prices are desired, though price is editable) or prevent duplicates by `type_id` per user? Generally, prevent direct duplicates of type_id.]
+*   User tries to add the same `type_id` multiple times: Prevent via database unique constraint (`user_id`, `type_id`). Inform user (e.g., 'This item is already on your watchlist. You can edit the existing entry.'). API should return 409 Conflict.
 *   API errors: Standard user-friendly messages.
 *   User tries to manage a watchlist item not belonging to them: API returns 403/404.
 

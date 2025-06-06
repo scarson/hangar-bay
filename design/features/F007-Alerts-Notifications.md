@@ -2,7 +2,7 @@
 
 **Feature ID:** F007
 **Creation Date:** 2025-06-05
-**Last Updated:** 2025-06-05
+**Last Updated:** 2025-06-06
 **Status:** Draft
 
 ## 0. Authoritative ESI & EVE SSO References (Required Reading for ESI/SSO Integration)
@@ -21,23 +21,23 @@
 
 ## 2. User Stories (Required)
 *   Story 1: As a logged-in user with items on my watchlist (F006), I want to be notified when a public contract becomes available for a watched ship type at or below my specified maximum price, so I don't miss good deals.
-*   Story 2: As a logged-in user with saved searches (F005), I want to be optionally notified when new contracts matching a saved search appear, so I can stay updated on specific market segments.
-*   Story 3: As a logged-in user, I want to be able to configure how I receive notifications (e.g., in-app, email [NEEDS_DISCUSSION: Email for MVP?]), so I can choose my preferred method.
+*   Story 2: (Future Enhancement) As a logged-in user with saved searches (F005), I want to be optionally notified when new contracts matching a saved search appear, so I can stay updated on specific market segments.
+*   Story 3: As a logged-in user, I want to be able to configure how I receive notifications (in-app notifications are the primary method for MVP; email notifications are a future enhancement), so I can choose my preferred method.
 *   Story 4: As a logged-in user, I want to view a list of my recent notifications within the application, so I can catch up on alerts I might have missed.
 
 ## 3. Acceptance Criteria (Required)
 *   **Story 1 Criteria:**
     *   Criterion 1.1: A backend process periodically checks active watchlists against current public ship contracts (from F001 data).
     *   Criterion 1.2: If a contract for a watched `type_id` is found at or below the user's `max_price` (if set), a notification is generated for the user.
-    *   Criterion 1.3: Notifications are not repeatedly generated for the exact same contract unless a certain cooldown period has passed or the contract details changed significantly. [NEEDS_DISCUSSION: Notification de-duplication logic.]
-*   **Story 2 Criteria (If in scope for MVP):**
-    *   Criterion 2.1: A backend process periodically executes saved searches for users who have opted-in for notifications on those searches.
-    *   Criterion 2.2: If new contracts (not seen before by this saved search alert) are found, a notification is generated.
-    *   Criterion 2.3: Users can toggle notifications on/off per saved search.
+    *   Criterion 1.3: A notification is generated only once for a specific contract matching a specific watchlist item for a user. If the contract details change significantly (e.g., price drops further below the user's target after an initial notification, or the contract is re-listed after a period), a new notification may be generated, subject to a cooldown (e.g., 24 hours).
+*   **Story 2 Criteria (Future Enhancement):**
+    *   Criterion 2.1: (Future Enhancement) A backend process periodically executes saved searches for users who have opted-in for notifications on those searches.
+    *   Criterion 2.2: (Future Enhancement) If new contracts (not seen before by this saved search alert) are found, a notification is generated.
+    *   Criterion 2.3: (Future Enhancement) Users can toggle notifications on/off per saved search.
 *   **Story 3 Criteria:**
     *   Criterion 3.1: User has settings to enable/disable watchlist notifications.
-    *   Criterion 3.2: User has settings to enable/disable saved search notifications (if F005 integration is in scope).
-    *   Criterion 3.3: [If email is in scope] User can enable/disable email notifications and confirm their email address.
+    *   Criterion 3.2: (Future Enhancement) User has settings to enable/disable saved search notifications.
+    *   Criterion 3.3: (Future Enhancement) User can enable/disable email notifications and confirm their email address.
     *   Criterion 3.4: In-app notifications are displayed in a dedicated UI element (e.g., a notification bell/panel).
 *   **Story 4 Criteria:**
     *   Criterion 4.1: An in-app notification center lists recent alerts for the user.
@@ -47,13 +47,13 @@
 ## 4. Scope (Required)
 ### 4.1. In Scope
 *   Backend logic to match watchlist items against current contract data.
-*   Backend logic to (optionally) execute saved searches and identify new results.
+*   (Future Enhancement) Backend logic to execute saved searches and identify new results.
 *   Generation of notification records.
 *   In-app notification display system (e.g., a bell icon with a dropdown list).
 *   User settings to manage notification preferences (at least on/off for types of alerts).
 *   Storing and retrieving user notifications.
 ### 4.2. Out of Scope
-*   Email notifications (Potential for V2, adds complexity of email service integration, templates, unsubscribe management). [NEEDS_DECISION: Confirm for MVP]
+*   Email notifications (Deferred post-MVP. Adds complexity of email service integration, templates, unsubscribe management).
 *   Push notifications to mobile/desktop (V_Future).
 *   Highly customizable notification conditions beyond watchlist price and new saved search results.
 *   Real-time, instant notifications (notifications are generated based on periodic checks).
@@ -71,7 +71,7 @@
     Fields:
       - id: INTEGER (Primary Key, Auto-increment)
       - user_id: INTEGER (Foreign Key to `users.id`, Indexed, Not Nullable)
-      - type: VARCHAR(50) (Enum-like: 'watchlist_match', 'saved_search_new_result', 'system_message', Not Nullable)
+      - type: VARCHAR(50) (Enum-like: 'watchlist_match', 'system_message', Not Nullable)
       - message_key: VARCHAR(255) (Optional, key for a localized message template)
       - message_params: JSONB (Optional, parameters for the message template, e.g., {ship_name: 'Caracal', price: '1000000 ISK'})
       - rendered_message: TEXT (The actual notification text, potentially pre-rendered using message_key and params in the backend, or a simple direct message)
@@ -91,10 +91,6 @@
     Fields:
       - user_id: INTEGER (Primary Key, Foreign Key to `users.id`, Not Nullable)
       - enable_watchlist_alerts: BOOLEAN (Default: true)
-      - enable_saved_search_alerts: BOOLEAN (Default: false) [NEEDS_DISCUSSION: Scope of saved search alerts for MVP.]
-      - enable_email_notifications: BOOLEAN (Default: false) [Future: If email in scope]
-      - email_address: VARCHAR(255) (Optional) [Future: If email in scope]
-      - email_address_verified: BOOLEAN (Default: false) [Future: If email in scope]
       - updated_at: TIMESTAMP WITH TIME ZONE (Default: CURRENT_TIMESTAMP, On Update: CURRENT_TIMESTAMP)
     AI_Action_Focus: Backend (SQLAlchemy model, Pydantic schema). API for users to update their settings.
     I18n_Considerations: UI for these settings needs localization.
@@ -141,7 +137,7 @@
     API_Path: /api/v1/me/notification-settings
     HTTP_Method: GET
     Brief_Description: Retrieves the current notification settings for the authenticated user.
-    Success_Response_Schema_Ref: UserNotificationSettingDisplay (Pydantic model reflecting UserNotificationSetting table, excluding sensitive fields like email if not verified for this context)
+    Success_Response_Schema_Ref: UserNotificationSettingDisplay (Pydantic model: { user_id: int, enable_watchlist_alerts: bool, updated_at: datetime })
     Error_Response_Codes: 200 (OK), 401 (Unauthorized), 500.
     AI_Action_Focus: Backend: Requires authentication. Fetch settings for `user_id`. Frontend: Populate settings page.
     I18n_Considerations: None directly for API, but UI displaying these settings needs i18n.
@@ -151,7 +147,7 @@
     API_Path: /api/v1/me/notification-settings
     HTTP_Method: PUT
     Brief_Description: Updates notification settings for the authenticated user.
-    Request_Body_Schema_Ref: UserNotificationSettingUpdate (Pydantic model: { enable_watchlist_alerts: Optional[bool], enable_saved_search_alerts: Optional[bool] } - email fields deferred for MVP)
+    Request_Body_Schema_Ref: UserNotificationSettingUpdate (Pydantic model: { enable_watchlist_alerts: Optional[bool] })
     Success_Response_Schema_Ref: UserNotificationSettingDisplay
     Error_Response_Codes: 200 (OK), 400 (Bad Request), 401 (Unauthorized), 500.
     AI_Action_Focus: Backend: Requires authentication. Validate input. Update settings for `user_id`. Frontend: Allow user to toggle preferences.
@@ -160,7 +156,7 @@
 
 ## 7. Workflow / Logic Flow (Optional)
 **Watchlist Alert Generation (Backend Scheduled Task):**
-1.  Periodically (e.g., every 5-15 minutes [NEEDS_DECISION: Frequency]):
+1.  Periodically (e.g., every 15-30 minutes for MVP, configurable):
     a.  Fetch all active watchlist items from `watchlist_items` for users with `enable_watchlist_alerts=true`.
     b.  For each watchlist item:
         i.  Query current ship contracts (F001 data) matching `type_id`.
@@ -181,7 +177,7 @@
 *   Notification panel/dropdown listing recent notifications (ship name, price found, time).
 *   Clear call to action in notifications (e.g., "View Contract").
 *   User settings page for managing notification preferences.
-*   [NEEDS_DESIGN: Mockups for notification display and settings.]
+*   [NEEDS_DESIGN: Mockups for notification display and settings.] *(AI Note: This item is a reminder for the design phase. Detailed mockups will be developed by the design team.)*
 *   **AI Assistant Guidance:** When generating UI components for notifications (indicator, panel, list items) and settings, ensure all display strings are prepared for localization (see `../i18n-spec.md`). All interactive elements must be accessible (see `../accessibility-spec.md`), including ARIA attributes for dynamic updates like unread counts or new notification arrivals.
 
 ## 9. Error Handling & Edge Cases (Required)
@@ -227,13 +223,13 @@
 *   Backend database, Task scheduler (Celery).
 *   (Optional) Email sending service.
 
-## 15. Notes / Open Questions (Optional)
-*   [NEEDS_DECISION: MVP scope for notification channels - In-app only, or include email? Email adds significant setup.]
-*   [NEEDS_DECISION: Frequency of backend checks for watchlist matches and saved search updates.]
-*   [NEEDS_DISCUSSION: Detailed de-duplication logic for notifications. E.g., don't notify for the same contract_id for the same user/watchlist_item within X hours? Or only if price changes?]
-*   [NEEDS_DISCUSSION: Scope of saved search alerts for MVP. Is it just "new items found" or more complex criteria?]
-*   [NEEDS_DISCUSSION: How to handle notifications for auctions where price changes? Notify on initial match, then again if price drops further below user's max_price?]
-*   [NEEDS_DESIGN: What information exactly to show in a notification message?]
+## 15. Design Clarifications and Resolutions
+*   **Notification Channels (MVP):** In-app notifications are the focus for MVP. Email notifications are deferred post-MVP (see Section 4.2).
+*   **Backend Check Frequency (MVP):** Watchlist matches will be checked periodically (e.g., every 15-30 minutes, configurable, see Section 7). Saved search alert checks are deferred post-MVP.
+*   **Notification De-duplication:** (Covered in Criterion 1.3) For MVP, a notification is generated when a contract first matches a user's watchlist criteria. Subsequent notifications for the exact same contract and watchlist item will not be sent unless the contract is re-listed or its price changes significantly in a way that re-triggers the match under more favorable terms (e.g., further price drop), typically after a cooldown period (e.g., 24 hours).
+*   **Saved Search Alerts Scope:** (Deferred post-MVP) Alerts for Saved Searches (F005) are deferred to simplify initial implementation. When implemented, this would involve defining criteria for 'new' items and user opt-in per search.
+*   **Auction Notifications:** Notifications for auctions will trigger when the current bid price meets or is lower than the user's `max_price`. If the bid price subsequently drops further below the user's `max_price`, a new notification may be generated subject to the de-duplication rules.
+*   **Notification Message Content:** Notification messages should clearly state the item (e.g., ship name), the price at which it was found, the location (e.g., system or region), and a direct link to view the contract. For example: 'Caracal found for 10,500,000 ISK in Jita. View contract.' The `rendered_message` in the `notifications` table will store this, ideally constructed from `message_key` and `message_params` for i18n (though direct rendering is simpler for MVP).
 
 ## 16. AI Implementation Guidance (Optional)
 <!-- AI_NOTE_TO_HUMAN: This section is specifically for providing direct guidance to an AI coding assistant. -->
@@ -294,7 +290,7 @@
 *   **Backend (Models & Tasks):**
     *   "Create SQLAlchemy models `Notification` and `UserNotificationSetting` and corresponding Pydantic schemas as detailed in Section 5."
     *   "Develop a Celery task that periodically checks active user watchlists against current contract data. If a contract matches a watchlist item's `type_id` and is at or below its `max_price`, generate a `Notification` record. Implement de-duplication to avoid repeat notifications for the same event within a defined period. Ensure notification messages are constructed using i18n keys and parameters."
-    *   (If F005 alerts in scope) "Develop a Celery task for saved search alerts..."
+    *   (Future Enhancement for F005 alerts) "Develop a Celery task for saved search alerts..."
 *   **Backend (API):**
     *   "Implement FastAPI endpoints for `/api/v1/me/notifications` (GET, POST for mark-read) and `/api/v1/me/notification-settings` (GET, PUT) as detailed in Section 6.2. Ensure all require authentication and enforce user ownership."
 *   **Frontend (Angular):**
