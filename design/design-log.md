@@ -1,3 +1,14 @@
+## 2025-06-06: Completion of MVP Implementation Task File Creation
+
+**Decision/Event:** All detailed task files for the Hangar Bay MVP Implementation Plan (Phases 00 through 10) have been successfully created and committed to the repository. This includes tasks covering foundational setup, backend core infrastructure, frontend core infrastructure, features F001, F002, F003 (backend and frontend aspects), cross-cutting concerns (security, logging, testing, accessibility, i18n), and deployment/documentation.
+
+**Rationale:** This completes a significant milestone in project planning, providing a comprehensive, actionable breakdown of work required for the MVP. These detailed task files, complete with AI implementation guidance, will facilitate both AI-assisted and human-driven development workflows.
+
+**Affected Components:**
+*   `plans/implementation/` (all subdirectories and files)
+
+---
+
 # Hangar Bay - Design Decision Log
 
 This document records major design discussion points, considerations, and decisions made throughout the Hangar Bay project, in generally chronological order.
@@ -313,6 +324,35 @@ This document records major design discussion points, considerations, and decisi
     *   **Improved AI-Readiness:** The documentation suite is better structured and detailed, enhancing its utility for AI-assisted development.
     *   **MVP Readiness Confirmation:** This comprehensive review confirms that project documentation and feature specifications are in a mature state, providing a solid foundation for proceeding with MVP development (F001-F003) and for the subsequent implementation of deferred features (F004-F007).
 *   **Rationale:** This dedicated review and refinement phase was critical to consolidate all previous design work, ensure a high level of quality and consistency in project resources, and explicitly prepare the project for the transition into active MVP development. It serves as a key milestone, marking the conclusion of the intensive initial design and specification phase.
+
+---
+
+## AI-Focused MVP Implementation Plan Conceptualization (Approx. 2025-06-06 07:24)
+
+*   **Objective:** To conceptualize and initiate a detailed, AI-friendly MVP implementation plan for Hangar Bay, guiding development of features F001-F003.
+*   **Core Rationale for AI-Centric Plan:**
+    *   **Enhanced Clarity & Precision:** Provide explicit, step-by-step tasks to minimize AI ambiguity.
+    *   **Rich Contextual Grounding:** Link tasks directly to feature specs (F001-F003), design documents (`design-spec.md`, etc.), and specific sections/data models to give AI deep understanding.
+    *   **Embedded AI Guidance:** Include structured prompts and "AI Implementation Guidance" within each task file.
+    *   **Systematic Progression:** Ensure logical task ordering, manage dependencies, and integrate testability considerations from the start.
+    *   **Living Documentation:** The plan itself serves as a persistent, detailed record of the MVP construction process.
+*   **MVP Scope Covered:** The plan initially targets F001 (Public Contract Aggregation & Display), F002 (Ship Browsing & Advanced Search/Filtering), and F003 (Detailed Ship Contract View), which do not require user authentication (F004) for their MVP functionality.
+*   **Phased Structure Adopted:**
+    *   **Phase 0: Foundational Setup:** Covers project initialization, tooling (linters, formatters), dependency management (`requirements.txt`, `package.json`), version control (`.gitignore`), and initial `README.md` updates. Includes configuration management setup (Pydantic Settings, Angular environment files).
+    *   **Phase 1: Backend Core Infrastructure:** Establishes the FastAPI application skeleton, database setup (PostgreSQL with Alembic for migrations, SQLite for dev), and Valkey caching layer integration.
+    *   **Phase 2: Backend - F001: Public Contract Aggregation:** Develops the ESI API client for public endpoints, defines SQLAlchemy models for F001 data (contracts, items, type cache, etc.), implements the background aggregation service, and creates initial API endpoints for basic contract listing.
+    *   **Phase 3: Frontend Core Infrastructure:** Sets up the Angular application skeleton, creates a backend API service layer in Angular, and implements the basic application layout, routing, and navigation.
+    *   **Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering:** Develops the Angular component for displaying the contract list (F001) and implements UI elements for basic filtering (initial F002).
+    *   **Phase 5: Backend - F002: Advanced Search & Filtering Logic:** Enhances backend query capabilities to support advanced filters defined in F002 and updates API endpoints accordingly.
+    *   **Phase 6: Frontend - F002: Advanced Filtering Implementation:** Develops the Angular component for the advanced search/filter interface and integrates it with the backend.
+    *   **Phase 7: Backend - F003: Detailed Ship/Contract View:** Creates API endpoint(s) to serve detailed information for a specific contract, including items and ship attributes, as per F003.
+    *   **Phase 8: Frontend - F003: Detailed View Implementation:** Develops the Angular component to display the detailed contract view.
+    *   **Phase 9: Cross-Cutting Concerns (Integrated Throughout & Finalized):** Addresses security hardening (MVP scope), logging and basic observability, testing (unit and basic E2E), and foundational accessibility & i18n stubs.
+    *   **Phase 10: Deployment:** Covers Dockerization of backend and frontend applications and setting up a basic CI/CD pipeline.
+*   **Process:**
+    *   Created an overview document: `plans/implementation/00-mvp-implementation-plan-overview.md`.
+    *   Began populating detailed task files (e.g., `00.1-project-initialization-tooling.md`, `00.2-configuration-management.md`) within a hierarchical structure (`plans/implementation/phase-XX-phase-name/YY.Z-task-name.md`).
+*   **Significance:** This structured, AI-focused plan aims to streamline MVP development by providing unparalleled clarity, context, and actionable guidance for AI coding assistants and human developers alike.
 
 ---
 
