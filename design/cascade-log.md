@@ -560,4 +560,204 @@ This detailed, AI-focused implementation plan provides a robust framework for de
 
 ---
 
-*(End of Cascade Interaction Log. New entries are appended above this line.)*
+---
+
+## Phase 02: Backend - F001: Public Contract Aggregation - Review Summary (2025-06-06)
+
+Reviewed and updated all task files within Phase 02 to ensure alignment with the F001 feature specification:
+*   **02.1-esi-client-public.md:** Updated ESI endpoint list to accurately reflect all endpoints required by F001, including type resolution and name resolution endpoints.
+*   **02.2-data-models-f001.md:** Revised AI prompts for `Contract`, `ContractItem`, and added `EsiTypeCache` models to include all fields and relationships specified in F001. Ensured `ContractItem` uses an internal auto-incrementing PK.
+*   **02.3-background-aggregation-service.md:** Modified aggregation logic and AI prompt to include fetching and upserting item type details into `EsiTypeCache` as part of the contract aggregation process.
+*   **02.4-api-endpoints-f001.md:** Changed API endpoint path to `/api/v1/contracts/ships`. Updated Pydantic schema prompts to define a `ShipContractRead` schema tailored to F001's ship contract display fields. Revised endpoint AI prompt to include filtering by ship type and blueprint copy status, joining `Contract`, `ContractItem`, and `EsiTypeCache` models, and returning paginated results.
+
+All Phase 02 task files are now considered consistent with F001.
+
+---
+
+## Phase 05: Backend - F002: Advanced Search & Filtering Logic - Review Summary (2025-06-06)
+
+Reviewed and updated all task files within Phase 05 to ensure alignment with the F002 feature specification:
+*   **05.1-advanced-filtering-logic.md:** Updated task to explicitly list all filterable fields from `Contract`, `ContractItem`, and `EsiTypeCache` models as per F002. Enhanced SQLAlchemy query AI prompt for complex joins and refined database indexing AI prompt.
+*   **05.2-api-endpoints-f002-update.md:** Updated task to specify that the `/api/v1/contracts/ships` endpoint will be modified. Refined the Pydantic model AI prompt (`ShipContractFilters`) to include all F002 advanced filter query parameters (text search, numeric ranges, ID-based, boolean, enum/string, pagination, sorting) with FastAPI `Query` validations. Clarified that the Pydantic model instance will be passed to the service layer for dynamic query building.
+
+All Phase 05 task files are now considered consistent with F002.
+
+---
+
+## Phase 07: Backend - F003: Detailed Ship/Contract View - Review Summary (2025-06-06)
+
+Reviewed and updated the task file within Phase 07 to ensure alignment with the F003 feature specification:
+*   **07.1-api-endpoints-f003.md:** Updated the API endpoint route to `GET /api/v1/contracts/ships/{contract_id}`. Revised Pydantic response model AI prompts to define `ShipContractDetailRead` (for the overall contract) and `ContractItemDetailRead` (for nested items), including comprehensive fields and resolved names (e.g., `type_name`, `group_name`, `location_name`). Refined the FastAPI endpoint handler AI prompt to include verification of `is_ship_contract`, eager loading, name/detail resolution from `EsiTypeCache` and other sources, and returning the `ShipContractDetailRead` model.
+
+The Phase 07 task file is now considered consistent with F003.
+
+---
+
+## Phase 03: Frontend Core Infrastructure - Review Summary (2025-06-06)
+
+Reviewed and updated all task files within Phase 03:
+*   **03.1-angular-app-skeleton.md:** Reviewed and confirmed the task file provides a solid foundation for creating the Angular application (CLI usage, SCSS, routing, strict mode, ESLint, Prettier). No changes were necessary.
+*   **03.2-backend-api-service-layer.md:** Refined the "Implement Initial API Methods" section and its AI prompt. Clarified that initial methods should target the F001 endpoint `/api/v1/contracts/ships`. Updated the example method signature and AI prompt to reflect F001 query parameters (`page`, `size`, `ship_type_id`, `is_bpc`) and the `PaginatedShipContractsResponse` (containing `ShipContract` items aligned with `ShipContractRead` Pydantic schema).
+*   **03.3-basic-layout-routing.md:** Updated the "Define Initial Routes" section to specify a single primary route (`/browse-contracts`) for displaying ship contracts, serving both F001 and F002. The default route will redirect here. Adjusted placeholder component generation and AI prompt for the `Routes` array accordingly. Updated "Implement Basic Navigation" to reflect this single primary navigation link.
+
+All Phase 03 task files are now considered internally consistent and aligned with related feature specifications.
+
+---
+
+### Session Summary - 2025-06-06 09:16:09-05:00 - AISP-002 Timestamp Clarification & Phase 04 Task Refinement
+
+This session focused on clarifying AI operational procedures regarding timestamp formats and continuing with the Hangar Bay MVP frontend task plan validation.
+
+**Key Activities and Decisions:**
+
+1.  **AISP-002 Timestamp Clarification (Iterative Process):**
+    *   The AI System Procedure `AISP-002` (documented in `design/ai-system-procedures.md`) underwent updates to specify the precise timestamp format for entries in `design/cascade-log.md`.
+    *   Initially, it was updated to `YYYY-MM-DD HH:MM:SSZ` (U.S. Central Time).
+    *   Following USER clarification regarding ambiguity between 'Z' (Zulu) and the "U.S. Central Time" hint, AISP-002 was further corrected.
+    *   The **final and correct** required format for session summary headings is now `YYYY-MM-DD HH:MM:SS±hh:mm` (U.S. Central Time with offset, e.g., `2025-06-06 09:16:09-05:00`), aligning with the intended interpretation of the instruction in `design-log.md`.
+
+2.  **Operational Memory Update (AISP-002):**
+    *   The associated Cascade Memory (ID: `42c9fb61-0933-428f-ad56-16e1f846afcf`), which operationalizes AISP-002 for AI-assisted session summary logging, was updated in line with the final timestamp format clarification.
+    *   Specifically, Action Step 6 of the memory now reflects the corrected timestamp format: `YYYY-MM-DD HH:MM:SS±hh:mm` (U.S. Central Time with offset).
+
+3.  **Cascade Log File Management:**
+    *   The redundant `cascade-log.md` file at the project root (`c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\cascade-log.md`) was successfully deleted, following earlier consolidation of its content into `design/cascade-log.md`.
+
+4.  **Phase 04 Frontend Task Refinement (`04.1-contract-list-component.md`):**
+    *   The task file `plans/implementation/phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.1-contract-list-component.md` was reviewed and refined.
+    *   Key clarifications included:
+        *   The `ContractListComponent` generated in this task will be the primary component for the `/browse-contracts` route, explicitly replacing the `BrowseContractsPageComponent` placeholder defined in Phase 03 (Task 03.3).
+        *   A note was added regarding the Angular CLI's `--flat` option for component generation, explaining its effect on directory structure.
+
+**Next Steps:**
+*   Proceed with reviewing the next task file in Phase 04: `04.2-basic-filtering-ui.md`.
+
+---
+
+### Session Summary - 2025-06-06 09:32:17-05:00 - Topic: Creation of Task 04.3 and MVP Plan Update
+
+**Session Goal:** To continue reviewing Phase 04 frontend implementation tasks and address any discrepancies in the MVP plan.
+
+**Key Activities & Decisions:**
+
+1.  **Identification of Missing Task:**
+    *   While reviewing the `00-mvp-implementation-plan-overview.md`, it was noted that Phase 04 ("Frontend - F001/F002: Contract Listing & Basic Filtering") listed tasks `04.1-contract-list-component.md` and `04.2-basic-filtering-ui.md`.
+    *   However, a logical next step – integrating the filters with the list – was not explicitly defined as a separate task (e.g., `04.3`).
+    *   It was determined that for clarity and to ensure all steps are explicitly documented for AI-assisted development, a dedicated task for this integration was necessary.
+
+2.  **Creation of Task `04.3-integrating-filters-with-list.md`:**
+    *   A new task file, `plans/implementation/phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.3-integrating-filters-with-list.md`, was created.
+    *   **Objective:** To integrate the basic filtering UI (Task 04.2) with the `ContractListComponent` (Task 04.1), involving capturing filter changes, updating API request parameters, and refreshing the contract list.
+    *   **Content:** The file includes:
+        *   Relevant specifications (F001, design-spec, Tasks 04.1, 04.2, 03.2, 02.4).
+        *   Key implementation steps: Modifying `ContractListComponent`, updating API call logic (with pagination reset), triggering data refresh, and integrating the filter component.
+        *   AI implementation guidance and specific AI prompts.
+        *   A comprehensive Definition of Done.
+    *   The "Last Updated" date within the new task file was set to `2025-06-07` (reflecting the intended date of creation for the file content).
+
+3.  **Update to `00-mvp-implementation-plan-overview.md`:**
+    *   The `00-mvp-implementation-plan-overview.md` file was modified to include a reference to the new task:
+        ```diff
+        ### Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering
+        *   **Goal:** Develop the UI for displaying contracts and implementing initial filtering capabilities.
+        *   **Tasks:**
+            *   [04.1 Contract List Component](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.1-contract-list-component.md)
+            *   [04.2 Basic Filtering UI](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.2-basic-filtering-ui.md)
+        +    *   [04.3 Integrating Basic Filters with Contract List](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.3-integrating-filters-with-list.md)
+        ```
+
+4.  **Review of Task `04.3`:**
+    *   The newly created task `04.3-integrating-filters-with-list.md` was reviewed in detail.
+    *   It was found to be well-structured, clear, and comprehensive, with relevant objectives, specifications, implementation steps, AI guidance, and a robust Definition of Done.
+    *   The USER confirmed satisfaction with the task definition.
+
+**Files Modified/Created:**
+
+*   **Created:** `plans/implementation/phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.3-integrating-filters-with-list.md`
+*   **Modified:** `plans/implementation/00-mvp-implementation-plan-overview.md`
+
+**Next Steps:**
+*   Proceed with reviewing tasks as per the updated MVP implementation plan. With Phase 04 task definitions now complete, the next step is to begin reviewing Phase 05 tasks.
+
+
+
+---
+
+## Cascade Log: 2025-06-06 - Integrating Cross-Cutting Concerns Proactively
+
+**Session ID:** HangarBay-MVP-Review-20250606-CCC-Integration
+**User:** Sam
+**Cascade Version:** Cascade Agentic AI Coding Assistant (Windsurf/AI Flow Paradigm) - 2025-06-06
+**Objective:** Address the critical process issue of ensuring cross-cutting concerns (Security, Observability, Testing, Accessibility, Internationalization) are integrated throughout the Hangar Bay MVP development lifecycle, rather than being treated as an afterthought in Phase 09.
+
+**1. Problem Identification:**
+
+The USER (Sam) identified a significant flaw in the MVP implementation plan. While Phase 09 ("Cross-Cutting Concerns (MVP Scope)") correctly detailed tasks for Security, Observability, Testing, Accessibility, and Internationalization, these foundational aspects were not explicitly cross-referenced or mandated for integration within the preceding feature development phases (Phases 00-08). This risked these critical non-functional requirements (NFRs) being overlooked until late in the development cycle, potentially leading to:
+    *   Increased rework and refactoring.
+    *   Inherent security vulnerabilities.
+    *   Poor observability and diagnosability.
+    *   Inadequate test coverage developed reactively.
+    *   Accessibility issues requiring significant UI changes.
+    *   Difficulties in future internationalization efforts.
+
+The USER emphasized: "Those CANNOT be an afterthought only looked at after much of the MVP is already built." This highlighted the need for a robust mechanism to ensure these concerns are an integral part of *every* task from the outset.
+
+**2. Proposal Generation & Evaluation:**
+
+To address this, I (Cascade) considered several potential solutions:
+
+*   **Proposal 1: Modify All Existing Task Files:**
+    *   *Description:* Add explicit references and checklist items for each cross-cutting concern to every task file in Phases 01-08.
+    *   *Pros:* Highly explicit; difficult for an AI assistant to miss if processing the task file directly.
+    *   *Cons:* Involves a large number of edits (19 files); could make individual task files overly verbose and repetitive. Maintenance could be cumbersome if the core specs for cross-cutting concerns evolve.
+
+*   **Proposal 2: Create New "Gate" Sub-Tasks:**
+    *   *Description:* For each existing feature task, introduce new, smaller sub-tasks specifically dedicated to reviewing and implementing aspects of each of the five cross-cutting concerns.
+    *   *Pros:* Makes the consideration of NFRs a formal part of the workflow; explicitly allocates effort.
+    *   *Cons:* Significantly increases the total number of tasks in the plan; could make the overall plan feel overly fragmented and bureaucratic. Might lead to NFRs still being seen as separate rather than intrinsically part of the feature work.
+
+*   **Proposal 3: Leverage Cascade's Memory System:**
+    *   *Description:* Create strong, high-priority memories instructing me to *always* consult and apply the cross-cutting specifications (`security-spec.md`, `observability-spec.md`, etc.) for any Hangar Bay task.
+    *   *Pros:* Powerful for directly influencing my (Cascade's) behavior and reasoning processes. Doesn't clutter project files with boilerplate. Leverages the agentic nature of Cascade.
+    *   *Cons:* Relies heavily on the effectiveness and consistent application of the memory system. Less visible to a human developer reviewing only the task files. Might be harder to verify that the consideration happened for each task without explicit output.
+
+*   **Proposal 4: Global Reminder in Overview Plan:**
+    *   *Description:* Add a prominent global instruction in `00-mvp-implementation-plan-overview.md` emphasizing the importance of integrating NFRs throughout.
+    *   *Pros:* Simple to implement; provides a high-level directive.
+    *   *Cons:* Likely too high-level and easily overlooked when an AI assistant (or human) is focused on the specifics of an individual task file. Lacks actionable enforcement.
+
+*   **Proposal 5: Hybrid Approach (Chosen):**
+    *   *Description:* Combine the strengths of AI Memories, a standardized checklist within each task file, and a global reminder in the overview plan.
+    *   *Pros:*
+        *   **AI Memories:** Directly influence Cascade's core processing to prioritize NFRs.
+        *   **Standardized Checklist:** Provides an explicit, actionable step within each task file, making the NFR consideration visible and verifiable. Forces active thought about NFRs in the context of *that specific task*.
+        *   **Global Reminder:** Reinforces the importance at the project plan level.
+        *   Offers a multi-layered approach, increasing the likelihood of consistent NFR integration.
+    *   *Cons:* Requires initial setup effort for memories and modifying all relevant task files. The checklist adds some boilerplate to each task, but its value outweighs this.
+
+**3. Decision & Justification:**
+
+The Hybrid Approach (Proposal 5) was chosen as the most effective and robust solution for ensuring Cascade consistently addresses cross-cutting concerns.
+    *   **Effectiveness for AI (Cascade):** The AI Memories directly tap into my operational paradigm. The explicit checklist in each task file provides a concrete, structured prompt that I am designed to follow. This combination ensures both implicit understanding (via memory) and explicit instruction (via checklist).
+    *   **Verifiability:** The checklist in each task file, which I will be responsible for filling out, provides a clear record that these concerns were considered for each specific piece of work.
+    *   **Maintainability:** While requiring initial edits, the core NFR specifications remain centralized. The checklist points to these central documents.
+    *   **User Confidence:** This multi-pronged strategy provides greater assurance to the USER that these critical aspects will not be overlooked.
+
+The chosen strategy is:
+1.  **Create Strong AI Memories:** Instructing Cascade that for any Hangar Bay task, the specifications for Security, Observability, Testing, Accessibility, and Internationalization are primary, non-negotiable inputs. (Completed via `create_memory` tool calls).
+2.  **Standardized "Cross-Cutting Concerns Review" Section in Each Task File (Phases 00-08):** A new, mandatory checklist section to be added to each task file, requiring Cascade to detail how each concern was addressed for that specific task.
+3.  **Global Reinforcement in `00-mvp-implementation-plan-overview.md`:** A note explaining this integrated approach.
+
+**4. Outcome:**
+
+This combined strategy ensures these critical areas are not deferred but are an integral part of Cascade's workflow for every task, from planning through implementation. The goal is to build quality, security, and maintainability into Hangar Bay from the very first line of code.
+
+**5. Action Plan (as of this log entry):**
+1.  Create the AI memories (Completed).
+2.  Append this log entry to `design/cascade-log.md` and a summary to `design/design-log.md` (Current step).
+3.  Update `00-mvp-implementation-plan-overview.md` with the global reinforcement note.
+4.  Systematically update all task files in Phases 00-08 to include the "Cross-Cutting Concerns Review" checklist.
+
+---
+
+*(End of Cascade Interaction Log. New entries are appended above this line. The **final and correct** required format for session summary headings is now `YYYY-MM-DD HH:MM:SS-05:00` (U.S. Central Time with offset, e.g., `2025-06-06 09:16:09-05:00`))*

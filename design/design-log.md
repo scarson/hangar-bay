@@ -1,14 +1,3 @@
-## 2025-06-06: Completion of MVP Implementation Task File Creation
-
-**Decision/Event:** All detailed task files for the Hangar Bay MVP Implementation Plan (Phases 00 through 10) have been successfully created and committed to the repository. This includes tasks covering foundational setup, backend core infrastructure, frontend core infrastructure, features F001, F002, F003 (backend and frontend aspects), cross-cutting concerns (security, logging, testing, accessibility, i18n), and deployment/documentation.
-
-**Rationale:** This completes a significant milestone in project planning, providing a comprehensive, actionable breakdown of work required for the MVP. These detailed task files, complete with AI implementation guidance, will facilitate both AI-assisted and human-driven development workflows.
-
-**Affected Components:**
-*   `plans/implementation/` (all subdirectories and files)
-
----
-
 # Hangar Bay - Design Decision Log
 
 This document records major design discussion points, considerations, and decisions made throughout the Hangar Bay project, in generally chronological order.
@@ -356,4 +345,47 @@ This document records major design discussion points, considerations, and decisi
 
 ---
 
-*(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*
+---
+date: 2025-06-06
+author: Cascade (AI Assistant), Sam (User)
+status: Decided
+---
+
+**Decision: Proactive Integration of Cross-Cutting Concerns into All MVP Tasks**
+
+**Context:**
+A critical review of the MVP implementation plan revealed that while Phase 09 detailed tasks for cross-cutting concerns (Security, Observability, Testing, Accessibility, i18n), these were not explicitly integrated into earlier feature development phases (00-08). This risked them being treated as afterthoughts, leading to potential rework and deficiencies.
+
+**Proposals Considered:**
+1.  Modify all existing task files with explicit NFR checklists.
+2.  Create new "gate" sub-tasks for NFRs per feature task.
+3.  Leverage Cascade's AI memory system for implicit NFR prioritization.
+4.  Add a global reminder in the overview plan.
+5.  Hybrid: Combine AI memories, a standardized NFR checklist in each task, and a global reminder.
+
+**Decision:**
+The **Hybrid Approach (Proposal 5)** was adopted. This involves:
+1.  **Strong AI Memories:** Instilling in Cascade the requirement to always consider the five core cross-cutting concern specifications (`security-spec.md`, `observability-spec.md`, `test-spec.md`, `accessibility-spec.md`, `i18n-spec.md`) as primary inputs for all tasks. (Memories created).
+2.  **Standardized "Cross-Cutting Concerns Review" Section:** Adding a mandatory checklist to each task file in Phases 00-08. This checklist requires Cascade to document how each concern was addressed for that specific task.
+3.  **Global Reinforcement in `00-mvp-implementation-plan-overview.md`:** Adding a note to the overview plan explaining this integrated approach.
+
+**Rationale:**
+This multi-layered strategy ensures that critical non-functional requirements are not deferred but are an integral part of Cascade's workflow for every task. It combines direct AI behavioral influence (memories) with explicit, verifiable action items within each task (checklists), providing a robust framework for building a high-quality, secure, and maintainable application from the outset.
+
+**Impact:**
+All task files in Phases 00-08 will be updated. Cascade's operational procedures for task execution will now include completing the "Cross-Cutting Concerns Review" section. The `00-mvp-implementation-plan-overview.md` will be updated to reflect this process.
+
+---
+
+## 2025-06-06: Completion of MVP Implementation Task File Creation
+
+**Decision/Event:** All detailed task files for the Hangar Bay MVP Implementation Plan (Phases 00 through 10) have been successfully created and committed to the repository. This includes tasks covering foundational setup, backend core infrastructure, frontend core infrastructure, features F001, F002, F003 (backend and frontend aspects), cross-cutting concerns (security, logging, testing, accessibility, i18n), and deployment/documentation.
+
+**Rationale:** This completes a significant milestone in project planning, providing a comprehensive, actionable breakdown of work required for the MVP. These detailed task files, complete with AI implementation guidance, will facilitate both AI-assisted and human-driven development workflows.
+
+**Affected Components:**
+*   `plans/implementation/` (all subdirectories and files)
+
+---
+
+*(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SS-05:00' (U.S. Central Time) for new major decision sections.)*
