@@ -12,6 +12,7 @@ This document outlines the design specification for Hangar Bay, an e-commerce ap
 *   To help players efficiently find desirable ship contracts available in-game.
 *   To ensure the application is accessible and usable by people with a wide range of abilities, adhering to WCAG 2.1 AA as a minimum (see `accessibility-spec.md`).
 *   To design the application with internationalization (i18n) capabilities from the outset, enabling future localization for EVE Online's global player base (see `i18n-spec.md`).
+*   To ensure the application meets high performance standards for responsiveness, scalability, and resource efficiency, as detailed in `performance-spec.md`.
 
 ## 3. Target Audience
 
@@ -177,7 +178,8 @@ Primary ESI endpoints for the public contract aggregator model:
 
 *   **AI Action: Responsive and Mobile-Friendly Design:** Ensure the application is usable and provides a good experience on various screen sizes (desktops, tablets, mobile phones).
     *   **AI Implementation Guidance:**
-        *   **Fluid Layouts:** Use relative units (percentages, `em`, `rem`, `vw`, `vh`) and flexible containers to allow content to reflow gracefully.
+        *   **Leverage Angular's Capabilities:** Utilize Angular's features for responsive design, such as its component architecture, built-in directives, and integration with responsive grid systems (e.g., Angular Material's layout system, Bootstrap grid, or CSS Grid/Flexbox directly).
+        *   **Fluid Layouts:** Employ fluid grids and flexible images/media that adapt to different viewport sizes. Use relative units (percentages, `em`, `rem`, `vw`, `vh`) and flexible containers to allow content to reflow gracefully.
         *   **Media Queries:** Use CSS media queries extensively to apply different styles and layouts based on screen characteristics.
         *   **Navigation:** Implement mobile-friendly navigation patterns (e.g., collapsible hamburger menus, off-canvas navigation, bottom navigation bars for key actions where appropriate).
         *   **Touch Interactions:** Ensure all interactive elements (buttons, links, form inputs) are adequately sized and spaced to be easily tappable on touchscreens. Avoid reliance on hover states for critical information disclosure.
@@ -188,7 +190,7 @@ Primary ESI endpoints for the public contract aggregator model:
         *   **Testing (Mobile):** Thoroughly test on various emulated mobile viewports (using browser developer tools) and, where possible, on a range of real mobile devices. (Refer to `test-spec.md` for detailed testing requirements).
 
 *   **AI Action: Minimalism and Focus:** Design UIs that avoid clutter. Present only relevant information and actions to the user to maintain focus on the core tasks.
-*   **AI Action: Performance and Responsiveness (General):** Ensure the application loads quickly and responds promptly to user interactions. Implement optimized data loading and rendering strategies. (See `performance-spec.md`, to be created).
+*   **AI Action: Performance and Responsiveness (General):** Ensure the application loads quickly and responds promptly to user interactions. Implement optimized data loading and rendering strategies. (See `performance-spec.md` for detailed guidance).
 *   **AI Action: Consistency:** Maintain a consistent design language (colors, typography, layout, component behavior) throughout the application, leveraging Angular Material theming.
 *   **AI Action: Error Handling and Feedback:** Implement clear, user-friendly error messages and feedback mechanisms for user actions (e.g., loading indicators, success/failure notifications using snackbars or toasts).
 *   **AI Action: Trust and Security Cues:** Visually reinforce trust and security in the UI elements, especially around authentication and user data sections. Use iconography and language that conveys security.
@@ -228,7 +230,7 @@ Accessibility is a core requirement for Hangar Bay. The application MUST be desi
 *   **Interaction with Internationalization:** Ensure that accessibility features (e.g., ARIA labels, `alt` text) are translatable and that the page's `lang` attribute is correctly set. Refer to `i18n-spec.md` for details on localizing accessible content.
 *   **AI Assistant Guidance:** AI coding assistants MUST strictly adhere to the guidelines and patterns provided in `accessibility-spec.md` and `i18n-spec.md` when generating or modifying any frontend code or UI-related backend logic.
 
-*Considerations: Refer to Section 4 (Security) and `security-spec.md`.* 
+*Considerations: Refer to Section 4 (Security) and `security-spec.md`. All UI components must be built with accessibility in mind (following `accessibility-spec.md`) and designed for internationalization (following `i18n-spec.md`).*
 
 ## 14. Future Enhancements
 

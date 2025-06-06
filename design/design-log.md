@@ -181,4 +181,20 @@ This document records major design discussion points, considerations, and decisi
     *   **UI/UX Correction in `design-spec.md`:** Restored accidentally removed mobile-friendly and general UI/UX principles in Section 10, ensuring comprehensive guidance alongside i18n considerations.
     *   **Reinforced Rationale:** The EVE Online player base is global. Comprehensive internationalization, deeply integrated with accessibility and testing, is therefore not just a feature but a foundational requirement to serve this diverse audience effectively and provide an inclusive, high-quality user experience for all.
 
+## Performance Specification Creation (Approx. 2025-06-06 01:05:00-05:00)
+
+*   **Context:** The main `design-spec.md` identified a need for detailed performance considerations, initially placeholder-referenced as `(See performance-spec.md, to be created)`.
+*   **Decision:** A dedicated `performance-spec.md` document was created to provide comprehensive guidance on performance targets, design principles, testing methodologies, and AI-specific implementation patterns for Hangar Bay.
+*   **Rationale:** 
+    *   Performance is a critical non-functional requirement for a responsive user experience, especially given interactions with ESI and potentially large datasets.
+    *   A separate specification allows for focused and detailed treatment of performance aspects without cluttering other documents.
+    *   It provides clear, centralized instructions for AI coding assistants to generate performant code by default and to consider performance implications throughout development.
+    *   The spec covers backend (FastAPI, Valkey, PostgreSQL) and frontend (Angular) performance patterns, targets, testing tools, and common anti-patterns.
+*   **Action:** `performance-spec.md` was created with a detailed structure. Cross-references and relevant guidance pointing to `performance-spec.md` were added to:
+    *   `design-spec.md` (Section 4.3 Non-Functional Requirements and Section 10 UI/UX Considerations).
+    *   `test-spec.md` (Section 3.4 Performance Tests).
+    *   `observability-spec.md` (Sections 2.2 Metrics and 2.4 Error Tracking & Alerting).
+    *   `design/features/00-feature-spec-template.md` (Section 11 Performance Considerations and Section 14 AI Implementation Guidance).
+    *   The main `README.md` (AI Assistant Guidance section).
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*

@@ -32,10 +32,12 @@ This document outlines the observability strategy for the Hangar Bay application
     *   Database query performance: execution time, error rate per query type.
     *   Cache performance: hit/miss ratio, latency.
     *   Task queue metrics (for alerts): queue length, task processing time, error rate.
+    *   *Note: Refer to `performance-spec.md` for specific target values for latencies and processing times.*
 *   **Frontend Metrics (Angular):**
     *   Page load times, component interaction times.
     *   Client-side error rates.
     *   API call latency from client perspective.
+    *   *Note: Refer to `performance-spec.md` for specific target values for frontend performance metrics (FCP, LCP, TTI, INP).*
 *   **System Metrics:** CPU usage, memory usage, disk I/O, network traffic for application hosts/containers.
 *   **Business Metrics (High-Level):**
     *   Number of active users (if SSO implemented).
@@ -72,7 +74,7 @@ This document outlines the observability strategy for the Hangar Bay application
 
 ### 2.4. Error Tracking & Alerting (Operational)
 *   **Centralized Error Aggregation:** Collect and aggregate exceptions and errors from both backend and frontend in a centralized system.
-*   **Alerting:** Set up alerts for critical errors, unusual spikes in error rates, performance degradation, or system resource exhaustion.
+*   **Alerting:** Set up alerts for critical errors, unusual spikes in error rates, performance degradation (as defined by targets in `performance-spec.md`), or system resource exhaustion.
     *   Distinguish from user-facing application alerts (e.g., new contract found).
 
 ## 3. Tools and Technologies (Proposed - Emphasizing OpenTelemetry Compatibility)

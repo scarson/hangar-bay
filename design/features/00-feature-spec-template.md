@@ -145,11 +145,13 @@ AI_HANGAR_BAY_API_ENDPOINT_END -->
     *   Ensure only authenticated users can modify their own watchlist items (Authorization).
     *   Protection against mass assignment if using ORM for data creation/updates.
 
-## 11. Performance Considerations (Optional)
-*   Note any specific performance targets or potential bottlenecks.
-*   Example:
-    *   Adding a watchlist item should complete in < 500ms.
-    *   ESI polling for alerts should not significantly impact overall application performance.
+## 11. Performance Considerations (Optional, but Recommended)
+*   Consult `performance-spec.md` for general application performance targets and design principles.
+*   Identify any feature-specific performance requirements or potential bottlenecks not covered by the general spec.
+*   Examples:
+    *   **Target:** This feature's primary API endpoint should respond within X ms under Y load (refer to `performance-spec.md` for P95/P99 targets and adapt if this feature is unusually complex).
+    *   **Consideration:** Large data processing for this feature might require asynchronous handling to maintain UI responsiveness (see patterns in `performance-spec.md`).
+    *   **Optimization:** Identify specific database queries critical to this feature and ensure they are optimized (see indexing and query guidelines in `performance-spec.md`).
 
 ## 12. Dependencies (Optional)
 *   List any dependencies this feature has on other features, modules, or external services (beyond ESI).
@@ -198,3 +200,5 @@ AI_HANGAR_BAY_API_ENDPOINT_END -->
 ### 14.5. Specific AI Prompts or Instructions
 *   [e.g., "When generating the service for this feature, ensure all public methods have comprehensive JSDoc/TSDoc comments."]
 *   [e.g., "Pay close attention to the retry logic specified in section 9 (Error Handling) when interacting with the ESI API."]
+*   [e.g., "Ensure all database interactions for this feature adhere to the query optimization and indexing guidelines in `performance-spec.md`."]
+*   [e.g., "When implementing UI components for this feature, apply Angular performance best practices (OnPush, trackBy, lazy loading) as detailed in `performance-spec.md`."]

@@ -57,9 +57,20 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
             *   AI should use page object models (POM) for maintainability if feasible.
 
 ### 3.4. Performance Tests
-*   **Scope:** Evaluate application responsiveness, scalability, and stability under load.
-*   **Areas:** API endpoint performance, database query efficiency, ESI interaction latency impact.
-*   *(Placeholder: Specific performance targets and scenarios to be defined)*
+*   **Scope:** Evaluate application responsiveness, scalability, and stability under various load conditions, ensuring adherence to the targets and guidelines defined in `performance-spec.md`.
+*   **Key Areas (refer to `performance-spec.md` for details):
+    *   API endpoint response times (FastAPI).
+    *   Frontend load and interaction times (Angular - FCP, LCP, TTI, INP).
+    *   Database query efficiency (PostgreSQL).
+    *   Caching strategy effectiveness (Valkey).
+    *   Resource utilization (CPU, memory) under load.
+*   **Methodologies:** Load testing, stress testing, soak testing, and profiling as outlined in `performance-spec.md` and section 4 of this document.
+*   **Tools:** Utilize tools like `locust` (backend), browser developer tools (Lighthouse, Performance tab for frontend), and `EXPLAIN ANALYZE` (PostgreSQL) as recommended in `performance-spec.md`.
+
+*   **AI Coding Assistant Guidance:**
+    *   When developing features, consult `performance-spec.md` to understand the expected performance characteristics and targets.
+    *   AI can assist in generating boilerplate for performance test scripts (e.g., `locust` tasks) based on scenarios derived from `performance-spec.md` and the feature being developed.
+    *   Prompt AI to consider performance implications (e.g., query efficiency, caching opportunities, asynchronous operations) during code generation, guided by `performance-spec.md`.
 
 ### 3.5. Usability Tests
 *   *(Placeholder: To be considered, potentially manual or with user feedback sessions).*

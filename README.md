@@ -37,6 +37,8 @@ The [`design/`](design/) directory is your primary source of truth for requireme
 *   [`accessibility-spec.md`](design/accessibility-spec.md): Accessibility (WCAG 2.1 AA) requirements with AI actionable checklists and Angular-specific patterns.
 *   [`test-spec.md`](design/test-spec.md): Testing strategy, including unit, integration, E2E, security, and accessibility testing, with AI patterns for test generation.
 *   [`observability-spec.md`](design/observability-spec.md): Logging, metrics, and tracing strategy, emphasizing OpenTelemetry, with AI patterns for instrumentation.
+*   [`i18n-spec.md`](design/i18n-spec.md): Internationalization strategy, including guidance for localizing FastAPI and Angular components, and AI patterns for generating translatable content.
+*   [`performance-spec.md`](design/performance-spec.md): Performance targets, design principles, testing methodologies, and AI guidance for backend (FastAPI, Valkey, PostgreSQL) and frontend (Angular) development.
 
 **AI Action:** Before generating code for a feature or component, always consult the relevant specification documents. Pay close attention to sections titled `AI Implementation Guidance`, `AI Actionable Checklist`, or `AI Implementation Pattern` as they provide direct instructions and context.
 
