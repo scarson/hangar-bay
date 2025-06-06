@@ -16,9 +16,10 @@ Then, review these articles about the modern EVE API called "ESI" that we will u
 * https://www.eveonline.com/news/view/eve-evolved-the-future-of-eves-api
 * https://www.eveonline.com/news/view/introducing-esi
 * https://developers.eveonline.com/blog/introducing-the-esi-api
-* https://developers.eveonline.com/docs/services/esi/overview/ - official developer documentation
-* https://developers.eveonline.com/docs/services/esi/best-practices/
-* https://esi.evetech.net/ui/ - ESI API swagger / OpenAPI spec
+* https://developers.eveonline.com/docs/services/esi/overview/ - official developer documentation landing page
+* https://developers.eveonline.com/docs/services/esi/best-practices/ - official developer documentation - best practices
+* https://developers.eveonline.com/docs/services/sso/ - official developer documentation - single sign-on guidance
+* https://esi.evetech.net/ui/ - ESI API Swagger UI / OpenAPI spec
 
 There is a 3rd party site that has some of the fuctionality we're interested in called EVE Market Browser. You can review it here:
 * https://evemarketbrowser.com/region/
@@ -292,3 +293,178 @@ Let's discuss that performance-spec.md. Please explain how or why having a separ
 ----------------
 
 
+Before we commit anything. I see performance-spec.md references several other *-spec.md files. Please check each of those spec files and update them as appropriate with information and cross-references to the new performance-spec.md. In design-spec.md, I see a single new entry of "**AI Action: Performance and Responsiveness (General):**" - consider if there are any other areas of design-spec.md where it would benefit an AI coding assistant to have performance-spec.md mentioned.
+
+Then, in design-log.md, retroactively update the"Performance Specification Creation" entry to reflect changes to any other spec files related to performance-spec.md.
+
+Then, update the README.md in the project root to reflect information about the i18n and performance spec updates.
+
+Then prepare the commit.
+
+
+----------------
+
+
+An important note. This project is published to a public Github repository. File paths in spec.md and other files must NEVER contain full absolute paths, which reveal my name and local file structure. They must ALWAYS use relative paths to the project root. Create a memory to capture this important instruction.
+
+Next, I saw you made this good update:
+"Update design/features/00-feature-spec-template.md: Add performance considerations and references to performance-spec.md."
+Updating 00-feature-spec-template.md was a good idea because it's the basis for all our feature specs. I looked at it and didn't see the i18n-spec.md we recently created mentioned. This is a good time to do a careful review of 00-feature-spec-template.md to make it as useful as possible for an AI coding assistant, like evaluating where using the "**AI Assistant Guidance:**" and similar instructions we discussed that would be helpful to AI coding assistant would provide value. Then, make any updates to it referencing our expanded set of design\*-spec.md spec files that would be beneficial to an AI coding assistant. Not all specs will be always be applicable, so remember that you can use tags like "Optional" and "Required" to provide contextual hints. 
+
+After updating 00-feature-spec-template.md, we should review feature specs F001 - F007 and align them with the updated 00-feature-spec-template.md. You must do this review EXTREMELY CAREFULLY and one feature spec file at a time. Be absolutely sure to not lose ANY important information when you make changes. Also take this opportunity to look for any areas where the feature spec could be enhanced to be more useful to AI coding assistants. Review your own work against these criteria and provide an assessment. Only once you're confident the feature spec is aligned in relevant ways with the 00-feature-spec-template.md for consistency, retained all important information, and is structured to be as helpful as possible to an AI coding assistant can you proceed to working on the next feature spec.
+
+
+----------------
+
+
+1. Update security-spec.md to include that user-facing error messages must never reveal sensitive information or internal service details in accordance with secure coding best practices. Put this in an appropriate section. 
+
+2. Should we update 00-feature-spec-template.md to include links to the ESI API swagger / OpenAPI definition and developer documentation as a context hint since many features will leverage that API. Would having the link to the authoriative source potentially help prevent an AI assistant from hallucinating ESI API details or otherwise be helpful? If so, explain why, then determine if you have the information you need to make that to update 00-feature-spec-template.md. If not, let me know what information you need and I'll get it for you. 
+
+3 Is there any risk you've hallucinated ESI API details in any of the feature specs so far? In the recent updates to the feature spec files to align them with the updated 00-feature-spec-template.md, it looks like you added a LOT of ESI API details in features that deal with that API. Have you been using the authoritative ESI API reference to construct those? It's better to identify any errors now rather than during implementation. Please carefully review, reporting your findings, and make any correction if necessary.
+
+4. In the "Dependencies" section of each F001 - F007 feature spec.md document, other features are referenced only by their feature number (e.g., "F001"). To make this section more useful to an AI assistant, please update each feature dependency reference to include the actual feature spec file, like we've done with the design spec.md files.
+
+5. In this chat, I see tool call output from you like "Analyzed F007-Alerts-Notifications.md:(1-200)" that seems to indicate you ingest file text in 200 line chunks. Is that true? What happens if a file has more than 200 lines? Help me understand practical considerations for maximizing effectiveness working with you and Windstream. Should we try to keep spec files under 200 lines? Does our spec file structure with clear sections explicitly designed to help AI coding assistants mitigate this? Is there anything else I should be aware of or consider in this area?
+
+
+----------------
+
+
+It looks like you proceeded with the API hallucination review before I'd provided the authoritative API reference and developer resource links.
+You requested the following information:
+"Information Needed: To make this update, I need the official URLs for:
+The ESI Swagger/OpenAPI specification (this is often a .json or .yaml file, or a URL to a Swagger UI instance).
+The main ESI developer documentation portal/website."
+
+Here are links. 
+* https://esi.evetech.net/ui/ - ESI API Swagger UI / OpenAPI spec
+* https://developers.eveonline.com/docs/services/esi/overview/ - official developer documentation landing page
+* https://developers.eveonline.com/docs/services/esi/best-practices/ - official developer documentation - best practices
+* https://developers.eveonline.com/docs/services/sso/ - official developer documentation - single sign-on guidance
+
+For the link, in the "Why it's helpful:" section of your response, you said:
+"Focused AI Prompts: You can explicitly direct an AI assistant to "refer to the linked ESI Swagger definition at [link] to confirm the request/response schema for endpoint X" when generating implementation details."
+Is that something it could be helpful to integrate into our feature spec template and existing feature specs as an AI Actionable Checklist item (or similar instruction) for ESI API-related items? If so, please update 00-feature-spec-template.md with that change along with the API links.
+
+
+----------------
+
+
+Before we proceed with reviewing and aligning the existing feature specs (F001-F007) with this updated template, I've noticed you're consistently having trouble with expected vs actual names for the feature spec files and having to run partial match searches to find them. Would having a /design/features/feature-index.md file that simply contained list mapping feature ID like "F001" to feature name and the feature spec.md file path? The property names can align with those in the feature spec files. For example, in table format:
+Feature ID, Feature Spec, Feature Spec Path
+F005, Saved Searches, .\F005-Saved-Searches.md
+
+Please carefully consider if something like this would be useful to you, or if there's a better way to address the issue. It you think it would be  helpful, consider if there's any way the feature-index.md file could be enhanced to be more useful to an AI assistant, and create the file with those in mind.
+
+
+-----------------
+
+
+1. I'm glad we have the feature-index.md file now. However, I'm wondering how we can keep it consistently updated as we add and modify features without a human having to manually prompt to update it every time. Can you propose and implement any solutions? One idea I had is for you to create a memory to check if any feature-index.md updates are appropriate whenever we create new feature specs or update existing ones. You might have better ideas though. Having the most effective solution is the most important.
+
+2. Update design-log.md with a new entry describing the feature-index.md file, the thought process behind it, the problem it solves, and our strategy for keeping it updated by the AI coding assistant (you).
+
+
+-----------------
+
+
+1. I think "memory (ID: 8ab3f7a9-9f10-42c1-a282-b8ad6eefe5b6) detailing a procedure for you (the AI coding assistant) to help keep design/features/feature-index.md updated. This procedure involves checking for changes after feature spec modifications, extracting relevant metadata, and proposing updates to you for feature-index.md." is a critical evolution in us working effectively together towards bringing the Hangar Bay project to fruition. 
+
+2. I think it's critically important that we document procedures like this one in a persistent manner, both to keep a record and learn from. We should keep a record of such procedures, including the problem they attempt to address, the detailed thoughts that went into their creation, and their implementation details, structured with sufficient specificity to be easily recreated in a different project. We could keep these records in a well-structured markdown file like "\design\ai-system-procedures.md". What do you think? How could this idea be executed in the most effective way? While as always we want it to be as useful as possible to AI coding assistants because they may need to re-implement procedures from this record, it's important humans can learn from it too. 
+Please:
+* carefully think through the matter of recording this type of AI coding assistant procedure
+* propose an approach to address it
+* critically evaluate your proposal and assess it for areas of improvement
+* update the proposal if and as appropriate
+* implement it
+* add a new entry to design-log.md describing what you implemented, the type of procedure we're capturing with this record in categorical terms, the rationale for recording them, and why the ai-system-procedures.md (whatever the file is named) file contains the information it does
+
+
+-----------------
+
+
+I have an idea to try a test of "design\ai-system-procedures.md" to assess the "Reproducibility: The level of detail should allow for understanding and potential re-implementation." criteria. Here's my idea:
+* You read "design\ai-system-procedures.md"
+* Create a temp memory based on the specification and details for AISP-001 in the document. You'll delete the temp memory after the test.
+* Compare that tempo memory to memory ID: 8ab3f7a9-9f10-42c1-a282-b8ad6eefe5b6, the original one you used to write the AISP-001 specification
+* Identify any differences, gaps, or deficiencies between the two memories
+* If there are any, critically think about why they occurred. 
+* You mentioned "Complexity of "Detailed Steps": Finding the right balance between sufficient detail for AI and avoiding excessive rigidity is key. The steps should outline what to do and key decisions, rather than scripting every single token of an AI's thought process." as a consideration. If differences reasonably fall within that "right balance" area, there isn't necessarily any action we should take.
+* Comprehensively report back before taking any actions to modify "design\ai-system-procedures.md"
+
+1. What do you think of this testing idea? Would it be effective? Why or why not? If not, how could it be improved? For example, would you recent context window interfere with the test to the point of making it invalid for assessment. It's okay if so! If there's a viable test idea here, then please create a test plan. If not, explain why as clearly as you can.
+
+
+-----------------
+
+
+I appreciate the thought and detail you put into this assessment. I confirm I'm comfortable proceeding with the understanding of the context bias. Please proceed conducting the test plan as outlined. 
+
+create a test plan. If not, explain why as clearly as you can.
+
+
+-----------------
+
+
+I like this suggestion for potential improvement you had:
+"Perhaps a note in AISP-001's "Supporting Implementation Details" or "Notes for Human Reviewers" could mention that when this procedure is encoded into an AI's memory, the memory's "Rationale" section should ideally focus on the benefits/outcomes of the procedure (similar to the original memory's Rationale, and drawing from AISP-001's "Expected Outcome" section), while the AISP document itself already covers the design rationale of the procedure. This is a very fine point about how memories vs. design docs might be structured."
+Understanding the benefits/outcomes can be extremely helpful in guiding the "why" of behavior by enabling better understanding of intent. Please update AISP in ai-system-procedures.md accordingly.
+
+
+-----------------
+
+
+Your comment "Clarifying how the "Rationale" in an operational AI memory should differ from the detailed "Rationale & Design Philosophy" in the AISP document can indeed help in crafting more effective memories that focus the AI on the why in terms of impact." triggered a thought from me about how to capture that for future AISP entries.
+ 
+I think it could be helpful to have a template entry within ai-system-procedures.md that lays out the sections we have for AISP-001 with guidance that would be helpful for an AI coding assistant like Cascade to reference when constructing future entries. This is similar in concept to how we built \design\features\00-feature-spec-template.md to help Cascade with consistency and intent for individual feature spec.md documents. What do you think? What would make this most effective? Think through, then implement that.
+
+
+-----------------
+
+
+
+It would be good to update the design-log.md "## AI System Procedure Documentation" entry to incorporate the thought process behind and implementation of the AISP-000 templating approach and the benefits we expect that to provide for future AISPs.
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
