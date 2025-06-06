@@ -1104,6 +1104,228 @@ If at any point during this process you think it's important to get my feedback 
 -----------------
 
 
+Please pause. I have an updated instruction. After you complete each phase, please log a summary to cascade-log.md. Please retroactively create log entries for the phases you've already completed reviewing, then proceed as originally planned.
+
+
+-----------------
+
+
+
+We have an existing "design\cascade-log.md" that's part of AISP-002 as detailed in "ai-system-procedures.md". Please write the log entries to that correct location, and delete the cascade-log.md in the project root directory.
+
+
+-----------------
+
+
+First, please update AISP-002 in design\ai-system-procedures.md to include that all entries must include a full datetime stamp in ISO 8601 format, the same as in design\design-log.md (use the timestamp instruction from the design-log.md footer). Then update any associated memories to reflect this updated AISP-002 cascade-log.md labeling instruction.
+
+
+-----------------
+
+
+I realize there was an ambiguity in the ISO 8601 timestamping instruction. It said "Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time)." with both a "Z" for Zulu time and a "U.S. Central Time" hint. The format I want is with a U.S. Central Time offset, like "2025-06-06 03:25:07-05:00". Please update AISP-002 in design\ai-system-procedures.md to reflect this clarification, then update any applicable, memories, then update the proposed summary titled "Session Summary - 2025-06-06 09:10:36Z - AISP-002 Update & Phase 04 Task Refinement" with the new timestamp format that has U.S. Central Time with the "-05:00" offset, then add it design\cascade-log.md as originally planned.
+
+
+-----------------
+
+
+Yes, proceed to 04.3. You do not need to ask to proceed to reviewing the next sets of tasks if there aren't specific points you need feedback from me on.
+
+
+-----------------
+
+Yes, proceed with a detailed review of this new task before proceeding to review other tasks as planned.
+
+
+-----------------
+
+
+I am satisfied with the task definition. Create a design\cascade-log.md entry per AISP-002 documenting how we identified that 04.3-integrating-filters-with-list.md was missing along with its summary details. Then proceed as originally planned.
+
+
+-----------------
+
+
+Please proceed to reviewing the next task. If there are no significant findings from reviewing a task, you do not need to ask to proceed, just continue.
+
+
+-----------------
+
+
+We spent a huge amount of effort on the specs in the "design" folder. We took great care to cross-link them into our feature specifications wherever applicable with lines like "*Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, `observability-spec.md`, and `i18n-spec.md`. The security, accessibility, internationalization, and testing best practices for each chosen technology will be strictly adhered to.". These core specs became the tasks in the plans\implementation\phase-09-cross-cutting-concerns-mvp-scope: 09.1-security-hardening-mvp.md, 09.2-logging-observability-mvp.md, 09.3-testing-strategy-mvp.md, and 09.4-accessibility-i18n-stubs-mvp.md. However, I do not see those "Phase 9: Cross-Cutting Concerns" tasks cross-referenced into other phases' tasks. Those CANNOT be an afterthought only looked at after much of the MVP is already build. 
+
+Please think carefully about how we can ENSURE those four critical tasks and associated spec areas addressed in "Phase 9: Cross-Cutting Concerns" are taken into account by Cascade as highly important when implementing tasks in other phases. I am open to any ideas that will be effective. Think about multiple proposals for potential highly effective ways of addressing this concern, evaluate them against each other, and explain justify your decision about which you think will be most effective for AI coding assistants (specifically Cascade). Then, propose an implementation plan for your idea.
+
+../../../design/api-design-guide.md
+
+-----------------
+
+(I'm jotting down a particularly interesting model Thought Process in response to the last prompt)
+Identifying Gaps in Cross-Cutting
+
+I'm worried. Reviewing the task breakdown, it's dawning on me that crucial cross-cutting aspects like security and testing, outlined later, aren't explicitly referenced upfront. This could lead to these critical concerns being overlooked during the initial implementation phases. I need to figure out a solution to ensure everything is covered.
+
+Analyzing Remedial Approaches
+
+I'm now weighing the pros and cons of the proposed solutions. Modifying existing task files (Proposal A) seems cumbersome, but ensures direct links. Creating new "gate" tasks (Proposal B) offers more control, but might clutter the workflow. Leveraging Cascade's memory (Proposal C) is tempting for its automation, but I'm unsure about its reliability. I'm leaning towards a hybrid approach, perhaps incorporating aspects from all.
+
+Proposing Implementation Strategies
+
+I've expanded on my initial proposal analysis. While I see the appeal of directly modifying task files (Proposal A), I'm concerned about verbosity. Gate tasks (Proposal B) feel potentially bureaucratic. I'm now leaning heavily towards utilizing Cascade's memory system (Proposal C), perhaps combined with modifying the implementation plan (Proposal D). I also have to test these options for real effectiveness.
+
+Deciding the Best Approach
+
+I'm now meticulously evaluating each strategy. Modifying every task file seems overly verbose, despite its clarity. New "gate" tasks add structure, but might bog me down. Relying solely on Cascade's memory is risky, but also alluring. My inclination is toward a hybrid model, using Cascade's memory for core guidance and selectively modifying the overview and task files. I will prioritize clarity and efficiency.
+
+Prioritizing Cross-Cutting Integrations
+
+I'm focused on developing a comprehensive strategy. The initial user concern has been validated. My approach will be to leverage Cascade's memory with high-priority directives to always reference those Phase 09 specs. I'll also add a 'Cross-Cutting Concerns Checklist' to task files. Now, the best way to implement this checklist needs further consideration.
+
+Refining the Strategy
+
+I'm now refining my approach for Cascade. The most impactful solution appears to be a hybrid. I'll create strong, directive memories within Cascade to ensure that Phase 09 specs always influence implementation. I'll also add a "Cross-Cutting Concerns Review" section, or checklist, to all tasks to reinforce these concerns. This will ensure active consideration.
+
+Implementing a Hybrid Solution
+
+I'm now focused on the specifics of implementation. The chosen approach uses both Cascade's memory and a standardized "Cross-Cutting Concerns Review" section in all task files. This checklist, with its specific prompts and dedicated notes, will ensure explicit consideration of critical cross-cutting areas. I will also include an overview note. I'm ready to execute!
+
+Defining AI Implementation Steps
+
+I'm now focusing on the precise steps for implementation. I'll begin by creating the core directive memories, followed by defining and implementing the new "Cross-Cutting Concerns Review" section within task files. I'll also update the overview and refine the steps I should take in executing tasks. The user needs a good demonstration, so I will focus there first.
+
+Defining the Action Plan
+
+I'm now focusing on the detailed steps for execution. First, I must craft the core directive memories for Cascade, ensuring the cross-cutting specs are always referenced. Second, I need a "Cross-Cutting Concerns Review" section for each task, then the plan and documentation. After that, I must implement this on all the tasks.
+
+Formulating a Plan
+
+I'm now detailing the steps needed for complete implementation. This includes first defining and creating the directive memories for Cascade. Then, the "Cross-Cutting Concerns Review" section must be standardized, including a template. I'll also add a global note to the project overview. After, I'll add this to all tasks!
+
+Developing the Execution Plan
+
+I'm now detailing the action plan and proposing it to the user. First, create critical, directive memories. Second, define and implement the new "Cross-Cutting Concerns Review" section. Next, I will propose adding this section to the tasks, starting with some future tasks. Finally, I will also update the overview. I will then demonstrate the process.
+
+Defining Task-Level Considerations
+
+I'm now constructing the detailed action plan. First, I must formulate and integrate AI memories to be strongly directive. Second, I'll define the format for the "Cross-Cutting Concerns Review" section. Then, I'll incorporate it into existing tasks incrementally. Finally, I will update the project's overview documentation.
+
+
+-----------------
+
+1. First create both design\cascade-log.md and design\design-log.md files capturing how we identified the issue where the cross-cutting concerns detailed in Phase 09 (Security, Observability, Testing, Accessibility, and Internationalization) are indeed foundational and must be woven into the fabric of every feature from the outset, not addressed merely as a final phase. Relying on them being "an afterthought" is a recipe for significant rework and potential vulnerabilities or shortcomings in the final product. The log entries should include how you thought through multiple proposals and chose the hybrid approach of Strong AI Memories, Standardized "Cross-Cutting Concerns Review" Section in Each Task File, and Global Reinforcement in 00-mvp-implementation-plan-overview.md, with the result that "This combined strategy ensures these critical areas are not deferred but are an integral part of my workflow for every task, from planning through implementation.".
+
+The design\cascade-log.md entry should be incredibly verbose, capturing the rich detail in this evaluation and decision process. The design\design-log.md entry can be the standard summary format for the design log file.
+
+2. Proceed with Step 2: updating 00-mvp-implementation-plan-overview.md now.
+
+3. For Step 3 (updating the 19 task files), update them phase by phase. After updating each phase, stop and check for the presence of the standardized "## [NEW_SECTION_NUMBER]. Cross-Cutting Concerns Review" section and its contents in each task file. If you verify its presence in each task file in the phase, you should proceed to the next phase without waiting for further input. If you encounter a minor issue, attempt to fix it yourself, and proceed if you can resolve it. If you encounter a major issue, bring it to my attention and wait for further instructions before proceeding.
+
+
+-----------------
+
+Pause. You just created a new (but similar) checklist for the Phase 03 tasks. Here's the original you used up until that point.
+# Cross-Cutting Concerns Review
+
+This section documents how the five key cross-cutting concerns were addressed during the completion of this task. Refer to the primary specification documents for detailed guidance:
+*   Security: `../../../design/security-spec.md`
+*   Observability: `../../../design/observability-spec.md`
+*   Testing: `../../../design/test-spec.md`
+*   Accessibility: `../../../design/accessibility-spec.md`
+*   Internationalization (i18n): `../../../design/i18n-spec.md`
+
+### 1. Security
+*   [ ] **Secure Design:** (e.g., threat modeling, principle of least privilege)
+*   [ ] **Input Validation:** (e.g., validating all external inputs)
+*   [ ] **Output Encoding:** (e.g., preventing XSS)
+*   [ ] **Authentication/Authorization:** (e.g., ensuring proper checks)
+*   [ ] **Secrets Management:** (e.g., secure storage and access)
+*   [ ] **Dependency Management:** (e.g., checking for vulnerable libraries)
+*   **Notes:** (Detail specific actions taken or rationale for no action, especially if a category is not applicable to this task.)
+
+### 2. Observability
+*   [ ] **Structured Logging:** (e.g., using key-value pairs, JSON format)
+*   [ ] **Key Events Logged:** (e.g., task initiation, completion, critical errors, significant state changes)
+*   [ ] **Error Logging:** (e.g., comprehensive error details, stack traces)
+*   [ ] **Correlation IDs:** (e.g., for tracing requests across services)
+*   [ ] **Metrics:** (e.g., performance indicators, resource usage - if applicable)
+*   **Notes:** (Detail specific actions taken or rationale for no action.)
+
+### 3. Testing
+*   [ ] **Unit Tests:** (e.g., for new functions, classes, components)
+*   [ ] **Integration Tests:** (e.g., for interactions between components/services)
+*   [ ] **Test Coverage:** (e.g., summary of coverage achieved or targeted)
+*   [ ] **Test Data Management:** (e.g., how test data is sourced/managed)
+*   **Notes:** (Detail specific actions taken or rationale for no action.)
+
+### 4. Accessibility (A11y)
+*(Primarily for UI-related tasks, but consider CLI/API accessibility where relevant)*
+*   [ ] **Semantic HTML/Structure:** (e.g., using appropriate tags for meaning)
+*   [ ] **ARIA Attributes:** (e.g., for dynamic content or custom controls)
+*   [ ] **Keyboard Navigability:** (e.g., all interactive elements reachable and operable via keyboard)
+*   [ ] **Color Contrast:** (e.g., ensuring sufficient contrast for text and UI elements)
+*   [ ] **Screen Reader Compatibility:** (e.g., testing with screen readers)
+*   [ ] **Alternative Text for Images:** (e.g., providing descriptive alt text)
+*   **Notes:** (Detail specific actions taken or rationale for no action, especially if not UI-related.)
+
+### 5. Internationalization (I18n)
+*(Primarily for UI-related tasks, but consider for any user-facing text including logs/error messages)*
+*   [ ] **Text Abstraction:** (e.g., using translation keys instead of hardcoded strings)
+*   [ ] **Locale-Specific Formatting:** (e.g., for dates, numbers, currencies)
+*   [ ] **UI Layout Adaptability:** (e.g., for text expansion in different languages)
+*   [ ] **Character Encoding:** (e.g., using UTF-8)
+*   **Notes:** (Detail specific actions taken or rationale for no action, especially if not UI-related.)
+
+---
+<!-- This section should be placed before any final "Task Completion Checklist" or similar concluding remarks. -->
+
+Also, make sure the section number is updated appropriately for each task file. It may not always be 6.
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
 X
 
 
@@ -1135,33 +1357,10 @@ X
 
 -----------------
 
-
 X
 
 
 -----------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
 
 X
 
