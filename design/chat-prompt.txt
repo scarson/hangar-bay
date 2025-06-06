@@ -767,17 +767,28 @@ That version is much better. I strongly prefer the more verose summary. Please w
 
 -----------------
 
-X
+
+Let's proceed with addressing any open design points in features F004 - F007. Review the features one by one. Now that we've significantly develped our various specs, I'd like you to take a first try at addressing any open items yourself. Explain and justify your thought process for each. If you think it's important to get my input on an item because there's ambiguity you can't resolve or missing information you need to make a good decision or put in a reasonable placeholder, make a note of it, and ask me about those items in a batch at the end.
 
 
 -----------------
 
-X
+Before we log the session, I have one feedback point on:
+"Okay, I've reviewed F004-User-Authentication-SSO.md. Here's my approach to addressing the open points:
+
+1. Criterion 2.3: Scope of background ESI calls for MVP and token refresh.
+
+Open Point: [NEEDS_DISCUSSION: Scope of background ESI calls for MVP features like saved searches/watchlists.] This impacts when access tokens need refreshing.
+My Thought Process: For an MVP, features like saved searches (F005) and watchlists (F006) are likely to be user-initiated or involve viewing data fetched when the user is active. Constant background polling for updates for all users might be overly complex for an initial release.
+Proposed Resolution: I'll update this criterion to state that for MVP, token refresh will primarily occur just before an ESI call is made on behalf of the user, if the current token is expired or near expiry. This makes the refresh mechanism event-driven by user activity rather than continuous background polling.
+Justification: This simplifies the MVP implementation, reduces unnecessary background load, and aligns with a "refresh when needed" strategy. The system will still have the capability to refresh tokens, making it adaptable if future iterations introduce features requiring proactive background ESI calls."
+
+I believe the Watchlist feature will inherently require proactive background ESI calls, since a watchlist driven by user activity would miss the core point of the feature. Because these background ESI call are so core to the F006 watchlist feature, would it make sense to account for that in the F004 MVP? Explain why or why not.
 
 
 -----------------
 
-X
+Yes, that explaination seems reasonable. Please log the session now, making sure to capture the details in your last response beginning with "That's an excellent and very important point about the Watchlist feature (F006) and its reliance on background activity." with extreme verbosity (for a summary). While your explanation is clear to me now, I may not remember as well in the future and being able to come back to the detailed break down of how F004's MVP token refresh strategy relates to the background ESI calls potentially needed for F006/F007 could be very helpful to me.
 
 
 -----------------
