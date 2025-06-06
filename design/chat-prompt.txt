@@ -793,6 +793,65 @@ Yes, that explaination seems reasonable. Please log the session now, making sure
 
 -----------------
 
+We have now spent a significant amount of time and effort developing robust specs for Hangar Bay that are tailored toward utility for Cascade. I cannot immediately think of additional spec design to-do items, but there may be some that would be helpful. 
+
+As our next step, please conduct a comprehensive and thorough review of all project resources, with a specific (but not exclusive focus) on if we have what we need to being work on a successful MVP. 
+1. Explain and justify your thought process for any findings. 
+2. Then propose a set of next steps to advance the project. Explain and justify your thought process for those as well.
+
+
+-----------------
+
+
+Please proceed with steps 1, 2, and 3 in order.
+Regarding step 4 about security-spec.md, section ### 3.4. Secure Error Handling and Messages of that document already includes "*   **Principle:** User-facing error messages MUST be generic and MUST NOT reveal sensitive information such as internal system details, stack traces, database error messages, specific reasons for authentication/authorization failures that could aid an attacker (e.g., distinguish between 'user not found' and 'invalid password'), or debugging information.
+*   **Practice:** Log detailed error information for internal diagnostics and troubleshooting only. Present users with a generic error message and a reference ID (correlation ID) if possible, which can be used to look up the detailed error in the internal logs."
+
+
+-----------------
+
+
+
+Regarding "5. Processing Window / Data Freshness (Section 11: Performance Considerations)
+
+Current: [NEEDS_DECISION: Define acceptable processing window/data freshness target]
+Proposal: Add: "For MVP, the system will aim to refresh contract data from all configured EVE regions at least once every 4-6 hours. This target will be monitored and adjusted based on system performance and ESI load.""
+I think for the MVP, it's important that an admin be able to manually trigger a contract data refresh for select or all regions. Having to wait 4-6 hours for an automated refresh to occur could hinder efficient testing. Let me know if you think that's a reasonable MVP requirement to address the concern, and if so, include that in your proposed updates to F001.
+
+
+-----------------
+
+
+Yes. Add it to the list of changes and then proceed to edit F001-Public-Contract-Aggregation-Display.md with all the agreed-upon refinements. Before moving to F002, add an entry to cascade-log.md capturing the F001 evaluation and updates.
+
+
+-----------------
+
+
+I agree with all proposed refinements for F002. Make the changes to F002-Ship-Browsing-Advanced-Search-Filtering.md. Before moving to F003, add an entry to cascade-log.md capturing the F002 evaluation and updates.
+
+
+-----------------
+
+
+I agree with all proposed refinements for F003. Make the changes to F003-Detailed-Ship-Contract-View.md. Before moving on, add an entry to cascade-log.md capturing the F003 evaluation and updates. Then commit all pending changes with commit messages, and propose what we should do next based on the Project Resource Review for MVP Readiness.
+
+-----------------
+
+Let's document our progress so far using our established methods.
+Make cascade-log.md entries for each of F004 through F007 capturing the key points of the review and refinement round you just did on them. Then commit cascade-log.md with a message. 
+Then add a new entry to design-log.md that captures in detail this whole "Project Resource Review for MVP Readiness" process, why we did it, why it's important, and the practical improvements across all the project specification .md resources we saw from going through it. Then commit design-log.md with a message.
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
 X
 
 
@@ -802,6 +861,29 @@ X
 
 
 -----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
 
 X
 
