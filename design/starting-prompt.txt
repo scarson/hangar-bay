@@ -240,3 +240,55 @@ After creating that file, update design-log.md with a new entry documenting both
 ----------------
 
 
+I realized we would benefit from one more general spec before proceeding with features. That spec is forn internationalization, often referred to as "i18n". 
+1. Think about why internationalization is important in software development, especially for a public web service like Hangar Bar. While Hangar Bay's primary language will be English, it's important that we build in i18n capabilities from the beginning so the app is accessible to international markets.
+2. Think about how and what i18n principles and implementation guidance could apply to Hangar Bay and our chosen tech stack. 
+3. Think about how those i18n items might interact with other design specs, such as (but not limited to) accessibility-spec.md.
+4. Then, create a new i18n spec file \design\i18n-spec.md and populate it as appropriate based on the earlier steps. The i18n spec should be structured in the context of being useful to an AI coding assistant ensuring internationalization requirements are always met while developing the application.
+5. After creating i18n-spec.md, review it for potential improvements, especially those that would help an AI coding assistant during implementation of this project, and make those changes.
+6. Then, update design-spec.md to include i18n as and where appropriate, and add references to the i18n-spec.md in areas you assess as relevant, like we've done with the other topic-specific design specs.
+7. Finally, update design-log.md with a new entry to reflect the inclusion of i18n in the project.
+
+
+----------------
+
+
+A few notes:
+1. In i18n-spec.md, section "3.1. Backend (FastAPI)", you specify using fastapi-babel and pybabel for i18n support. In your thought process earlier, you also mention python-i18n. Why did you select Babel? Please compare the options in the context of their suitability for the Hangar Bay project. 
+
+2. In i18n-spec.md, section 3.3. "Data Handling (ESI vs. Application-Specific)", you say "If ESI does not support a user's selected locale for a specific endpoint/data, fall back gracefully to a default language (e.g., `en-us`) from ESI.". Let's explicitly make "en-us" the default language. Update any mentions of an example default language to clearly state that the default language is "en-us" and record that decision anywhere appropriate where it would be helpful to an AI coding assistant. 
+
+3. In design-spec.md, you made changes to section 10. UI/UX Considerations that removed many mobile-related items in favor of i18n ones. Why did that happen?
+3.1 For reference here is the removed text. Please careful review it, identify important items and details, and then make a corrective update to the 10. UI/UX Considerations section that includes those as well as the i18n items:
+
+        *   **Performance Optimization:** Optimize assets (images, scripts, styles) for faster loading on mobile networks. Consider techniques like lazy loading for images and non-critical components.
+        *   **Readability:** Ensure text is legible across all screen sizes with appropriate font sizes, line heights, and contrast ratios.
+        *   **AI Action: Accessibility:** Design and implement with accessibility in mind from the start. Adhere to WCAG 2.1 Level AA guidelines. Refer to `accessibility-spec.md` for detailed requirements and ensure Angular Material/CDK accessibility features are leveraged.
+        *   **Progressive Enhancement/Graceful Degradation:** Design with a mobile-first approach or ensure graceful degradation so core functionality remains accessible on less capable devices or browsers.
+        *   **Testing:** Thoroughly test on various emulated mobile viewports (using browser developer tools) and, where possible, on a range of real mobile devices. (Refer to `test-spec.md` for detailed testing requirements).
+*   **AI Action: Minimalism and Focus:** Design UIs that avoid clutter. Present only relevant information and actions to the user to maintain focus on the core tasks.
+*   **AI Action: Performance and Responsiveness:** Ensure the application loads quickly and responds promptly to user interactions. Implement optimized data loading and rendering strategies. See `performance-spec.md` (to be created).
+*   **AI Action: Consistency:** Maintain a consistent design language (colors, typography, layout, component behavior) throughout the application, leveraging Angular Material theming.
+*   **AI Action: Error Handling and Feedback:** Implement clear, user-friendly error messages and feedback mechanisms for user actions (e.g., loading indicators, success/failure notifications using snackbars or toasts).
+*   **AI Action: Trust and Security Cues:** Visually reinforce trust and security in the UI elements, especially around authentication and user data sections. Use iconography and language that conveys security.
+
+4. In "3. Interaction with Other Design Specs", you raised relevant interactions with accessibility-spec.md and test-spec.md. Please update those files with the points you raised in the appropriate areas, and explicitly cross-reference i18n-spec.md in them. Be careful not to lose important details in those specs, like happened in design-spec.md as detailed above.
+
+5. In design-log.md retroactively update the "Internationalization Specification Integration" entry to mention updates to the accessibility-spec.md and test-spec.md files. Also add another sentence to the rationale discussing EVE Online's global player base as a consideration for the importance of i18n for Hangar Bay.
+
+
+----------------
+
+
+Great job on the i18n items and corrections. Let's prepare a git commit for the i18n related updates to the new and updated spec.md files.
+
+After that commit, here's the next item to work on:
+In design-spec.md, section 10. UI/UX Considerations, you have item:
+*   **AI Action: Performance and Responsiveness (General):** Ensure the application loads quickly and responds promptly to user interactions. Implement optimized data loading and rendering strategies. (See `performance-spec.md`, to be created).
+
+Let's discuss that performance-spec.md. Please explain how or why having a separate performance could be helpful. Consider if there's any way it could be detrimental, such as by duplicating information in a way that could potentially confuse an AI coding assistant. Think through pros and cons. If you determine having a performance-spec.md would be beneficial to the project, carefully think through what would be most helpful to an AI coding assistant to include in it, then create the file and write the performance spec with a general structure similar to the other design spec files.
+
+
+----------------
+
+
