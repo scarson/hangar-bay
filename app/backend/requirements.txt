@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic
+SQLAlchemy
+psycopg2-binary
+alembic
+python-dotenv
+valkey

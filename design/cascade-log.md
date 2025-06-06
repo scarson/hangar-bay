@@ -760,4 +760,112 @@ This combined strategy ensures these critical areas are not deferred but are an 
 
 ---
 
+### Session Summary - 2025-06-06 11:16 - Topic: Hangar Bay MVP Implementation Strategy and Plan
+
+**Objective:** To evaluate proposals for implementing the Hangar Bay MVP, select the most effective approach, and define an initial implementation plan, incorporating a revised project directory structure.
+
+**1. Revised Project Directory Structure:**
+
+The USER confirmed a change to the project's directory structure for application code:
+*   Backend source code will reside in: `c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend`
+*   Frontend source code will reside in: `c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\frontend`
+This `app/` parent directory neatly separates application code from `design/` and `plans/` directories. This structure is standard and poses no anticipated issues, provided all path configurations (e.g., `PYTHONPATH`, Docker contexts, Angular project paths) are set accordingly.
+
+**2. Evaluation of MVP Implementation Proposals:**
+
+Three primary proposals for sequencing the Hangar Bay MVP implementation were considered:
+
+*   **Proposal A: Foundational Setup & Backend Core First**
+    *   **Description:** Prioritize establishing the project's foundational elements (tooling, configuration, directory structure) and then building the core backend infrastructure (FastAPI skeleton, database, caching). Frontend development would follow once backend APIs begin to stabilize.
+    *   **Pros:**
+        *   Builds a robust and stable foundation for the rest of the application.
+        *   Allows for early definition and stabilization of backend APIs, which are critical dependencies for the frontend.
+        *   Leverages AI strengths effectively for generating boilerplate code, configurations, and initial backend logic.
+        *   Reduces cognitive load by tackling backend complexities before introducing UI/UX development.
+        *   Facilitates easier integration of cross-cutting concerns (security, observability, testing) from the ground up in the backend.
+    *   **Cons:**
+        *   User-visible features are delayed compared to other approaches.
+        *   Feedback on UI/UX will come later in the development cycle.
+
+*   **Proposal B: End-to-End Thin Slice**
+    *   **Description:** Implement a single, simple user-facing feature (e.g., displaying a list of public contracts with minimal filtering) from the frontend through to the backend and database.
+    *   **Pros:**
+        *   Provides early validation of the entire technology stack and inter-component communication.
+        *   Delivers a tangible, albeit limited, piece of working software quickly, which can be motivating.
+        *   Allows for early identification of integration challenges.
+    *   **Cons:**
+        *   May lead to premature optimization or over-simplification of core backend services if not carefully managed.
+        *   Could result in foundational aspects (like comprehensive configuration or robust error handling) being underdeveloped initially.
+        *   Risk of throwaway work if the "thin slice" doesn't align well with broader architectural needs that emerge later.
+
+*   **Proposal C: Frontend First with Mock Backend**
+    *   **Description:** Focus on developing the frontend UI components and user experience, using a mocked backend API for data and interactions.
+    *   **Pros:**
+        *   Allows for rapid iteration on UI/UX design based on visual feedback.
+        *   Enables parallel development if separate teams/individuals work on frontend and backend.
+        *   Can gather user feedback on the interface early in the process.
+    *   **Cons:**
+        *   The mock backend may not accurately represent the eventual capabilities, constraints, or performance characteristics of the real backend, leading to rework.
+        *   Integration with the real backend can be complex and time-consuming later.
+        *   Delays validation of critical backend logic and data models.
+
+**3. Conclusion and Rationale for Proposal A:**
+
+After careful consideration, **Proposal A (Foundational Setup & Backend Core First)** was selected as the most effective and strategic approach for the Hangar Bay MVP.
+
+*   **Rationale for Selection:**
+    *   **Stability and Robustness:** Prioritizing foundational elements ensures that the project is built on a solid architectural and technical base. This is crucial for long-term maintainability, scalability, and security.
+    *   **Reduced Risk:** Addressing backend complexities and API design early mitigates the risk of significant rework later in the project. A well-defined backend provides a clear contract for frontend development.
+    *   **Effective AI Utilization:** This approach aligns well with AI capabilities, allowing Cascade to assist significantly with boilerplate generation, configuration setup, initial data modeling, and API endpoint creation.
+    *   **Systematic Integration of Cross-Cutting Concerns:** Building the backend first allows for the systematic integration of security, observability, and testing practices from the outset, rather than trying to retrofit them later.
+    *   **Alignment with Project Phase Structure:** This approach naturally fits the existing phased plan, starting logically with Phase 00 and Phase 01.
+
+While user-visible features are deferred slightly, the long-term benefits of a strong foundation and well-defined backend are deemed to outweigh the desire for immediate UI deliverables.
+
+**4. Implementation Plan for Proposal A (Phases 00 & 01):**
+
+The initial implementation will focus on completing tasks outlined in Phase 00 and Phase 01. The general workflow for each task will be:
+1.  **Announce Task:** Cascade/USER clearly states the task to be undertaken.
+2.  **Implement & Propose:** Cascade proposes and/or generates code, configuration, or documentation.
+3.  **Review & Iterate:** USER reviews the proposal, provides feedback, and Cascade iterates until satisfactory.
+4.  **Cross-Cutting Concerns Review:** For tasks involving code or significant configuration, the "Cross-Cutting Concerns Review" checklist in the relevant `.md` task file (or a similar review for non-task-file work) will be completed.
+5.  **Commit Changes:** Once approved and reviewed, changes are committed.
+
+*   **Phase 00: Foundational Setup**
+    *   **Task 00.1: Project Initialization & Tooling Setup:**
+        *   Initialize Git repository if not already fully set up.
+        *   Configure linters (e.g., Pylint, Flake8 for Python; ESLint, Prettier for Angular/TypeScript).
+        *   Set up code formatters (e.g., Black for Python; Prettier for Angular/TypeScript).
+        *   Implement pre-commit hooks (e.g., using `pre-commit` framework) to enforce linting and formatting.
+        *   Provide/update IDE configuration files (e.g., `.vscode/settings.json`) for consistent development environments.
+        *   Update `README.md` with detailed development setup instructions.
+        *   Establish `app/backend` and `app/frontend` directories.
+    *   **Task 00.2: Configuration Management:**
+        *   Design and implement a centralized configuration management strategy (e.g., using Pydantic settings for FastAPI, environment files for Angular).
+        *   Ensure clear separation of configurations for different environments (development, testing, production).
+        *   Define a strategy for managing secrets (e.g., using environment variables, a secrets manager for production).
+
+*   **Phase 01: Backend Core Infrastructure (`app/backend`)**
+    *   **Task 01.1: FastAPI Application Skeleton:**
+        *   Create the basic FastAPI application structure within `app/backend`.
+        *   Set up the main application file (e.g., `main.py`).
+        *   Organize initial API routers (e.g., for future authentication, core data).
+        *   Implement basic dependency injection patterns.
+        *   Include initial `requirements.txt` or `pyproject.toml` with FastAPI, Uvicorn.
+    *   **Task 01.2: Database Setup:**
+        *   Integrate SQLAlchemy for ORM.
+        *   Define initial SQLAlchemy models for core entities (e.g., Users, Contracts - based on F001, F004).
+        *   Set up Alembic for database migrations.
+        *   Configure database connections for SQLite (development) and PostgreSQL (production).
+        *   Create initial migration scripts.
+    *   **Task 01.3: Cache Integration:**
+        *   Set up Valkey client library.
+        *   Implement a basic caching service or utility functions for use within the FastAPI application.
+        *   Define initial caching strategies for ESI responses or frequently accessed data.
+
+**Next Steps:**
+Proceed with the execution of Task 00.1: Project Initialization & Tooling Setup.
+
+---
+
 *(End of Cascade Interaction Log. New entries are appended above this line. The **final and correct** required format for session summary headings is now `YYYY-MM-DD HH:MM:SS-05:00` (U.S. Central Time with offset, e.g., `2025-06-06 09:16:09-05:00`))*

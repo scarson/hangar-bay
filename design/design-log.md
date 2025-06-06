@@ -377,7 +377,7 @@ All task files in Phases 00-08 will be updated. Cascade's operational procedures
 
 ---
 
-## 2025-06-06: Completion of MVP Implementation Task File Creation
+## Completion of MVP Implementation Task File Creation (2025-06-06)
 
 **Decision/Event:** All detailed task files for the Hangar Bay MVP Implementation Plan (Phases 00 through 10) have been successfully created and committed to the repository. This includes tasks covering foundational setup, backend core infrastructure, frontend core infrastructure, features F001, F002, F003 (backend and frontend aspects), cross-cutting concerns (security, logging, testing, accessibility, i18n), and deployment/documentation.
 
@@ -385,6 +385,18 @@ All task files in Phases 00-08 will be updated. Cascade's operational procedures
 
 **Affected Components:**
 *   `plans/implementation/` (all subdirectories and files)
+
+---
+
+## MVP Implementation Strategy & Initial Plan (Approx. 2025-06-06 11:16:57-05:00)
+
+*   **Decision:** Adopted **Proposal A: Foundational Setup & Backend Core First** for Hangar Bay MVP implementation.
+    *   **Rationale:** Prioritizes building a robust foundation, allows early backend API stabilization, effectively utilizes AI for boilerplate, and systematically integrates cross-cutting concerns.
+*   **Directory Structure Update:** Application code will reside in `app/backend` and `app/frontend` subdirectories within the project root.
+*   **Initial Focus (Phases 00 & 01):**
+    *   **Phase 00:** Project initialization, tooling (linters, formatters, pre-commit hooks), configuration management.
+    *   **Phase 01 (Backend):** FastAPI application skeleton, database setup (SQLAlchemy, Alembic, SQLite/PostgreSQL), Valkey cache integration.
+*   **Next Step:** Begin implementation of Phase 00, Task 00.1 (Project Initialization & Tooling Setup).
 
 ---
 

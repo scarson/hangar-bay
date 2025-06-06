@@ -1333,26 +1333,70 @@ I've determined Proposal A is the best choice, solidifying the backend infrastru
 -----------------
 
 
+
+Before we proceed, I want to submit a PR to merge all the changes in the dev branch since the last PR to main. For reference, the last PR message (which you wrote for me) was:
+"Elaborate core features and integrate mobile/accessibility specs
+
+This pull request builds upon the foundational design by elaborating key feature specifications and integrating comprehensive mobile-first design and accessibility requirements.
+
+Key Updates:
+
+Feature Specifications (New):
+
+design/features/F001-Public-Contract-Aggregation-Display.md: Details the specification for aggregating and displaying public EVE Online contracts, focusing on data models, workflow, and ESI integration for contract and item data.
+design/features/F002-Ship-Browsing-Advanced-Search-Filtering.md: Outlines the requirements for advanced ship browsing, including filtering by ship attributes, sorting, and integration with market group data.
+design/features/F003-Detailed-Ship-Contract-View.md: Specifies the detailed view for individual ship contracts, covering UI/UX, data display, and error handling.
+Accessibility Specification (New):
+
+design/accessibility-spec.md: Establishes comprehensive accessibility standards for Hangar Bay, mandating WCAG 2.1 Level AA conformance. Includes detailed guidance on POUR principles, technology-specific considerations for Angular (ARIA, focus management, etc.), and robust testing strategies (automated and manual).
+Design Specification Updates (design/design-spec.md):
+
+Enhanced UI/UX section with explicit requirements and AI-assisted development guidance for mobile-friendly and responsive design.
+Integrated references to accessibility-spec.md throughout relevant sections (Goals, Security, Tech Stack, Core Features, UI/UX, Deployment, Future Enhancements) to embed accessibility as a core design principle.
+Test Specification Updates (design/test-spec.md):
+
+Incorporated requirements for responsive design testing across multiple viewports (desktop, tablet, mobile) in E2E and usability testing.
+Added a dedicated "Accessibility Tests (A11y)" section, detailing automated (Axe-core, Lighthouse) and manual (keyboard, screen reader, zoom, contrast) testing methodologies, and CI/CD integration for accessibility checks.
+Design Log Updates (design/design-log.md):
+
+Added entries to chronologically record the design decisions and rationale behind the feature specification elaborations (F001, F002, F003).
+Documented the introduction and integration of mobile-friendly design principles and the new accessibility specification.
+These changes significantly advance the Hangar Bay design, ensuring that core features are well-defined and that the application will be both mobile-responsive and highly accessible to a wide range of users."
+
+Please write a PR message for this new PR that includes all changes since the last one.
+
+
+-----------------
+
+
 It sounds like a good and methodical plan. My only change is about:
-"Confirm/create backend (hangar_bay_backend) and frontend (hangar_bay_frontend) directories within c:\Users\Sam\OneDrive\Documents\Code\hangar-bay". Because we have the \design and \plan folders in the project root already, let's create a new top level directory called \app, with \app\frontend and \app\backend subdirectories. I've already created these for you. Please use them. 
+"Confirm/create backend (hangar_bay_backend) and frontend (hangar_bay_frontend) directories within c:\Users\Sam\OneDrive\Documents\Code\hangar-bay". Because we have the \design and \plan folders in the project root already, let's create a new top level directory called \app, with \app\frontend and \app\backend subdirectories. I've already created these for you. Think about if that app\frontend and app\backend structure could cause any issues for us. If not, please use them. 
+
+Then, before we proceed, please create design\cascade-log.md and design\design-log.md entries capturing the proposal evaluation, your conclusion recommending to proceed with Proposal A and why, and the Implementation Plan for Proposal A (Phases 00 & 01).
+
+The design\cascade-log.md entry should be incredibly verbose, capturing the rich detail in this evaluation and decision process. The design\design-log.md entry can be the standard summary format for the design log file.
 
 
 -----------------
 
 
-X
+Note to self, this was in a Thought Process on submitting a Cascade log:
+Integrating the Footer Logic
+
+I'm now focused on the crucial step of appending to design/cascade-log.md. I need to construct the new log entry and ensure it precedes any existing footer, if one exists. The file content provided suggests the last entry ends with a separator ---. The process from AISP-002 provides guidance on footer insertion, and it seems if a footer isn't present, I should create it. I'll ensure that the new log entry is appended correctly, with appropriate separators.
 
 
 -----------------
 
 
-X
+Proceed with the execution of Task 00.1: Project Initialization & Tooling Setup.
+Remember that our structure is app\frontend and app\backend.
+The app\backend and app\frontend directory structure is a clean and common approach. It effectively separates your application code from other project concerns like design and plans. This structure shouldn't cause any significant issues; we'll just need to ensure all paths are referenced correctly as we generate configurations and code (e.g., for PYTHONPATH, Docker contexts, ng new commands, etc.). You will proceed using these new paths:
 
+Backend code: app\backend
+Frontend code: app\frontend
 
------------------
-
-
-X
+I have updated the "### 3.1. Directory Structure" section of the "00.1-project-initialization-tooling.md" task file with these paths.
 
 
 -----------------
