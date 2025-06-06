@@ -145,6 +145,42 @@ Crucial for preventing injection attacks (XSS, SQLi, etc.).
         *   Always use ORM methods: `db.query(User).filter(User.id == user_id).first()`
         *   If using `text()` for raw SQL: `from sqlalchemy import text; query = text("SELECT * FROM users WHERE id = :user_id"); result = db.execute(query, {"user_id": user_id})`
 
+### 3.4. Secure Error Handling and Messages
+*   **Principle:** User-facing error messages MUST be generic and MUST NOT reveal sensitive information such as internal system details, stack traces, database error messages, specific reasons for authentication/authorization failures that could aid an attacker (e.g., distinguish between 'user not found' and 'invalid password'), or debugging information.
+*   **Practice:** Log detailed error information for internal diagnostics and troubleshooting only. Present users with a generic error message and a reference ID (correlation ID) if possible, which can be used to look up the detailed error in the internal logs.
+
+    *   **AI Actionable Checklist (Secure Error Handling):**
+        *   [ ] Review all user-facing error messages to ensure they are generic.
+        *   [ ] Verify that detailed error information (stack traces, system messages) is logged internally and not exposed to users.
+        *   [ ] Implement a global error handler (backend and frontend) to catch unhandled exceptions and present generic error messages.
+        *   [ ] Consider using correlation IDs in user-facing error messages that map to detailed internal logs.
+
+    *   **AI Implementation Pattern (FastAPI Generic Errors):**
+        *   Implement custom exception handlers in FastAPI to catch specific exceptions (or a generic `Exception`) and return a standardized, generic JSON error response.
+        *   Example:
+            ```python
+            from fastapi import Request, HTTPException
+            from fastapi.responses import JSONResponse
+
+            class UnicornException(Exception):
+                def __init__(self, name: str, detail: str, internal_log_message: str):
+                    self.name = name # For internal logging
+                    self.detail = detail # Generic detail for user
+                    self.internal_log_message = internal_log_message # Detailed log
+
+            @app.exception_handler(UnicornException)
+            async def unicorn_exception_handler(request: Request, exc: UnicornException):
+                logger.error(f"UnicornException: {exc.name} - {exc.internal_log_message} - Path: {request.url.path}")
+                return JSONResponse(
+                    status_code=500, # Or appropriate HTTP status
+                    content={"message": "An unexpected error occurred. Please try again later.", "detail": exc.detail, "error_ref": "some_correlation_id"},
+                )
+            ```
+    *   **AI Implementation Pattern (Angular Generic Errors):**
+        *   Implement an `ErrorHandler` in Angular to catch client-side errors and display a generic message or redirect to an error page.
+        *   Log detailed errors to a remote logging service or the console (for development).
+        *   When handling HTTP errors from API calls, display generic messages based on status codes or error content, avoiding direct display of API error internals.
+
 ## 4. Application-Specific Vulnerabilities
 
 *(To be detailed: e.g., ESI data manipulation risks, race conditions in contract aggregation, DoS/DDoS mitigation strategies)*

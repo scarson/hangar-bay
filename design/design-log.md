@@ -165,4 +165,126 @@ This document records major design discussion points, considerations, and decisi
     *   **Content Basis:** The initial content for `instruction-recs.md` was derived from the AI's recommendations provided during the collaboration assessment.
 *   **Rationale:** This exercise in reflection and the creation of `instruction-recs.md` aim to further optimize the human-AI collaboration for the Hangar Bay project, ensuring clarity and efficiency in communication and task execution.
 
+## Internationalization Specification Integration (Approx. 2025-06-05 06:15:00-05:00)
+
+*   **Context:** Following the creation of the comprehensive `design/i18n-spec.md`, the main `design/design-spec.md` required updates to fully integrate internationalization as a core project concern.
+*   **Action:** `design-spec.md` was systematically updated to:
+    *   Include i18n as a project goal.
+    *   Note the global nature of the target audience.
+    *   Incorporate i18n considerations and references to `i18n-spec.md` within relevant sections: Tech Stack, Core Features (especially EVE SSO and UI elements), ESI API Integration (for localized data), Database Schema (user preferences), UI/UX (translatable components, layout adaptability), Accessibility (translatable ARIA labels, `lang` attribute), and Testing (i18n test cases).
+    *   Ensure the general "Considerations" notes at the end of relevant sections include a reference to `i18n-spec.md`.
+*   **Rationale:** These updates ensure that internationalization is woven into the fabric of the Hangar Bay design, guiding AI-assisted development to build a globally ready application from the ground up.
+
+*   **Further Integration (Approx. 2025-06-05 06:45:00-05:00):**
+    *   **`accessibility-spec.md` Update:** Integrated i18n considerations, emphasizing translatable accessibility strings (e.g., `aria-label`, `alt` text), dynamic page `lang` attribute management, and layout adaptability for varying text lengths. Cross-referenced `i18n-spec.md`.
+    *   **`test-spec.md` Update:** Added a dedicated section for "Internationalization (i18n) Tests," outlining scope (UI translation, layout, language switching, locale formatting, ESI language parameter, character encoding) and strategies (pseudo-localization, target language testing). Updated general feature test planning to explicitly include i18n test cases. Cross-referenced `i18n-spec.md`.
+    *   **UI/UX Correction in `design-spec.md`:** Restored accidentally removed mobile-friendly and general UI/UX principles in Section 10, ensuring comprehensive guidance alongside i18n considerations.
+    *   **Reinforced Rationale:** The EVE Online player base is global. Comprehensive internationalization, deeply integrated
+
+## Feature Specification Alignment (F001-F007) (Approx. 2025-06-06 02:59:35-05:00)
+
+*   **Objective:** Systematically align all primary feature specifications (F001 through F007) with the updated feature specification template (`design/features/00-feature-spec-template.md`).
+*   **Key Alignment Actions:**
+    *   **Added "0. Authoritative ESI & EVE SSO References" Section:** This mandatory section was added to the beginning (after frontmatter) of `F001-Public-Contract-Aggregation-Display.md`, `F002-Ship-Browsing-Advanced-Search-Filtering.md`, `F003-Detailed-Ship-Contract-View.md`, `F004-User-Authentication-SSO.md`, `F005-Saved-Searches.md`, `F006-Watchlists.md`, and `F007-Alerts-Notifications.md`. This ensures consistent guidance for AI and developers regarding primary ESI/SSO documentation.
+    *   **Added/Refined AI Actionable Checklists:**
+        *   `F001-Public-Contract-Aggregation-Display.md`: AI actionable checklists were appended to all ESI API endpoint definitions.
+        *   `F004-User-Authentication-SSO.md`: AI actionable checklists were appended to all consumed EVE SSO OAuth and ESI API endpoints.
+        *   `F006-Watchlists.md`: The conditional ESI endpoint `GET /v3/universe/types/{type_id}/` was detailed, and an AI actionable checklist was added.
+    *   **Verified Relative Paths:** Ensured that dependencies within these feature specifications continued to use relative markdown links, consistent with project standards.
+    *   **Consistent API Block Usage:** Confirmed that exposed Hangar Bay API endpoints within these specs correctly utilized the `AI_HANGAR_BAY_API_ENDPOINT_START` and `AI_HANGAR_BAY_API_ENDPOINT_END` comment blocks.
+*   **Rationale:** This comprehensive alignment enhances the clarity, consistency, and AI-friendliness of the core feature specifications, improving the accuracy of AI-assisted development and the quality of project documentation. It standardizes how ESI/SSO dependencies are referenced and how AI should approach their implementation. with accessibility and testing, is therefore not just a feature but a foundational requirement to serve this diverse audience effectively and provide an inclusive, high-quality user experience for all.
+
+## Performance Specification Creation (Approx. 2025-06-06 01:05:00-05:00)
+
+*   **Context:** The main `design-spec.md` identified a need for detailed performance considerations, initially placeholder-referenced as `(See performance-spec.md, to be created)`.
+*   **Decision:** A dedicated `performance-spec.md` document was created to provide comprehensive guidance on performance targets, design principles, testing methodologies, and AI-specific implementation patterns for Hangar Bay.
+*   **Rationale:** 
+    *   Performance is a critical non-functional requirement for a responsive user experience, especially given interactions with ESI and potentially large datasets.
+    *   A separate specification allows for focused and detailed treatment of performance aspects without cluttering other documents.
+    *   It provides clear, centralized instructions for AI coding assistants to generate performant code by default and to consider performance implications throughout development.
+    *   The spec covers backend (FastAPI, Valkey, PostgreSQL) and frontend (Angular) performance patterns, targets, testing tools, and common anti-patterns.
+*   **Action:** `performance-spec.md` was created with a detailed structure. Cross-references and relevant guidance pointing to `performance-spec.md` were added to:
+    *   `design-spec.md` (Section 4.3 Non-Functional Requirements and Section 10 UI/UX Considerations).
+    *   `test-spec.md` (Section 3.4 Performance Tests).
+    *   `observability-spec.md` (Sections 2.2 Metrics and 2.4 Error Tracking & Alerting).
+    *   `design/features/00-feature-spec-template.md` (Section 11 Performance Considerations and Section 14 AI Implementation Guidance).
+    *   The main `README.md` (AI Assistant Guidance section).
+
+
+## Feature Index Creation and Maintenance Strategy (Approx. 2025-06-06 03:10:39-05:00)
+
+*   **Context:** As the number of feature specifications grows, ensuring that AI coding assistants can reliably and quickly locate the correct specification document becomes crucial for efficient development and reducing errors. Relying solely on filename conventions or general search can be prone to ambiguity.
+*   **Decision & New Artifact:** A dedicated feature index file, `design/features/feature-index.md`, was created.
+    *   **Purpose:** To serve as a definitive, machine-readable index mapping Feature IDs (e.g., F001) to their full titles, current status, brief descriptions, and exact relative file paths (e.g., `./F001-Public-Contract-Aggregation-Display.md`).
+    *   **Problem Solved:** This provides a structured and unambiguous way for AI assistants (like Cascade) to find specific feature specs, improving accuracy and speed. It also offers a quick human-readable overview of all features.
+    *   **Initial Content:** The file was populated with existing features F001 through F007.
+*   **Maintenance Strategy:** To ensure `feature-index.md` remains consistently up-to-date without requiring constant manual human intervention:
+    *   **AI-Managed Process:** An AI-driven procedure has been established, documented in a persistent memory (ID: 8ab3f7a9-9f10-42c1-a282-b8ad6eefe5b6).
+    *   **Trigger:** The AI (Cascade) will be prompted to check for necessary `feature-index.md` updates whenever a feature specification file (matching `F[0-9]{3}-*.md` in `design/features/`) is created or modified.
+    *   **Action:** The AI will:
+        1.  Read the affected feature spec(s) to extract key metadata (ID, Title, Status, Description, Path).
+        2.  Read the current `feature-index.md`.
+        3.  Compare and identify discrepancies (new features or changes to existing ones).
+        4.  Propose specific changes to `feature-index.md` to the user for confirmation.
+        5.  Upon user approval, apply the changes.
+    *   **Rationale for Strategy:** This semi-automated approach balances the need for accuracy and up-to-date information with user oversight, ensuring the index remains a reliable tool for both AI and human developers. It leverages the AI's capability to process file changes and extract information, while retaining human control over the final content of the index.
+*   **Related Memory:** The `feature-index.md` file itself is also noted in memory (ID: 894cb924-09d3-4293-b3d6-45d441d83616).
+
+---
+
+
+## AI System Procedure Documentation (Approx. 2025-06-06 03:25:07-05:00)
+
+*   **Context:** Recognizing the critical importance of consistent and reliable execution of complex, recurring AI-involved operational patterns (like the newly defined procedure for maintaining `feature-index.md`). There's a need to document these procedures formally for transparency, maintainability, reusability, and continuous improvement.
+*   **Decision & New Artifact:** A new documentation file, `design/ai-system-procedures.md`, has been created to serve as a central repository for these AI-centric operational procedures.
+    *   **Type of Procedures Captured:** This file will document "AI System Procedures" (AISP). These are defined as significant, recurring operational patterns, protocols, or workflows designed for AI coding assistants (like Cascade) to execute or participate in. They typically involve a sequence of actions, decision points, and interactions with project artifacts or tools, often triggered by specific events.
+    *   **Rationale for Recording:**
+        *   **Consistency & Reliability:** Ensures AI assistants perform systemic tasks in a standardized and predictable manner.
+        *   **Transparency & Auditability:** Provides a clear record of how and why certain automated/semi-automated tasks are performed.
+        *   **Knowledge Transfer & Reusability:** Allows human team members to understand, refine, and potentially replicate these procedures in other projects or with different AI systems.
+        *   **Evolution & Improvement:** Documented procedures are easier to review, critique, and improve over time.
+        *   **Onboarding:** Helps new human team members or AI versions understand established operational patterns.
+    *   **Structure and Templating of `ai-system-procedures.md`:**
+        *   The file begins with an introductory AI guidance block explaining its purpose (primarily a design record and human reference).
+        *   To promote consistency and guide the creation of new AISP entries, an `[AISP-000] AISP Entry Template` has been added at the beginning of the document. This template outlines the standard sections for an AISP and includes inline AI-readable comments detailing the expected content for each section, similar to the approach used for feature specification templates.
+        *   Following the template, each documented procedure is assigned a unique ID (e.g., AISP-XXX) and adheres to the templated structure, including sections for: Problem Addressed, Rationale & Design Philosophy, Trigger Conditions, Detailed Steps for AI Execution, Expected Outcome, Supporting Implementation Details, Notes for Human Reviewers, and Version/Update information.
+        *   **Benefits of Templating:** This approach is expected to ensure comprehensive and consistently structured documentation for all AI System Procedures, making them easier for AI assistants to understand, reference, and potentially assist in creating or updating. It also aids human readability and maintainability.
+    *   **Initial Content:** The first procedure, `[AISP-001] Automated Maintenance of feature-index.md`, has been documented, detailing the process established in Memory `8ab3f7a9-9f10-42c1-a282-b8ad6eefe5b6`.
+*   **Relationship to AI Memories:** While Cascade Memories will store the direct operational logic that the AI uses for execution, `ai-system-procedures.md` serves as the human-readable design specification and record for these procedures, explaining the broader context and intent.
+
+---
+
+## AI-Assisted Session Summary Logging (Approx. 2025-06-06 04:22:00-05:00)
+
+*   **Context:** A need was identified to persistently capture the rich conversational context, key decisions, and rationale from AI-User interaction sessions within the project itself, beyond what is typically recorded in specification documents or commit messages.
+*   **Decision & New Artifacts/Procedures:**
+    *   A new log file, `design/cascade-log.md`, has been created. This file will store AI-generated summaries of interaction sessions, focusing on verbose and detailed accounts of the work performed, decisions made, and their underlying rationale.
+    *   A new AI System Procedure, `[AISP-002] AI-Assisted Session Summary Logging`, has been documented in `design/ai-system-procedures.md`. This procedure formalizes the process for the AI (Cascade) to:
+        1.  Understand a USER request to log a session.
+        2.  Review the relevant conversational context.
+        3.  Draft a detailed summary in Markdown format, including a timestamp.
+        4.  Optionally present the summary to the USER for review.
+        5.  Append the finalized summary to `design/cascade-log.md`.
+    *   **Rationale for Strategy:** This approach aims to create a valuable, project-internal historical record. It leverages the AI's ability to synthesize information while keeping the USER in control of when logging occurs and the final content. The emphasis on detailed, verbose summaries is intended to maximize the contextual information retained.
+*   **Next Steps:** An operational Cascade Memory will be created based on AISP-002 to enable the AI to perform this logging task upon USER request.
+
+---
+
+---
+
+## Refinement of AISP-002: Proactive AI-Assisted Session Logging (Approx. 2025-06-06 04:47:00-05:00)
+
+*   **Context:** Following the initial creation of `[AISP-002] AI-Assisted Session Summary Logging`, a need was identified to make the process more proactive, automated, and robust, reducing reliance on explicit USER commands for logging and improving the reliability of appending to `design/cascade-log.md`.
+*   **Decisions & Enhancements (AISP-002 v1.1):**
+    *   **Proactive AI Trigger:** AISP-002 was updated to instruct the AI (Cascade) to proactively identify significant, non-trivial blocks of work (e.g., new file creation, complex edits, bug fixes, design decisions) and propose logging a session summary to the USER.
+    *   **Exclusion Criteria for Trivial Actions:** The procedure now explicitly excludes minor edits, routine Git operations, simple views/searches, and routine tests from triggering logging proposals to avoid unnecessary interruptions.
+    *   **Robust Append Logic:** A consistent footer (`--- \n\n*(End of Cascade Interaction Log. New entries are appended above this line.)*`) was established in `design/cascade-log.md`, and AISP-002 was updated to use this footer as a reliable marker for appending new summaries.
+    *   **Error Handling:** Basic error handling for append failures was incorporated into the procedure, with instructions for the AI to inform the USER and suggest alternatives.
+    *   **Operational Memory Update:** Cascade's internal operational memory (ID: `42c9fb61-0933-428f-ad56-16e1f846afcf`) was updated to reflect these changes, ensuring its behavior aligns with AISP-002 v1.1.
+    *   **Documentation Order:** AISP-002 was correctly reordered in `design/ai-system-procedures.md` to maintain numerical sequence.
+*   **Rationale for Enhancements:** These changes aim to increase the utility and consistency of `cascade-log.md` by making the logging process more autonomous yet still USER-confirmed. The goal is to capture valuable contextual information more regularly and reliably, enhancing project history and future recall, while minimizing USER overhead.
+*   **Next Steps:** Begin operational use of the enhanced AISP-002. Monitor the frequency and relevance of AI-initiated logging proposals and provide feedback to further refine the heuristics for identifying "non-trivial" interactions. Regularly commit `cascade-log.md`.
+
+---
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SSZ' (U.S. Central Time) for new major decision sections.)*

@@ -57,9 +57,20 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
             *   AI should use page object models (POM) for maintainability if feasible.
 
 ### 3.4. Performance Tests
-*   **Scope:** Evaluate application responsiveness, scalability, and stability under load.
-*   **Areas:** API endpoint performance, database query efficiency, ESI interaction latency impact.
-*   *(Placeholder: Specific performance targets and scenarios to be defined)*
+*   **Scope:** Evaluate application responsiveness, scalability, and stability under various load conditions, ensuring adherence to the targets and guidelines defined in `performance-spec.md`.
+*   **Key Areas (refer to `performance-spec.md` for details):
+    *   API endpoint response times (FastAPI).
+    *   Frontend load and interaction times (Angular - FCP, LCP, TTI, INP).
+    *   Database query efficiency (PostgreSQL).
+    *   Caching strategy effectiveness (Valkey).
+    *   Resource utilization (CPU, memory) under load.
+*   **Methodologies:** Load testing, stress testing, soak testing, and profiling as outlined in `performance-spec.md` and section 4 of this document.
+*   **Tools:** Utilize tools like `locust` (backend), browser developer tools (Lighthouse, Performance tab for frontend), and `EXPLAIN ANALYZE` (PostgreSQL) as recommended in `performance-spec.md`.
+
+*   **AI Coding Assistant Guidance:**
+    *   When developing features, consult `performance-spec.md` to understand the expected performance characteristics and targets.
+    *   AI can assist in generating boilerplate for performance test scripts (e.g., `locust` tasks) based on scenarios derived from `performance-spec.md` and the feature being developed.
+    *   Prompt AI to consider performance implications (e.g., query efficiency, caching opportunities, asynchronous operations) during code generation, guided by `performance-spec.md`.
 
 ### 3.5. Usability Tests
 *   *(Placeholder: To be considered, potentially manual or with user feedback sessions).*
@@ -80,6 +91,28 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
         *   [ ] When AI generates a new UI component, prompt it to include an Axe-core scan in its unit/integration tests.
             *   Example (Angular with `@axe-core/angular`): `it('should pass accessibility scan', async () => { await TestBed.inject(AxeAngular).check(); });`
         *   [ ] For E2E tests of UI features, remind AI to include checks for keyboard navigability (e.g., tabbing through elements, activating controls) and visible focus states.
+
+### 3.7. Internationalization (i18n) Tests
+*   **Scope:** Verify that the application correctly displays and functions in different languages and locales as defined in `i18n-spec.md`.
+*   **Key Areas for Testing:**
+    *   **UI Element Translation:** Ensure all user-facing text elements (labels, buttons, messages, titles, `alt` text, `aria-label`s, etc.) are correctly translated and displayed for supported languages.
+    *   **Layout Adaptability:** Test that UI layouts adapt to varying text lengths across different languages without breaking, overflowing, or truncating critical information. Pay attention to menus, buttons, and data tables.
+    *   **Language Switching:** Verify that the language switching mechanism works correctly and persists the user's preference (if applicable).
+    *   **Locale-Specific Formatting:** Test correct formatting of dates, times, numbers, and currencies according to the selected locale.
+    *   **ESI API Language Parameter:** For features interacting with EVE ESI, verify that the correct `language` parameter is sent with API requests based on user locale or default fallback (`en-us`), and that responses are handled appropriately.
+    *   **Character Encoding:** Ensure correct rendering of special characters and non-ASCII characters for all supported languages.
+    *   **Right-to-Left (RTL) Support (Future):** If RTL languages are supported in the future, specific tests for layout mirroring and text direction will be required.
+*   **Testing Strategies:**
+    *   **Pseudo-localization:** Use pseudo-localization techniques early in development to identify i18n issues (e.g., text expansion, non-translatable strings).
+    *   **Target Language Testing:** Perform testing with actual translated strings for key supported languages, focusing on UI rendering and functional correctness.
+    *   **Automated Checks:** Where possible, automate checks for missing translation keys or basic rendering issues.
+*   **AI Coding Assistant Guidance:** When AI generates UI components or features involving text, prompt it to consider how these will be tested for different languages and to ensure all text is externalized for translation.
+
+    *   **AI Actionable Checklist (i18n Test Considerations):**
+        *   [ ] For new UI components, check that all display strings are sourced from translation files.
+        *   [ ] Test component layout with significantly longer or shorter pseudo-localized strings.
+        *   [ ] If the component handles dates/numbers, verify they are formatted using locale-aware services.
+        *   [ ] Verify `alt` text and `aria-label` attributes are translatable and included in i18n testing.
 
 ## 4. Tools and Frameworks
 
@@ -133,4 +166,4 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   **Contract Aggregation:** Test fetching, filtering, and display of contracts.
 *   **Search & Filtering:** Test various search terms and filter combinations.
 *   **Watchlists & Alerts:** Test creation, modification, deletion of watchlists, and alert triggering logic.
-*   **(General for all features):** All feature test plans MUST include specific test cases for accessibility, covering keyboard navigation, screen reader compatibility, color contrast, and other relevant WCAG criteria from `accessibility-spec.md`.
+*   **(General for all features):** All feature test plans MUST include specific test cases for accessibility (see `accessibility-spec.md`) and internationalization (see `i18n-spec.md`). This includes verifying UI in different languages, layout adaptability, and correct locale-specific data handling.

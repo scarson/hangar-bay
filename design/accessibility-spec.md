@@ -29,7 +29,7 @@ Information and user interface components must be presentable to users in ways t
             *   [ ] For `<img>` tags, ensure `alt` attribute is present.
             *   [ ] If image is decorative, `alt=""`.
             *   [ ] If image conveys information, `alt` describes the information.
-            *   [ ] For icon fonts or SVG icons, ensure `aria-label` or visually hidden text provides a text alternative.
+            *   [ ] For icon fonts or SVG icons, ensure `aria-label` or visually hidden text provides a text alternative (this text must be translatable, see Section 3.5).
 *   **Time-Based Media (WCAG 1.2):** (Currently not planned, but if introduced)
     *   Provide captions for pre-recorded audio content.
     *   Provide audio descriptions for pre-recorded video content.
@@ -89,7 +89,7 @@ User interface components and navigation must be operable.
 
 Information and the operation of user interface must be understandable.
 
-*   **Readable (WCAG 3.1):** Make text content readable and understandable (e.g., specify page language `lang="en"`).
+*   **Readable (WCAG 3.1):** Make text content readable and understandable. The page language MUST be correctly set (e.g., `lang="en"`) and dynamically updated when the user changes language (see Section 3.5 and `i18n-spec.md`).
 *   **Predictable (WCAG 3.2):** Make web pages appear and operate in predictable ways.
     *   Consistent navigation and identification of components.
 *   **Input Assistance (WCAG 3.3):** Help users avoid and correct mistakes.
@@ -108,12 +108,23 @@ Information and the operation of user interface must be understandable.
 
 Content must be robust enough that it can be interpreted reliably by a wide variety of user agents, including assistive technologies.
 
+### 3.5. Interaction with Internationalization (`i18n-spec.md`)
+
+Accessibility and internationalization are closely related. Ensuring that accessible features are also localizable is critical for a global audience. Refer to `i18n-spec.md` for comprehensive internationalization guidelines.
+
+*   **Translatable Accessibility Strings:** All text used for accessibility purposes (e.g., `aria-label`, `aria-labelledby`, `aria-describedby`, `title` attributes, `alt` text for images) MUST be processed through the internationalization system to ensure they can be translated.
+    *   *AI Guidance:* When generating elements with these attributes, ensure the content is marked for translation (e.g., using `i18n-aria-label` in Angular).
+*   **Page Language (`lang` attribute):** The `<html>` element's `lang` attribute MUST be dynamically updated to reflect the current page language. This is critical for screen readers to use the correct pronunciation and for browser translation tools.
+    *   *AI Guidance:* This is typically handled by the frontend framework's i18n module (e.g., Angular's localization).
+*   **Layout Adaptability:** Ensure that changing languages (which can alter text length significantly) does not break accessible layouts or cause focus management issues.
+*   **Culturally Appropriate Icons/Symbols:** While not strictly an i18n-spec item, be mindful that icons or symbols used for accessibility cues should be universally understood or have translatable text alternatives.
+
 *   **Parsing (WCAG 4.1):** Ensure HTML is well-formed with complete start/end tags, nested correctly, and no duplicate IDs.
 *   **Name, Role, Value (WCAG 4.1.2):** For all UI components (including custom Angular components), their name and role can be programmatically determined; states, properties, and values that can be set by the user can be programmatically set; and notification of changes is available to assistive technologies.
 
     *   **AI Actionable Checklist (Name, Role, Value):**
         *   [ ] For custom interactive components, ensure `role` is appropriate (e.g., `button`, `checkbox`, `tab`).
-        *   [ ] Ensure components have an accessible name (via `aria-label`, `aria-labelledby`, or content).
+        *   [ ] Ensure components have an accessible name (via `aria-label`, `aria-labelledby`, or content). **This name must be translatable if it's text-based (see Section 3.5).**
         *   [ ] Ensure states (e.g., `aria-checked`, `aria-selected`, `aria-expanded`) are programmatically set and updated.
         *   [ ] Ensure values (e.g., `aria-valuenow` for sliders) are programmatically set and updated.
 
@@ -169,4 +180,4 @@ Content must be robust enough that it can be interpreted reliably by a wide vari
 
 Accessibility is an ongoing effort. Regularly review and update practices as standards evolve and new insights are gained.
 
-*(This document should be referenced by `design-spec.md`, `test-spec.md`, and individual feature specifications where UI/UX is involved.)*
+*(This document should be referenced by `design-spec.md`, `test-spec.md`, `i18n-spec.md`, and individual feature specifications where UI/UX is involved.)*

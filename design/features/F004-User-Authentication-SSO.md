@@ -5,6 +5,12 @@
 **Last Updated:** 2025-06-05
 **Status:** Draft
 
+## 0. Authoritative ESI & EVE SSO References (Required Reading for ESI/SSO Integration)
+*   **EVE Online API (ESI) Swagger UI / OpenAPI Spec:** [https://esi.evetech.net/ui/](https://esi.evetech.net/ui/) - *Primary source for all ESI endpoint definitions, request/response schemas, and parameters.*
+*   **EVE Online Developers - ESI Overview:** [https://developers.eveonline.com/docs/services/esi/overview/](https://developers.eveonline.com/docs/services/esi/overview/) - *Official ESI developer documentation landing page.*
+*   **EVE Online Developers - ESI Best Practices:** [https://developers.eveonline.com/docs/services/esi/best-practices/](https://developers.eveonline.com/docs/services/esi/best-practices/) - *Official ESI best practices guide.*
+*   **EVE Online Developers - SSO Guidance:** [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/) - *Official EVE Single Sign-On developer documentation.*
+
 ---
 **Instructions for Use:**
 *   (Standard template instructions)
@@ -56,38 +62,106 @@
 *   Two-factor authentication (relies on EVE SSO's 2FA).
 
 ## 5. Key Data Structures / Models (Optional, but often Required)
+<!-- AI_NOTE_TO_HUMAN: For AI processing, please try to include a structured comment block like the example below for each significant data model. -->
+*   Describe any new or significantly modified data structures, database tables, or object models relevant to this feature.
+*   Include field names, data types, and brief descriptions.
+*   **AI Assistant Guidance:** If any model fields store user-facing text that might require translation (e.g., descriptions, names not from a fixed external source like ESI), ensure they are designed with internationalization in mind. Consult `../i18n-spec.md` for strategies. For F004, `character_name` is sourced from ESI. Any Hangar Bay specific user-configurable text fields added in the future would need i18n consideration.
+
 *   **`users` table:**
-    *   `id`: INTEGER (Primary Key, Auto-increment)
-    *   `character_id`: BIGINT (Unique, EVE Online Character ID)
+    <!-- AI_HANGAR_BAY_DATA_MODEL_START
+    Model_Name: User
+    Brief_Description: Stores Hangar Bay user information, linked to an EVE Online character.
+    Fields:
+      - id: INTEGER (Primary Key, Auto-increment)
+      - character_id: BIGINT (Unique, EVE Online Character ID, Indexed)
+      - character_name: VARCHAR(255)
+      - owner_hash: VARCHAR(255) (From ESI character verification, Indexed)
+      - esi_access_token: TEXT (Encrypted)
+      - esi_access_token_expires_at: TIMESTAMP WITH TIME ZONE
+      - esi_refresh_token: TEXT (Encrypted)
+      - esi_scopes: TEXT (Comma-separated list of granted ESI scopes)
+      - last_login_at: TIMESTAMP WITH TIME ZONE
+      - created_at: TIMESTAMP WITH TIME ZONE (Default: CURRENT_TIMESTAMP)
+      - updated_at: TIMESTAMP WITH TIME ZONE (Default: CURRENT_TIMESTAMP, On Update: CURRENT_TIMESTAMP)
+    Relationships: (e.g., One-to-many with SavedSearches, WatchlistItems - to be defined in their respective features)
+    AI_Action_Focus: Backend (SQLAlchemy model, Pydantic schema for API responses). Ensure robust encryption for token fields. Implement logic for creating/updating user records upon SSO callback.
+    I18n_Considerations: `character_name` is from ESI. Other fields are internal or timestamps.
+    AI_HANGAR_BAY_DATA_MODEL_END -->
+*   **Session store data:** (Managed by web framework/session library, e.g., Valkey-backed sessions for FastAPI)
+    *   `session_id`: VARCHAR (Key in Valkey)
+    *   `user_id`: INTEGER (Foreign Key to `users.id`)
+    *   `character_id`: BIGINT
     *   `character_name`: VARCHAR
-    *   `owner_hash`: VARCHAR (From ESI, if available and needed for verification)
-    *   `esi_access_token`: VARCHAR (Encrypted)
-    *   `esi_access_token_expires_at`: TIMESTAMP
-    *   `esi_refresh_token`: VARCHAR (Encrypted)
-    *   `esi_scopes`: TEXT (Comma-separated list of granted ESI scopes)
-    *   `last_login_at`: TIMESTAMP
-    *   `created_at`: TIMESTAMP
-    *   `updated_at`: TIMESTAMP
-*   **Session store data:** (Managed by web framework/session library, e.g., Valkey-backed sessions)
-    *   `session_id`: VARCHAR
-    *   `user_id`: INTEGER (Foreign Key to `users` table)
-    *   `expires_at`: TIMESTAMP
+    *   `expires_at`: TIMESTAMP (Managed by session middleware)
 
 ## 6. API Endpoints Involved (Optional)
 ### 6.1. Consumed ESI API Endpoints
 *   EVE SSO OAuth Endpoints:
     *   Authorization URL: `https://login.eveonline.com/v2/oauth/authorize`
+    AI_Actionable_Checklist:
+      - [ ] **AI Action:** Verify endpoint path, parameters, and expected flow against the official EVE SSO documentation: [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/)
+      - [ ] **AI Action:** Review EVE SSO Best Practices and Security guide: [https://developers.eveonline.com/docs/services/sso/best-practices-and-security/](https://developers.eveonline.com/docs/services/sso/best-practices-and-security/)
     *   Token URL: `https://login.eveonline.com/v2/oauth/token`
+    AI_Actionable_Checklist:
+      - [ ] **AI Action:** Verify endpoint path, parameters, and expected flow against the official EVE SSO documentation: [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/)
+      - [ ] **AI Action:** Review EVE SSO Best Practices and Security guide: [https://developers.eveonline.com/docs/services/sso/best-practices-and-security/](https://developers.eveonline.com/docs/services/sso/best-practices-and-security/)
     *   JWKS URI (for token verification): `https://login.eveonline.com/oauth/jwks`
+    AI_Actionable_Checklist:
+      - [ ] **AI Action:** Verify endpoint path, parameters, and expected flow against the official EVE SSO documentation: [https://developers.eveonline.com/docs/services/sso/](https://developers.eveonline.com/docs/services/sso/)
+      - [ ] **AI Action:** Review EVE SSO Best Practices and Security guide: [https://developers.eveonline.com/docs/services/sso/best-practices-and-security/](https://developers.eveonline.com/docs/services/sso/best-practices-and-security/)
 *   ESI Endpoint for Character Verification (after token acquisition):
     *   `GET https://esi.evetech.net/verify/` (or equivalent in current ESI spec if path changed)
         *   Requires authentication with the new access token.
         *   Fields: `CharacterID`, `CharacterName`, `Scopes`, `TokenType`, `CharacterOwnerHash`.
+        AI_Actionable_Checklist:
+          - [ ] **AI Action:** Verify endpoint path, parameters, request body (if any), and response schema against the official ESI Swagger UI: [https://esi.evetech.net/ui/](https://esi.evetech.net/ui/)
+          - [ ] **AI Action:** Review ESI Best Practices for this endpoint/category: [https://developers.eveonline.com/docs/services/esi/best-practices/](https://developers.eveonline.com/docs/services/esi/best-practices/)
 ### 6.2. Exposed Hangar Bay API Endpoints
-*   `/auth/sso/login` (GET): Initiates the EVE SSO flow by redirecting the user to EVE's authorization URL.
-*   `/auth/sso/callback` (GET): The redirect URI registered with EVE SSO. Handles the authorization code, exchanges it for tokens, verifies character, creates/updates user, and establishes session.
-*   `/auth/sso/logout` (POST or GET): Logs the user out by invalidating their session.
-*   `/api/v1/me` (GET): Returns information about the currently authenticated user (e.g., character name). Requires authentication.
+*   **Endpoint 1:** `/auth/sso/login` (GET)
+    <!-- AI_HANGAR_BAY_API_ENDPOINT_START
+    API_Path: /auth/sso/login
+    HTTP_Method: GET
+    Brief_Description: Initiates the EVE SSO OAuth 2.0 flow by redirecting the user to the EVE Online authorization URL.
+    Request_Path_Parameters_Schema_Ref: None
+    Request_Query_Parameters_Schema_Ref: Optional 'next' URL for redirect after successful login.
+    Success_Response_Schema_Ref: HTTP 302 Redirect to EVE Online SSO.
+    Error_Response_Codes: 500 (If unable to generate state or construct redirect URL).
+    AI_Action_Focus: Backend: Generate and store a CSRF `state` token. Construct the EVE SSO authorization URL with appropriate `client_id`, `redirect_uri`, `scope`, and `state`. Frontend: A simple link or button that directs the user to this backend endpoint.
+    I18n_Considerations: Error messages if any presented directly from this endpoint should be internationalized.
+    AI_HANGAR_BAY_API_ENDPOINT_END -->
+*   **Endpoint 2:** `/auth/sso/callback` (GET)
+    <!-- AI_HANGAR_BAY_API_ENDPOINT_START
+    API_Path: /auth/sso/callback
+    HTTP_Method: GET
+    Brief_Description: Handles the callback from EVE SSO after user authorization. Exchanges authorization code for tokens, verifies character, creates/updates user record, and establishes a session.
+    Request_Query_Parameters_Schema_Ref: `code` (authorization_code from EVE SSO), `state` (CSRF token from Hangar Bay).
+    Success_Response_Schema_Ref: HTTP 302 Redirect to a logged-in area (e.g., dashboard or 'next' URL).
+    Error_Response_Codes: 400 (Bad Request - e.g., state mismatch, missing code), 500 (Internal Server Error - e.g., failed token exchange, DB error).
+    AI_Action_Focus: Backend: CRITICAL. Verify `state`. Exchange `code` for tokens with EVE SSO. Call ESI `GET /verify/` (or JWT validation). Find/Create user in DB. Store tokens securely. Create session. Frontend: Generally no direct interaction; browser is redirected here by EVE SSO.
+    I18n_Considerations: User-facing error pages resulting from failures in this flow must be internationalized.
+    AI_HANGAR_BAY_API_ENDPOINT_END -->
+*   **Endpoint 3:** `/auth/sso/logout` (POST recommended, GET for simplicity if no side effects beyond logout)
+    <!-- AI_HANGAR_BAY_API_ENDPOINT_START
+    API_Path: /auth/sso/logout
+    HTTP_Method: POST
+    Brief_Description: Logs the currently authenticated user out of Hangar Bay by invalidating their session.
+    Request_Body_Schema_Ref: None
+    Success_Response_Schema_Ref: HTTP 200 OK or HTTP 302 Redirect to homepage/login page.
+    Error_Response_Codes: 500 (If session invalidation fails).
+    AI_Action_Focus: Backend: Invalidate/delete the user's session. Clear session cookie. Frontend: A button that triggers a request to this endpoint.
+    I18n_Considerations: Any confirmation messages should be internationalized.
+    AI_HANGAR_BAY_API_ENDPOINT_END -->
+*   **Endpoint 4:** `/api/v1/me` (GET)
+    <!-- AI_HANGAR_BAY_API_ENDPOINT_START
+    API_Path: /api/v1/me
+    HTTP_Method: GET
+    Brief_Description: Retrieves information about the currently authenticated user (e.g., CharacterID, CharacterName).
+    Request_Path_Parameters_Schema_Ref: None
+    Success_Response_Schema_Ref: UserPublic (Pydantic model/TS Interface: e.g., { character_id: int, character_name: str }).
+    Error_Response_Codes: 401 (Unauthorized - if no valid session), 500.
+    AI_Action_Focus: Backend: Requires authentication. Retrieve user details from session or DB. Frontend: Call this to get current user info for display or conditional UI rendering.
+    I18n_Considerations: `character_name` is from ESI.
+    AI_HANGAR_BAY_API_ENDPOINT_END -->
 
 ## 7. Workflow / Logic Flow (Optional)
 **Login Flow:**
@@ -121,6 +195,7 @@
 *   Display of logged-in user (e.g., character name, portrait if fetched) in the UI header/navigation.
 *   Clear "Logout" option.
 *   Graceful handling of SSO errors (e.g., user denies authorization, EVE SSO down) with user-friendly messages.
+*   **AI Assistant Guidance:** When generating UI components for login/logout, ensure all display strings (button text, status messages, error messages) are prepared for localization using Angular's i18n mechanisms (e.g., `i18n` attribute, `$localize` tagged messages) as detailed in `../i18n-spec.md`. Ensure interactive elements like login/logout buttons are accessible (keyboard navigable, proper ARIA roles if custom components are used) as per `../accessibility-spec.md`.
 
 ## 9. Error Handling & Edge Cases (Required)
 *   EVE SSO unavailable or returns errors: Log, inform user, retry if appropriate.
@@ -131,7 +206,7 @@
 *   Secure token storage failure: Critical error, log, potentially prevent login.
 *   Refresh token becomes invalid: User needs to re-authenticate fully.
 
-## 10. Security Considerations (Required)
+## 10. Security Considerations (Required - Consult `../security-spec.md`)
 *   **CRITICAL:** Adherence to OAuth 2.0 (RFC 6749) and OAuth 2.0 Security Best Current Practice (RFC 6819).
 *   Use `state` parameter to prevent CSRF during SSO callback.
 *   PKCE (RFC 7636) should be considered if the client acts more like a public client (e.g., SPA making direct calls), but for a traditional web app with a backend, the confidential client flow with a `client_secret` is typical.
@@ -143,21 +218,98 @@
 *   Regularly review EVE Online developer documentation for security updates related to SSO.
 *   Refer to `security-spec.md` for general and specific guidelines (e.g., token handling, encryption standards).
 
-## 11. Performance Considerations (Optional)
+## 11. Performance Considerations (Optional, but Recommended - Consult `../performance-spec.md`)
 *   SSO login flow involves multiple redirects and API calls; ensure it's as streamlined as possible.
 *   Database lookups/writes for user accounts should be efficient.
 *   Session store access should be fast (Valkey is good for this).
 
-## 12. Dependencies (Optional)
+## 12. Accessibility Considerations (Optional, but Recommended - Consult `../accessibility-spec.md`)
+*   Login/Logout buttons must be keyboard accessible and have clear focus indicators.
+*   If using EVE Online branded login buttons, ensure they meet accessibility contrast ratios or provide an accessible alternative.
+*   Any error messages or feedback related to the login/logout process must be announced by screen readers (e.g., using ARIA live regions if dynamic).
+*   The user's login status (e.g., display of character name) should be presented in a way that's clear to assistive technologies.
+*   Refer to `../accessibility-spec.md` for general guidelines.
+*   **AI Assistant Guidance:** "Ensure login and logout buttons are standard HTML buttons or accessible custom components. Provide clear visual focus states. Error messages related to authentication should be programmatically associated with input fields if applicable, or announced via ARIA live regions."
+
+## 13. Internationalization (i18n) Considerations (Optional, but Recommended - Consult `../i18n-spec.md`)
+*   **Translatable Content:**
+    *   UI Text: "Login with EVE Online", "Logout", "Login successful", "Login failed: [reason]", "Logged out successfully", etc.
+*   **Non-Translatable Content (from ESI):**
+    *   Character names are provided by EVE SSO/ESI and are typically not translated by the client application.
+*   Refer to `../i18n-spec.md` for specific Angular i18n patterns.
+*   **AI Assistant Guidance:** "Ensure all static user-facing strings in Angular components related to authentication (buttons, labels, messages) are externalized or marked for translation using Angular's `@angular/localize`. Error messages from the backend should ideally be translatable keys or messages."
+
+## 14. Dependencies (Optional)
 *   EVE Online SSO service.
 *   Backend database (e.g., PostgreSQL).
 *   Session storage (e.g., Valkey).
 *   Encryption library for token storage.
 *   OAuth 2.0 client library for the backend language/framework (e.g., Python's `requests-oauthlib` or framework-specific integrations).
 
-## 13. Notes / Open Questions (Optional)
+## 15. Notes / Open Questions (Optional)
 *   [NEEDS_DECISION: Initial ESI scopes to request. Start minimal (e.g., `publicData` or just enough for character ID/name) and add more as features require them? Or request a broader set upfront? Minimal is generally better practice.]
 *   [NEEDS_DISCUSSION: Detailed strategy for handling refresh token failure/revocation by EVE. How to prompt user for re-auth gracefully?]
 *   [NEEDS_CLARIFICATION: Current ESI endpoint for JWT-based token verification if `GET /verify/` is deprecated or there's a newer preferred method. EVE SSO typically returns JWT access tokens which can be verified locally using the JWKS.]
 *   [NEEDS_DISCUSSION: Session duration for Hangar Bay. How long should users remain logged in?]
 *   [NEEDS_DISCUSSION: Should Hangar Bay store `CharacterOwnerHash` and verify it on each login? This helps detect character transfers but adds complexity.]
+
+## 16. AI Implementation Guidance (Optional)
+<!-- AI_NOTE_TO_HUMAN: This section is specifically for providing direct guidance to an AI coding assistant. -->
+
+### 16.1. Key Libraries/Framework Features to Use
+*   Backend (FastAPI):
+    *   OAuth 2.0 client library (e.g., `Authlib`, `requests-oauthlib`, or FastAPI plugins like `fastapi-sso`).
+    *   Session management library (e.g., `starlette-session` with Valkey or JWT-based sessions).
+    *   Cryptography library for encrypting tokens at rest (e.g., `cryptography`).
+    *   SQLAlchemy for DB interaction, Pydantic for data models.
+*   Frontend (Angular):
+    *   `HttpClientModule` for API calls.
+    *   Angular Router for navigation.
+    *   `@angular/localize` for i18n.
+
+### 16.2. Critical Logic Points for AI Focus
+*   **Backend:**
+    *   Implementing the full OAuth 2.0 Authorization Code Grant flow with EVE SSO.
+    *   Secure generation and validation of the `state` parameter (CSRF protection).
+    *   Secure handling and storage of `client_id` and `client_secret`.
+    *   Secure exchange of authorization code for access/refresh tokens.
+    *   Verification of EVE SSO tokens (e.g., using JWKS for JWTs, or calling ESI `GET /verify/`).
+    *   Creation and update of user records in the database, including secure (encrypted) storage of tokens.
+    *   Robust session creation, management (e.g., secure HTTPOnly cookies), and invalidation.
+    *   Mechanism for using refresh tokens to obtain new access tokens (may be a separate scheduled task or on-demand logic).
+*   **Frontend:**
+    *   Initiating the login flow by redirecting to the backend's `/auth/sso/login` endpoint.
+    *   Handling logout requests.
+    *   Displaying user login status (e.g., character name, logout button).
+    *   Requesting user information from `/api/v1/me`.
+
+### 16.3. Data Validation and Sanitization
+*   Backend: Validate all incoming data from EVE SSO callback (`code`, `state`).
+*   Backend: Validate responses from EVE SSO token endpoint and ESI `/verify/` endpoint.
+*   Frontend: Handle potential errors from backend API calls gracefully.
+
+### 16.4. Test Cases for AI to Consider Generating
+*   **Backend (FastAPI - Integration/Unit Tests):**
+    *   Test `/auth/sso/login` redirects correctly.
+    *   Test `/auth/sso/callback` with valid code and state (mock EVE SSO responses) leading to user creation/login and session establishment.
+    *   Test `/auth/sso/callback` with invalid state, missing code, or error from EVE SSO.
+    *   Test `/auth/sso/logout` invalidates session.
+    *   Test `/api/v1/me` returns correct user info when authenticated, and 401 when not.
+    *   Test token encryption/decryption logic.
+    *   Test access token refresh logic (if implemented).
+*   **Frontend (Angular - Component/Service Tests):**
+    *   Test login button navigates to backend login URL.
+    *   Test logout button calls backend logout and updates UI.
+    *   Test display of user information after successful login.
+    *   Test UI state for unauthenticated users.
+
+### 16.5. Specific AI Prompts or Instructions
+*   **Backend (FastAPI):**
+    *   "Implement the EVE Online SSO OAuth2 Authorization Code Grant flow. Create endpoints for `/auth/sso/login` (redirect to EVE), `/auth/sso/callback` (handle code, exchange for tokens, verify user via ESI `/verify/` or JWT validation, create/update user in DB, establish session), and `/auth/sso/logout` (invalidate session). Use [chosen OAuth library] and [chosen session library]."
+    *   "Define SQLAlchemy model for `users` table including fields for `character_id`, `character_name`, encrypted `esi_access_token`, `esi_refresh_token`, `esi_access_token_expires_at`, and `esi_scopes`. Create corresponding Pydantic models."
+    *   "Implement secure encryption and decryption for ESI tokens stored in the database."
+    *   "Create an `/api/v1/me` endpoint that returns basic information for the authenticated user."
+*   **Frontend (Angular):**
+    *   "Create an `AuthService` in Angular to manage authentication state, initiate login (by navigating to backend `/auth/sso/login`), handle logout (by calling backend `/auth/sso/logout`), and fetch current user data (from backend `/api/v1/me`)."
+    *   "Create UI components for a 'Login with EVE Online' button and a 'Logout' button. Update a shared UI area (e.g., header) to display the logged-in character's name or the login button based on auth state."
+    *   "Ensure all user-facing text in authentication-related components is internationalized using `@angular/localize`."
