@@ -1,0 +1,63 @@
+# Hangar Bay Backend Services
+#
+# This Docker Compose file defines the backend services (PostgreSQL database and Valkey cache)
+# for local development.
+#
+# To run:
+# 1. Ensure Docker Desktop is running.
+# 2. Navigate to this directory (app/backend/docker).
+# 3. Run: docker compose up -d
+#
+# To stop and remove containers:
+# docker compose down
+#
+# To stop, remove containers, and remove volumes (data will be lost):
+# docker compose down -v
+
+version: '3.8'
+
+services:
+  postgres_db:
+    image: postgres:16-alpine # Using a specific version is recommended
+    container_name: hangar_bay_postgres
+    ports:
+      - "5432:5432" # Expose PostgreSQL on the host's port 5432
+    environment:
+      # IMPORTANT: Change these default credentials for any sensitive environment
+      POSTGRES_USER: hangar_bay_user
+      POSTGRES_PASSWORD: hangar_bay_password # TODO: Consider using Docker secrets or .env for production-like setup
+      POSTGRES_DB: hangar_bay_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persist PostgreSQL data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hangar_bay_user -d hangar_bay_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  valkey_cache:
+    image: valkey/valkey:7.2-alpine # Using a specific version is recommended
+    container_name: hangar_bay_valkey
+    ports:
+      - "6379:6379" # Expose Valkey on the host's port 6379
+    volumes:
+      - valkey_data:/data # Persist Valkey data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local # Defines a named volume for PostgreSQL data persistence
+  valkey_data:
+    driver: local # Defines a named volume for Valkey data persistence
+
+# Future considerations:
+# - Network: Define a custom bridge network for services.
+# - .env file integration: Use an .env file at this level for POSTGRES_PASSWORD etc.
+# - Logging: Configure logging drivers if needed.
+# - For production: More robust volume management, backup strategies, and security hardening.

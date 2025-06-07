@@ -413,4 +413,18 @@ All task files in Phases 00-08 will be updated. Cascade's operational procedures
 
 ---
 
+## Angular Project Initialization Options (Approx. 2025-06-07 16:23:00-05:00)
+
+*   **Context:** During Angular project initialization (`ng new hangar-bay-frontend --directory . --routing --style=scss`), decisions were made regarding advanced setup options prompted by the Angular CLI.
+*   **Zoneless Application:**
+    *   **Prompt:** "Do you want to create a 'zoneless' application without zone.js (Developer Preview)? (y/N)"
+    *   **Decision: No.**
+    *   **Reasoning:** For the MVP and learning purposes, the traditional `zone.js` approach for change detection is preferred due to its stability, wider community support, and simpler learning curve. Zoneless is a developer preview and adds complexity.
+*   **Server-Side Rendering (SSR) / Static Site Generation (SSG):**
+    *   **Prompt:** "Do you want to enable Server-Side Rendering (SSR) and Static Site Generation (SSG/Prerendering)? (y/N)"
+    *   **Decision: No.**
+    *   **Reasoning:** Client-side rendering (CSR) is simpler for the MVP. Hangar Bay's content is largely dynamic and often behind authentication, reducing the immediate SEO benefits of SSR/SSG. SSR/SSG add development and deployment complexity. Angular Universal can be added later if SEO for public contract listings or other performance needs arise.
+
+---
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SS-05:00' (U.S. Central Time) for new major decision sections.)*

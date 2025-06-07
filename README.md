@@ -12,6 +12,116 @@ There is a specific focus on ensuring that critical non-functional requirements 
 
 Please refer to the main design specification in [`design/design-spec.md`](design/design-spec.md) for a comprehensive overview of the project. The design log in [`design/design-log.md`](design/design-log.md) documents the design process and decisions made in chronological order. The `design` directory contains detailed specifications for various aspects of the application, which have been enhanced with AI-specific guidance.
 
+## Development Environment Setup
+
+This section outlines the steps to set up the development environment for Hangar Bay, covering both the Python backend and the Angular frontend.
+
+### Prerequisites
+
+*   **Git:** For version control.
+*   **Python:** Version 3.10 or higher recommended.
+*   **Node.js:** Version 18.x (LTS) or higher recommended, which includes npm (Node Package Manager).
+*   **Angular CLI:** Install globally after Node.js: `npm install -g @angular/cli`
+*   **(Optional but Recommended) Docker:** For running PostgreSQL and Valkey in containers, matching the production environment.
+
+### Backend Setup (Python/FastAPI)
+
+1.  **Clone the Repository:**
+    ```bash
+    git clone <repository_url>
+    cd hangar-bay
+    ```
+
+2.  **Navigate to Backend Directory:**
+    ```bash
+    cd app/backend
+    ```
+
+3.  **Create and Activate a Virtual Environment:**
+    *   Using `venv` (Python's built-in module):
+        ```bash
+        python -m venv .venv # This creates the .venv folder inside app/backend/
+        # On Windows
+        .\.venv\Scripts\activate
+        # On macOS/Linux
+        source .venv/bin/activate
+        ```
+    *   Ensure your `.gitignore` file at the project root ignores `.venv/`.
+
+4.  **Install Dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+    *(Note: `requirements.txt` will be created in a subsequent step. For now, this is a placeholder for where backend dependencies will be listed.)*
+
+5.  **Set up Environment Variables:**
+    *   Create a `.env` file in the `app/backend` directory (this file is ignored by Git).
+    *   Populate it with necessary configurations (e.g., database URLs, API keys, ESI client ID/secret). Refer to the upcoming `app/backend/config.py` (to be created in Task 00.2: Configuration Management), which will define how these environment variables are loaded and used by the application. The `.env` file is for storing the sensitive values themselves.
+    *   Example `.env` structure:
+        ```env
+        DATABASE_URL="postgresql+asyncpg://user:password@host:port/database"
+        VALKEY_URL="valkey://localhost:6379/0"
+        # ... other ESI related and application secrets
+        ```
+
+6.  **Database Migrations (Alembic):**
+    *(These commands assume Alembic is set up. This will be part of a later task.)*
+    ```bash
+    # To apply migrations:
+    alembic upgrade head
+    ```
+
+7.  **Running the Backend Server (Uvicorn):**
+    ```bash
+    uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    ```
+    *(Assumes your FastAPI app instance is named `app` in `main.py` located in `app/backend/`)*
+
+### Frontend Setup (Angular)
+
+1.  **Navigate to Frontend Directory:**
+    From the project root:
+    ```bash
+    cd app/frontend/angular
+    ```
+
+2.  **Install Dependencies:**
+    If you haven't already (e.g., during `ng new` or `ng add`):
+    ```bash
+    npm install
+    ```
+
+3.  **Running the Frontend Development Server:**
+    ```bash
+    ng serve
+    ```
+    This will typically start the Angular development server on `http://localhost:4200/`.
+
+### Running Linters and Formatters
+
+*   **Backend (Python):**
+    *(Assumes Flake8 and Black are installed in the virtual environment)*
+    ```bash
+    # From app/backend directory
+    flake8 .
+    black .
+    ```
+
+*   **Frontend (Angular):**
+    ```bash
+    # From app/frontend/angular directory
+    npm run lint  # Runs ESLint
+    npm run format # (If a format script is added to package.json, e.g., "prettier --write .")
+    # Or run Prettier directly:
+    npx prettier --write .
+    ```
+
+### Using Docker for Services (Optional but Recommended)
+
+If you have Docker installed, you can use it to run PostgreSQL and Valkey. A `docker-compose.yml` file is provided in `app/backend/docker/compose.yml` to simplify running these services. To use it, navigate to the `app/backend/docker/` directory and run `docker compose up -d`.
+
+---
+
 ## AI Assistant Guidance
 
 This section provides guidance for AI coding assistants to effectively contribute to the Hangar Bay project.
