@@ -250,8 +250,8 @@ The USER can also still explicitly request a summary log at any time (e.g., "Cas
 8.  **Read `cascade-log.md` (Optional but good practice):** Briefly use `view_file` to ensure the target footer is present, especially if there's any doubt or if it's the first time logging after a system update.
 9.  **Append to Log File:**
     *   Use the `replace_file_content` tool to append the (potentially amended) summary to `design/cascade-log.md`.
-    *   The `TargetContent` for `replace_file_content` should be the standard footer: `\n\n---\n\n*(End of Cascade Interaction Log. New entries are appended above this line.)*`.
-    *   The `ReplacementContent` should be: `\n\n---\n\n[NEW SUMMARY CONTENT]\n\n---\n\n*(End of Cascade Interaction Log. New entries are appended above this line.)*`. (Ensure a newline separates the previous content from the new summary's preceding `---`).
+    *   The `TargetContent` for `replace_file_content` should be the standard footer: `CASCADE_LOG_FOOTER_MARKER_V1 :: *(End of Cascade Interaction Log. New entries are appended above this line. Session heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*`.
+    *   The `ReplacementContent` should be: `\n\n---\n\n[NEW SUMMARY CONTENT]\n\n---\n\nCASCADE_LOG_FOOTER_MARKER_V1 :: *(End of Cascade Interaction Log. New entries are appended above this line. Session heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*`. (Ensure a newline separates the previous content from the new summary's preceding `---`).
 10. **Handle Append Failure:** If the `replace_file_content` tool call fails:
     *   Inform the USER of the failure.
     *   Provide the USER with the drafted summary text directly in the chat.
@@ -275,8 +275,8 @@ A new, detailed summary of the AI-User interaction session is successfully appen
 *   The "Rationale" for the operational Cascade Memory based on this AISP should emphasize: "To proactively assist in creating a persistent, detailed record of AI-User interactions, decisions, and project evolution within `design/cascade-log.md`, aiding future understanding, context recall, and onboarding, upon USER confirmation."
 
 ### 9. Version & Last Updated
-*   **Version:** 1.1
-*   **Last Updated:** 2025-06-06 (Updated for proactive AI triggering and refined append logic)
+*   **Version:** 1.2
+*   **Last Updated:** 2025-06-07 (Updated footer target to CASCADE_LOG_FOOTER_MARKER_V1 and append logic)
 
 ---
 
