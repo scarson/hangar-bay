@@ -427,4 +427,47 @@ All task files in Phases 00-08 will be updated. Cascade's operational procedures
 
 ---
 
+**Date:** 2025-06-07
+**Authors:** USER, Cascade
+**Status:** Decided
+
+### Subject: Strategy for Tracking MVP Implementation Progress for AI-Assisted Development
+
+**Context:**
+The Hangar Bay MVP implementation plan spans multiple phases and numerous individual tasks. A concern was raised regarding the potential for AI coding assistants (like Cascade) to lose context or de-prioritize details from earlier completed tasks as the project progresses. This is a known challenge with the limited context window and evolving memory of large language models. Relying solely on conversational history or internal AI memory might be insufficient for a project of this scale and duration.
+
+**Problem:**
+How can we effectively and persistently track implementation progress in a way that is most beneficial for an AI coding assistant, ensuring it can reliably access and utilize information about previously completed work to inform current and future tasks?
+
+**Proposals Considered:**
+1.  **Dedicated Progress File (`plans/implementation/00-mvp-implementation-plan-progress.md`):** A Markdown file mirroring the `00-mvp-implementation-plan-overview.md` structure. As tasks are completed, AI-friendly summaries (key artifacts, paths, configurations, commit IDs) are added under each task. (Chosen)
+2.  **Task-Specific Completion Notes:** Appending summaries directly within each individual task plan file. (Considered less centralized for AI overview).
+3.  **Purely AI Internal Memory:** Relying solely on Cascade's built-in memory creation. (Considered less transparent and potentially less reliable for very specific, older details).
+4.  **Git Commit History as Primary Log:** Using detailed commit messages. (Considered less structured for AI to quickly synthesize overall task outcomes).
+
+**Decision:**
+Proposal 1 was adopted. The file `plans/implementation/00-mvp-implementation-plan-progress.md` was created.
+
+**Rationale:**
+This approach was chosen because:
+*   **Persistent & Centralized Ground Truth:** It provides a single, stable, and structured document that Cascade can be reliably directed to for information about completed tasks.
+*   **AI-Friendly Content:** Summaries are tailored for AI consumption, focusing on factual data points like file paths, key configurations, commands used, and references to other design documents or commit IDs. This is more effective than narrative summaries.
+*   **Complements AI Memory:** This external knowledge base will augment Cascade's internal memory. Cascade can be prompted to review relevant sections of this file to "refresh" its context before starting new tasks, or when needing to recall specific details from past work.
+*   **Transparency & Verifiability:** Allows human developers to easily review and verify the AI's understanding of completed work.
+*   **Mitigates Context Window Limitations:** By having a persistent external reference, the AI is less susceptible to losing details from tasks completed much earlier in the development cycle.
+
+**Cascade's Usage Plan:**
+Cascade will:
+1.  Be informed of the existence and purpose of `00-mvp-implementation-plan-progress.md`.
+2.  Be prompted by the USER (or proactively suggest) to update this file with a summary after each significant task or sub-task completion.
+3.  Be directed by the USER (or proactively decide) to review relevant sections of this file when:
+    *   Starting a new task that builds upon or relates to previously completed work.
+    *   Needing to recall specific configurations, file paths, or decisions from past tasks.
+    *   Generating summaries or reports that require historical context.
+4.  Use the structured, factual information in the summaries to more accurately inform its code generation, analysis, and decision-making processes.
+
+This strategy aims to ensure consistent, context-aware AI assistance throughout the Hangar Bay MVP development.
+
+---
+
 *(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SS-05:00' (U.S. Central Time) for new major decision sections.)*
