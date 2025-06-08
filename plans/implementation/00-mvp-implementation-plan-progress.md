@@ -1,6 +1,6 @@
 # Hangar Bay - MVP Implementation Plan Overview
 
-**Last Updated:** 2025-06-06 <!-- To be updated manually or by AI as plan evolves -->
+**Last Updated:** 2025-06-08 <!-- To be updated manually or by AI as plan evolves -->
 
 ## 1. Introduction
 
@@ -61,14 +61,44 @@ The MVP development is structured into the following phases. Each task links to 
                 *   Strategy for production secrets management (injection via environment) documented in `00.2-configuration-management.md`.
             *   Cross-Cutting Concerns (CCC) Review section in task plan (`00.2-configuration-management.md`) completed and documented.
             *   **Git:** All changes committed (Commit ID: [To be filled by User after commit]).
+    *   [00.3 Backend PDM Migration](./phase-00-foundational-setup/00.3-backend-pdm-migration.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   PDM initialized in `app/backend/`; `pyproject.toml` and `pdm.lock` created/configured.
+            *   Backend dependencies migrated to PDM, `requirements.txt` deleted.
+            *   PDM scripts for `lint`, `format`, `dev` created and functional (including `--app-dir src` fix for `dev`).
+            *   Root `.gitignore` updated for PDM files.
+            *   Main `README.md` updated with PDM setup instructions.
+            *   Cross-Cutting Concerns (CCC) Review section in task plan (`00.3-backend-pdm-migration.md`) completed.
+            *   **Git:** All changes committed (Commit ID: 2670d0197d7aa6ab2335ff9db79fd83e4eb521f0).
 
-*   **Phase 0 Summary:** All foundational setup tasks, including project initialization, tooling, and configuration management, are now complete. Both tasks `00.1` and `00.2` have undergone their Cross-Cutting Concerns reviews. The project is ready to proceed to Phase 1: Backend Core Infrastructure.
+*   **Phase 0 Summary:** All foundational setup tasks, including project initialization, tooling, configuration management, and PDM migration, are now complete. Tasks `00.1`, `00.2`, and `00.3` have undergone their Cross-Cutting Concerns reviews. The project is ready to proceed to Phase 1: Backend Core Infrastructure.
 
 ### Phase 1: Backend Core Infrastructure
 *   **Goal:** Set up the fundamental backend components: FastAPI application, database connectivity, and caching layer.
 *   **Tasks:**
     *   [01.1 FastAPI Application Skeleton](./phase-01-backend-core-infrastructure/01.1-fastapi-app-skeleton.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   FastAPI application skeleton established in `app/backend/src/fastapi_app/`.
+            *   `main.py` created with FastAPI app instance, root (`/`) and `/health` endpoints.
+            *   Pydantic settings integrated via `config.py`, loading from `.env`.
+            *   Subdirectories `routers/`, `models/`, `services/` created with `__init__.py` files.
+            *   Application package renamed from `fastapi` to `fastapi_app` to resolve import conflicts.
+            *   Application confirmed runnable with Uvicorn: `uvicorn fastapi_app.main:app --reload`.
+            *   Task plan (`01.1-fastapi-app-skeleton.md`) and design log (`design/design-log.md`) updated to reflect `fastapi_app` naming.
+        *   Cross-Cutting Concerns (CCC) Review section in task plan (`01.1-fastapi-app-skeleton.md`) completed and documented.
+        *   **Git:** All changes committed (Commit ID: 0995833).
     *   [01.2 Database Setup](./phase-01-backend-core-infrastructure/01.2-database-setup.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   SQLAlchemy models defined for initial schema.
+            *   Alembic initialized; initial migration script generated and applied.
+            *   Database connection (`DATABASE_URL`) configured via Pydantic settings and `.env`.
+            *   FastAPI application successfully connects to the PostgreSQL database.
+            *   Basic database health check or test query implemented.
+            *   Cross-Cutting Concerns (CCC) Review section in task plan (`01.2-database-setup.md`) completed.
+            *   **Git:** All changes committed (Commit ID: 2670d0197d7aa6ab2335ff9db79fd83e4eb521f0).
     *   [01.3 Valkey Caching Layer Integration](./phase-01-backend-core-infrastructure/01.3-valkey-cache-integration.md)
 
 ### Phase 2: Backend - F001: Public Contract Aggregation

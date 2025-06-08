@@ -483,8 +483,8 @@ app/
     │   └── Dockerfile          # Example
     ├── src/                    # Python source code for the backend
     │   ├── __init__.py         # Makes 'src' a package
-    │   └── fastapi/            # Your FastAPI application package
-    │       ├── __init__.py     # Makes 'fastapi' a sub-package
+    │   └── fastapi_app/      # Your FastAPI application package
+    │       ├── __init__.py     # Makes 'fastapi_app' a sub-package
     │       ├── main.py         # FastAPI app instance
     │       ├── config.py       # Pydantic settings
     │       ├── routers/        # Directory for API routers
@@ -648,4 +648,123 @@ This proactive approach ensures that secure secret management is a foundational 
 
 ---
 
-DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line.)* Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00)* (e.g., 2025-06-06 09:16:09-05:00))*
+---
+**2025-06-08 03:05:00-05:00: User Model Design: Account Types and Authorization Flags**
+
+**Context:**
+During the initial database setup (Task 01.2) and definition of the first SQLAlchemy model (`User` in `fastapi_app/models/common_models.py`), a key consideration arose regarding authentication methods and explicit user type differentiation, primarily EVE Online Single Sign-On (SSO) versus potential local administrative/test accounts.
+
+**Decision:**
+The `User` model was designed to clearly separate account type (authentication origin) from authorization levels:
+*   `hashed_password`: Made `nullable=True`. This allows EVE SSO users (who authenticate externally and do not have a locally stored password) to have a `NULL` value in this field. Local accounts will have a hashed password stored here.
+*   `eve_character_id`: Added as `Column(Integer, unique=True, index=True, nullable=True)`. This field will store the EVE Online character ID for users authenticating via SSO. It is `nullable=True` for local accounts.
+*   `username`: Retained as `nullable=False` and `unique=True`. This field can store the EVE character name for SSO users or a chosen username for local accounts.
+*   `email`: Retained as `nullable=False` and `unique=True`.
+*   `user_type`: Added as `Column(SAEnum(UserType), nullable=False, index=True)`. This uses a Python `enum.Enum` (`UserType` with values `EVE_SSO`, `LOCAL`) backed by SQLAlchemy's `Enum` type. This explicitly defines the account's origin/management type.
+*   `is_admin`: Added as `Column(Boolean, default=False, nullable=False)`. A boolean flag to indicate administrative privileges, independent of `user_type`.
+*   `is_test_user`: Added as `Column(Boolean, default=False, nullable=False)`. A boolean flag to identify test accounts, independent of `user_type`.
+
+**Rationale:**
+This refined approach significantly enhances flexibility, clarity, and separation of concerns:
+*   **Decoupling Account Type from Authorization:**
+    *   `user_type` (`EVE_SSO`, `LOCAL`) defines the account's origin and how it's managed/authenticated.
+    *   Boolean flags (`is_admin`, `is_test_user`) define specific roles or attributes, which can apply to any `user_type`. For example, an `EVE_SSO` user can be an admin, as can a `LOCAL` user.
+*   **Improved Data Integrity and Querying:** Explicit flags for admin status and test status are clearer and more robust than inferring these from a combined `user_type` enum.
+*   **Scalability:** This model is easier to extend with more granular roles or permissions in the future (e.g., by adding more boolean flags or a dedicated RBAC system).
+*   **SQLAlchemy `Enum` Benefits:** Using `SAEnum(UserType)` continues to provide type safety in Python and database-level constraints for account types.
+*   The `hashed_password` and `eve_character_id` fields remain key for their respective authentication paths.
+
+**Impact:**
+*   The `User` model in `fastapi_app/models/common_models.py` reflects this refined design, including the updated `UserType` enum (`EVE_SSO`, `LOCAL`) and the new `user_type`, `is_admin`, and `is_test_user` columns.
+*   Alembic migrations for the `users` table will be based on this comprehensive schema.
+*   Future authentication, authorization, and user management logic will leverage `user_type` for account origin and the boolean flags for specific privileges/attributes.
+*   The task plan `01.2-database-setup.md` will be updated to note this more detailed design.
+
+---
+
+---
+**2025-06-08 05:14:24-05:00: Backend Dependency Management Migration to PDM**
+
+**Decision:** Migrated the Hangar Bay backend Python project's dependency and environment management from a traditional `venv` and `requirements.txt` setup to PDM (Python Development Master).
+
+**Rationale & Alternatives Considered:**
+
+The existing `venv` and `requirements.txt` approach, while functional, lacks some of the modern conveniences and robustness offered by newer tools. The primary alternative was to maintain the status quo. However, migrating to PDM was chosen for several key benefits:
+
+*   **Standardization:** PDM utilizes `pyproject.toml`, aligning with modern Python packaging standards (PEP 517, PEP 518, PEP 621, PEP 660).
+*   **Reproducibility:** PDM generates a `pdm.lock` file, ensuring deterministic builds and consistent environments across different setups by locking down the exact versions of all direct and transitive dependencies.
+*   **Improved Dependency Resolution:** PDM has a sophisticated dependency resolver that can handle complex scenarios more effectively than pip alone.
+*   **Integrated Tooling:** PDM allows defining run scripts directly in `pyproject.toml` (e.g., for linting, formatting, running the dev server), streamlining common development tasks.
+*   **Clearer Dependency Groups:** PDM supports explicit dependency groups (e.g., `dev`, `test`), making it easier to manage dependencies for different purposes.
+*   **Simplified Workflow:** Commands like `pdm add`, `pdm install`, `pdm update`, and `pdm run` offer a more cohesive and user-friendly experience.
+*   **In-Project Virtual Environments:** Configuring PDM for in-project `.venv` (`pdm config venv.in_project true`) keeps the environment closely tied to the project, simplifying discovery and activation for developers and IDEs.
+
+**Benefits:**
+The migration to PDM is expected to lead to:
+*   More reliable and reproducible builds.
+*   Easier onboarding for new developers.
+*   A cleaner project structure for backend dependencies.
+*   Simplified execution of common development tasks (linting, formatting, running server).
+*   Better long-term maintainability of the backend environment.
+
+**Execution Summary:**
+The migration was executed systematically:
+1.  A dedicated task file (`00.3-backend-pdm-migration.md`) was created to document the process.
+2.  PDM was initialized in the `app/backend/` directory, configured for an in-project virtual environment.
+3.  Production and development dependencies were manually added with pinned versions using `pdm add`.
+4.  PDM scripts for `lint`, `format`, and `dev` were configured in `pyproject.toml`.
+5.  The root `.gitignore` was updated to correctly track `pdm.lock` and ignore PDM-specific cache/build files.
+6.  The main project `README.md` was updated with new backend setup instructions.
+7.  The legacy `app/backend/requirements.txt` was deleted.
+8.  A `ModuleNotFoundError` for `fastapi_app` when running `pdm run dev` (due to the `src` layout) was resolved by adding `--app-dir src` to the Uvicorn command in the `dev` script.
+9.  The setup was thoroughly tested, confirming successful dependency installation and script execution.
+
+The migration is considered successful and complete.
+
+---
+
+## Operationalizing a Comprehensive Phase Review Process (Approx. 2025-06-08 07:36:20-05:00)
+
+**Context & Objective:**
+As the Hangar Bay project progresses through its initial implementation phases, a critical need emerged for a structured, repeatable, and comprehensive phase review process. The primary objectives were to:
+1.  Ensure thorough documentation of work completed, decisions made, and outcomes achieved within each phase.
+2.  Systematically capture technical learnings, process improvements, and challenges encountered.
+3.  Provide a formal mechanism for reviewing cross-cutting concerns (Security, Observability, Testing, Accessibility, I18n, Performance) at a phase level.
+4.  Track unresolved issues and technical debt, and formulate actionable recommendations for subsequent phases.
+5.  Critically, to enhance AI-USER collaboration by creating a structured feedback loop and proactively generating persistent memories for the AI assistant (Cascade) to improve its future performance and contextual understanding.
+
+**Iterative Development & Reflective Refinement:**
+The development of the phase review process was not a one-off task but an iterative and reflective endeavor.
+*   **Initial Template:** An initial `phase-review-template.md` was drafted.
+*   **First Application (Phase 0):** This template was first applied to document the "Phase 0: Foundational Setup" in `00-foundational-setup-review.md`. This practical application served as a crucial testbed.
+*   **Reflective Review:** Upon completing the draft of the Phase 0 review, a dedicated meta-review was conducted. This involved critically assessing the template's effectiveness, identifying gaps, and pinpointing areas where clarity or comprehensiveness could be improved. This reflective step was key to honing the process.
+*   **Template Enhancements:** Based on the meta-review, `phase-review-template.md` was significantly enhanced:
+    *   **Bi-directional Continuity Links:** Added "Previous Phase Review" and "Next Phase Review" fields in the header to explicitly link adjacent phase reviews, ensuring project continuity.
+    *   **Tracking Carry-over Issues:** A new sub-section, "Status of Carry-over from Previous Phase," was added under "Unresolved Issues & Technical Debt" to ensure that items identified in previous reviews are explicitly tracked.
+    *   **Proactive Memory Creation:** A vital new sub-section, "Specific Memories to Create/Update based on this Phase's Learnings," was added to "Recommendations for Subsequent Phases." This formalizes the process of distilling key learnings from each phase into actionable memories for Cascade.
+
+**Operationalization - Key Components & Artifacts:**
+The refined phase review process was operationalized through a set of interconnected documents and procedures:
+*   **`plans/implementation/phase-reviews/phase-review-template.md`:** This is the cornerstone document, providing the standardized structure and detailed prompts for all sections of a phase review. Its comprehensiveness guides both the USER and Cascade.
+*   **`plans/implementation/phase-reviews/00-foundational-setup-review.md`:** The first fully completed review document, serving as an exemplar and demonstrating the practical application of the enhanced template.
+*   **Cascade Memory for the Process (`MEMORY[ae1474b0-0dab-4877-bf81-b124de8ab6f4]` - "Hangar Bay: Phase Review Process and Best Practices for Cascade"):** A detailed, persistent memory was created specifically for Cascade. This memory outlines the entire phase review procedure, emphasizing template usage, critical sections, inter-linking of review documents, and the importance of extracting learnings for AI improvement. This operationalizes the process for the AI assistant.
+*   **Specific Learnings Captured as Actionable Memories:** The Phase 0 review directly led to the identification and creation of several key memories, demonstrating the "Specific Memories to Create/Update" section in action:
+    *   `MEMORY[76514710-a6dd-4f01-96f2-fff235ab83c9]`: Python Src Layout Uvicorn Configuration
+    *   `MEMORY[62974893-f9ef-42cb-b031-27fa1a4d19db]`: Python Environment Migration Best Practice
+    *   `MEMORY[d3e20aff-aac5-45fd-95e5-ad9ecf10a198]`: Comprehensive Gitignore for New Projects
+    *   `MEMORY[ae1474b0-0dab-4877-bf81-b124de8ab6f4]`: Hangar Bay: Phase Review Process and Best Practices for Cascade
+*   **`design/memory-index.md`:** All newly created memories, including the process memory and the specific learning memories, were indexed in this central file, providing a quick reference and ensuring their discoverability.
+
+**Benefits Achieved & Overall Impact:**
+The establishment and operationalization of this comprehensive phase review process have yielded significant benefits, profoundly enhancing our documentation and knowledge capture mechanisms:
+*   **Improved Documentation Quality & Consistency:** Standardized templates ensure all critical aspects are covered in each review.
+*   **Enhanced Knowledge Capture & Retention:** Key decisions, learnings, and justifications are systematically recorded, preventing knowledge loss and providing valuable context for future work, especially for Cascade.
+*   **Better Traceability:** Bi-directional links and structured tracking of issues provide clear traceability across project phases.
+*   **Proactive Management of Technical Debt:** Formal sections for identifying debt and recommending actions ensure these are not overlooked.
+*   **Structured AI Collaboration & Learning:** The process explicitly incorporates feedback for Cascade and mandates the creation of memories, fostering a continuous learning loop for the AI.
+*   **Iterative Process Improvement:** The reflective nature of the review ensures the process itself can adapt and improve over time.
+
+This structured approach to phase reviews, born from an iterative and reflective cycle, represents a significant maturation in the Hangar Bay project's governance and its strategy for effective human-AI collaboration. It ensures that each phase not only delivers its technical objectives but also contributes to a growing, well-organized, and actionable knowledge base for the entire project lifecycle.
+
+
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*

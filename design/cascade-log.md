@@ -904,7 +904,7 @@ app/
     │   └── Dockerfile          # Example
     ├── src/                    # Python source code for the backend
     │   ├── __init__.py         # Makes 'src' a package
-    │   └── fastapi/            # Your FastAPI application package
+    │   └── fastapi_app/        # Your FastAPI application package
     │       ├── __init__.py     # Makes 'fastapi' a sub-package
     │       ├── main.py         # FastAPI app instance
     │       ├── config.py       # Pydantic settings
@@ -1131,6 +1131,57 @@ This guidance is particularly important for documents like `design/security-spec
 **Future Considerations:**
 *   We might consider adding similar guidance to other critical documents, such as `design/design-spec.md` or `design/ai-system-procedures.md`, to further enhance AI reliability.
 *   It might be useful to create a template or guide for adding such AI guidance to critical documents, to ensure consistency and effectiveness.
+
+---
+
+
+
+---
+
+### Session Summary - 2025-06-08 05:13:27-05:00 - Backend PDM Migration Completion
+
+**Objective:** Fully migrate the Hangar Bay backend Python project from a traditional `venv` and `requirements.txt` setup to PDM for improved dependency management and tooling.
+
+**Key Interactions & Decisions:**
+
+1.  **Dedicated Task File:** Upon USER request, a new task file `plans/implementation/phase-00-foundational-setup/00.3-backend-pdm-migration.md` was created to document the PDM migration process, superseding initial plans to include it in `00.1-project-initialization-tooling.md`.
+2.  **PDM Initialization:**
+    *   Ensured PDM was installed and the old `app/backend/.venv` was removed to prevent conflicts (resolved an initial `PermissionError` during `pdm init`).
+    *   Ran `pdm init` in `app/backend/`, configuring project metadata, Python version (`>=3.11`), and opting for manual dependency addition.
+    *   Configured PDM for an in-project virtual environment: `pdm config venv.in_project true`.
+3.  **Dependency Migration:**
+    *   Manually added all production dependencies with pinned versions (`fastapi`, `uvicorn[standard]`, `pydantic-settings`, `python-dotenv`, `asyncpg`, `redis`, `SQLAlchemy`, `alembic`, `aiosqlite`) using `pdm add <package>==<version>`.
+    *   Added development dependencies (`flake8`, `black`) to the `dev` group using `pdm add --group dev <package>`.
+4.  **Configuration & Tooling:**
+    *   Updated the root `.gitignore` to ensure `app/backend/pdm.lock` is tracked and PDM-specific cache/build directories (`app/backend/.pdm-python`, `app/backend/.pdm-build/`) are ignored.
+    *   Defined PDM run scripts in `app/backend/pyproject.toml` for `lint` (`flake8 .`), `format` (`black .`), and `dev` (`uvicorn fastapi_app.main:app --reload --host 0.0.0.0 --port 8000`).
+5.  **Troubleshooting `pdm run dev`:**
+    *   Encountered `ModuleNotFoundError: No module named 'fastapi_app'` when running the `dev` script.
+    *   Diagnosed the issue as Uvicorn not finding the application module due to the `src` layout (`app/backend/src/fastapi_app`).
+    *   Resolved by modifying the `dev` script in `pyproject.toml` to include `--app-dir src`: `dev = "uvicorn fastapi_app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir src"`.
+6.  **Documentation & Cleanup:**
+    *   Updated the main project `README.md` with new backend setup instructions reflecting PDM usage.
+    *   Deleted the legacy `app/backend/requirements.txt` file.
+7.  **Testing & Finalization:**
+    *   Successfully tested `pdm install -G dev`.
+
+----
+
+### Session Summary - 2025-06-08 05:31:26-05:00 - Review & Update Task File: 01.3-valkey-cache-integration.md
+
+**Objective:** Review and update task file `01.3-valkey-cache-integration.md` in light of prior project developments (PDM migration, src layout) and to provide clearer AI guidance for implementation.
+
+**Key Activities & Outcomes:**
+*   Reviewed the existing `plans/implementation/phase-01-backend-core-infrastructure/01.3-valkey-cache-integration.md` task file.
+*   Updated dependency installation instructions from `requirements.txt` to `pdm add "redis[aioredis]"` to align with the PDM-managed backend environment.
+*   Clarified the target path for the new cache utility file to `app/backend/src/fastapi_app/core/cache.py`, consistent with the project's `src` layout and `fastapi_app` package structure.
+*   Emphasized the use of an asynchronous Redis client (`redis.asyncio`) suitable for FastAPI.
+*   Added guidance and AI prompts for integrating Redis client initialization and shutdown within the FastAPI application lifecycle events (startup/shutdown), suggesting `app.state` for client instance storage.
+*   Refined AI prompts throughout the task file to be more specific regarding asynchronous operations, file paths, and expected Pydantic configuration locations (`app/backend/src/fastapi_app/config.py`).
+*   Updated the "Last Updated" date in the task file to `2025-06-08`.
+*   The overall goal of these revisions was to ensure the task file is current, reduce ambiguity, proactively address potential implementation issues, and enhance the clarity of instructions for subsequent AI-assisted development.
+
+**AI System Procedure Reference:** AISP-002 - AI-Assisted Session Summary Logging (Memory ID: `42c9fb61-0933-428f-ad56-16e1f846afcf`).
 
 ---
 

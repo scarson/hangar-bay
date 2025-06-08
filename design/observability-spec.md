@@ -25,6 +25,13 @@ This document outlines the observability strategy for the Hangar Bay application
         *   AI should be prompted to add middleware that extracts the trace ID from the current OpenTelemetry span and makes it available for logging contexts.
         *   Example: `from opentelemetry import trace; tracer = trace.get_tracer(__name__); span = trace.get_current_span(); correlation_id = span.get_span_context().trace_id; logger.info("message", extra={"correlation_id": hex(correlation_id)})` (Simplified, actual integration would be more robust).
 
+    *   **Log Formatting (Application Baseline):**
+        *   **Standard Format:** To ensure readability and a degree of consistency with Uvicorn's default log output, a baseline format is established for application logs generated via Python's `logging` module.
+        *   **Format String:** `%(levelname)s:     %(name)s - %(message)s`
+        *   **Implementation:** This format is applied globally to the root logger in `app/backend/src/fastapi_app/main.py` using `logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(name)s - %(message)s')`.
+        *   **Rationale:** This provides improved readability by aligning the log level prefix (e.g., `INFO:     `) and clearly separating the logger name from the log message. While full structured logging (e.g., JSON) is the ultimate goal (see above), this basic formatting improves immediate usability of console logs.
+        *   **AI Implementation Guidance:** When modifying or extending logging, AI should adhere to this baseline format for non-structured console output unless a specific structured logging formatter (e.g., JSON) is being implemented for that handler.
+
 ### 2.2. Metrics
 *   **Application Metrics (Backend - FastAPI):**
     *   Request rate, error rate, latency (overall and per-endpoint).

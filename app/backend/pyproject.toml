@@ -1,0 +1,25 @@
+[project]
+name = "hangar-bay-backend"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Samuel Carson", email = "samuel.carson@gmail.com"},
+]
+dependencies = ["pydantic-settings==2.9.1", "fastapi==0.115.12", "uvicorn[standard]==0.34.3", "python-dotenv==1.1.0", "asyncpg==0.30.0", "redis[aioredis]>=6.2.0", "SQLAlchemy==2.0.41", "alembic==1.16.1", "aiosqlite==0.21.0"]
+requires-python = ">=3.11"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[project.optional-dependencies]
+dev = [
+    "flake8>=7.2.0",
+    "black>=25.1.0",
+]
+[tool.pdm]
+distribution = false
+
+[tool.pdm.scripts]
+lint = "flake8 ."
+format = "black ."
+dev = "uvicorn fastapi_app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir src"

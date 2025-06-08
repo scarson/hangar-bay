@@ -14,8 +14,6 @@
 # To stop, remove containers, and remove volumes (data will be lost):
 # docker compose down -v
 
-version: '3.8'
-
 services:
   postgres_db:
     image: postgres:16-alpine # Using a specific version is recommended
