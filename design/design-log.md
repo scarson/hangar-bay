@@ -318,6 +318,7 @@ This document records major design discussion points, considerations, and decisi
 
 ## AI-Focused MVP Implementation Plan Conceptualization (Approx. 2025-06-06 07:24)
 
+{{ ... }}
 *   **Objective:** To conceptualize and initiate a detailed, AI-friendly MVP implementation plan for Hangar Bay, guiding development of features F001-F003.
 *   **Core Rationale for AI-Centric Plan:**
     *   **Enhanced Clarity & Precision:** Provide explicit, step-by-step tasks to minimize AI ambiguity.
@@ -470,4 +471,91 @@ This strategy aims to ensure consistent, context-aware AI assistance throughout 
 
 ---
 
-*(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SS-05:00' (U.S. Central Time) for new major decision sections.)*
+### Design Decision - 2025-06-07 21:24:44-05:00 - Topic: Backend Directory Structure Finalized
+
+The following directory structure was adopted for `app/backend/`:
+
+```text
+app/
+└── backend/
+    ├── .venv/                  # Virtual environment for the backend (gitignored)
+    ├── docker/                 # Docker-specific files for the backend
+    │   └── Dockerfile          # Example
+    ├── src/                    # Python source code for the backend
+    │   ├── __init__.py         # Makes 'src' a package
+    │   └── fastapi/            # Your FastAPI application package
+    │       ├── __init__.py     # Makes 'fastapi' a sub-package
+    │       ├── main.py         # FastAPI app instance
+    │       ├── config.py       # Pydantic settings
+    │       ├── routers/        # Directory for API routers
+    │       ├── models/         # Directory for Pydantic models or SQLAlchemy models
+    │       └── services/       # Directory for business logic
+    ├── __init__.py             # Makes 'backend' a package (useful if app/ is a project root)
+    ├── requirements.txt        # Python dependencies for the backend
+    └── tests/                  # Tests for the backend (often outside src)
+```
+
+**Rationale:** To establish a clear, maintainable, and scalable structure for the FastAPI backend, aligning with Python best practices and facilitating organized development.
+
+**Impact:** Provides a foundational layout for all backend code, configuration, and related artifacts, improving developer onboarding and code navigability.
+
+
+---
+### Design Decision - 2025-06-07 21:40:34-05:00 - Topic: Comprehensive Secure Secret Management Strategy and Implementation
+
+**Context:** A review of the backend configuration (`app/backend/src/fastapi/config.py`) highlighted that parameters like `DATABASE_URL`, `ESI_CLIENT_ID`, and `ESI_CLIENT_SECRET`, while intended to be loaded from environment variables, could inadvertently lead to developers hardcoding secrets locally or misunderstanding production secret handling if not explicitly addressed.
+
+**Core Problem:** Storing plaintext secrets directly in code, committed configuration files, or any version-controlled artifact poses a significant security risk. This practice contravenes established security principles and industry best practices, such as those outlined by OWASP (e.g., OWASP Top 10 A05:2021 - Security Misconfiguration, which includes improper secrets management) and guidance from organizations like NIST and SANS. These standards strongly advocate for externalized secret management and advise against hardcoding secrets.
+
+**Decision & Rationale:** To proactively address these risks and establish a robust secret management framework for Hangar Bay, a multi-faceted approach was adopted:
+
+1.  **Principle Adoption:** The core principle is that secrets MUST NOT be hardcoded. For local development, secrets will be loaded from environment variables, typically populated via `.env` files. For staging/production, secrets MUST be injected into the environment through secure platform mechanisms or a dedicated secrets management service.
+
+2.  **Security Specification Update (`design/security-spec.md`):**
+    *   A new subsection, `1.4. Secure Secret Storage and Management`, was added to `design/security-spec.md`. This section explicitly prohibits plaintext secrets in code or version control, details the risks, and outlines recommended practices including the use of environment variables, `.env` files (gitignored) for local development, and dedicated secrets management services for production environments.
+    *   It provides actionable checklists for AI and human developers to verify compliance.
+
+3.  **`.gitignore` Enhancement:**
+    *   The root `.gitignore` file was reviewed and updated to explicitly include `app/backend/.env`. This ensures that local development environment files containing actual secrets are never accidentally committed to version control, complementing the general `.env` ignore rule.
+
+4.  **Planning Document Integration:**
+    *   The task plan `plans/implementation/phase-09-cross-cutting-concerns-mvp-scope/09.1-security-hardening-mvp.md` was updated. Its 'Secrets Management Review' checklist now directly references `security-spec.md#1.4` and includes more specific verification steps (e.g., checking for no plaintext secrets in code, ensuring `.env` files are gitignored).
+    *   The task plan `plans/implementation/phase-00-foundational-setup/00.1-project-initialization-tooling.md` was updated in its 'Cross-Cutting Concerns Review' section for 'Secrets Management'. It now mandates adherence to `security-spec.md#1.4` from the project's outset, including correct `.gitignore` setup.
+
+5.  **AI Operational Memory Creation:**
+    *   A new persistent memory (ID: `82552343-47c2-4a12-8ff7-9503cbe70bf5`), titled "Secure Secret Management Adherence (security-spec.md#1.4)", was created. This memory instructs AI assistants (like Cascade) to ensure that all 'Secrets Management' checklist items within any task file's 'Cross-Cutting Concerns Review' section are handled in strict alignment with `design/security-spec.md#1.4`.
+
+**Impact:** These comprehensive updates significantly strengthen Hangar Bay's security posture by:
+*   Establishing clear, documented policies against insecure secret handling.
+*   Integrating these policies directly into actionable development plans and checklists.
+*   Providing ongoing guidance for AI-assisted development to maintain these security standards.
+*   Reducing the risk of accidental secret exposure through version control or insecure configurations.
+
+This proactive approach ensures that secure secret management is a foundational aspect of the Hangar Bay project, from initial development through to production deployment.
+---
+
+---
+**2025-06-07: Created AI Memory for Standardized Cross-Cutting Concerns (CCC) Review Procedure**
+
+*   **Why:** To ensure consistent, thorough, and verifiable AI-assisted completion of the "Cross-Cutting Concerns Review" section in Hangar Bay task files. This procedure aims to improve the rigor with which the five key CCCs (Security, Observability, Testing, Accessibility, Internationalization) are evaluated against project specifications and standards during task execution. It enhances the reliability of these critical reviews and provides a clear framework for the AI.
+
+*   **How:**
+    *   A new AI Memory (ID: `0c495baf-94e6-4dfa-81c1-a386d94c813e`) titled "Procedure: AI-Assisted Cross-Cutting Concerns (CCC) Review" was defined and created.
+    *   This memory outlines a detailed, step-by-step process for the AI (Cascade) to:
+        1.  Locate the CCC section in a task file.
+        2.  Iterate through each of the five major concerns.
+        3.  For each concern, recall and consult its primary specification document (e.g., `design/security-spec.md`) and other relevant memories.
+        4.  Analyze the specific task's context against the principles of the concern.
+        5.  Address each sub-item in the standard CCC checklist.
+        6.  Populate the "Notes" section with details of actions taken, rationale, or justifications.
+        7.  Ensure overall completeness and consistency.
+        8.  Collaborate with the USER by presenting the drafted review for feedback.
+    *   The new memory explicitly lists the paths to the five core CCC specification documents (`design/security-spec.md`, `design/observability-spec.md`, `design/test-spec.md`, `design/accessibility-spec.md`, `design/i18n-spec.md`).
+    *   The memory was indexed in `design/memory-index.md` (see entry for `0c495baf-94e6-4dfa-81c1-a386d94c813e`).
+    *   The creation and full content of this memory, along with its justification for effectiveness, were logged in `design/cascade-log.md` (entry dated 2025-06-07).
+
+*   **Impact:** This procedural memory is expected to significantly improve the quality and consistency of AI contributions to Cross-Cutting Concerns reviews, making them more systematic and aligned with project standards. It provides a clear operational guide for Cascade when performing these reviews.
+
+---
+
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line.)* Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00)* (e.g., 2025-06-06 09:16:09-05:00))*
