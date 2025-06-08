@@ -110,7 +110,33 @@ The core components are:
 
 ## 6. Tech Stack
 
-The following technology stack is proposed, with security, performance, and rapid development as key considerations. Specific versions will be determined at the start of implementation and documented in `requirements.txt` (for Python) or equivalent dependency files.
+The following technology stack is proposed, with security, performance, and rapid development as key considerations.
+
+### 6.0. Dependency and Versioning Policy
+
+**To ensure stable, reproducible, and predictable builds across all project components, the Hangar Bay project mandates the strict pinning of all dependency versions.**
+
+*   **Scope:** This policy applies to all software dependencies, including but not limited to:
+    *   Backend (Python) packages.
+    *   Frontend (Angular - JavaScript/TypeScript) packages and their lock files.
+    *   Containerization (Docker) base images and packages installed within Dockerfiles.
+    *   Consistent major versions for database systems (e.g., PostgreSQL).
+
+    For specific instructions and examples on how to apply this policy (e.g., file formats, commands), refer to the **Dependency Management** section in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+
+*   **Rationale:**
+    1.  **Reproducible Builds:** Guarantees that every developer and CI/CD pipeline uses the exact same library versions, eliminating "it works on my machine" issues.
+    2.  **Preventing Unexpected Changes:** Protects against unintended consequences from automatic updates to newer, potentially incompatible or buggy, library versions.
+    3.  **Dependency Resolution Stability:** Aids package managers in resolving transitive dependencies more predictably.
+    4.  **Enhanced Security:** Provides a clear baseline for dependency versions, simplifying vulnerability assessment and management.
+    5.  **Easier Debugging:** Keeps dependency versions constant, making it easier to isolate the cause of issues.
+    6.  **Clear Environment Manifest:** Dependency files serve as an exact manifest of the application's software components.
+
+*   **Maintenance:** Regularly review and update pinned dependencies to incorporate security patches and necessary feature updates. This should be a deliberate process, involving testing to ensure compatibility.
+
+*(The following subsections detail the specific technologies chosen, adhering to this versioning policy.)*
+
+Specific versions for the initially chosen technologies will be determined at the start of implementation and documented in `requirements.txt` (for Python) or equivalent dependency files, following the policy above.
 
 *   **Backend Framework: Python with FastAPI**
     *   **Reasoning:** Modern, high-performance, asynchronous support for efficient ESI API calls, automatic data validation, and OpenAPI documentation. Python's extensive libraries facilitate rapid development.

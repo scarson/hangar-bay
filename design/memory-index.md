@@ -1,0 +1,20 @@
+<!-- AI_NOTE: This file is the definitive index for Hangar Bay memories explicitly stored and referenced by Cascade. Use it to find Memory IDs, titles, and brief descriptions. Not all of Cascade's internal knowledge or contextual understanding derived from conversations or documents will be listed here, only specific, citable memory items. -->
+
+# Hangar Bay Memory Index
+
+This index provides a quick reference to key memories stored and utilized by the Cascade AI assistant for the Hangar Bay project.
+
+| Memory ID                                  | Memory Title                                     | Brief Description                                                                                                                               |
+|--------------------------------------------|--------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `f918edd9-8b47-4513-a287-f406c91aa5d3`     | Cross-Cutting Concerns Review Checklist Template | The standardized checklist template to be appended to Hangar Bay MVP task files (Phases 00-08) to ensure review of NFRs.                 |
+| `42c9fb61-0933-428f-ad56-16e1f846afcf`     | AI System Procedure: AISP-002 - AI-Assisted Session Summary Logging | Defines the process for Cascade to proactively log session summaries to `design/cascade-log.md`. Referenced from `design/ai-system-procedures.md`. |
+| `c47b0e87-7941-492e-9b55-6ee0d0261410`     | Procedure: Updating `design-log.md`              | Details how to correctly append new entries to `design/design-log.md` using the `DESIGN_LOG_FOOTER_MARKER_V1`. Chronological record of major design decisions. Primary source for project history. |
+| `4b876883-1f0c-468e-a26a-a5f7dd9d64e8`     | Reliable Python Package Version Checking | To reliably check for the latest stable (and pre-release) versions of a Python package, use the command: `pip index versions --pre <package-name>`. |
+| `0fedc6fd-b139-4dd6-870a-175ed12facad`     | Workaround: Creating Files with Parent Directories on Windows | Use PowerShell `New-Item -Path <full_path_to_file> -ItemType File -Force` to create files when parent directories may not exist on Windows. |
+| `82552343-47c2-4a12-8ff7-9503cbe70bf5`     | Secure Secret Management Adherence (security-spec.md#1.4) | Guides AI assistants to ensure all 'Secrets Management' checklist items in task files align with `design/security-spec.md#1.4`. |
+| `3c3ce4a0-7e80-4d2d-ab24-c48e4071d8fe`     | Procedure: Updating Task Checklists in Implementation Plans | Defines how AI assistants should mark tasks as complete `[x]` in Markdown checklists and handle reversions. |
+| `a62c5665-6c2d-4b8d-8c5c-5b8c9d1e2f3a`     | AI System Procedure: AISP-003 - AI-Assisted Security Review | Defines the process for Cascade to proactively log session summaries to `design/cascade-log.md`. Referenced from `design/ai-system-procedures.md`. |
+| `0c495baf-94e6-4dfa-81c1-a386d94c813e`     | Procedure: AI-Assisted Cross-Cutting Concerns (CCC) Review | Guides AI in systematically completing the CCC review section in task files, referencing spec docs and existing memories. |
+| `a47cec54-3986-4f92-8e5c-50882c9731d6`     | Procedure: Finding Dotfiles (Hidden Files) on Windows | Describes using PowerShell `Get-ChildItem -Force` as a workaround for `find_by_name` not finding dotfiles. |
+| `4b806f4d-8600-46c6-b939-f373f67f3c50`     | Policy: Project-Wide Dependency Version Pinning | Mandates pinning versions for all project dependencies (Python, JS, Docker, etc.) for stability and reproducibility. |
+| *More entries to be added as needed...*    |                                                  |                                                                                                                                                 |

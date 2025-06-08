@@ -760,4 +760,378 @@ This combined strategy ensures these critical areas are not deferred but are an 
 
 ---
 
-*(End of Cascade Interaction Log. New entries are appended above this line. The **final and correct** required format for session summary headings is now `YYYY-MM-DD HH:MM:SS-05:00` (U.S. Central Time with offset, e.g., `2025-06-06 09:16:09-05:00`))*
+### Session Summary - 2025-06-06 11:16 - Topic: Hangar Bay MVP Implementation Strategy and Plan
+
+**Objective:** To evaluate proposals for implementing the Hangar Bay MVP, select the most effective approach, and define an initial implementation plan, incorporating a revised project directory structure.
+
+**1. Revised Project Directory Structure:**
+
+The USER confirmed a change to the project's directory structure for application code:
+*   Backend source code will reside in: `c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend`
+*   Frontend source code will reside in: `c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\frontend`
+This `app/` parent directory neatly separates application code from `design/` and `plans/` directories. This structure is standard and poses no anticipated issues, provided all path configurations (e.g., `PYTHONPATH`, Docker contexts, Angular project paths) are set accordingly.
+
+**2. Evaluation of MVP Implementation Proposals:**
+
+Three primary proposals for sequencing the Hangar Bay MVP implementation were considered:
+
+*   **Proposal A: Foundational Setup & Backend Core First**
+    *   **Description:** Prioritize establishing the project's foundational elements (tooling, configuration, directory structure) and then building the core backend infrastructure (FastAPI skeleton, database, caching). Frontend development would follow once backend APIs begin to stabilize.
+    *   **Pros:**
+        *   Builds a robust and stable foundation for the rest of the application.
+        *   Allows for early definition and stabilization of backend APIs, which are critical dependencies for the frontend.
+        *   Leverages AI strengths effectively for generating boilerplate code, configurations, and initial backend logic.
+        *   Reduces cognitive load by tackling backend complexities before introducing UI/UX development.
+        *   Facilitates easier integration of cross-cutting concerns (security, observability, testing) from the ground up in the backend.
+    *   **Cons:**
+        *   User-visible features are delayed compared to other approaches.
+        *   Feedback on UI/UX will come later in the development cycle.
+
+*   **Proposal B: End-to-End Thin Slice**
+    *   **Description:** Implement a single, simple user-facing feature (e.g., displaying a list of public contracts with minimal filtering) from the frontend through to the backend and database.
+    *   **Pros:**
+        *   Provides early validation of the entire technology stack and inter-component communication.
+        *   Delivers a tangible, albeit limited, piece of working software quickly, which can be motivating.
+        *   Allows for early identification of integration challenges.
+    *   **Cons:**
+        *   May lead to premature optimization or over-simplification of core backend services if not carefully managed.
+        *   Could result in foundational aspects (like comprehensive configuration or robust error handling) being underdeveloped initially.
+        *   Risk of throwaway work if the "thin slice" doesn't align well with broader architectural needs that emerge later.
+
+*   **Proposal C: Frontend First with Mock Backend**
+    *   **Description:** Focus on developing the frontend UI components and user experience, using a mocked backend API for data and interactions.
+    *   **Pros:**
+        *   Allows for rapid iteration on UI/UX design based on visual feedback.
+        *   Enables parallel development if separate teams/individuals work on frontend and backend.
+        *   Can gather user feedback on the interface early in the process.
+    *   **Cons:**
+        *   The mock backend may not accurately represent the eventual capabilities, constraints, or performance characteristics of the real backend, leading to rework.
+        *   Integration with the real backend can be complex and time-consuming later.
+        *   Delays validation of critical backend logic and data models.
+
+**3. Conclusion and Rationale for Proposal A:**
+
+After careful consideration, **Proposal A (Foundational Setup & Backend Core First)** was selected as the most effective and strategic approach for the Hangar Bay MVP.
+
+*   **Rationale for Selection:**
+    *   **Stability and Robustness:** Prioritizing foundational elements ensures that the project is built on a solid architectural and technical base. This is crucial for long-term maintainability, scalability, and security.
+    *   **Reduced Risk:** Addressing backend complexities and API design early mitigates the risk of significant rework later in the project. A well-defined backend provides a clear contract for frontend development.
+    *   **Effective AI Utilization:** This approach aligns well with AI capabilities, allowing Cascade to assist significantly with boilerplate generation, configuration setup, initial data modeling, and API endpoint creation.
+    *   **Systematic Integration of Cross-Cutting Concerns:** Building the backend first allows for the systematic integration of security, observability, and testing practices from the outset, rather than trying to retrofit them later.
+    *   **Alignment with Project Phase Structure:** This approach naturally fits the existing phased plan, starting logically with Phase 00 and Phase 01.
+
+While user-visible features are deferred slightly, the long-term benefits of a strong foundation and well-defined backend are deemed to outweigh the desire for immediate UI deliverables.
+
+**4. Implementation Plan for Proposal A (Phases 00 & 01):**
+
+The initial implementation will focus on completing tasks outlined in Phase 00 and Phase 01. The general workflow for each task will be:
+1.  **Announce Task:** Cascade/USER clearly states the task to be undertaken.
+2.  **Implement & Propose:** Cascade proposes and/or generates code, configuration, or documentation.
+3.  **Review & Iterate:** USER reviews the proposal, provides feedback, and Cascade iterates until satisfactory.
+4.  **Cross-Cutting Concerns Review:** For tasks involving code or significant configuration, the "Cross-Cutting Concerns Review" checklist in the relevant `.md` task file (or a similar review for non-task-file work) will be completed.
+5.  **Commit Changes:** Once approved and reviewed, changes are committed.
+
+*   **Phase 00: Foundational Setup**
+    *   **Task 00.1: Project Initialization & Tooling Setup:**
+        *   Initialize Git repository if not already fully set up.
+        *   Configure linters (e.g., Pylint, Flake8 for Python; ESLint, Prettier for Angular/TypeScript).
+        *   Set up code formatters (e.g., Black for Python; Prettier for Angular/TypeScript).
+        *   Implement pre-commit hooks (e.g., using `pre-commit` framework) to enforce linting and formatting.
+        *   Provide/update IDE configuration files (e.g., `.vscode/settings.json`) for consistent development environments.
+        *   Update `README.md` with detailed development setup instructions.
+        *   Establish `app/backend` and `app/frontend` directories.
+    *   **Task 00.2: Configuration Management:**
+        *   Design and implement a centralized configuration management strategy (e.g., using Pydantic settings for FastAPI, environment files for Angular).
+        *   Ensure clear separation of configurations for different environments (development, testing, production).
+        *   Define a strategy for managing secrets (e.g., using environment variables, a secrets manager for production).
+
+*   **Phase 01: Backend Core Infrastructure (`app/backend`)**
+    *   **Task 01.1: FastAPI Application Skeleton:**
+        *   Create the basic FastAPI application structure within `app/backend`.
+        *   Set up the main application file (e.g., `main.py`).
+        *   Organize initial API routers (e.g., for future authentication, core data).
+        *   Implement basic dependency injection patterns.
+        *   Include initial `requirements.txt` or `pyproject.toml` with FastAPI, Uvicorn.
+    *   **Task 01.2: Database Setup:**
+        *   Integrate SQLAlchemy for ORM.
+        *   Define initial SQLAlchemy models for core entities (e.g., Users, Contracts - based on F001, F004).
+        *   Set up Alembic for database migrations.
+        *   Configure database connections for SQLite (development) and PostgreSQL (production).
+        *   Create initial migration scripts.
+    *   **Task 01.3: Cache Integration:**
+        *   Set up Valkey client library.
+        *   Implement a basic caching service or utility functions for use within the FastAPI application.
+        *   Define initial caching strategies for ESI responses or frequently accessed data.
+
+**Next Steps:**
+Proceed with the execution of Task 00.1: Project Initialization & Tooling Setup.
+
+---
+
+### Session Summary - 2025-06-07 20:19 - Topic: Resolution of File Creation Tooling Issues
+
+**Objective:** To diagnose and establish a reliable workaround for the `write_to_file` tool's inability to create parent directories when writing new files, which was causing repeated failures.
+
+**Background:**
+Throughout the session, attempts to create new files (e.g., `__init__.py`, `config.py`) in new subdirectories using the `write_to_file` tool consistently failed with "path not found" errors. This was because the tool does not create parent directories if they do not already exist. This necessitated multiple requests for the USER to manually create directories, hindering workflow efficiency.
+
+**Investigation and Workaround Testing:**
+The USER proposed two methods to address this:
+1.  **Multi-step `write_to_file`:** Attempting to create directories by writing `__init__.py` files sequentially. This was tested (e.g., trying to create `test/__init__.py`) and failed, confirming the tool cannot create even the first level of a new directory. This method was deemed non-viable without a dedicated directory creation tool.
+2.  **PowerShell `New-Item` Command:** Using the native Windows PowerShell command `New-Item -Path <path_to_file> -ItemType File -Force`. This was tested by creating `test\powershell\test.txt`.
+
+**Test Results & Resolution:**
+*   The PowerShell command `New-Item -Path .\test\powershell\test.txt -ItemType File -Force` (executed from the project root) successfully created the `test.txt` file and its parent directories (`test` and `powershell`) as needed.
+*   **Decision:** The PowerShell `New-Item` command was adopted as the standard workaround for Cascade to create new files when parent directories might not exist in this Windows development environment.
+
+**Future Action & Memory:**
+*   Cascade will utilize the `New-Item -Path <full_path_to_file_including_filename> -ItemType File -Force` command going forward for such scenarios.
+*   A persistent memory (ID: `0fedc6fd-b139-4dd6-870a-175ed12facad`) was created to document this workaround and ensure its consistent application. This memory has also been indexed in `design/memory-index.md`.
+
+**Impact:** This resolution is expected to significantly improve the reliability and efficiency of file creation operations, reducing interruptions and manual interventions.
+
+---
+
+### Session Summary - 2025-06-07 21:07:57-05:00 - Topic: Backend Directory Structure Recommendation
+
+The following directory structure was recommended for `app/backend/`:
+
+```text
+app/
+└── backend/
+    ├── .venv/                  # Virtual environment for the backend (gitignored)
+    ├── docker/                 # Docker-specific files for the backend
+    │   └── Dockerfile          # Example
+    ├── src/                    # Python source code for the backend
+    │   ├── __init__.py         # Makes 'src' a package
+    │   └── fastapi/            # Your FastAPI application package
+    │       ├── __init__.py     # Makes 'fastapi' a sub-package
+    │       ├── main.py         # FastAPI app instance
+    │       ├── config.py       # Pydantic settings
+    │       ├── routers/        # Directory for API routers
+    │       ├── models/         # Directory for Pydantic models or SQLAlchemy models
+    │       └── services/       # Directory for business logic
+    ├── __init__.py             # Makes 'backend' a package (useful if app/ is a project root)
+    ├── requirements.txt        # Python dependencies for the backend
+    └── tests/                  # Tests for the backend (often outside src)
+```
+
+This structure promotes clear separation of source code, configuration, and environment-specific files, aligning with common Python project best practices, particularly when using a `src` layout.
+
+---
+
+**Date:** 2025-06-07 22:19:53-05:00
+**Topic:** Creation of AI Memory for Task Checklist Update Procedure
+
+**Details:**
+During the session, a need was identified for a consistent procedure for AI assistants to update task checklists in Markdown-based planning documents (`plans/implementation/**/*.md`). This arose from observing inconsistencies in how checklist items were being marked as complete.
+
+To address this, the following AI memory was proposed and subsequently created (System-Assigned ID: `3c3ce4a0-7e80-4d2d-ab24-c48e4071d8fe`):
+
+```markdown
+Cascade Memory for Task Checklist Update Procedure
+
+Here's a proposed memory for handling task checklist updates:
+
+* UUID: a3c8f5b1-0e6d-4a9b-82f7-1d4c0e8a7b3c
+* Title: Procedure: Updating Task Checklists in Implementation Plans
+* Content: "When a specific task or sub-task within an implementation plan (plans/implementation/**/*.md) is completed, AI assistants (like Cascade) MUST update its corresponding Markdown checklist item from [ ] to [x]. If subsequent actions or new information invalidates a previously completed item, it MUST be reverted from [x] back to [ ], and the USER MUST be explicitly notified of this change and the reason for it. This procedure ensures that task planning documents accurately reflect the current project state and maintain their reliability as a source of truth for progress tracking."
+* Tags: ai_procedure, project_management, task_tracking, documentation_maintenance
+* CorpusNames: scarson/hangar-bay (or make it global if preferred for all projects)
+
+Justification for Effectiveness: This memory would be effective because:
+
+* Clarity and Simplicity: It provides a straightforward rule ([ ] to [x]).
+* Consistency: It ensures all AI interactions with checklists follow the same pattern.
+* Reversibility and Notification: Crucially, it includes a process for unchecking items if they become invalid due to new work or discoveries, and mandates USER notification. This prevents planning documents from becoming stale or misleading.
+* Reliability: By enforcing this, the task plans remain a reliable source of truth for project progress.
+* Accountability: The notification requirement for unchecking items ensures transparency.
+
+--- 
+
+---
+
+**Date:** 2025-06-07 23:15:00-05:00
+**Topic:** Creation of AI Memory for "Procedure: AI-Assisted Cross-Cutting Concerns (CCC) Review"
+
+**Details:**
+A new AI memory (ID: `0c495baf-94e6-4dfa-81c1-a386d94c813e`) titled "Procedure: AI-Assisted Cross-Cutting Concerns (CCC) Review" was created to provide a systematic approach for Cascade to complete the CCC review section in task files. This procedure ensures comprehensive consideration of security, observability, testing, accessibility, and internationalization by referencing their respective specification documents and relevant existing memories.
+
+**Full Memory Content (ID: `0c495baf-94e6-4dfa-81c1-a386d94c813e`):**
+```markdown
+This procedure guides Cascade in completing the "Cross-Cutting Concerns Review" section found in Hangar Bay task files (typically located in `plans/implementation/**/*.md`).
+
+1.  **Locate CCC Section:** Identify the "Cross-Cutting Concerns Review" section in the current task file. Confirm it aligns with the standard checklist structure (Security, Observability, Testing, Accessibility, Internationalization/I18n) as defined in Memory `f918edd9-8b47-4513-a287-f406c91aa5d3`. Note the requirement for dynamic section numbering.
+
+2.  **Iterate Through Each Major Concern:** For each of the five major concerns (Security, Observability, Testing, Accessibility, I18n):
+    a.  **Recall Guiding Documents & Memories:** For the specific concern being addressed, actively retrieve and consider its primary specification document and any relevant operational memories. The primary specification documents are:
+        *   Security: `design/security-spec.md`
+        *   Observability: `design/observability-spec.md`
+        *   Testing: `design/test-spec.md`
+        *   Accessibility: `design/accessibility-spec.md`
+        *   Internationalization (I18n): `design/i18n-spec.md`
+        *(Note: These paths are relative to the project root; adjust as needed if interpreting from a task file in a subdirectory, similar to the CCC checklist itself.)*
+        Also consider general memories like `MEMORY[9602a185-4f44-49a6-852a-c02ef9500421]` (overall CCC mandate) and concern-specific memories (e.g., `MEMORY[82552343-47c2-4a12-8ff7-9503cbe70bf5]` for secrets management under Security).
+    b.  **Analyze Task Context Against Concern:** Evaluate the specific work, code, or documentation produced or planned within the current task. Assess how the principles and requirements of the current CCC apply to this specific task context.
+    c.  **Address Checklist Sub-Items:** For each sub-item listed under the current major concern (e.g., for Security: "Secure Design," "Input Validation," etc.):
+        i.  Determine if the sub-item is applicable to the work done in the current task.
+        ii. If applicable, briefly describe *how* it was addressed or *will be* addressed by the task's deliverables. If already implemented, point to specific code, configurations, or documentation.
+        iii. If not applicable to this specific task, provide a brief justification.
+        iv. Based on the assessment, mark the checklist item as `[x]` (addressed/considered/NA with justification) or leave as `[ ]` if it represents an outstanding action for *this task* that needs USER attention or will be explicitly deferred to a *different, specified* future task.
+    d.  **Populate "Notes" Section:** In the "Notes" sub-section for the current major concern, provide a concise summary. This should include:
+        i.  Key actions taken related to this concern for the task.
+        ii. Specific considerations or trade-offs made (if any).
+        iii. Rationale for any sub-items marked N/A or left unchecked (e.g., "N/A as this task involves backend logic only, no UI changes for Accessibility").
+        iv. References to specific files, functions, or design decisions where the concern was implemented or documented.
+
+3.  **Completeness and Consistency Check:** After iterating through all five CCCs, review the entire filled-out section for completeness, clarity, and consistency with the work performed in the task. Ensure all checklist items and notes accurately reflect the task's engagement with each concern.
+
+4.  **USER Collaboration and Iteration:** Present the drafted "Cross-Cutting Concerns Review" section to the USER. Clearly state that this is a draft for review. Be prepared to discuss, clarify, and make revisions based on USER feedback. The goal is a collaborative and accurate reflection of how CCCs were managed for the task.
+
+5.  **Adherence to Specific Mandates:** Throughout the process, ensure strict adherence to any specific mandates within existing memories, such as the secrets management verification detailed in `MEMORY[82552343-47c2-4a12-8ff7-9503cbe70bf5]`.
+```
+
+**Justification for Effectiveness:**
+*   Systematic Process: Provides a structured, step-by-step workflow for me to follow, ensuring no major concern or sub-item is accidentally overlooked.
+*   Explicit Reference to Authority: Mandates recalling and using the specific spec documents (security-spec.md, etc.) and relevant existing memories, ensuring my review is based on established project standards rather than general knowledge.
+*   Contextual Application: Requires me to analyze the current task's specific work against each CCC, promoting relevant and targeted feedback rather than generic statements.
+*   Action-Oriented Documentation: The "Notes" section encourages documenting how things were done or why they weren't applicable, which is valuable for future reviews and understanding.
+*   Facilitates Collaboration: Explicitly includes a step for presenting the draft to you for review and iteration, reinforcing the collaborative nature of these important reviews.
+*   Builds on Existing Framework: Leverages and integrates with the existing CCC checklist template (Memory f918edd9-8b47-4513-a287-f406c91aa5d3) and the general mandate to address CCCs (Memory 9602a185-4f44-49a6-852a-c02ef9500421), providing the detailed operational how-to.
+*   Reduces AI Cognitive Load: By breaking down a complex review into manageable steps, it helps ensure a more reliable and consistent output from me.
+This proposed memory procedure aims to make my process for completing the "Cross-Cutting Concerns Review" more robust, transparent, and aligned with your project's quality standards.
+
+This memory was indexed in `design/memory-index.md`.
+
+---
+
+---
+
+### Session Summary - 2025-06-07 23:49 - Topic: Project-Wide Dependency Version Pinning Policy and Implementation Details
+
+**Objective:** To formalize and document the requirement for pinning dependencies across the entire Hangar Bay project, ensuring stability, reproducibility, and predictability in builds.
+
+**Key Discussion Points & Decisions:**
+
+1.  **Acknowledgement of Importance:** Confirmed that pinning dependencies is a crucial best practice and should be a standard policy for the Hangar Bay project.
+
+2.  **Areas Requiring Dependency Pinning:**
+    *   **Backend (Python - `app/backend/requirements.txt`):** Already partially addressed by pinning FastAPI, Uvicorn, SQLAlchemy, and Alembic. This practice should be maintained for all backend Python dependencies.
+    *   **Frontend (Angular - JavaScript/TypeScript):**
+        *   **`package.json`:** All Node.js dependencies (e.g., Angular framework, UI libraries, build tools, linters) listed in `dependencies` and `devDependencies` must have their versions explicitly pinned.
+        *   **Lock Files (`package-lock.json` or `yarn.lock`):** The relevant lock file, which captures the exact versions of all direct and transitive dependencies, MUST be committed to the repository. This is critical for ensuring identical installations across all environments.
+    *   **Containerization (Docker - `Dockerfile`s):**
+        *   **Base Images:** When specifying base images (e.g., `FROM python:...` or `FROM node:...`), specific version tags (e.g., `python:3.11.4-slim-buster`, `node:18.17.0-alpine`) must be used instead of general tags like `:latest` or minor version tags (e.g., `:3.11`).
+        *   **Package Installations within Dockerfiles:** If OS-level packages (e.g., via `apt-get install -y <package>`, `apk add <package>`) or other tools are installed within Dockerfiles, their versions should also be pinned if the package manager supports it (e.g., `apt-get install -y mypackage=1.2.3`).
+    *   **Development Dependencies:**
+        *   For both backend and frontend, development-specific tools (e.g., linters, test runners, code generators) should also have their versions pinned. This is typically managed in `requirements-dev.txt` for Python or within `devDependencies` in `package.json`.
+    *   **Database System (PostgreSQL):**
+        *   While not pinned in a project file in the same way, the major version of the PostgreSQL server software (e.g., PostgreSQL 15.x) should be a deliberate choice and kept consistent across development, testing, and production environments to avoid compatibility issues. Database schema versions are managed by Alembic migrations, which are versioned.
+
+3.  **Areas Where Pinning is Handled Differently or Less Critical:**
+    *   **External Third-Party APIs:** For integrations with external services (like EVE ESI), use versioned API endpoints if offered by the provider (e.g., `https://esi.evetech.net/v2/...`). This is about choosing a specific version of an external contract rather than pinning a local library.
+    *   **Local Developer Tooling:** Versions of IDEs, text editors, or global command-line utilities on a developer's machine are generally not pinned by the project, though team conventions might exist.
+
+4.  **Actions Taken:**
+    *   An AI Memory (`4b806f4d-8600-46c6-b939-f373f67f3c50`) titled "Policy: Project-Wide Dependency Version Pinning" was created to reinforce this policy for Cascade.
+    *   The [design/memory-index.md](cci:7://file:///c:/Users/Sam/OneDrive/Documents/Code/hangar-bay/design/memory-index.md:0:0-0:0) was updated with an entry for this new AI memory.
+    *   The [design/design-spec.md](cci:7://file:///c:/Users/Sam/OneDrive/Documents/Code/hangar-bay/design/design-spec.md:0:0-0:0) was updated by adding a new subsection `6.0. Dependency and Versioning Policy` under "Section 6: Tech Stack" to formally document this requirement for human developers and AI.
+
+**Rationale for Policy:**
+*   Ensures reproducible builds.
+*   Prevents unexpected breaking changes from automatic dependency updates.
+*   Stabilizes dependency resolution.
+*   Enhances security by providing a clear baseline for vulnerability management.
+*   Simplifies debugging.
+*   Provides a clear manifest of the application's software components.
+
+This comprehensive approach to dependency version pinning is vital for the long-term stability and maintainability of the Hangar Bay project.
+
+---
+
+---
+
+### Session Summary - 2025-06-08 00:04 - Topic: Justification for `CONTRIBUTING.md` vs. `design-spec.md`
+
+**Objective:** To discuss and evaluate the rationale for creating a separate `CONTRIBUTING.md` file, distinct from `design/design-spec.md`, to document development practices for the Hangar Bay project.
+
+**Key Discussion Points & Decisions:**
+
+The following points were discussed regarding the separation of concerns between `design/design-spec.md` and a new `CONTRIBUTING.md`:
+
+Yes, a `CONTRIBUTING.md` (or a similarly named file like `DEVELOPMENT_GUIDELINES.md`) would cover items sufficiently distinct from `design/design-spec.md` to justify it being a separate file.
+
+Here's why, considering the impact on both humans and AI:
+
+**1. Different Focus and Audience:**
+
+*   **`design/design-spec.md` (The "What" and "Why"):**
+    *   **Purpose:** Outlines the project's architecture, core design decisions, technical stack choices, feature specifications, security principles, accessibility standards, and other high-level strategic aspects. It explains *what* the system is, *why* it's designed that way, and the *goals* it aims to achieve.
+    *   **Audience:** Architects, lead developers, product owners, and AI assistants (like Cascade) needing to understand the system's blueprint and foundational principles.
+    *   **Content Nature:** More conceptual, architectural, and relatively stable (though it evolves).
+
+*   **`CONTRIBUTING.md` (The "How"):**
+    *   **Purpose:** Provides practical, actionable instructions and conventions for the day-to-day development process. It details *how* to contribute code, set up the environment, follow coding standards, and use project workflows.
+    *   **Audience:** All developers (new and existing, human and AI) actively writing, testing, or reviewing code. It's the go-to guide for operational development tasks.
+    *   **Content Nature:** More procedural, tactical, and potentially more dynamic (e.g., specific commands, tool versions, or PR templates might change more frequently than core architectural principles).
+
+**2. Distinct Content Categories:**
+
+A `CONTRIBUTING.md` would typically include:
+
+*   **Environment Setup:** Detailed steps for getting a local development environment running (e.g., specific Node/Python versions, virtualenv setup, database initialization, installing dependencies, running dev servers).
+*   **Coding Standards:** Specific code style rules (e.g., line length, naming conventions for variables/functions/classes, commenting best practices), beyond just stating "use a linter."
+*   **Version Control Workflow:** Branching strategy (e.g., Gitflow, feature branches), commit message conventions (e.g., Conventional Commits), Pull Request (PR) procedures (templates, review expectations, CI checks).
+*   **Testing Procedures:** How to run unit, integration, and end-to-end tests; expectations for test coverage; where to add new tests.
+*   **Dependency Management:** Practical steps for adding or updating dependencies, regenerating lock files.
+*   **Tooling:** Specific commands for linters, formatters, build tools, and any project-specific scripts.
+*   **Issue Tracking:** How to report bugs, suggest features, use labels in the issue tracker.
+*   **Code Review Guidelines:** What reviewers should look for, how to provide constructive feedback.
+
+While `design-spec.md` might *mention* that we use linters or have a testing strategy, `CONTRIBUTING.md` would provide the *exact commands* and *step-by-step processes*.
+
+**3. Impact and Utility (Balancing Fragmentation vs. Over-Concentration):**
+
+*   **For Humans:**
+    *   **Reduced Cognitive Load:** Separating these concerns makes information easier to find. A developer needing to know the PR process doesn't have to sift through architectural diagrams in `design-spec.md`.
+    *   **Improved Onboarding:** New contributors can get up to speed much faster with a dedicated guide on how to set up and contribute.
+    *   **Clarity:** `design-spec.md` remains focused on design, making it a clearer reference for architectural understanding.
+    *   **Risk of Fragmentation:** Minimized by clear naming, well-defined scope for each document, and judicious cross-referencing. For example, `design-spec.md` might state the *policy* for dependency pinning, while `CONTRIBUTING.md` details the *commands* to update `requirements.txt` and `package-lock.json`.
+
+*   **For Cascade (AI):**
+    *   **Targeted Information Retrieval:** Cascade can be more efficiently directed. If asked to "create a new feature branch according to project standards," it would consult `CONTRIBUTING.md`. If asked "what are the security considerations for the auth module," it would consult `design/security-spec.md` and relevant parts of `design-spec.md`.
+    *   **Reduced Ambiguity:** Prevents misinterpreting high-level design principles as immediate procedural instructions, or vice-versa.
+    *   **Improved Task Execution:** Cascade can more accurately follow specific project workflows (e.g., commit message formatting, PR content generation) if they are clearly documented.
+    *   **Avoiding Over-Concentration:** If `design-spec.md` became a monolithic document containing everything, it would be harder and slower for AI to parse and find the precise piece of information needed, potentially leading to less relevant or slower responses.
+
+**Conclusion of Discussion:**
+It was agreed that creating a `CONTRIBUTING.md` (or `DEVELOPMENT_GUIDELINES.md`) is beneficial. `CONTRIBUTING.md` is more conventional and often recognized by platforms like GitHub. It provides a clear, focused home for practical, procedural information essential for day-to-day development, distinct from the architectural and strategic content of `design/design-spec.md`. This separation benefits both human developers (by improving clarity and ease of access) and AI assistants (by enabling more targeted and efficient information retrieval and task execution). The key is to ensure each document has a clear purpose and to cross-reference where appropriate.
+
+---
+
+---
+
+### Session Summary - 2025-06-08 01:00 - Topic: Enhancing AI File Reading Guidance via Embedded Notes
+
+**Objective:** To improve the reliability of AI analysis for lengthy and critical project documents by providing explicit, in-file guidance to AI assistants like Cascade.
+
+**Problem Addressed:**
+AI assistants, when processing large files, might sometimes rely on partial views (e.g., the first N lines or a specific section retrieved via a tool call) if not explicitly guided otherwise. For complex or critical documents where full context is paramount (like `design/security-spec.md`), this could lead to analyses or actions based on incomplete information, potentially missing crucial details or nuances.
+
+**Solution Implemented (by USER):**
+The USER added a new section titled "## AI Analysis Guidance for Cascade" at the beginning of `design/security-spec.md`. This section contains a direct instruction to Cascade:
+
+```markdown
+This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls.
+```
+
+**Rationale:**
+This guidance is particularly important for documents like `design/security-spec.md`, which contains detailed security principles, best practices, and specific recommendations. By ensuring AI assistants read the entire file, we can avoid incomplete or potentially incorrect analyses based on partial views. This is especially critical for security documentation, where missing key details could lead to vulnerabilities or misconfigurations.
+
+**Future Considerations:**
+*   We might consider adding similar guidance to other critical documents, such as `design/design-spec.md` or `design/ai-system-procedures.md`, to further enhance AI reliability.
+*   It might be useful to create a template or guide for adding such AI guidance to critical documents, to ensure consistency and effectiveness.
+
+---
+
+CASCADE_LOG_FOOTER_MARKER_V1 :: *(End of Cascade Interaction Log. New entries are appended above this line. Session heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*

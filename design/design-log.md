@@ -318,6 +318,7 @@ This document records major design discussion points, considerations, and decisi
 
 ## AI-Focused MVP Implementation Plan Conceptualization (Approx. 2025-06-06 07:24)
 
+{{ ... }}
 *   **Objective:** To conceptualize and initiate a detailed, AI-friendly MVP implementation plan for Hangar Bay, guiding development of features F001-F003.
 *   **Core Rationale for AI-Centric Plan:**
     *   **Enhanced Clarity & Precision:** Provide explicit, step-by-step tasks to minimize AI ambiguity.
@@ -377,7 +378,7 @@ All task files in Phases 00-08 will be updated. Cascade's operational procedures
 
 ---
 
-## 2025-06-06: Completion of MVP Implementation Task File Creation
+## Completion of MVP Implementation Task File Creation (2025-06-06)
 
 **Decision/Event:** All detailed task files for the Hangar Bay MVP Implementation Plan (Phases 00 through 10) have been successfully created and committed to the repository. This includes tasks covering foundational setup, backend core infrastructure, frontend core infrastructure, features F001, F002, F003 (backend and frontend aspects), cross-cutting concerns (security, logging, testing, accessibility, i18n), and deployment/documentation.
 
@@ -388,4 +389,263 @@ All task files in Phases 00-08 will be updated. Cascade's operational procedures
 
 ---
 
-*(This log will be updated as more decisions are made. Remember to include approximate ISO 8601 timestamps in the format 'YYYY-MM-DD HH:MM:SS-05:00' (U.S. Central Time) for new major decision sections.)*
+## MVP Implementation Strategy & Initial Plan (Approx. 2025-06-06 11:16:57-05:00)
+
+*   **Decision:** Adopted **Proposal A: Foundational Setup & Backend Core First** for Hangar Bay MVP implementation.
+    *   **Rationale:** Prioritizes building a robust foundation, allows early backend API stabilization, effectively utilizes AI for boilerplate, and systematically integrates cross-cutting concerns.
+*   **Directory Structure Update:** Application code will reside in `app/backend` and `app/frontend` subdirectories within the project root.
+*   **Initial Focus (Phases 00 & 01):**
+    *   **Phase 00:** Project initialization, tooling (linters, formatters, pre-commit hooks), configuration management.
+    *   **Phase 01 (Backend):** FastAPI application skeleton, database setup (SQLAlchemy, Alembic, SQLite/PostgreSQL), Valkey cache integration.
+*   **Next Step:** Begin implementation of Phase 00, Task 00.1 (Project Initialization & Tooling Setup).
+
+---
+
+## Frontend Project Structure (Approx. 2025-06-06 11:52:00-05:00)
+
+*   **Context:** Discussed the Angular project initialization path within `app/frontend/`.
+*   **Options Considered:**
+    1.  `app/frontend/hangar-bay-frontend/` (Angular CLI default, project name creates a subfolder).
+    2.  `app/frontend/` (Angular project files directly in `app/frontend/`, using `ng new hangar-bay-frontend --directory .`).
+    3.  `app/frontend/angular/` (Angular project files directly in a dedicated `angular` subfolder, using `ng new hangar-bay-frontend --directory .` from within `app/frontend/angular/`).
+*   **Decision: The Angular project will be initialized in `app/frontend/angular/`.**
+    *   **Reasoning:** This approach provides a clear separation if other frontend technologies or distinct frontend micro-applications are introduced later under `app/frontend/`. It addresses concerns about path redundancy (e.g., `app/frontend/hangar-bay-frontend/hangar-bay-frontend`) while clearly indicating the technology in use via the `angular/` directory. The Angular project's internal name will remain `hangar-bay-frontend`.
+    *   **Action:** The user created the `app/frontend/angular/` directory. The `ng new` command will be executed within this directory using the `--directory .` flag.
+
+---
+
+## Angular Project Initialization Options (Approx. 2025-06-07 16:23:00-05:00)
+
+*   **Context:** During Angular project initialization (`ng new hangar-bay-frontend --directory . --routing --style=scss`), decisions were made regarding advanced setup options prompted by the Angular CLI.
+*   **Zoneless Application:**
+    *   **Prompt:** "Do you want to create a 'zoneless' application without zone.js (Developer Preview)? (y/N)"
+    *   **Decision: No.**
+    *   **Reasoning:** For the MVP and learning purposes, the traditional `zone.js` approach for change detection is preferred due to its stability, wider community support, and simpler learning curve. Zoneless is a developer preview and adds complexity.
+*   **Server-Side Rendering (SSR) / Static Site Generation (SSG):**
+    *   **Prompt:** "Do you want to enable Server-Side Rendering (SSR) and Static Site Generation (SSG/Prerendering)? (y/N)"
+    *   **Decision: No.**
+    *   **Reasoning:** Client-side rendering (CSR) is simpler for the MVP. Hangar Bay's content is largely dynamic and often behind authentication, reducing the immediate SEO benefits of SSR/SSG. SSR/SSG add development and deployment complexity. Angular Universal can be added later if SEO for public contract listings or other performance needs arise.
+
+---
+
+**Date:** 2025-06-07
+**Authors:** USER, Cascade
+**Status:** Decided
+
+### Subject: Strategy for Tracking MVP Implementation Progress for AI-Assisted Development
+
+**Context:**
+The Hangar Bay MVP implementation plan spans multiple phases and numerous individual tasks. A concern was raised regarding the potential for AI coding assistants (like Cascade) to lose context or de-prioritize details from earlier completed tasks as the project progresses. This is a known challenge with the limited context window and evolving memory of large language models. Relying solely on conversational history or internal AI memory might be insufficient for a project of this scale and duration.
+
+**Problem:**
+How can we effectively and persistently track implementation progress in a way that is most beneficial for an AI coding assistant, ensuring it can reliably access and utilize information about previously completed work to inform current and future tasks?
+
+**Proposals Considered:**
+1.  **Dedicated Progress File (`plans/implementation/00-mvp-implementation-plan-progress.md`):** A Markdown file mirroring the `00-mvp-implementation-plan-overview.md` structure. As tasks are completed, AI-friendly summaries (key artifacts, paths, configurations, commit IDs) are added under each task. (Chosen)
+2.  **Task-Specific Completion Notes:** Appending summaries directly within each individual task plan file. (Considered less centralized for AI overview).
+3.  **Purely AI Internal Memory:** Relying solely on Cascade's built-in memory creation. (Considered less transparent and potentially less reliable for very specific, older details).
+4.  **Git Commit History as Primary Log:** Using detailed commit messages. (Considered less structured for AI to quickly synthesize overall task outcomes).
+
+**Decision:**
+Proposal 1 was adopted. The file `plans/implementation/00-mvp-implementation-plan-progress.md` was created.
+
+**Rationale:**
+This approach was chosen because:
+*   **Persistent & Centralized Ground Truth:** It provides a single, stable, and structured document that Cascade can be reliably directed to for information about completed tasks.
+*   **AI-Friendly Content:** Summaries are tailored for AI consumption, focusing on factual data points like file paths, key configurations, commands used, and references to other design documents or commit IDs. This is more effective than narrative summaries.
+*   **Complements AI Memory:** This external knowledge base will augment Cascade's internal memory. Cascade can be prompted to review relevant sections of this file to "refresh" its context before starting new tasks, or when needing to recall specific details from past work.
+*   **Transparency & Verifiability:** Allows human developers to easily review and verify the AI's understanding of completed work.
+*   **Mitigates Context Window Limitations:** By having a persistent external reference, the AI is less susceptible to losing details from tasks completed much earlier in the development cycle.
+
+**Cascade's Usage Plan:**
+Cascade will:
+1.  Be informed of the existence and purpose of `00-mvp-implementation-plan-progress.md`.
+2.  Be prompted by the USER (or proactively suggest) to update this file with a summary after each significant task or sub-task completion.
+3.  Be directed by the USER (or proactively decide) to review relevant sections of this file when:
+    *   Starting a new task that builds upon or relates to previously completed work.
+    *   Needing to recall specific configurations, file paths, or decisions from past tasks.
+    *   Generating summaries or reports that require historical context.
+4.  Use the structured, factual information in the summaries to more accurately inform its code generation, analysis, and decision-making processes.
+
+This strategy aims to ensure consistent, context-aware AI assistance throughout the Hangar Bay MVP development.
+
+---
+
+### Design Decision - 2025-06-07 21:24:44-05:00 - Topic: Backend Directory Structure Finalized
+
+The following directory structure was adopted for `app/backend/`:
+
+```text
+app/
+└── backend/
+    ├── .venv/                  # Virtual environment for the backend (gitignored)
+    ├── docker/                 # Docker-specific files for the backend
+    │   └── Dockerfile          # Example
+    ├── src/                    # Python source code for the backend
+    │   ├── __init__.py         # Makes 'src' a package
+    │   └── fastapi/            # Your FastAPI application package
+    │       ├── __init__.py     # Makes 'fastapi' a sub-package
+    │       ├── main.py         # FastAPI app instance
+    │       ├── config.py       # Pydantic settings
+    │       ├── routers/        # Directory for API routers
+    │       ├── models/         # Directory for Pydantic models or SQLAlchemy models
+    │       └── services/       # Directory for business logic
+    ├── __init__.py             # Makes 'backend' a package (useful if app/ is a project root)
+    ├── requirements.txt        # Python dependencies for the backend
+    └── tests/                  # Tests for the backend (often outside src)
+```
+
+**Rationale:** To establish a clear, maintainable, and scalable structure for the FastAPI backend, aligning with Python best practices and facilitating organized development.
+
+**Impact:** Provides a foundational layout for all backend code, configuration, and related artifacts, improving developer onboarding and code navigability.
+
+
+---
+### Design Decision - 2025-06-07 21:40:34-05:00 - Topic: Comprehensive Secure Secret Management Strategy and Implementation
+
+**Context:** A review of the backend configuration (`app/backend/src/fastapi/config.py`) highlighted that parameters like `DATABASE_URL`, `ESI_CLIENT_ID`, and `ESI_CLIENT_SECRET`, while intended to be loaded from environment variables, could inadvertently lead to developers hardcoding secrets locally or misunderstanding production secret handling if not explicitly addressed.
+
+**Core Problem:** Storing plaintext secrets directly in code, committed configuration files, or any version-controlled artifact poses a significant security risk. This practice contravenes established security principles and industry best practices, such as those outlined by OWASP (e.g., OWASP Top 10 A05:2021 - Security Misconfiguration, which includes improper secrets management) and guidance from organizations like NIST and SANS. These standards strongly advocate for externalized secret management and advise against hardcoding secrets.
+
+**Decision & Rationale:** To proactively address these risks and establish a robust secret management framework for Hangar Bay, a multi-faceted approach was adopted:
+
+1.  **Principle Adoption:** The core principle is that secrets MUST NOT be hardcoded. For local development, secrets will be loaded from environment variables, typically populated via `.env` files. For staging/production, secrets MUST be injected into the environment through secure platform mechanisms or a dedicated secrets management service.
+
+2.  **Security Specification Update (`design/security-spec.md`):**
+    *   A new subsection, `1.4. Secure Secret Storage and Management`, was added to `design/security-spec.md`. This section explicitly prohibits plaintext secrets in code or version control, details the risks, and outlines recommended practices including the use of environment variables, `.env` files (gitignored) for local development, and dedicated secrets management services for production environments.
+    *   It provides actionable checklists for AI and human developers to verify compliance.
+
+3.  **`.gitignore` Enhancement:**
+    *   The root `.gitignore` file was reviewed and updated to explicitly include `app/backend/.env`. This ensures that local development environment files containing actual secrets are never accidentally committed to version control, complementing the general `.env` ignore rule.
+
+4.  **Planning Document Integration:**
+    *   The task plan `plans/implementation/phase-09-cross-cutting-concerns-mvp-scope/09.1-security-hardening-mvp.md` was updated. Its 'Secrets Management Review' checklist now directly references `security-spec.md#1.4` and includes more specific verification steps (e.g., checking for no plaintext secrets in code, ensuring `.env` files are gitignored).
+    *   The task plan `plans/implementation/phase-00-foundational-setup/00.1-project-initialization-tooling.md` was updated in its 'Cross-Cutting Concerns Review' section for 'Secrets Management'. It now mandates adherence to `security-spec.md#1.4` from the project's outset, including correct `.gitignore` setup.
+
+5.  **AI Operational Memory Creation:**
+    *   A new persistent memory (ID: `82552343-47c2-4a12-8ff7-9503cbe70bf5`), titled "Secure Secret Management Adherence (security-spec.md#1.4)", was created. This memory instructs AI assistants (like Cascade) to ensure that all 'Secrets Management' checklist items within any task file's 'Cross-Cutting Concerns Review' section are handled in strict alignment with `design/security-spec.md#1.4`.
+
+**Impact:** These comprehensive updates significantly strengthen Hangar Bay's security posture by:
+*   Establishing clear, documented policies against insecure secret handling.
+*   Integrating these policies directly into actionable development plans and checklists.
+*   Providing ongoing guidance for AI-assisted development to maintain these security standards.
+*   Reducing the risk of accidental secret exposure through version control or insecure configurations.
+
+This proactive approach ensures that secure secret management is a foundational aspect of the Hangar Bay project, from initial development through to production deployment.
+---
+
+---
+**2025-06-07: Created AI Memory for Standardized Cross-Cutting Concerns (CCC) Review Procedure**
+
+*   **Why:** To ensure consistent, thorough, and verifiable AI-assisted completion of the "Cross-Cutting Concerns Review" section in Hangar Bay task files. This procedure aims to improve the rigor with which the five key CCCs (Security, Observability, Testing, Accessibility, Internationalization) are evaluated against project specifications and standards during task execution. It enhances the reliability of these critical reviews and provides a clear framework for the AI.
+
+*   **How:**
+    *   A new AI Memory (ID: `0c495baf-94e6-4dfa-81c1-a386d94c813e`) titled "Procedure: AI-Assisted Cross-Cutting Concerns (CCC) Review" was defined and created.
+    *   This memory outlines a detailed, step-by-step process for the AI (Cascade) to:
+        1.  Locate the CCC section in a task file.
+        2.  Iterate through each of the five major concerns.
+        3.  For each concern, recall and consult its primary specification document (e.g., `design/security-spec.md`) and other relevant memories.
+        4.  Analyze the specific task's context against the principles of the concern.
+        5.  Address each sub-item in the standard CCC checklist.
+        6.  Populate the "Notes" section with details of actions taken, rationale, or justifications.
+        7.  Ensure overall completeness and consistency.
+        8.  Collaborate with the USER by presenting the drafted review for feedback.
+    *   The new memory explicitly lists the paths to the five core CCC specification documents (`design/security-spec.md`, `design/observability-spec.md`, `design/test-spec.md`, `design/accessibility-spec.md`, `design/i18n-spec.md`).
+    *   The memory was indexed in `design/memory-index.md` (see entry for `0c495baf-94e6-4dfa-81c1-a386d94c813e`).
+    *   The creation and full content of this memory, along with its justification for effectiveness, were logged in `design/cascade-log.md` (entry dated 2025-06-07).
+
+*   **Impact:** This procedural memory is expected to significantly improve the quality and consistency of AI contributions to Cross-Cutting Concerns reviews, making them more systematic and aligned with project standards. It provides a clear operational guide for Cascade when performing these reviews.
+
+---
+
+---
+**2025-06-07: Adopted Practice of Pinning Python Dependencies in `app/backend/requirements.txt`**
+
+*   **Why:** To enhance the stability, reproducibility, and predictability of the backend Python environment for the Hangar Bay project. Unpinned dependencies can lead to unexpected issues due to automatic updates to newer, potentially incompatible or buggy, library versions.
+
+*   **How:**
+    *   The decision was made to pin all direct dependencies listed in `app/backend/requirements.txt`.
+    *   The following packages had their versions explicitly set:
+        *   `fastapi` pinned to `0.115.12`
+        *   `uvicorn[standard]` pinned to `0.34.3`
+        *   `SQLAlchemy` pinned to `2.0.41`
+        *   `alembic` pinned to `1.16.1`
+        *   (Packages `pydantic-settings` and `python-dotenv` were already pinned).
+    *   Latest stable versions were identified using `pip index versions --pre <package>` and PyPI lookups.
+    *   The `app/backend/requirements.txt` file was updated accordingly.
+
+*   **Impact & Rationale:** This practice provides several key benefits:
+    1.  **Reproducible Builds:** Ensures consistent environments across developer machines and CI/CD pipelines.
+    2.  **Preventing Unexpected Breaking Changes:** Protects against automatic updates to library versions that might introduce bugs or break compatibility.
+    3.  **Dependency Resolution Stability:** Helps `pip` resolve transitive dependencies more predictably.
+    4.  **Security:** Provides a clear baseline for dependency versions, aiding in vulnerability assessment and management.
+    5.  **Easier Debugging:** Simplifies troubleshooting by keeping dependency versions constant between environment rebuilds.
+    6.  **Clearer Understanding of the Environment:** `requirements.txt` now serves as an exact manifest of the backend's Python dependencies.
+
+---
+
+---
+**2025-06-07 23:49:51-05:00 - Adopted Project-Wide Dependency Version Pinning Policy**
+
+*   **Why:** To enhance the stability, reproducibility, and predictability of builds across all components of the Hangar Bay project. Pinning dependency versions is a crucial best practice that mitigates risks associated with automatic updates, ensures consistent development and deployment environments, and aids in security vulnerability management.
+
+*   **How:**
+    1.  **Policy Formalization:** A formal policy mandating the pinning of all dependency versions was established. This policy covers:
+        *   Backend Python dependencies (`requirements.txt`).
+        *   Frontend JavaScript/TypeScript dependencies (`package.json` and associated lock files like `package-lock.json`).
+        *   Base images and package installations within Dockerfiles.
+        *   Consistency in major versions for database systems like PostgreSQL.
+    2.  **Documentation Updated:**
+        *   The `design/design-spec.md` was updated with a new subsection `6.0. Dependency and Versioning Policy` under "Section 6: Tech Stack" to detail this requirement for human developers and AI.
+        *   A `cascade-log.md` entry was created to capture the verbose discussion and rationale behind the areas requiring pinning.
+    3.  **AI Memory Created:** A new AI operational memory (ID: `4b806f4d-8600-46c6-b939-f373f67f3c50`), titled "Policy: Project-Wide Dependency Version Pinning," was created. This memory instructs AI assistants (like Cascade) to adhere to and enforce this policy during development.
+    4.  **Memory Index Updated:** The `design/memory-index.md` was updated to include an entry for the new AI memory.
+
+*   **Impact:**
+    *   All future development work will adhere to strict dependency version pinning.
+    *   Project build processes will be more reliable and less prone to unexpected failures due to dependency changes.
+    *   The project's security posture is strengthened by having a clear and consistent baseline of dependency versions.
+    *   Onboarding new developers will be simpler due to more predictable environment setups.
+    *   This decision builds upon the previous specific action to pin backend Python dependencies, extending the practice project-wide.
+
+---
+
+---
+**2024-07-30: Documentation Restructure: `CONTRIBUTING.md` Introduction and `README.md` Simplification**
+
+**Why:**
+*   The existing `README.md` was becoming overly long and mixed high-level project overview with detailed development setup instructions and AI-specific guidance. This made it challenging for contributors (both human and AI) to quickly locate essential information.
+*   A clearer separation of concerns was needed to distinguish between a concise project introduction, practical development guidelines, and in-depth architectural specifications.
+
+**How:**
+1.  **Creation of `CONTRIBUTING.md`:**
+    *   A new, dedicated file (`CONTRIBUTING.md`) was established at the project root.
+    *   This file now consolidates:
+        *   Detailed development environment setup instructions (migrated from the previous `README.md`).
+        *   Project coding standards.
+        *   Version control workflow (including branching strategy, commit message conventions, and pull request procedures).
+        *   Guidelines for testing (with links to `design/test-spec.md`).
+        *   Dependency management policies (referencing the policy in `design/design-spec.md`).
+        *   Comprehensive AI assistant guidance (migrated from `README.md` and expanded).
+        *   Placeholders for future sections like a Code of Conduct, Issue Tracking, and Code Review Guidelines.
+2.  **Refactoring of `README.md`:**
+    *   The `README.md` was significantly streamlined to serve as a high-level entry point to the project.
+    *   It now primarily contains:
+        *   A brief project overview and its motivation.
+        *   Prominent links to key documentation: `CONTRIBUTING.md`, `design/design-spec.md`, and `design/design-log.md`.
+        *   A concise list of core technologies used in the project.
+    *   Detailed setup instructions and extensive AI guidance sections were removed from `README.md` and are now accessible via the link to `CONTRIBUTING.md`.
+
+**Impact:**
+*   **Improved Clarity and Navigability:** Contributors can more easily find the information relevant to their needs.
+*   **Enhanced Onboarding Experience:** `CONTRIBUTING.md` provides a focused and actionable guide for new human developers and AI assistants.
+*   **Better Separation of Documentation Concerns:**
+    *   `README.md`: Provides a quick, high-level project overview and essential navigation links.
+    *   `CONTRIBUTING.md`: Offers practical, "how-to" guidance for development and contribution.
+    *   `design/design-spec.md` (and other `design/` documents): Detail the "what" and "why" of the system's architecture and design.
+*   **Increased Maintainability:** Specific sections of documentation can be updated more easily without impacting unrelated content.
+*   **Optimized AI Interaction:** AI assistants have a dedicated, structured document outlining development procedures and project interaction guidelines, improving their efficiency and adherence to project standards.
+
+---
+
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line.)* Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00)* (e.g., 2025-06-06 09:16:09-05:00))*

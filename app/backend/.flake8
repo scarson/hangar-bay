@@ -1,0 +1,15 @@
+[flake8]
+ignore = E203, E266, E501, W503, F401, F403, F405
+# E203: whitespace before ':'
+# E266: too many leading '#' for block comment
+# E501: line too long (we'll use Black for line length)
+# W503: line break before binary operator (Black prefers after)
+# F401: module imported but unused
+# F403: 'from module import *' used; unable to detect undefined names
+# F405: name may be undefined, or defined from star imports
+max-line-length = 88
+max-complexity = 10
+select = C,E,F,W,B,B950
+# B: bugbear
+# B950: line too long (soft check, Black handles hard)
+exclude = .venv,.git,__pycache__,docs,migrations,*/tests/*
