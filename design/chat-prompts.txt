@@ -2094,13 +2094,15 @@ We had a long discussion about this directory name earlier. Please rename \hanga
 -----------------
 
 
-X
+1. Commit the changes to version control.
+2. Complete the "Cross-Cutting Concerns Review" section in 01.1-fastapi-app-skeleton.md.
+3. Then update the 00-mvp-implementation-plan-progress.md file to mark Task 01.1 as complete. The task isn't complete until the CCC review is complete.
 
 
 -----------------
 
 
-X
+Before we make that commit, please review plans\implementation\phase-01-backend-core-infrastructure\01.1-fastapi-app-skeleton.md to see if there are any useful details to add or other changes to make that would help Cascade understand the actual work we did to complete this item. If so what and why? 
 
 
 -----------------
