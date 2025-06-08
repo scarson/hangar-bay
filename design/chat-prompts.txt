@@ -2074,19 +2074,21 @@ It's time to conduct "Procedure: AI-Assisted Cross-Cutting Concerns (CCC) Review
 -----------------
 
 
-X
+It looks like we need to update the tasks in plans\implementation\phase-01-backend-core-infrastructure\01.1-fastapi-app-skeleton.md to reflect the finalized directory structure described in design\design-log section "### Design Decision - 2025-06-07 21:24:44-05:00 - Topic: Backend Directory Structure Finalized". Please do that first. 
 
 
 -----------------
 
 
-X
+That directory already exists. Please check all the files in app\backend\src\fastapi.
 
 
 -----------------
 
 
-X
+We had a long discussion about this directory name earlier. Please rename \hangar-bay\app\backend\src\fastapi to \hangar-bay\app\backend\src\fastapi_app (which was my second choice). Then update the following files to relect this change where applicable:
+* 01.1-fastapi-app-skeleton.md
+* design/design-log.md section "### Design Decision - 2025-06-07 21:24:44-05:00 - Topic: Backend Directory Structure Finalized"
 
 
 -----------------

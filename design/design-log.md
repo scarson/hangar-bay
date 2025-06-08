@@ -483,8 +483,8 @@ app/
     │   └── Dockerfile          # Example
     ├── src/                    # Python source code for the backend
     │   ├── __init__.py         # Makes 'src' a package
-    │   └── fastapi/            # Your FastAPI application package
-    │       ├── __init__.py     # Makes 'fastapi' a sub-package
+    │   └── fastapi_app/      # Your FastAPI application package
+    │       ├── __init__.py     # Makes 'fastapi_app' a sub-package
     │       ├── main.py         # FastAPI app instance
     │       ├── config.py       # Pydantic settings
     │       ├── routers/        # Directory for API routers
