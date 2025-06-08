@@ -1,8 +1,14 @@
-# Task XX.Y: [Task Title]
+---
+Phase: XX - [Phase Name]
+TaskID: XX.Y
+ExecutionSequence: N
+PreviousTask: ./XX.Y-1-[Previous Task Name].md
+NextTask: ./XX.Y+1-[Next Task Name].md
+ParentPlan: [Link to Parent Phase Plan or Overview Plan]
+LastUpdated: YYYY-MM-DD
+---
 
-**Phase:** XX - [Phase Name]
-**Parent Plan:** [Link to Parent Phase Plan or Overview Plan]
-**Last Updated:** YYYY-MM-DD
+# Task XX.Y: [Task Title]
 
 _AI Guidance: Replace `XX.Y`, `[Task Title]`, `[Phase Name]`, `[Link to Parent Plan]`, and `YYYY-MM-DD` with specific details for the task._
 
@@ -60,6 +66,7 @@ _AI Guidance: List clear, verifiable, and measurable criteria that must be met f
 *   [ ] Criterion 1.
 *   [ ] Criterion 2.
 *   [ ] All new code is committed to the `[feature/task-branch-name]` branch.
+*   [ ] Adherence to architectural guidelines (e.g., `../design/angular-frontend-architecture.md` if applicable) has been verified.
 
 ## 6. Challenges & Resolutions
 
