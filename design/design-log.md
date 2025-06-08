@@ -558,4 +558,94 @@ This proactive approach ensures that secure secret management is a foundational 
 
 ---
 
+---
+**2025-06-07: Adopted Practice of Pinning Python Dependencies in `app/backend/requirements.txt`**
+
+*   **Why:** To enhance the stability, reproducibility, and predictability of the backend Python environment for the Hangar Bay project. Unpinned dependencies can lead to unexpected issues due to automatic updates to newer, potentially incompatible or buggy, library versions.
+
+*   **How:**
+    *   The decision was made to pin all direct dependencies listed in `app/backend/requirements.txt`.
+    *   The following packages had their versions explicitly set:
+        *   `fastapi` pinned to `0.115.12`
+        *   `uvicorn[standard]` pinned to `0.34.3`
+        *   `SQLAlchemy` pinned to `2.0.41`
+        *   `alembic` pinned to `1.16.1`
+        *   (Packages `pydantic-settings` and `python-dotenv` were already pinned).
+    *   Latest stable versions were identified using `pip index versions --pre <package>` and PyPI lookups.
+    *   The `app/backend/requirements.txt` file was updated accordingly.
+
+*   **Impact & Rationale:** This practice provides several key benefits:
+    1.  **Reproducible Builds:** Ensures consistent environments across developer machines and CI/CD pipelines.
+    2.  **Preventing Unexpected Breaking Changes:** Protects against automatic updates to library versions that might introduce bugs or break compatibility.
+    3.  **Dependency Resolution Stability:** Helps `pip` resolve transitive dependencies more predictably.
+    4.  **Security:** Provides a clear baseline for dependency versions, aiding in vulnerability assessment and management.
+    5.  **Easier Debugging:** Simplifies troubleshooting by keeping dependency versions constant between environment rebuilds.
+    6.  **Clearer Understanding of the Environment:** `requirements.txt` now serves as an exact manifest of the backend's Python dependencies.
+
+---
+
+---
+**2025-06-07 23:49:51-05:00 - Adopted Project-Wide Dependency Version Pinning Policy**
+
+*   **Why:** To enhance the stability, reproducibility, and predictability of builds across all components of the Hangar Bay project. Pinning dependency versions is a crucial best practice that mitigates risks associated with automatic updates, ensures consistent development and deployment environments, and aids in security vulnerability management.
+
+*   **How:**
+    1.  **Policy Formalization:** A formal policy mandating the pinning of all dependency versions was established. This policy covers:
+        *   Backend Python dependencies (`requirements.txt`).
+        *   Frontend JavaScript/TypeScript dependencies (`package.json` and associated lock files like `package-lock.json`).
+        *   Base images and package installations within Dockerfiles.
+        *   Consistency in major versions for database systems like PostgreSQL.
+    2.  **Documentation Updated:**
+        *   The `design/design-spec.md` was updated with a new subsection `6.0. Dependency and Versioning Policy` under "Section 6: Tech Stack" to detail this requirement for human developers and AI.
+        *   A `cascade-log.md` entry was created to capture the verbose discussion and rationale behind the areas requiring pinning.
+    3.  **AI Memory Created:** A new AI operational memory (ID: `4b806f4d-8600-46c6-b939-f373f67f3c50`), titled "Policy: Project-Wide Dependency Version Pinning," was created. This memory instructs AI assistants (like Cascade) to adhere to and enforce this policy during development.
+    4.  **Memory Index Updated:** The `design/memory-index.md` was updated to include an entry for the new AI memory.
+
+*   **Impact:**
+    *   All future development work will adhere to strict dependency version pinning.
+    *   Project build processes will be more reliable and less prone to unexpected failures due to dependency changes.
+    *   The project's security posture is strengthened by having a clear and consistent baseline of dependency versions.
+    *   Onboarding new developers will be simpler due to more predictable environment setups.
+    *   This decision builds upon the previous specific action to pin backend Python dependencies, extending the practice project-wide.
+
+---
+
+---
+**2024-07-30: Documentation Restructure: `CONTRIBUTING.md` Introduction and `README.md` Simplification**
+
+**Why:**
+*   The existing `README.md` was becoming overly long and mixed high-level project overview with detailed development setup instructions and AI-specific guidance. This made it challenging for contributors (both human and AI) to quickly locate essential information.
+*   A clearer separation of concerns was needed to distinguish between a concise project introduction, practical development guidelines, and in-depth architectural specifications.
+
+**How:**
+1.  **Creation of `CONTRIBUTING.md`:**
+    *   A new, dedicated file (`CONTRIBUTING.md`) was established at the project root.
+    *   This file now consolidates:
+        *   Detailed development environment setup instructions (migrated from the previous `README.md`).
+        *   Project coding standards.
+        *   Version control workflow (including branching strategy, commit message conventions, and pull request procedures).
+        *   Guidelines for testing (with links to `design/test-spec.md`).
+        *   Dependency management policies (referencing the policy in `design/design-spec.md`).
+        *   Comprehensive AI assistant guidance (migrated from `README.md` and expanded).
+        *   Placeholders for future sections like a Code of Conduct, Issue Tracking, and Code Review Guidelines.
+2.  **Refactoring of `README.md`:**
+    *   The `README.md` was significantly streamlined to serve as a high-level entry point to the project.
+    *   It now primarily contains:
+        *   A brief project overview and its motivation.
+        *   Prominent links to key documentation: `CONTRIBUTING.md`, `design/design-spec.md`, and `design/design-log.md`.
+        *   A concise list of core technologies used in the project.
+    *   Detailed setup instructions and extensive AI guidance sections were removed from `README.md` and are now accessible via the link to `CONTRIBUTING.md`.
+
+**Impact:**
+*   **Improved Clarity and Navigability:** Contributors can more easily find the information relevant to their needs.
+*   **Enhanced Onboarding Experience:** `CONTRIBUTING.md` provides a focused and actionable guide for new human developers and AI assistants.
+*   **Better Separation of Documentation Concerns:**
+    *   `README.md`: Provides a quick, high-level project overview and essential navigation links.
+    *   `CONTRIBUTING.md`: Offers practical, "how-to" guidance for development and contribution.
+    *   `design/design-spec.md` (and other `design/` documents): Detail the "what" and "why" of the system's architecture and design.
+*   **Increased Maintainability:** Specific sections of documentation can be updated more easily without impacting unrelated content.
+*   **Optimized AI Interaction:** AI assistants have a dedicated, structured document outlining development procedures and project interaction guidelines, improving their efficiency and adherence to project standards.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line.)* Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00)* (e.g., 2025-06-06 09:16:09-05:00))*
