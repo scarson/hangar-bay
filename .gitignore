@@ -132,6 +132,10 @@ cython_debug/
 app/backend/.venv/
 app/backend/.env
 
+# PDM specific (within app/backend/)
+app/backend/.pdm-python
+app/backend/.pdm-build/
+
 # VS Code
 .vscode/*
 !.vscode/settings.json

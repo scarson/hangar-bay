@@ -31,6 +31,78 @@ For a comprehensive understanding of the Hangar Bay project, please refer to the
 
 ## Implementation Plans - IN PROGRESS
 
+## Development Setup
+
+This section guides you through setting up the Hangar Bay project for local development.
+
+### Prerequisites
+
+*   **Git:** For version control.
+*   **Python:** Version 3.11 or newer for the backend.
+*   **PDM (Python Dependency Manager):** For managing backend dependencies. Install it via `pipx install pdm` or `pip install --user pdm`. Refer to [PDM's official documentation](https://pdm-project.org/latest/getting-started/installation/) for more options.
+*   **Node.js:** Version 18.x or newer for the frontend (includes npm).
+*   **Angular CLI:** Install globally using `npm install -g @angular/cli`.
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/your-username/hangar-bay.git # Replace with your actual repo URL
+cd hangar-bay
+```
+
+### 2. Backend Setup (Python/FastAPI with PDM)
+
+1.  **Navigate to the backend directory:**
+    ```bash
+    cd app/backend
+    ```
+
+2.  **Install dependencies (including development tools like linters/formatters):
+    ```bash
+    pdm install -G dev
+    ```
+    This command reads the `pyproject.toml` and `pdm.lock` files, creates a virtual environment (in `.venv/` inside `app/backend/` if you've run `pdm config venv.in_project true`), and installs all necessary packages.
+
+3.  **Activate the virtual environment (optional but recommended for IDEs):
+    PDM automatically uses the project's virtual environment when you use `pdm run`. However, if your IDE or other tools need the environment to be explicitly activated, you can find the activation scripts within `app/backend/.venv/` (e.g., `app/backend/.venv/Scripts/activate` on Windows PowerShell/CMD, or `source app/backend/.venv/bin/activate` on Linux/macOS).
+
+4.  **Running Linters and Formatters:**
+    ```bash
+    pdm run lint  # Runs Flake8
+    pdm run format # Runs Black
+    ```
+
+5.  **Running the Development Server:**
+    ```bash
+    pdm run dev
+    ```
+    The FastAPI application should be available at `http://localhost:8000`.
+
+### 3. Frontend Setup (Angular)
+
+1.  **Navigate to the frontend directory:**
+    ```bash
+    cd ../frontend # Assuming you are in app/backend/
+    # Or from project root: cd frontend/
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+
+3.  **Running Linters and Formatters:**
+    *   Lint: `npm run lint` (or `ng lint`)
+    *   Format: `npx prettier --write .` (or configure as an npm script)
+
+4.  **Running the Development Server:**
+    ```bash
+    ng serve
+    ```
+    The Angular application should be available at `http://localhost:4200`.
+
+---
+
 To validate that detailed, AI-centric specifications can guide assistants to produce high-quality, secure, and maintainable software, we have to actually implement the plans. To that end, we are implementing an MVP of the Hangar Bay application, as outlined in the `plans/implementation/` directory.
 
 The `plans/implementation/` directory contains implementation plans for the project, structured by phase and feature. Each plan is detailed in its own markdown file, providing a step-by-step guide to the development process.

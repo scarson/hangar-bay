@@ -11,12 +11,17 @@ app = FastAPI(
     # See: https://fastapi.tiangolo.com/tutorial/metadata/
 )
 
+
 @app.get("/")
 async def read_root():
-    return {"message": f"Welcome to Hangar Bay API - {settings.ENVIRONMENT} environment"}
+    return {
+        "message": f"Welcome to Hangar Bay API - {settings.ENVIRONMENT} environment"
+    }
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
 
 # Further application setup, routers, middleware, etc., will go here

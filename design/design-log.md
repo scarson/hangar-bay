@@ -682,4 +682,45 @@ This refined approach significantly enhances flexibility, clarity, and separatio
 
 ---
 
-DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line.)* Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00)* (e.g., 2025-06-06 09:16:09-05:00))*
+---
+**2025-06-08 05:14:24-05:00: Backend Dependency Management Migration to PDM**
+
+**Decision:** Migrated the Hangar Bay backend Python project's dependency and environment management from a traditional `venv` and `requirements.txt` setup to PDM (Python Development Master).
+
+**Rationale & Alternatives Considered:**
+
+The existing `venv` and `requirements.txt` approach, while functional, lacks some of the modern conveniences and robustness offered by newer tools. The primary alternative was to maintain the status quo. However, migrating to PDM was chosen for several key benefits:
+
+*   **Standardization:** PDM utilizes `pyproject.toml`, aligning with modern Python packaging standards (PEP 517, PEP 518, PEP 621, PEP 660).
+*   **Reproducibility:** PDM generates a `pdm.lock` file, ensuring deterministic builds and consistent environments across different setups by locking down the exact versions of all direct and transitive dependencies.
+*   **Improved Dependency Resolution:** PDM has a sophisticated dependency resolver that can handle complex scenarios more effectively than pip alone.
+*   **Integrated Tooling:** PDM allows defining run scripts directly in `pyproject.toml` (e.g., for linting, formatting, running the dev server), streamlining common development tasks.
+*   **Clearer Dependency Groups:** PDM supports explicit dependency groups (e.g., `dev`, `test`), making it easier to manage dependencies for different purposes.
+*   **Simplified Workflow:** Commands like `pdm add`, `pdm install`, `pdm update`, and `pdm run` offer a more cohesive and user-friendly experience.
+*   **In-Project Virtual Environments:** Configuring PDM for in-project `.venv` (`pdm config venv.in_project true`) keeps the environment closely tied to the project, simplifying discovery and activation for developers and IDEs.
+
+**Benefits:**
+The migration to PDM is expected to lead to:
+*   More reliable and reproducible builds.
+*   Easier onboarding for new developers.
+*   A cleaner project structure for backend dependencies.
+*   Simplified execution of common development tasks (linting, formatting, running server).
+*   Better long-term maintainability of the backend environment.
+
+**Execution Summary:**
+The migration was executed systematically:
+1.  A dedicated task file (`00.3-backend-pdm-migration.md`) was created to document the process.
+2.  PDM was initialized in the `app/backend/` directory, configured for an in-project virtual environment.
+3.  Production and development dependencies were manually added with pinned versions using `pdm add`.
+4.  PDM scripts for `lint`, `format`, and `dev` were configured in `pyproject.toml`.
+5.  The root `.gitignore` was updated to correctly track `pdm.lock` and ignore PDM-specific cache/build files.
+6.  The main project `README.md` was updated with new backend setup instructions.
+7.  The legacy `app/backend/requirements.txt` was deleted.
+8.  A `ModuleNotFoundError` for `fastapi_app` when running `pdm run dev` (due to the `src` layout) was resolved by adding `--app-dir src` to the Uvicorn command in the `dev` script.
+9.  The setup was thoroughly tested, confirming successful dependency installation and script execution.
+
+The migration is considered successful and complete.
+
+---
+
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*

@@ -29,6 +29,7 @@ The MVP development is structured into the following phases. Each task links to 
 *   **Tasks:**
     *   [00.1 Project Initialization & Tooling](./phase-00-foundational-setup/00.1-project-initialization-tooling.md)
     *   [00.2 Configuration Management](./phase-00-foundational-setup/00.2-configuration-management.md)
+    *   [00.3 Backend PDM Migration](./phase-00-foundational-setup/00.3-backend-pdm-migration.md)
 
 ### Phase 1: Backend Core Infrastructure
 *   **Goal:** Set up the fundamental backend components: FastAPI application, database connectivity, and caching layer.

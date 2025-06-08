@@ -1,7 +1,9 @@
 import asyncio
 from logging.config import fileConfig
 
-from sqlalchemy.ext.asyncio import create_async_engine # For online mode if not using shared engine
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+)  # For online mode if not using shared engine
 from sqlalchemy import pool
 
 from alembic import context
@@ -19,8 +21,12 @@ if config.config_file_name is not None:
 # Ensure your application's path is discoverable by Alembic.
 # The `prepend_sys_path = .` in alembic.ini should handle this if running alembic from app/backend/src
 from fastapi_app.config import get_settings
-from fastapi_app.db import Base #, async_engine as app_async_engine # Option to use shared engine
-from fastapi_app.models import common_models # noqa: F401  -- Ensures User model is registered with Base.metadata
+from fastapi_app.db import (
+    Base,
+)  # , async_engine as app_async_engine # Option to use shared engine
+from fastapi_app.models import (
+    common_models,
+)  # noqa: F401  -- Ensures User model is registered with Base.metadata
 
 settings = get_settings()
 
@@ -47,7 +53,7 @@ def run_migrations_offline() -> None:
 
     """
     context.configure(
-        url=str(settings.DATABASE_URL), # Use URL from app settings
+        url=str(settings.DATABASE_URL),  # Use URL from app settings
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -58,13 +64,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):
-    context.configure(
-        connection=connection,
-        target_metadata=target_metadata
-    )
+    context.configure(connection=connection, target_metadata=target_metadata)
 
     with context.begin_transaction():
         context.run_migrations()
+
 
 async def run_migrations_online_async() -> None:
     """Run migrations in 'online' mode for an async engine.
@@ -76,17 +80,18 @@ async def run_migrations_online_async() -> None:
     # Option 1: Create a new engine specifically for Alembic
     connectable = create_async_engine(
         str(settings.DATABASE_URL),
-        poolclass=pool.NullPool, # Recommended for Alembic with async
-        future=True
+        poolclass=pool.NullPool,  # Recommended for Alembic with async
+        future=True,
     )
 
     # Option 2: Use the application's shared engine (if appropriate for your setup)
-    # connectable = app_async_engine 
+    # connectable = app_async_engine
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
 
-    await connectable.dispose() # Important for async engines
+    await connectable.dispose()  # Important for async engines
+
 
 def run_migrations_online() -> None:
     """Entry point for 'online' mode."""
