@@ -70,7 +70,7 @@ The MVP development is structured into the following phases. Each task links to 
             *   Root `.gitignore` updated for PDM files.
             *   Main `README.md` updated with PDM setup instructions.
             *   Cross-Cutting Concerns (CCC) Review section in task plan (`00.3-backend-pdm-migration.md`) completed.
-            *   **Git:** All changes committed (Commit ID: [To be filled by User after commit]).
+            *   **Git:** All changes committed (Commit ID: 2670d0197d7aa6ab2335ff9db79fd83e4eb521f0).
 
 *   **Phase 0 Summary:** All foundational setup tasks, including project initialization, tooling, configuration management, and PDM migration, are now complete. Tasks `00.1`, `00.2`, and `00.3` have undergone their Cross-Cutting Concerns reviews. The project is ready to proceed to Phase 1: Backend Core Infrastructure.
 
@@ -98,7 +98,7 @@ The MVP development is structured into the following phases. Each task links to 
             *   FastAPI application successfully connects to the PostgreSQL database.
             *   Basic database health check or test query implemented.
             *   Cross-Cutting Concerns (CCC) Review section in task plan (`01.2-database-setup.md`) completed.
-            *   **Git:** All changes committed (Commit ID: [To be filled by User after commit]).
+            *   **Git:** All changes committed (Commit ID: 2670d0197d7aa6ab2335ff9db79fd83e4eb521f0).
     *   [01.3 Valkey Caching Layer Integration](./phase-01-backend-core-infrastructure/01.3-valkey-cache-integration.md)
 
 ### Phase 2: Backend - F001: Public Contract Aggregation
