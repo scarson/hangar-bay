@@ -2,6 +2,10 @@
 
 This document provides detailed security guidelines, standards, and technology-specific considerations for the Hangar Bay application. It complements the general Security section in the main `design-spec.txt`.
 
+## AI Analysis Guidance for Cascade
+
+This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls.
+
 ## Core Security Principles
 
 The security posture of Hangar Bay is founded on modern principles designed to protect against evolving threats. These principles should guide all security-related decisions and implementations:
@@ -74,6 +78,34 @@ These principles, particularly "Assume Breach" and "Zero Trust," inform decision
     3.  Integration does not introduce undue complexity that could lead to implementation errors.
     4.  Industry best practices and standards for PQC deployment in web applications become clearer.
 *   **Current Focus:** While PQC is an important future consideration, the immediate priority is the robust implementation of strong, classical cryptography (TLS 1.2/1.3 with PFS).
+
+### 1.4. Secure Secret Storage and Management
+
+*   **Principle:** Plaintext secrets (e.g., API keys, database passwords, ESI client secrets, private certificates, encryption keys) MUST NEVER be hardcoded in source code, committed to version control, embedded in configuration files that are not encrypted, or stored in insecure locations.
+*   **Risks of Plaintext Secrets:**
+    *   **Compromise via Code Exposure:** If the codebase is leaked, becomes open source unintentionally, or is accessed by unauthorized individuals, all embedded secrets are compromised.
+    *   **Compromise via Configuration Files:** Unencrypted configuration files in deployment packages or accessible on a compromised server expose secrets.
+    *   **Difficult Rotation:** Secrets embedded in code or files require code changes and redeployments for rotation, increasing complexity and risk.
+    *   **Auditability Challenges:** Tracking access and usage of hardcoded secrets is difficult.
+*   **Recommended Practices for Secret Management:**
+    1.  **Environment Variables:** Load secrets from environment variables at runtime.
+        *   For local development, use `.env` files (which MUST be gitignored) to populate environment variables. The `app/backend/.env.example` file serves as a template.
+        *   In production/staging environments, inject environment variables through the hosting platform's secure mechanisms (e.g., Docker secrets, Kubernetes Secrets, PaaS environment variable configuration).
+    2.  **Secrets Management Services:** For higher security needs and more complex environments, utilize dedicated secrets management services.
+        *   Examples: HashiCorp Vault, AWS Secrets Manager, Azure Key Vault, Google Cloud Secret Manager.
+        *   These services provide secure storage, access control, auditing, and often automated rotation capabilities.
+    3.  **Configuration Files (Encrypted):** If secrets must be in configuration files, the files themselves must be encrypted at rest, and decrypted only in memory at runtime using a master key managed securely (e.g., via a KMS or environment variable). This is generally more complex than using environment variables or dedicated services.
+*   **Specific Application to Hangar Bay:**
+    *   `ESI_CLIENT_SECRET`, `DATABASE_URL` (specifically the password component), and any other sensitive credentials for the backend MUST be managed via environment variables as the primary method.
+    *   Encryption keys used for application-level or database-level encryption (Section 1.2) MUST also be managed as secrets, not hardcoded.
+
+    *   **AI Actionable Checklist (Secure Secret Management):**
+        *   [ ] Verify no plaintext secrets (API keys, passwords, client secrets, encryption keys) are present in source code (e.g., `config.py`, `main.py`).
+        *   [ ] Verify no plaintext secrets are present in committed configuration files (e.g., `app/backend/.env.example` should only contain placeholders or non-sensitive defaults).
+        *   [ ] Confirm `.env` files (containing actual secrets for local development) are listed in `.gitignore`.
+        *   [ ] Ensure backend application (`config.py`) is configured to load all secrets from environment variables.
+        *   [ ] Document the procedure for injecting secrets into production/staging environments (e.g., platform-specific instructions).
+        *   [ ] If a secrets management service is adopted, document its usage and integration.
 
 ## 2. Authentication and Authorization
 

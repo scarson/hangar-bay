@@ -66,6 +66,18 @@ Leverage the AI-enhanced design documentation we've created:
 4.  **Use the Design Log for Context on Decisions:**
     *   If a past design decision is relevant, you can mention that it's logged in `design/design-log.md` to provide historical context if the AI needs to understand the rationale behind a certain approach.
 
+5.  **Embed AI Reading Guidance in Critical Documents:**
+    *   For lengthy or particularly critical documents that are intended for AI consumption (like many in the `design/` directory), consider adding a brief, explicit note at the very beginning of the file.
+    *   This note should guide the AI assistant (e.g., Cascade) on how to approach reading the file, especially if a full, comprehensive understanding is crucial.
+    *   **Purpose:** To counteract any default AI behavior that might lead to processing only a partial view of the file (e.g., due to token limits on a single view or assumptions about context).
+    *   **Example:** The `design/security-spec.md` file includes the following guidance:
+        ```markdown
+        ## AI Analysis Guidance for Cascade
+
+        This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls.
+        ```
+    *   Such notes serve as direct, in-context instructions that can significantly improve the AI's ability to gather sufficient information for complex tasks related to that document.
+
 ## 4. Providing Feedback to the AI
 
 *   **Be Specific in Corrections:** If the AI's output isn't quite right, don't just say "it's wrong." Explain *what* is wrong, *why* it's wrong, and *how* to correct it. Reference specific lines of code if possible.

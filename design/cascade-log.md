@@ -1005,4 +1005,133 @@ This memory was indexed in `design/memory-index.md`.
 
 ---
 
+---
+
+### Session Summary - 2025-06-07 23:49 - Topic: Project-Wide Dependency Version Pinning Policy and Implementation Details
+
+**Objective:** To formalize and document the requirement for pinning dependencies across the entire Hangar Bay project, ensuring stability, reproducibility, and predictability in builds.
+
+**Key Discussion Points & Decisions:**
+
+1.  **Acknowledgement of Importance:** Confirmed that pinning dependencies is a crucial best practice and should be a standard policy for the Hangar Bay project.
+
+2.  **Areas Requiring Dependency Pinning:**
+    *   **Backend (Python - `app/backend/requirements.txt`):** Already partially addressed by pinning FastAPI, Uvicorn, SQLAlchemy, and Alembic. This practice should be maintained for all backend Python dependencies.
+    *   **Frontend (Angular - JavaScript/TypeScript):**
+        *   **`package.json`:** All Node.js dependencies (e.g., Angular framework, UI libraries, build tools, linters) listed in `dependencies` and `devDependencies` must have their versions explicitly pinned.
+        *   **Lock Files (`package-lock.json` or `yarn.lock`):** The relevant lock file, which captures the exact versions of all direct and transitive dependencies, MUST be committed to the repository. This is critical for ensuring identical installations across all environments.
+    *   **Containerization (Docker - `Dockerfile`s):**
+        *   **Base Images:** When specifying base images (e.g., `FROM python:...` or `FROM node:...`), specific version tags (e.g., `python:3.11.4-slim-buster`, `node:18.17.0-alpine`) must be used instead of general tags like `:latest` or minor version tags (e.g., `:3.11`).
+        *   **Package Installations within Dockerfiles:** If OS-level packages (e.g., via `apt-get install -y <package>`, `apk add <package>`) or other tools are installed within Dockerfiles, their versions should also be pinned if the package manager supports it (e.g., `apt-get install -y mypackage=1.2.3`).
+    *   **Development Dependencies:**
+        *   For both backend and frontend, development-specific tools (e.g., linters, test runners, code generators) should also have their versions pinned. This is typically managed in `requirements-dev.txt` for Python or within `devDependencies` in `package.json`.
+    *   **Database System (PostgreSQL):**
+        *   While not pinned in a project file in the same way, the major version of the PostgreSQL server software (e.g., PostgreSQL 15.x) should be a deliberate choice and kept consistent across development, testing, and production environments to avoid compatibility issues. Database schema versions are managed by Alembic migrations, which are versioned.
+
+3.  **Areas Where Pinning is Handled Differently or Less Critical:**
+    *   **External Third-Party APIs:** For integrations with external services (like EVE ESI), use versioned API endpoints if offered by the provider (e.g., `https://esi.evetech.net/v2/...`). This is about choosing a specific version of an external contract rather than pinning a local library.
+    *   **Local Developer Tooling:** Versions of IDEs, text editors, or global command-line utilities on a developer's machine are generally not pinned by the project, though team conventions might exist.
+
+4.  **Actions Taken:**
+    *   An AI Memory (`4b806f4d-8600-46c6-b939-f373f67f3c50`) titled "Policy: Project-Wide Dependency Version Pinning" was created to reinforce this policy for Cascade.
+    *   The [design/memory-index.md](cci:7://file:///c:/Users/Sam/OneDrive/Documents/Code/hangar-bay/design/memory-index.md:0:0-0:0) was updated with an entry for this new AI memory.
+    *   The [design/design-spec.md](cci:7://file:///c:/Users/Sam/OneDrive/Documents/Code/hangar-bay/design/design-spec.md:0:0-0:0) was updated by adding a new subsection `6.0. Dependency and Versioning Policy` under "Section 6: Tech Stack" to formally document this requirement for human developers and AI.
+
+**Rationale for Policy:**
+*   Ensures reproducible builds.
+*   Prevents unexpected breaking changes from automatic dependency updates.
+*   Stabilizes dependency resolution.
+*   Enhances security by providing a clear baseline for vulnerability management.
+*   Simplifies debugging.
+*   Provides a clear manifest of the application's software components.
+
+This comprehensive approach to dependency version pinning is vital for the long-term stability and maintainability of the Hangar Bay project.
+
+---
+
+---
+
+### Session Summary - 2025-06-08 00:04 - Topic: Justification for `CONTRIBUTING.md` vs. `design-spec.md`
+
+**Objective:** To discuss and evaluate the rationale for creating a separate `CONTRIBUTING.md` file, distinct from `design/design-spec.md`, to document development practices for the Hangar Bay project.
+
+**Key Discussion Points & Decisions:**
+
+The following points were discussed regarding the separation of concerns between `design/design-spec.md` and a new `CONTRIBUTING.md`:
+
+Yes, a `CONTRIBUTING.md` (or a similarly named file like `DEVELOPMENT_GUIDELINES.md`) would cover items sufficiently distinct from `design/design-spec.md` to justify it being a separate file.
+
+Here's why, considering the impact on both humans and AI:
+
+**1. Different Focus and Audience:**
+
+*   **`design/design-spec.md` (The "What" and "Why"):**
+    *   **Purpose:** Outlines the project's architecture, core design decisions, technical stack choices, feature specifications, security principles, accessibility standards, and other high-level strategic aspects. It explains *what* the system is, *why* it's designed that way, and the *goals* it aims to achieve.
+    *   **Audience:** Architects, lead developers, product owners, and AI assistants (like Cascade) needing to understand the system's blueprint and foundational principles.
+    *   **Content Nature:** More conceptual, architectural, and relatively stable (though it evolves).
+
+*   **`CONTRIBUTING.md` (The "How"):**
+    *   **Purpose:** Provides practical, actionable instructions and conventions for the day-to-day development process. It details *how* to contribute code, set up the environment, follow coding standards, and use project workflows.
+    *   **Audience:** All developers (new and existing, human and AI) actively writing, testing, or reviewing code. It's the go-to guide for operational development tasks.
+    *   **Content Nature:** More procedural, tactical, and potentially more dynamic (e.g., specific commands, tool versions, or PR templates might change more frequently than core architectural principles).
+
+**2. Distinct Content Categories:**
+
+A `CONTRIBUTING.md` would typically include:
+
+*   **Environment Setup:** Detailed steps for getting a local development environment running (e.g., specific Node/Python versions, virtualenv setup, database initialization, installing dependencies, running dev servers).
+*   **Coding Standards:** Specific code style rules (e.g., line length, naming conventions for variables/functions/classes, commenting best practices), beyond just stating "use a linter."
+*   **Version Control Workflow:** Branching strategy (e.g., Gitflow, feature branches), commit message conventions (e.g., Conventional Commits), Pull Request (PR) procedures (templates, review expectations, CI checks).
+*   **Testing Procedures:** How to run unit, integration, and end-to-end tests; expectations for test coverage; where to add new tests.
+*   **Dependency Management:** Practical steps for adding or updating dependencies, regenerating lock files.
+*   **Tooling:** Specific commands for linters, formatters, build tools, and any project-specific scripts.
+*   **Issue Tracking:** How to report bugs, suggest features, use labels in the issue tracker.
+*   **Code Review Guidelines:** What reviewers should look for, how to provide constructive feedback.
+
+While `design-spec.md` might *mention* that we use linters or have a testing strategy, `CONTRIBUTING.md` would provide the *exact commands* and *step-by-step processes*.
+
+**3. Impact and Utility (Balancing Fragmentation vs. Over-Concentration):**
+
+*   **For Humans:**
+    *   **Reduced Cognitive Load:** Separating these concerns makes information easier to find. A developer needing to know the PR process doesn't have to sift through architectural diagrams in `design-spec.md`.
+    *   **Improved Onboarding:** New contributors can get up to speed much faster with a dedicated guide on how to set up and contribute.
+    *   **Clarity:** `design-spec.md` remains focused on design, making it a clearer reference for architectural understanding.
+    *   **Risk of Fragmentation:** Minimized by clear naming, well-defined scope for each document, and judicious cross-referencing. For example, `design-spec.md` might state the *policy* for dependency pinning, while `CONTRIBUTING.md` details the *commands* to update `requirements.txt` and `package-lock.json`.
+
+*   **For Cascade (AI):**
+    *   **Targeted Information Retrieval:** Cascade can be more efficiently directed. If asked to "create a new feature branch according to project standards," it would consult `CONTRIBUTING.md`. If asked "what are the security considerations for the auth module," it would consult `design/security-spec.md` and relevant parts of `design-spec.md`.
+    *   **Reduced Ambiguity:** Prevents misinterpreting high-level design principles as immediate procedural instructions, or vice-versa.
+    *   **Improved Task Execution:** Cascade can more accurately follow specific project workflows (e.g., commit message formatting, PR content generation) if they are clearly documented.
+    *   **Avoiding Over-Concentration:** If `design-spec.md` became a monolithic document containing everything, it would be harder and slower for AI to parse and find the precise piece of information needed, potentially leading to less relevant or slower responses.
+
+**Conclusion of Discussion:**
+It was agreed that creating a `CONTRIBUTING.md` (or `DEVELOPMENT_GUIDELINES.md`) is beneficial. `CONTRIBUTING.md` is more conventional and often recognized by platforms like GitHub. It provides a clear, focused home for practical, procedural information essential for day-to-day development, distinct from the architectural and strategic content of `design/design-spec.md`. This separation benefits both human developers (by improving clarity and ease of access) and AI assistants (by enabling more targeted and efficient information retrieval and task execution). The key is to ensure each document has a clear purpose and to cross-reference where appropriate.
+
+---
+
+---
+
+### Session Summary - 2025-06-08 01:00 - Topic: Enhancing AI File Reading Guidance via Embedded Notes
+
+**Objective:** To improve the reliability of AI analysis for lengthy and critical project documents by providing explicit, in-file guidance to AI assistants like Cascade.
+
+**Problem Addressed:**
+AI assistants, when processing large files, might sometimes rely on partial views (e.g., the first N lines or a specific section retrieved via a tool call) if not explicitly guided otherwise. For complex or critical documents where full context is paramount (like `design/security-spec.md`), this could lead to analyses or actions based on incomplete information, potentially missing crucial details or nuances.
+
+**Solution Implemented (by USER):**
+The USER added a new section titled "## AI Analysis Guidance for Cascade" at the beginning of `design/security-spec.md`. This section contains a direct instruction to Cascade:
+
+```markdown
+This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls.
+```
+
+**Rationale:**
+This guidance is particularly important for documents like `design/security-spec.md`, which contains detailed security principles, best practices, and specific recommendations. By ensuring AI assistants read the entire file, we can avoid incomplete or potentially incorrect analyses based on partial views. This is especially critical for security documentation, where missing key details could lead to vulnerabilities or misconfigurations.
+
+**Future Considerations:**
+*   We might consider adding similar guidance to other critical documents, such as `design/design-spec.md` or `design/ai-system-procedures.md`, to further enhance AI reliability.
+*   It might be useful to create a template or guide for adding such AI guidance to critical documents, to ensure consistency and effectiveness.
+
+---
+
 CASCADE_LOG_FOOTER_MARKER_V1 :: *(End of Cascade Interaction Log. New entries are appended above this line. Session heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
