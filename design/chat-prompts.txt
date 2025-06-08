@@ -2793,8 +2793,9 @@ X
 -----------------
 
 
-X
-
+***TO-DO create design\design-log.md entry about pre-mortem review strat.
+***Review phase 2.
+03.0-angular-project-initialization.md
 
 -----------------
 

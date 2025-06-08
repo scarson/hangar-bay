@@ -5,6 +5,8 @@
 **Date of Review:** 2025-06-08
 **Phase Duration:** 2025-06-07 to 2025-06-08
 **Lead Developer(s)/AI Pair:** USER & Cascade
+**Previous Phase Review:** [00-foundational-setup-review.md](./00-foundational-setup-review.md)
+**Next Phase Review:** [02 - NOT YET WRITTEN]
 
 ## 1. Phase Objectives & Outcomes
 
