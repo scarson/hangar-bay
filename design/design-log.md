@@ -648,4 +648,38 @@ This proactive approach ensures that secure secret management is a foundational 
 
 ---
 
+---
+**2025-06-08 03:05:00-05:00: User Model Design: Account Types and Authorization Flags**
+
+**Context:**
+During the initial database setup (Task 01.2) and definition of the first SQLAlchemy model (`User` in `fastapi_app/models/common_models.py`), a key consideration arose regarding authentication methods and explicit user type differentiation, primarily EVE Online Single Sign-On (SSO) versus potential local administrative/test accounts.
+
+**Decision:**
+The `User` model was designed to clearly separate account type (authentication origin) from authorization levels:
+*   `hashed_password`: Made `nullable=True`. This allows EVE SSO users (who authenticate externally and do not have a locally stored password) to have a `NULL` value in this field. Local accounts will have a hashed password stored here.
+*   `eve_character_id`: Added as `Column(Integer, unique=True, index=True, nullable=True)`. This field will store the EVE Online character ID for users authenticating via SSO. It is `nullable=True` for local accounts.
+*   `username`: Retained as `nullable=False` and `unique=True`. This field can store the EVE character name for SSO users or a chosen username for local accounts.
+*   `email`: Retained as `nullable=False` and `unique=True`.
+*   `user_type`: Added as `Column(SAEnum(UserType), nullable=False, index=True)`. This uses a Python `enum.Enum` (`UserType` with values `EVE_SSO`, `LOCAL`) backed by SQLAlchemy's `Enum` type. This explicitly defines the account's origin/management type.
+*   `is_admin`: Added as `Column(Boolean, default=False, nullable=False)`. A boolean flag to indicate administrative privileges, independent of `user_type`.
+*   `is_test_user`: Added as `Column(Boolean, default=False, nullable=False)`. A boolean flag to identify test accounts, independent of `user_type`.
+
+**Rationale:**
+This refined approach significantly enhances flexibility, clarity, and separation of concerns:
+*   **Decoupling Account Type from Authorization:**
+    *   `user_type` (`EVE_SSO`, `LOCAL`) defines the account's origin and how it's managed/authenticated.
+    *   Boolean flags (`is_admin`, `is_test_user`) define specific roles or attributes, which can apply to any `user_type`. For example, an `EVE_SSO` user can be an admin, as can a `LOCAL` user.
+*   **Improved Data Integrity and Querying:** Explicit flags for admin status and test status are clearer and more robust than inferring these from a combined `user_type` enum.
+*   **Scalability:** This model is easier to extend with more granular roles or permissions in the future (e.g., by adding more boolean flags or a dedicated RBAC system).
+*   **SQLAlchemy `Enum` Benefits:** Using `SAEnum(UserType)` continues to provide type safety in Python and database-level constraints for account types.
+*   The `hashed_password` and `eve_character_id` fields remain key for their respective authentication paths.
+
+**Impact:**
+*   The `User` model in `fastapi_app/models/common_models.py` reflects this refined design, including the updated `UserType` enum (`EVE_SSO`, `LOCAL`) and the new `user_type`, `is_admin`, and `is_test_user` columns.
+*   Alembic migrations for the `users` table will be based on this comprehensive schema.
+*   Future authentication, authorization, and user management logic will leverage `user_type` for account origin and the boolean flags for specific privileges/attributes.
+*   The task plan `01.2-database-setup.md` will be updated to note this more detailed design.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line.)* Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00)* (e.g., 2025-06-06 09:16:09-05:00))*
