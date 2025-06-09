@@ -2554,129 +2554,278 @@ Please update design\design-log.md with a new entry per memory ID c47b0e87-7941-
 -----------------
 
 
-X
+Our next phase is described in section "### Phase 3: Frontend Core Infrastructure" in plans\implementation\00-mvp-implementation-plan-overview.md:
+*   **Goal:** Establish the Angular frontend application structure, API communication layer, and basic layout.
+*   **Tasks:**
+    *   [03.1 Angular Application Skeleton](./phase-03-frontend-core-infrastructure/03.1-angular-app-skeleton.md)
+    *   [03.2 Backend API Service Layer](./phase-03-frontend-core-infrastructure/03.2-backend-api-service-layer.md)
+    *   [03.3 Basic Layout, Routing, and Navigation](./phase-03-frontend-core-infrastructure/03.3-basic-layout-routing.md)
+	
+Start by reviewing all of those files. Then, let's do some proactive cleanup.
+1. Update each task file in consideration of all known project details, especially from prior tasks and the phase reviews within  plans\implementation\phase-reviews (starting with plans\implementation\phase-reviews\00-foundational-setup-review.md). It's time to implement, so to resolve all ambiguities. Put a strong emphasis on maintaining internal consistencies between the three tasks.
+
+2. Assess if there are any foundational tasks for the phase we should pull out of the three task items into a new initial "03.0" setup task, per our earlier discussions on potential ways to better structure phases.
 
 
 -----------------
 
 
-X
+Let's try a new method of tightening up our task file work by doing a sort of "forward looking post-mortem" and seeing what we can learn from it.
+I want you to simulate going through implementing plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-core-module-setup.md without making any actual changes.
+Something has gone wrong! What is it likely to be? Why did that happen? What could we have done to prevent the issue?
 
 
 -----------------
 
 
-X
+1. Please implement the enhancements under "In the 03.0-angular-core-module-setup.md task file itself".
 
+2. For "Broader Project/Process Improvements (referenced or linked from task files)"
+* Regarding "Create a SharedModule Early: Plan and potentially implement a basic SharedModule soon after CoreModule, even if it's initially empty. This establishes the pattern." - please add an empty SharedModule setup to either the task list in plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-core-module-setup.md, or plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md, whichever you think is more appropriate. 
 
------------------
+3. Regarding "Centralized Architecture Document: Maintain a lightweight document (e.g., in the design/ folder or a project wiki) that clearly outlines the roles of AppModule, CoreModule, SharedModule(s), and Feature Modules, with clear "do's and don'ts" for each. Link to this from relevant task templates or phase overviews." - please create this document in the design/ folder. As you've described it, it sound Angular / frontend specific, so let's call it something like design\backend-angular-architecture.md. The "Team Knowledge Sharing: Briefly cover these core architectural patterns during team syncs or onboarding for new members." should also live in this document for now, since I'm currently a solo developer (with your help!).
 
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
+4. Regarding "Code Review Checklists: Include a checkpoint in frontend code reviews to verify that CoreModule is not being imported incorrectly." - where's the best place (or places) to capture this information to ensure it happens? Do we currently have anywhere appropriate to capture this type of *code review* instruction?
 
 
 -----------------
 
 
-X
+Time to do it again!
+I want you conduct a pre-mortem by simulating going through implementing plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md without making any actual changes.
+Something has gone wrong! What is it likely to be? Why did that happen? What could we have done to prevent the issue? I couldn't help notice that it's not explicitly clear what some of those paths are relative to.
 
 
 -----------------
 
 
-X
+Yes, apply all these preemptive fixes. Then review plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-core-module-setup.md and design\angular-frontend-architecture.md and repeat the pre-mortem exercise on plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md. Something else has gone wrong! What is it likely to be? Why did that happen? What could we have done to prevent the issue?
 
 
 -----------------
 
 
-X
+Yes, apply the fix. Then review plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-core-module-setup.md and design\angular-frontend-architecture.md and repeat the pre-mortem exercise one more time on plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md (make sure to use the current state). Something else has gone wrong! What is it likely to be? Why did that happen? What could we have done to prevent the issue? Are there any instructions Cascade could misinterpret?
 
 
 -----------------
 
 
-X
+Yes, apply this final set of updates for plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md.
+
+Then review the following:
+* plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-core-module-setup.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md
+* design\angular-frontend-architecture.md
+and then conduct the pre-mortem exercise on plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md.
+
+Repeat this loop three times, making sure to retrieve the content of plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md each time. You may automatically apply updates to any of those four files without asking for permission first. You should still describe the changes.
 
 
 -----------------
 
 
-X
+Let's move on to reviewing the next task file, plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md
+Review the following:
+* plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-core-module-setup.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md
+* design\angular-frontend-architecture.md
+and then conduct the pre-mortem exercise on plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md.
 
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
+Repeat this loop three times, making sure to retrieve the content of plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md each time. You may automatically apply updates to any of those four files without asking for permission first. You should still describe the changes.
 
 
 -----------------
 
 
-X
+Let's move on to reviewing the next task file, plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing.md.
+Review the following:
+* design\angular-frontend-architecture.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-core-module-setup.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md
+and then conduct the pre-mortem exercise on  plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing.md.
+
+Repeat this loop three times, making sure to retrieve the content of any files you modify each time. You may automatically apply updates to any of those files without asking for permission first. You should still describe the changes.
+
+
+-----------------
+
+Please review design\angular-frontend-architecture.md and check your own knowledge and reputable relevant internet sources if there are any Angular best pratices and/or proactive guidance it would be appropriate to update it to include. Keep in mind we are now using this architecture file as a reference source in pre-mortem reviews.
+
+Let's move on to reviewing the Frontend Core Infrastructure phase as a whole.
+Review the following:
+* design\angular-frontend-architecture.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-core-module-setup.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing.md
+and then conduct the pre-mortem exercise on  plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing.md.
+
+Repeat this loop three times, making sure to retrieve the content of any files you modify each time. You may automatically apply updates to any of those files without asking for permission first. You should still describe the changes.
+
+
+-----------------
+
+We're running Angular 20.0.1.
+I found the correct links for the latest Angular v20 best practices guides:
+* https://angular.dev/style-guide
+* https://angular.dev/best-practices/security
+* https://angular.dev/best-practices/a11y
+* https://angular.dev/best-practices/error-handling
+Performance-specific:
+* https://angular.dev/best-practices/runtime-performance
+* https://angular.dev/best-practices/zone-pollution
+* https://angular.dev/best-practices/slow-computations
+* https://angular.dev/best-practices/skipping-subtrees
+* https://angular.dev/best-practices/profiling-with-chrome-devtools
+* https://angular.dev/guide/zoneless (I don't believe we have a zoneless Angular app - but should we consider it?)
+
+Can you please review all those and do another thorough review and update pass design\angular-frontend-architecture.md based on them? If that file has any content that might only be relevant to earlier versions of Angular (I saw you tried to look at the v17 style guide at "https://v17.angular.io/guide/styleguide"), consider updating it for accurancy. During your review, remember that the main objective is making design\angular-frontend-architecture.md an effective sources for Cascade to carry out a highly effective implementation of an Angular 20 project. 
 
 
 -----------------
 
 
-X
+Let's add this list of official site links to design\angular-frontend-architecture.md as references so we know where the info came from:
+* https://angular.dev/style-guide
+* https://angular.dev/best-practices/security
+* https://angular.dev/best-practices/a11y
+* https://angular.dev/best-practices/error-handling
+Performance-specific:
+* https://angular.dev/best-practices/runtime-performance
+* https://angular.dev/best-practices/zone-pollution
+* https://angular.dev/best-practices/slow-computations
+* https://angular.dev/best-practices/skipping-subtrees
+* https://angular.dev/best-practices/profiling-with-chrome-devtools
+* https://angular.dev/guide/zoneless
+
+I also got the Medium article link you tried to open but couldn't:
+* https://blog.angular.dev/3-tips-for-angular-runtime-performance-from-the-real-world-d467fbc8f66e (3 Tips for Angular Runtime Performance from the Real World) - note that it's from late 2017 so let's be careful to verify any information from it is still valid for Angular v20 before addin git.
+
+I also found this highly-starred github article:
+* https://github.com/mgechev/angular-performance-checklist
+Please review it and let me know if you think there's anything we should incorporate from it that would be specifically useful to Cascade. design\angular-frontend-architecture.md is already over 400 lines long, so I'm worried it's becoming too long for you to use effectively.
 
 
 -----------------
 
-X
+Now that we've done a significant update to design\angular-frontend-architecture.md to ensure it reflects official Angular v20 best practices, let's move on to reviewing the Frontend Core Infrastructure phase as a whole.
+Review the following:
+* design\angular-frontend-architecture.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-core-module-setup.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-app-skeleton.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing.md
+and then conduct the pre-mortem exercise on the execution of the entire phase.
 
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
+Repeat this loop five times, making sure to retrieve the content of any files you modify each time. You may automatically apply updates to any of those files without asking for permission first. You should still describe the changes.
 
 
 -----------------
 
 
-X
+Procced with the fifth. Try to think outside the box for this one. For example, what have been some patterns in tool call failures? While you usually handle those pretty well and either work around them or ask me to deal with the issue manually, could something get messed up or derailed by that? That's just one example - don't limit yourself to it. Try to think of others for this last review. 
 
 
 -----------------
 
 
-X
+I believe you have identified a structural information gap in the task files. Namely, that the order of execution of task files within the phase is implicit based on their numbering, not explicit. In your last review of  plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-core-module-setup.md, you flagged:
+"The most significant "outside the box" consideration for this task plan revolves around the clarity of its execution sequence in relation to Task 03.1 (Angular Application Skeleton).
 
+Task 03.0, as written, correctly states a prerequisite: "The Angular application skeleton (specifically the directory app/frontend/) must have been created as per Task 03.1." This means the ng new command (from Task 03.1) must run before ng generate module core (in Task 03.0).
+Then, Task 03.1 has a later step to import the CoreModule (created in Task 03.0) into AppModule.
+This creates an interleaved execution:
+
+Initial part of Task 03.1: Generate Angular app structure.
+All of Task 03.0: Create and configure CoreModule.
+Later part of Task 03.1: Import CoreModule into AppModule.
+While the prerequisites within each task make this logically sound if read carefully, the numbering (03.0 before 03.1) could cause momentary confusion for someone quickly scanning the task list without immediately diving into prerequisites.
+
+To enhance clarity and preempt any potential misinterpretation of the flow, I propose adding a brief note to the "Objective" section of 03.0-angular-core-module-setup.md. This note will explicitly state its position in the sequence."
+
+and then added "To establish a foundational `CoreModule` in the Angular application. **Note: This task is performed after the initial Angular application generation (a step within Task 03.1) but before `CoreModule` is imported into `AppModule` (also a step within Task 03.1).** This module will be responsible for providing singleton services, exporting core layout components, and ensuring that core functionalities are initialized only once in the application. This aligns with Angular best practices for organizing shared, application-wide features when not using a fully standalone component architecture from the outset.
+
+However, the intent is to run the phase 3 tasks in this sequence:
+1. 03.0
+2. 03.1
+3. 03.2
+4. 03.3
+
+03.0 CANNOT have dependencies on tasks in 03.1 because it runs first, so on and so forth. We'll need to resolve that specific instance. 
+
+I also have two ideas to address this structurally. 
+1. We could add "Previous Task" and "Next Task" header references, similar to our phase reviews which have these headers:
+**Previous Phase Review:** [00-foundational-setup-review.md](./00-foundational-setup-review.md)
+**Next Phase Review:** [next phase review goes here](./path/to/review.md)"
+2. We can add an explicit task execution sequence number (which should match the 03.x) number for clarity.
+What do you think? How can we effectively address this implicit out of sequence dependency problem? It's different than a circular dependency. 
+
+
+-----------------
+
+
+1. Regarding "What are your thoughts on this proposed restructuring of content and responsibilities for tasks 03.0 and 03.1, including the potential renaming of 03.0" - I approve, proceed with the restructuring and renaming.
+
+2. Regarding "Making the Execution Sequence Explicit (Structural Change)" - the proposed block is good. Update all four phase 3 task files to use it (listed by TaskID):
+* 03.0
+* 03.1
+* 03.2
+* 03.3
+
+3. Update the task template plans\implementation\00-mvp-implementation-task-template.md with the proposed block as well.
+
+4. Carefully review all phase 3 task files, plans\implementation\00-mvp-implementation-plan-overview.md, and  plans\implementation\00-mvp-implementation-plan-progress.md to update:
+* any references to TaskID 03.0 that use its old file name
+* any references in TaskID files 03.2 and 03.3 that point to 03.0 and 03.1 to ensure the references are accurate post-restructure
+
+-----------------
+
+1. Create a new design\design-log.md per memory ID c47b0e87-7941-492e-9b55-6ee0d0261410 about this pre-mortem review process we went through. Make sure it includes key high-level insights about the process, highlight some notable issues identified and resolved because of it, and notes the multi-round looping structure.
+
+2. This pre-mortem review approach seems very effect. We should keep it in our task review toolkit going forward. 
+Would it be helpful to Cascade to have a persistent record of the results of the pre-mortem reviews? By preserving them, as we complete more, you could look across the whole set to identify patterns that we could proactively use going forward? What do you think?  Justify why you think it would be effective or not. If you think they'd be effective, how would you capture the review findings so they were highly useful to Cascade? We could create a pre-mortem markdown template to provide a consistent structure, as we have with other item types.
+
+
+-----------------
+
+
+Let's think more about where they should go. Consider how the pre-mortem review relate to the phase reviews in plans\implementation\phase-reviews that have temlate plans\implementation\phase-reviews\phase-review-template.md. Does it make sense to "put them together" in some way? Would that, a dedicated directory, or something else be most helpful for Cascade? Consider options, tell me what you think is best, and justify why you think it would be effective or not. How could Cascade effectively combine lessons from both phase reviews of completed work and pre-mortems to increase task and phase implementation quality. You may also consider other relevant performance metrics in your assessment.
+
+
+-----------------
+
+
+I agree with the proposed approach. The "project" in the proposed "project-reviews" directory name felt redundant, so I removed that word. 
+I created the directories:
+* design\reviews\post-mortems (for phase reviews)
+* design\reviews\pre-mortems
+
+Please create the pre-mortem template in that folder.
+I moved the entire phase-reviews directory to design\reviews\post-mortems\phase-reviews.
+I kept phase-reviews in their own subdirectory because we might have other types of post-mortem reviews later, such as for deployments.
+
+
+-----------------
+
+
+Please add an entry for new memory "Project Review Structure and Templates (Hangar Bay)" to design\memory-list.md. Make sure to include the memory ID UUID.
+
+
+-----------------
+
+
+My mistake. I meant design\memory-index.md, an existing file. Review design\memory-index.md, then add a new entry there in its table.
+
+Then, create a new design\design-log.md per memory "Procedure: Updating `design-log.md`" about review directory reorganization process we went through. Make sure it includes key high-level insights about the process, highlight how Cascade can use both pre-mortem and post-mortem reviews together to work more effectively, and other such items you think are important to capture in a design log entry.
+
+-----------------
+
+
+X
+***Review phase 2.
+***Create pre-mortem memory (should ref template for output) and add to design\memory-index-md.
 
 -----------------
 

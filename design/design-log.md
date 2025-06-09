@@ -766,5 +766,51 @@ The establishment and operationalization of this comprehensive phase review proc
 
 This structured approach to phase reviews, born from an iterative and reflective cycle, represents a significant maturation in the Hangar Bay project's governance and its strategy for effective human-AI collaboration. It ensures that each phase not only delivers its technical objectives but also contributes to a growing, well-organized, and actionable knowledge base for the entire project lifecycle.
 
+---
 
+## Phase 03 Pre-Mortem Review & Task Refinement (Approx. 2025-06-08)
+
+*   **Context:** Conducted a multi-round pre-mortem review process for the Phase 03 Angular frontend core infrastructure tasks. This iterative review aimed to proactively identify potential issues, clarify requirements, and ensure alignment before extensive implementation. (Related to User Memory/Concept ID: `c47b0e87-7941-492e-9b55-6ee0d0261410` - *Note: This ID was provided by the user; its specific content is not currently in Cascade's active memory set.*)
+*   **Process & Structure:**
+    *   The review involved several loops of discussion, planning, and refinement between the USER and Cascade.
+    *   Initial task definitions were challenged, leading to restructuring and renaming.
+    *   Cross-references, metadata, and documentation impacts were systematically analyzed.
+*   **Key High-Level Insights from the Process:**
+    *   **Proactive Issue Identification:** The pre-mortem approach proved highly effective in surfacing ambiguities and potential downstream problems before they manifested in code.
+    *   **Enhanced Clarity:** Iterative discussion significantly clarified task scopes, responsibilities, and the desired end-state for each Phase 03 deliverable.
+    *   **Improved Architectural Alignment:** Ensured that the restructured tasks (e.g., `03.0-angular-project-initialization.md`, `03.1-angular-core-module-setup.md`) accurately reflected the Hangar Bay architectural standards and best practices for Angular development.
+    *   **Value of Explicit Sequencing:** Reinforced the importance of explicit YAML metadata for task sequencing, making the development flow transparent and machine-readable.
+*   **Notable Issues Identified and Resolved:**
+    *   **Task Scope & Naming:** Initial task names and scopes for `03.0` and `03.1` were found to be overlapping and not optimally aligned with a logical project setup flow. This led to their renaming and significant content restructuring to `03.0-angular-project-initialization.md` and `03.1-angular-core-module-setup.md`.
+    *   **Metadata Consistency:** Ensured that all `PreviousTask` and `NextTask` references in the YAML metadata blocks were correct across all four Phase 03 tasks after the restructuring.
+    *   **Documentation Cohesion:** Verified and updated links and task descriptions in overview documents (`00-mvp-implementation-plan-overview.md`, `00-mvp-implementation-plan-progress.md`) to maintain consistency with the restructured tasks.
+    *   **Implicit vs. Explicit Dependencies:** The process highlighted the need to make all task dependencies and execution order explicit, moving away from any implicit understandings.
+*   **Outcome:** The Phase 03 tasks are now more robustly defined, sequenced, and documented, providing a clearer path for implementation. The final structure was committed (Commit ID: `7583c02`).
+
+---
+
+## Formalization of Project Review Processes & Artifacts (Approx. 2025-06-08 21:35:00-05:00)
+
+*   **Context:** A need was identified to formalize and centralize project review artifacts, specifically pre-mortem (anticipatory) and post-mortem (retrospective, e.g., phase reviews), to enhance knowledge capture, process consistency, and AI-assisted learning for the Hangar Bay project.
+*   **Decisions & Actions Taken:**
+    *   A new top-level directory `design/reviews/` was established to house all review-related artifacts.
+    *   Subdirectories were created:
+        *   `design/reviews/pre-mortems/` for proactive pre-mortem reviews.
+        *   `design/reviews/post-mortems/` for retrospective reviews.
+    *   The existing `plans/implementation/phase-reviews/` directory and its contents (phase review templates and completed reviews) were migrated to `design/reviews/post-mortems/phase-reviews/`, recognizing phase reviews as a type of post-mortem.
+    *   A new standardized template for pre-mortem reviews, `00-pre-mortem-review-template.md`, was created in `design/reviews/pre-mortems/`.
+    *   A new Cascade memory (ID: `ee09a93d-c516-4049-9d9d-78e80280c63a`, Title: "Project Review Structure and Templates (Hangar Bay)") was created to document this new structure and its purpose.
+*   **Key High-Level Insights & Rationale:**
+    *   **Centralized Artifacts for AI Efficiency:** Consolidating review documents in `design/reviews/` provides Cascade with a predictable, centralized location for discovering, accessing, and analyzing these critical learning artifacts.
+    *   **Complementary Review Cycle:** Formalizing both pre-mortem (anticipating potential failures and risks before work) and post-mortem (learning from actual outcomes after work) reviews creates a comprehensive "bookend" for project phases and significant tasks, fostering a robust learning cycle.
+    *   **Synergistic AI Analysis (Pre + Post):**
+        *   **Validating Foresight:** Cascade can compare risks identified in pre-mortems against actual issues documented in corresponding post-mortems. This helps assess the accuracy of the pre-mortem process and identify areas for improvement in risk anticipation.
+        *   **Pattern Recognition:** By analyzing both types of reviews across multiple project segments, Cascade can identify recurring risk patterns, common pitfalls, or consistently successful mitigation strategies.
+        *   **Effectiveness Tracking:** The effectiveness of mitigation strategies proposed in pre-mortems can be evaluated by examining their impact as recorded in post-mortems.
+        *   **Refining Planning & Estimation (Qualitative):** Insights from both review types can highlight consistently complex task areas, informing better upfront planning and resource consideration for similar future work.
+        *   **Proactive, Contextual Support:** When new tasks or phases are initiated, Cascade can review past relevant pre- and post-mortems to offer more targeted, proactive questions and suggestions based on historical learnings.
+    *   **Enhanced Project Governance & Continuous Improvement:** This structured approach to reviews strengthens overall project discipline, ensures systematic knowledge capture, and provides a clear mechanism for continuous process improvement based on documented learnings.
+*   **Impact on Cascade's Operations:** Cascade will leverage this structured review data to provide more insightful, proactive support, contributing to improved task and phase implementation quality, better risk management, and more effective human-AI collaboration.
+
+---
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
