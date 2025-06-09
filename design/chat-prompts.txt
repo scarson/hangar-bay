@@ -2782,38 +2782,50 @@ What do you think? How can we effectively address this implicit out of sequence 
 
 -----------------
 
-X
+1. Create a new design\design-log.md per memory ID c47b0e87-7941-492e-9b55-6ee0d0261410 about this pre-mortem review process we went through. Make sure it includes key high-level insights about the process, highlight some notable issues identified and resolved because of it, and notes the multi-round looping structure.
+
+2. This pre-mortem review approach seems very effect. We should keep it in our task review toolkit going forward. 
+Would it be helpful to Cascade to have a persistent record of the results of the pre-mortem reviews? By preserving them, as we complete more, you could look across the whole set to identify patterns that we could proactively use going forward? What do you think?  Justify why you think it would be effective or not. If you think they'd be effective, how would you capture the review findings so they were highly useful to Cascade? We could create a pre-mortem markdown template to provide a consistent structure, as we have with other item types.
 
 
 -----------------
 
-X
+
+Let's think more about where they should go. Consider how the pre-mortem review relate to the phase reviews in plans\implementation\phase-reviews that have temlate plans\implementation\phase-reviews\phase-review-template.md. Does it make sense to "put them together" in some way? Would that, a dedicated directory, or something else be most helpful for Cascade? Consider options, tell me what you think is best, and justify why you think it would be effective or not. How could Cascade effectively combine lessons from both phase reviews of completed work and pre-mortems to increase task and phase implementation quality. You may also consider other relevant performance metrics in your assessment.
 
 
 -----------------
 
 
-***TO-DO create design\design-log.md entry about pre-mortem review strat.
+I agree with the proposed approach. The "project" in the proposed "project-reviews" directory name felt redundant, so I removed that word. 
+I created the directories:
+* design\reviews\post-mortems (for phase reviews)
+* design\reviews\pre-mortems
+
+Please create the pre-mortem template in that folder.
+I moved the entire phase-reviews directory to design\reviews\post-mortems\phase-reviews.
+I kept phase-reviews in their own subdirectory because we might have other types of post-mortem reviews later, such as for deployments.
+
+
+-----------------
+
+
+Please add an entry for new memory "Project Review Structure and Templates (Hangar Bay)" to design\memory-list.md. Make sure to include the memory ID UUID.
+
+
+-----------------
+
+
+My mistake. I meant design\memory-index.md, an existing file. Review design\memory-index.md, then add a new entry there in its table.
+
+Then, create a new design\design-log.md per memory "Procedure: Updating `design-log.md`" about review directory reorganization process we went through. Make sure it includes key high-level insights about the process, highlight how Cascade can use both pre-mortem and post-mortem reviews together to work more effectively, and other such items you think are important to capture in a design log entry.
+
+-----------------
+
+
+X
 ***Review phase 2.
-03.0-angular-project-initialization.md
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
+***Create pre-mortem memory (should ref template for output) and add to design\memory-index-md.
 
 -----------------
 
