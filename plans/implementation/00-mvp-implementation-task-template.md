@@ -66,7 +66,7 @@ _AI Guidance: List clear, verifiable, and measurable criteria that must be met f
 *   [ ] Criterion 1.
 *   [ ] Criterion 2.
 *   [ ] All new code is committed to the `[feature/task-branch-name]` branch.
-*   [ ] Adherence to architectural guidelines (e.g., `../design/angular-frontend-architecture.md` if applicable) has been verified.
+*   [ ] Adherence to architectural guidelines (e.g., files in `design/architecture` like `design/architecture/angular-frontend-architecture.md` if applicable) has been verified.
 
 ## 6. Challenges & Resolutions
 
@@ -88,11 +88,11 @@ _AI Guidance: This section MUST be filled out before the task is considered comp
 *   Refer to the linked primary specification documents for detailed guidance on each concern. The paths below are relative to this template's location; adjust if this template is moved or copied to a deeper directory structure._
 
 This section documents how the five key cross-cutting concerns were addressed during the completion of this task. Refer to the primary specification documents for detailed guidance:
-*   Security: `../design/security-spec.md`
-*   Observability: `../design/observability-spec.md`
-*   Testing: `../design/test-spec.md`
-*   Accessibility: `../design/accessibility-spec.md`
-*   Internationalization (i18n): `../design/i18n-spec.md`
+*   Security: `/design/specifications/security-spec.md`
+*   Observability: `/design/specifications/observability-spec.md`
+*   Testing: `/design/specifications/test-spec.md`
+*   Accessibility: `/design/specifications/accessibility-spec.md`
+*   Internationalization (i18n): `/design/specifications/i18n-spec.md`
 
 ### 7.1. Security
 *   [ ] **Secure Design:** (e.g., threat modeling, principle of least privilege)

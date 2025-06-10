@@ -17,8 +17,8 @@ There's only one way to find out!
 For a comprehensive understanding of the Hangar Bay project, please refer to the following documents:
 
 *   **[CONTRIBUTING.md](CONTRIBUTING.md):** Detailed guidelines for setting up your development environment, coding standards, version control workflows, testing procedures, dependency management, and specific instructions for AI assistants contributing to this project. **Start here if you plan to contribute or set up the project.**
-*   **[`design/design-spec.md`](design/design-spec.md):** The main design specification, providing a comprehensive overview of the project's architecture, features, technology stack, and design principles.
-*   **[`design/design-log.md`](design/design-log.md):** A chronological record of major design decisions, architectural changes, and significant process updates made throughout the project.
+*   **[`design/design-spec.md`](/design/specifications/design-spec.md):** The main design specification, providing a comprehensive overview of the project's architecture, features, technology stack, and design principles.
+*   **[`design/design-log.md`](/design/meta/design-log.md):** A chronological record of major design decisions, architectural changes, and significant process updates made throughout the project.
 *   The `design/` directory contains further detailed specifications for various aspects of the application, including security, accessibility, testing, and individual features, all enhanced with AI-specific guidance.
 
 ## Core Technologies

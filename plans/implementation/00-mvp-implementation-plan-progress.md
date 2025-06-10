@@ -9,16 +9,16 @@ This document outlines the implementation plan for the Minimum Viable Product (M
 This plan is designed to be used by AI coding assistants (specifically Cascade) and human developers. It breaks down the MVP development into manageable phases and tasks, each detailed in separate Markdown files.
 
 **Key Project Specifications to Reference:**
-*   Main Design: `../../design/design-spec.md`
-*   Feature Index: `../../design/features/feature-index.md`
-*   F001: `../../design/features/F001-Public-Contract-Aggregation-Display.md`
-*   F002: `../../design/features/F002-Ship-Browsing-Advanced-Search-Filtering.md`
-*   F003: `../../design/features/F003-Detailed-Ship-Contract-View.md`
-*   Security: `../../design/security-spec.md`
-*   Testing: `../../design/test-spec.md`
-*   Observability: `../../design/observability-spec.md`
-*   Accessibility: `../../design/accessibility-spec.md`
-*   Internationalization (i18n): `../../design/i18n-spec.md`
+*   Main Design: `/design/specifications/design-spec.md`
+*   Feature Index: `/design/features/feature-index.md`
+*   F001: `/design/features/F001-Public-Contract-Aggregation-Display.md`
+*   F002: `/design/features/F002-Ship-Browsing-Advanced-Search-Filtering.md`
+*   F003: `/design/features/F003-Detailed-Ship-Contract-View.md`
+*   Security: `/design/specifications/security-spec.md`
+*   Testing: `/design/specifications/test-spec.md`
+*   Observability: `/design/specifications/observability-spec.md`
+*   Accessibility: `/design/specifications/accessibility-spec.md`
+*   Internationalization (i18n): `/design/specifications/i18n-spec.md`
 
 ## 2. Development Phases & Tasks
 

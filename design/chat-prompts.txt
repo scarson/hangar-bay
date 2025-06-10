@@ -2979,6 +2979,365 @@ warning: in the working copy of 'design/angular/09-testing-strategies.md', LF wi
 -----------------
 
 
+1. It seems the editor was lagged. I closed and reopened it and the source tree is up to date with no hung commits. The matter is resolved.
+
+2. Regarding updating AI memories, you said:
+"Identify Affected Memories: I will review the content of all existing memories to find any that contain file paths that will change. For example, the memory ea3572b4-af10-48a2-83a8-cc4f83f3cf0d (Angular Design Documentation for Hangar Bay Project) mentions design/angular-frontend-architecture.md. If this file moves to design/architecture/angular-frontend-architecture.md, the memory needs an update."
+
+However, (much) earlier you told me there was a create_memory tool call but no view_memory equivalent. How are you able to review the actual content of all existing memories like you describe? Be careful to verify your response and not hallucinate.
+
+
+-----------------
+
+
+1. Regarding design\chat-prompts.txt, I'm manually recording all my own prompts in this file so it's constantly getting updated. You don't need to worry about it.
+
+2. Thank you for clarifying and refining your approach to the memory updates, especially the info about the create_memory tool with Action: "update". That increases my confidence in the proposed approach to an acceptable level.
+
+3. One specific area of the reogranization I'm still unsure about is the inclusion of the design\angular-frontend-architecture.md in design\architecture, separate from everything in design\angular. Think about this and explain why one approach or the other would be most beneficial for Cascade.
+
+-----------------
+
+
+1. It does clarify why centralized architecture documentation is preferable, thank you.
+
+2. Follow-up question. You mention:
+"Scenario 2: design/architecture/angular-frontend-architecture.md (alongside other potential files like backend-architecture.md, system-overview.md)"
+You also in the Scenario 1 response mention: "If each major component's architecture document (e.g., angular-frontend-architecture.md, a future python-backend-architecture.md, database-schema.md) ..."
+design/architecture/angular-frontend-architecture.md is still technology-specific. Should it be simply frontend-architecture.md instead? Or should backend-architecture.md be fastapi/python-backend-architecture.md, etc.? Think through this. What are the pros and cons for Cascade?
+
+
+-----------------
+
+
+1. The refined naming strategy makes sense and I agree with it. Thank you for clearly explaining the details as they related to Cascade functionality, which I appreciate.
+
+2. Let's proceed with the implementation. To recap, here is the exact output of your earlier proposal so it's fresh:
+"Inventory of design/ Directory
+
+Here's the current content of the c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\design directory:
+
+accessibility-spec.md (File)
+ai-system-procedures.md (File)
+angular/ (Directory, 11 children - our new Angular docs)
+angular-frontend-architecture.md (File)
+cascade-log.md (File)
+chat-prompts.txt (File)
+design-log.md (File)
+design-spec.md (File)
+features/ (Directory, 9 children)
+i18n-spec.md (File)
+instruction-recs.md (File)
+memory-index.md (File)
+observability-spec.md (File)
+performance-spec.md (File)
+reviews/ (Directory, 4 children - e.g., pre-mortems, post-mortems)
+risks.md (File)
+security-spec.md (File)
+test-spec.md (File)
+Thoughts on Other Areas under design/
+
+The design/angular/ folder is a great step towards organizing technology-specific design and implementation guidelines. Expanding on this idea, we could further structure the design/ directory to enhance clarity and make it even more beneficial for both human developers and AI assistants like me.
+
+Here are a few proposals for new subdirectories:
+
+design/specifications/
+Current files to move here:
+accessibility-spec.md
+design-spec.md (This could be the top-level project specification)
+i18n-spec.md
+observability-spec.md
+performance-spec.md
+security-spec.md
+test-spec.md
+Benefit to Cascade & Hangar Bay:
+Focused Context for Requirements: When I need to understand specific non-functional requirements (NFRs) or overall system design parameters, I can be directed to or search within this dedicated directory. This provides a clear, uncluttered source for "what" the system must do or "how well" it must perform, distinct from implementation details.
+Improved Accuracy: For queries like "What are the project's security requirements?" or "Summarize the performance specifications," I can more reliably and quickly retrieve the correct documents, leading to more accurate answers and code generation that adheres to these specs.
+Effective Implementation: By having all specifications in one place, it's easier to ensure that development efforts (both human and AI-assisted) are aligned with the defined requirements from the outset.
+design/architecture/
+Current files to move here:
+angular-frontend-architecture.md
+Potential future files: backend-architecture.md, system-overview-architecture.md, data-model.md, etc.
+Benefit to Cascade & Hangar Bay:
+High-Level System Understanding: This directory would house documents describing the "big picture" – how major components of Hangar Bay (frontend, backend, databases, services) are structured and interact. This is crucial for me to understand the impact of changes, make informed architectural suggestions, and ensure new features integrate correctly.
+Guided Development: When implementing new features or refactoring existing ones, I can refer to these architectural blueprints to maintain consistency and adhere to the established structural patterns.
+Clear Separation: It distinguishes high-level architectural designs from more granular implementation guidelines (like those in design/angular/ for specific coding practices within that architecture).
+design/project-meta/ (or design/project-process/ or design/governance/)
+Current files to move here:
+ai-system-procedures.md
+cascade-log.md
+design-log.md
+instruction-recs.md
+memory-index.md
+risks.md
+Potentially chat-prompts.txt (if it's seen as meta-documentation for AI interaction)"
+
+For the proposed design/project-meta/ directory, let call it design/meta/ for simplicity (and because I often type out the path those files are in) unless you think the absence of the "project-" in the name would meaningfully hurt discoverability for Cascade.
+
+-----------------
+
+
+Hold up, this isn't right. 
+
+You combined two different path update types in plans\implementation\phase-10-deployment\10.3-final-documentation-readme.md and some other files.
+Here was the original text from 10.3-final-documentation-readme.md, with the original paths *from the project root*:
+
+ **Links to Key Documents:**
+        *   Link to `design/design-spec.md`.
+        *   Link to `design/security-spec.md`.
+
+You updated it with new paths the combined relative path depth with ../../../ IN FRONT of the updated path from the project root, design/specifications/design-spec.md (and security-spec.md):
+
+ **Links to Key Documents:**
+        *   Link to `../../../design/specifications/design-spec.md`.
+        *   Link to `../../../design/specifications/security-spec.md`.
+		
+Think: If you followed path link "../../../design/specifications/design-spec.md" from plans\implementation\phase-10-deployment\10.3-final-documentation-readme.md, where would that take you? Is it a valid path?
+
+-----------------
+
+
+I am not understanding something about the notation in "../../../design/specifications/security-spec.md".
+
+The absolute local file path to the root directory of this project is:
+C:\Users\Sam\OneDrive\Documents\Code\hangar-bay
+That's the root of the Hangar Bay git repository.
+
+When I use the "Copy relative path" command in the Windsurf/VS Code editor on that file, this is the output:
+design\specifications\performance-spec.md
+Which makes it clear that that's the path *relative* to the project root. These "relative paths" are what I almost always use in my commands to you, and you always seem to be able to find those files with perfect accurancy (as far as I can tell). 
+
+Does the "../../../" followed by "design/specifications/security-spec.md" mean "go up three directory levels from the current directory, then go to "design/specifications/security-spec.md" from there? That seems WAY more complicated, looks messier, and is likely to get screwed up with broken references than simply ALWAYS using the "relative path" from the project root. Does the "../../../" part majorly help Cascade when encountering path links in files vs always using the relative path from the project root? Would a memory assist with that? 
+
+
+
+-----------------
+
+
+1. Yes, let's proceed with root-relative paths. I confirm the convention and appreciate the discussion and now understand that the leading "/" like in "/design/specifications/security-spec.md" is important for signifying relative to project root, rather than current directory.
+
+2. Make sure you have a comprehensive list of everything you need to re-edit, then re-edit the files.
+
+3. Create the memory and update design\meta\memory-index.md with an entry for it.
+
+
+-----------------
+
+
+Please run another search for those traversal type paths with "../". I still see a number of them in spot checks. Here are two examples:
+* plans\implementation\phase-09-cross-cutting-concerns-mvp-scope\09.4-accessibility-i18n-stubs-mvp.md
+* plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.2-data-models-f001.md
+
+
+-----------------
+
+
+1. You missed plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.3-integrating-filters-with-list.md
+2. The phase-03 directory is plans\implementation\phase-03-frontend-core-infrastructure
+3. The phase-02 directory is plans\implementation\phase-02-backend-f001-public-contract-aggregation
+4. The phase-01 directory is plans\implementation\phase-01-backend-core-infrastructure
+5. The phase-00 directory is plans\implementation\phase-00-foundational-setup
+6. Make sure to check all files that are direct children of of plans\implementation as well
+
+
+-----------------
+
+
+The file was named plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing.md but I renamed it to 03.3-basic-layout-routing-navigation.md because you consistently think that's what the path should be, and it's more descriptive anyway.
+
+
+-----------------
+
+
+We changed the structure of phase 3 earlier and renamed and created new files. Please review plans\implementation\00-mvp-implementation-plan-overview.md section "### Phase 3: Frontend Core Infrastructure" for the updated list with links to the files.
+
+
+
+-----------------
+
+Regarding:
+"No ../../design/ or ../../../design/ links found in 01.1-fastapi-app-skeleton.md.
+
+Let's do the broader search for any design/ links."
+
+How are you doing this search? It is missing obvious hits.
+In file plans\implementation\phase-01-backend-core-infrastructure\01.1-fastapi-app-skeleton.md, I am looking directly at this text in the "## 7. Cross-Cutting Concerns Review" section on lines 60-67:
+"## 7. Cross-Cutting Concerns Review
+
+This section documents how the five key cross-cutting concerns were addressed during the completion of this task. Refer to the primary specification documents for detailed guidance:
+*   Security: `../../../design/security-spec.md`
+*   Observability: `../../../design/observability-spec.md`
+*   Testing: `../../../design/test-spec.md`
+*   Accessibility: `../../../design/accessibility-spec.md`
+*   Internationalization (i18n): `../../../design/i18n-spec.md`"
+
+Something isn't working with your search strategy.
+
+
+-----------------
+
+
+"`/design/angular/angular-routing-best-practices.md` (Guidelines for Angular routing)" doesn't exist.
+List the files in design\angular. What is the naming structure of these files? Which one should be referenced? Would an index file or adding an index to design\angular\00-angular-introduction-and-resources.md help you remember in the future? I don't like hallucinating file names and want to try to avoid it.
+
+
+-----------------
+
+
+I see you running these searches in the chat output:
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with query design/security-spec.md
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with query design/observability-spec.md
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with query design/test-spec.md
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with query design/accessibility-spec.md
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with querydesign/i18n-spec.md
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with query design-spec.md
+
+Meanwhile, I am looking right at another "## 7. Cross-Cutting Concerns Review" section on lines 112-119 in that file:
+"## 7. Cross-Cutting Concerns Review
+
+This section documents how the five key cross-cutting concerns were addressed during the completion of this task. Refer to the primary specification documents for detailed guidance:
+*   Security: `../../../design/security-spec.md`
+*   Observability: `../../../design/observability-spec.md`
+*   Testing: `../../../design/test-spec.md`
+*   Accessibility: `../../../design/accessibility-spec.md`
+*   Internationalization (i18n): `../../../design/i18n-spec.md`"
+
+Something about your query structure is failing to find the strings like `../../../design/i18n-spec.md`. Why? How can you fix it? We have more files to go through, so let's figure out how to fix the core search query issue or we're going to be doing dozens of manual updates.
+
+In plans\implementation\00-mvp-implementation-plan-overview.md, it also missed finding all of these mentions on line 108:
+"*   **Integrated Cross-Cutting Concerns:** Beyond the dedicated tasks in Phase 09, all five cross-cutting concerns (Security, Observability, Testing, Accessibility, Internationalization) as detailed in their respective specification documents (`../../design/security-spec.md`, `../../design/observability-spec.md`, `../../design/test-spec.md`, `../../design/accessibility-spec.md`, `../../design/i18n-spec.md`) MUST be proactively and systematically integrated into **every task** throughout Phases 00-08. This is a non-negotiable requirement. Cascade will leverage its AI memories established for this purpose and will complete the mandatory "Cross-Cutting Concerns Review" checklist section within each task file to document how these considerations were applied to the specific work of that task."
+
+
+
+
+-----------------
+
+
+In plans\implementation\phase-01-backend-core-infrastructure\01.3-valkey-cache-integration.md
+The original:
+"*   **Notes:** Replaced print statements in `cache.py` with `logging` for connection success/closure, errors (with `exc_info=True`), and critical failures during initialization. A baseline application log format (`%(levelname)s:     %(name)s - %(message)s`) was established in `main.py` via `logging.basicConfig()` to improve readability and consistency with Uvicorn's output (see `design/observability-spec.md` for details). Structured logging (e.g., JSON) remains a future enhancement for more advanced observability."
+
+was replaced with:
+
+"*   **Notes:** Replaced print statements in `cache.py` with `logging` for connection success/closure, errors (with `exc_info=True`), and critical failures during initialization. A baseline application log format (`%(levelname)s:     %(name)s - %(message)s`) was established in `main.py` via `logging.basicConfig()` to improve readability and consistency with Uvicorn's output (see /design/specifications/observability-spec.md for details). Structured logging (e.g., JSON) remains a future enhancement for more advanced observability."
+
+Which got the "/design/specifications/observability-spec.md" path right but lost the `` characters around it. Why did that happen? Where else did it happen?
+
+Until we get these update issues sorted out, I want you to only edit one file at a time, and work through verifying that all the updates were successful with me before proceeding to the next. There are many errors happening and it's getting very difficult for me to track and verify the changes when you're updating so many files at once, often adding new errors we have to fix in many places.
+
+
+-----------------
+
+
+Regarding the "Notes" section of 01.3-valkey-cache-integration.md:
+I am looking directly at the diff. The text from above was copy-pasted directly from the diff. The original has the backticks.
+I went directly to Github and verified the line from https://raw.githubusercontent.com/scarson/hangar-bay/refs/heads/dev/plans/implementation/phase-01-backend-core-infrastructure/01.3-valkey-cache-integration.md. Here it is copy-pasted from the latest dev branch commit:
+"*   **Notes:** Replaced print statements in `cache.py` with `logging` for connection success/closure, errors (with `exc_info=True`), and critical failures during initialization. A baseline application log format (`%(levelname)s:     %(name)s - %(message)s`) was established in `main.py` via `logging.basicConfig()` to improve readability and consistency with Uvicorn's output (see `design/observability-spec.md` for details). Structured logging (e.g., JSON) remains a future enhancement for more advanced observability."
+
+Is it possible you made an intermediate edit that lost the backticks?
+
+-----------------
+
+
+1. Yes, please document the process in design/meta/design-log.md. Be as verbose as necessary to capture the issues we encountered, how they were identified, and their resolutions in a way that Cascade can effectively learn from in the future. That set of path updates for all our design docs and specs was a mess and took a long time. We want to avoid anything like that from happening again.
+
+2. I realize that while we conducted extensive pre-mortem reviews for phase 3 tasks and then created a pre-mortem review template at design\reviews\pre-mortems\00-pre-mortem-review-template.md, we never actually recorded the results of the phase 3 pre-mortem reviews. Do you remember the details of those well enough in your context window to write out an accurate phase 3 pre-mortem review based on the template? Be careful and honest in your assessment - I don't want you to hallucinate details in an important review if you don't remember well enough. I can go back and retrieve your exact text from chat if necessary.
+
+
+-----------------
+
+
+It unfortunately appears that I cannot scroll up far enough in chat history to get to the phase 3 pre-mortem outputs without encountering an IDE/plugin error of "Cannot read properties of undefined (reading 'actionSpec')". I have submitted a support ticket with IDE logs to Windsurf and am awaiting review. 
+
+The content of the draft looks good. I realize I do have screenshots of many of your phase 3 pre-mortem prompt outputs. Would you be able to read and use those if I provided them?
+
+
+-----------------
+
+
+I accepted all of the changes except those in section "## 3. Root Causes & Likelihood/Impact Assessment", which only lists three problems. Did you just try to update the same number of items as the draft's placeholder content had? I'm quite sure you identified more than three problems across over ten rounds of review loops. The purpose of this review document is for Cascade to learn from, so let's make sure it captures everything important.
+
+
+-----------------
+
+
+1. Ready to move on to a review of the phase 2 tasks as defined in the files within plans\implementation\phase-02-backend-f001-public-contract-aggregation. plans\implementation\00-mvp-implementation-plan-overview.md section "### Phase 2: Backend - F001: Public Contract Aggregation" has a list of the task files. We'll do a general review first, focused on:
+* addressing any outstanding design / decision points
+* firming up details and removing ambiguities
+* ensuring internal consistency between task details
+* making an appropriate updates based on work performed in previous phases and other now known details
+
+To prepare for the review of phase 2, it's critical you understand the work performed in phase 0 and phase 1 and the lessons learned in their post-mortem phase reviews. 
+First, read the design log at design\meta\design-log.md for review-related entries. Pay special attention to entries describing how Cascade can make best use of review files. Then:
+* Phase 0
+*   * plans\implementation\00-mvp-implementation-plan-overview.md section "### Phase 0: Foundational Setup" contains a list of all phase 0 task files. Review their contents carefully. 
+*   * read the post-mortem review at design\reviews\post-mortems\phase-reviews\00-foundational-setup-review.md
+* Phase 1
+*   * plans\implementation\00-mvp-implementation-plan-overview.md section "### Phase 1: Backend Core Infrastructure" contains a list of all phase 1 task files. Review their contents carefully. 
+*   * read the post-mortem review at design\reviews\post-mortems\phase-reviews\01-backend-core-infrastructure-review.md
+Then read the phase 3 pre-mortem review at design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem.mdto learn about the types of issues and patterns we were able to identify and resolve with that approach.
+
+2. Then, propose a comprehensive plan to review and enhance the phase 2 tasks within plans\implementation\phase-02-backend-f001-public-contract-aggregation to help Cascade ensure a smooth implementation with minimal errors. Justify why you think the proposal would be effective in helping Cascade implement Phase 2 of the Hangar Bay project MVP.
+
+
+-----------------
+
+
+1. Question. Sometimes when I select "Open diff" from your outputs like:
+"Edited 02.4-api-endpoints-f001.md +51 -30 85 Open diff"
+I can see the changes with red and green highlights as I'd expect, and I can accept or reject each change block individually. There are blue bars along the file scrollbar indicating where the changes are.
+I can see the diff changes in plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.4-api-endpoints-f001.md
+However, in:
+* plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.1-esi-client-public.md
+* plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.2-data-models-f001.md
+* plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.3-background-aggregation-service.md
+
+I only see one "Accept Changes" in the middle for the whole file, and while I can still see the blue bars on the side indicating where changes were, I don't see any red/green highlights or ability to individually accept changed sections. Do you know why that is? Is there a difference in the tool calls you used to update those files that could be responsible?
+
+2. Let's make sure we capture these detailed review insights, including both the specifics and the process (such as reviewing prior work / task files and review files first) for future learning! The current pre-mortem template at design\reviews\pre-mortems\00-pre-mortem-review-template.md doesn't seem quite right for what we just did. How would you suggest capturing ALL useful outputs (both immediate and strategic for future reviews) of this phase 2 review in a way that's most useful to Cascade? Think about multiple ways to best leverage this information for Cascade and compare them against each other. Justify why you think the proposal would be effective in helping Cascade implement the Hangar Bay project.
+
+-----------------
+
+
+The "review loop" for the phase 3 post-mortem reviews seemed effective in identifying additional areas for improvement each time. Let's try something similar here. Explicitly review the current contents of all four task files in the plans\implementation\phase-02-backend-f001-public-contract-aggregation directory, then perform another round of the task plan review process we just did.
+
+
+-----------------
+
+
+Let's do one more loop. This time, try to "think outside the box", like you did for the final review loop of the phase 3 pre-mortem.
+Explicitly review the current contents of all four task files in the plans\implementation\phase-02-backend-f001-public-contract-aggregation directory, then perform another round of the task plan review process we just did.
+
+
+-----------------
+
+1. Let's git commit all pending changes with a commit message.
+
+2. That was such a great insight and improvement. I'm glad the "think outside the box" prompt was successful. Because it worked so well, I'd like you to try another "think outside the box" review round, but first, think about "sources of inspiration" for thinking outside the box that might be relevant to the Hangar Bay, this project phase 3, and other phases it will interact with.
+Explicitly review the current contents of all four task files in the plans\implementation\phase-02-backend-f001-public-contract-aggregation directory, then perform another round of the task plan review process we just did.
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
 X
 
 
@@ -3001,157 +3360,7 @@ X
 -----------------
 
 
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
+design/architecture/api-design-guide.md
 
 
 -----------------

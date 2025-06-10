@@ -9,16 +9,16 @@ This document outlines the implementation plan for the Minimum Viable Product (M
 This plan is designed to be used by AI coding assistants (specifically Cascade) and human developers. It breaks down the MVP development into manageable phases and tasks, each detailed in separate Markdown files.
 
 **Key Project Specifications to Reference:**
-*   Main Design: `../../design/design-spec.md`
-*   Feature Index: `../../design/features/feature-index.md`
-*   F001: `../../design/features/F001-Public-Contract-Aggregation-Display.md`
-*   F002: `../../design/features/F002-Ship-Browsing-Advanced-Search-Filtering.md`
-*   F003: `../../design/features/F003-Detailed-Ship-Contract-View.md`
-*   Security: `../../design/security-spec.md`
-*   Testing: `../../design/test-spec.md`
-*   Observability: `../../design/observability-spec.md`
-*   Accessibility: `../../design/accessibility-spec.md`
-*   Internationalization (i18n): `../../design/i18n-spec.md`
+*   Main Design: `/design/design-spec.md`
+*   Feature Index: `/design/features/feature-index.md`
+*   F001: `/design/features/F001-Public-Contract-Aggregation-Display.md`
+*   F002: `/design/features/F002-Ship-Browsing-Advanced-Search-Filtering.md`
+*   F003: `/design/features/F003-Detailed-Ship-Contract-View.md`
+*   Security: `/design/specifications/security-spec.md`
+*   Testing: `/design/specifications/test-spec.md`
+*   Observability: `/design/specifications/observability-spec.md`
+*   Accessibility: `/design/specifications/accessibility-spec.md`
+*   Internationalization (i18n): `/design/specifications/i18n-spec.md`
 
 ## 2. Development Phases & Tasks
 
@@ -52,7 +52,7 @@ The MVP development is structured into the following phases. Each task links to 
     *   [03.0 Angular Project Initialization](./phase-03-frontend-core-infrastructure/03.0-angular-project-initialization.md)
     *   [03.1 Angular Core Module Setup](./phase-03-frontend-core-infrastructure/03.1-angular-core-module-setup.md)
     *   [03.2 Backend API Service Layer](./phase-03-frontend-core-infrastructure/03.2-backend-api-service-layer.md)
-    *   [03.3 Basic Layout, Routing, and Navigation](./phase-03-frontend-core-infrastructure/03.3-basic-layout-routing.md)
+    *   [03.3 Basic Layout, Routing, and Navigation](./phase-03-frontend-core-infrastructure/03.3-basic-layout-routing-navigation.md)
 
 ### Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering
 *   **Goal:** Develop the UI for displaying contracts and implementing initial filtering capabilities.
@@ -102,10 +102,10 @@ The MVP development is structured into the following phases. Each task links to 
 *   **Iterative Approach:** While phases are defined, aim for iterative development within tasks. Implement a small piece, test it, and then build upon it.
 *   **Refer to Specifications:** Constantly refer back to the linked feature specifications and design documents for detailed requirements.
 *   **Code Comments:** Generate clear and concise code comments, especially for complex logic or non-obvious decisions.
-*   **Error Handling:** Implement robust error handling as per `design-spec.md` and feature-specific error handling sections.
-*   **Security First:** Adhere to guidelines in `security-spec.md` for all code generation.
-*   **Testing:** Generate unit tests alongside feature code. Follow guidance in `test-spec.md`.
-*   **Integrated Cross-Cutting Concerns:** Beyond the dedicated tasks in Phase 09, all five cross-cutting concerns (Security, Observability, Testing, Accessibility, Internationalization) as detailed in their respective specification documents (`../../design/security-spec.md`, `../../design/observability-spec.md`, `../../design/test-spec.md`, `../../design/accessibility-spec.md`, `../../design/i18n-spec.md`) MUST be proactively and systematically integrated into **every task** throughout Phases 00-08. This is a non-negotiable requirement. Cascade will leverage its AI memories established for this purpose and will complete the mandatory "Cross-Cutting Concerns Review" checklist section within each task file to document how these considerations were applied to the specific work of that task.
+*   **Error Handling:** Implement robust error handling as per `/design/specifications/design-spec.md` and feature-specific error handling sections.
+*   **Security First:** Adhere to guidelines in `/design/specifications/security-spec.md` for all code generation.
+*   **Testing:** Generate unit tests alongside feature code. Follow guidance in `/design/specifications/test-spec.md`.
+*   **Integrated Cross-Cutting Concerns:** Beyond the dedicated tasks in Phase 09, all five cross-cutting concerns (Security, Observability, Testing, Accessibility, Internationalization) as detailed in their respective specification documents (`/design/specifications/security-spec.md`, `/design/specifications/observability-spec.md`, `/design/specifications/test-spec.md`, `/design/specifications/accessibility-spec.md`, `/design/specifications/i18n-spec.md`) MUST be proactively and systematically integrated into **every task** throughout Phases 00-08. This is a non-negotiable requirement. Cascade will leverage its AI memories established for this purpose and will complete the mandatory "Cross-Cutting Concerns Review" checklist section within each task file to document how these considerations were applied to the specific work of that task.
 
 ## 4. Plan Maintenance
 

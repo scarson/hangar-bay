@@ -34,9 +34,9 @@
     *   **Project Root & General:**
         *   Comprehensive root `.gitignore` file created and updated for PDM.
         *   Main `README.md` updated with detailed setup instructions for both PDM-based backend and Angular frontend.
-        *   `design/memory-index.md` created and populated.
-        *   `design/risks.md` created and populated with initial risk (PERF-001).
-        *   `design/design-log.md` updated with relevant decisions (e.g., Angular CLI options).
+        *   `/design/meta/memory-index.md` created and populated.
+        *   `/design/meta/risks.md` created and populated with initial risk (PERF-001).
+        *   `/design/meta/design-log.md` updated with relevant decisions (e.g., Angular CLI options).
         *   Strategy for production secrets management documented.
 *   **Deviations/Scope Changes:**
     *   The backend dependency management evolved from an initial `requirements.txt` (implied in early 00.1 thoughts) to a full PDM migration (Task 00.3), which was a significant enhancement within this foundational phase.
@@ -56,7 +56,7 @@
 *   **Project-Wide Infrastructure:**
     *   Version Control: Comprehensive `.gitignore` at project root.
     *   Documentation: Updated `README.md` with PDM and Angular setup; task-specific documentation for Phase 0.
-    *   Design Artifacts: Initial `design/memory-index.md`, `design/risks.md`, and updates to `design/design-log.md`.
+    *   Design Artifacts: Initial `/design/meta/memory-index.md`, `/design/meta/risks.md`, and updates to `/design/meta/design-log.md`.
 
 ## 3. Technical Learnings & Discoveries
 
@@ -142,7 +142,7 @@
 *   **Frontend Configuration:** Utilized Angular's built-in environment files. (Justification: Standard Angular practice, build-time configuration switching. Ref: Task 00.2)
 *   **Linters/Formatters:** Selected Flake8, Black for Python; ESLint, Prettier for Angular. (Justification: Widely adopted, good defaults, maintain code consistency. Ref: Task 00.1)
 *   **Secrets Management Strategy:** Production secrets to be injected via environment variables, not stored in repo; `.env` for local dev, ignored by git. (Justification: Security best practice. Ref: Task 00.2, `security-spec.md`)
-*   **Early Creation of Design Artifacts:** Initialized `memory-index.md` and `risks.md`. (Justification: Proactive knowledge capture and risk management. Ref: Task 00.1, `design-log.md#YYYYMMDD-Initial-Design-Artifacts` - *AI_NOTE: Add specific design log entry ID if available or create one for this decision.*)
+*   **Early Creation of Design Artifacts:** Initialized `/design/meta/memory-index.md` and `/design/meta/risks.md`. (Justification: Proactive knowledge capture and risk management. Ref: Task 00.1, `/design/meta/design-log.md#YYYYMMDD-Initial-Design-Artifacts` - *AI_NOTE: Add specific design log entry ID if available or create one for this decision.*)
 
 ## 7. Unresolved Issues & Technical Debt
 

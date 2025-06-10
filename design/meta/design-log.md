@@ -837,4 +837,56 @@ This structured approach to phase reviews, born from an iterative and reflective
 
 ---
 
+---
+**2025-06-10 01:39:35-05:00: Standardization of Markdown Cross-Project Links & Tooling Challenges**
+
+**Context & Objective:**
+A significant effort was undertaken to standardize all cross-project markdown links within the Hangar Bay documentation (implementation plans, design specifications, etc.). The primary goal was to ensure all such links used root-relative paths, typically starting with `/design/specifications/` or `/design/features/`, to improve link robustness, maintainability, and clarity across the entire project. This initiative was driven by the `MEMORY[b77171e2-c900-4f20-9620-6fad06e863aa]` which mandates root-relative paths.
+
+**Process & Challenges:**
+The process involved systematically reviewing and updating markdown files, primarily focusing on Phase 02 (Backend F001) and Phase 03 (Frontend Core Infrastructure) implementation task files. The `replace_file_content` tool was used for these modifications.
+
+Several challenges were encountered during this process:
+1.  **Tool Behavior with Markdown:** The `replace_file_content` tool, while powerful, exhibited some non-ideal behaviors when dealing with markdown links:
+    *   **Incorrect Wrapping:** On several occasions, the tool incorrectly wrapped already correct or newly corrected links with `[path](path)` syntax, duplicating the path.
+    *   **Backtick Preservation:** Ensuring backticks around link paths (`/path/to/file.md`) were preserved or correctly added was sometimes problematic, requiring specific attention in the `ReplacementContent`.
+    *   **Fragment Identifier Handling:** Care was needed to preserve URL fragment identifiers (e.g., `#section-id`) during replacements.
+2.  **Exact `TargetContent` Requirement:** The tool requires the `TargetContent` to be an exact string match. Minor discrepancies, including whitespace or subtle formatting differences between the expected and actual content, led to failed replacements or unintended changes. This necessitated careful file viewing and precise `TargetContent` specification.
+3.  **Iterative Corrections:** Due to the above challenges, updating links in a single file often required multiple iterations of:
+    *   Viewing the file content.
+    *   Identifying incorrect links.
+    *   Crafting `replace_file_content` tool calls.
+    *   Reviewing the diff/output.
+    *   Re-viewing the file and making further corrections if the tool's application was not as expected.
+4.  **Multiple Instances:** Handling multiple instances of the same relative link within a single file sometimes required careful use of `AllowMultiple: true` or breaking down changes into several chunks.
+
+**Files Updated (Examples):**
+*   `plans/implementation/phase-02-backend-f001-public-contract-aggregation/02.3-background-aggregation-service.md`
+*   `plans/implementation/phase-02-backend-f001-public-contract-aggregation/02.4-api-endpoints-f001.md`
+*   `plans/implementation/phase-03-frontend-core-infrastructure/03.0-angular-project-initialization.md`
+*   `plans/implementation/phase-03-frontend-core-infrastructure/03.1-angular-core-module-setup.md`
+*   `plans/implementation/phase-03-frontend-core-infrastructure/03.2-backend-api-service-layer.md`
+*   `plans/implementation/phase-03-frontend-core-infrastructure/03.3-basic-layout-routing-navigation.md`
+*   User also manually updated links in `00-mvp-implementation-plan-overview.md`, `00-mvp-implementation-plan-progress.md`, and `phase-review-template.md`.
+
+**Key Learnings & Recommendations for Cascade:**
+*   **Markdown Link Complexity:** Modifying markdown links, especially with variations in existing formatting (backticks, fragments, relative vs. absolute), is a delicate operation. Automated replacements must be approached with extreme caution.
+*   **Tool Specificity:** When using `replace_file_content` for markdown:
+    *   Be highly precise with `TargetContent`.
+    *   Verify the exact existing string, including any surrounding markdown syntax (backticks, brackets, parentheses).
+    *   In `ReplacementContent`, ensure the desired final markdown syntax is explicitly constructed.
+    *   Anticipate that the tool might reformat or misinterpret complex markdown structures if not perfectly targeted.
+*   **Incremental Changes & Verification:** For tasks involving widespread, similar changes across multiple files or complex changes within a single file, adopt a highly incremental approach:
+    1.  Target a small, specific set of changes.
+    2.  Execute the change.
+    3.  Thoroughly verify the result (view file/diff).
+    4.  Correct any deviations immediately before proceeding.
+*   **Consider Alternative Strategies:** For very complex or widespread refactoring of structured text like markdown, if `replace_file_content` proves consistently problematic, discuss alternative strategies with the USER (e.g., scripts, manual review for edge cases).
+*   **Memory Reinforcement:** This experience reinforces the importance of `MEMORY[b77171e2-c900-4f20-9620-6fad06e863aa]` and the need to be vigilant about link formats.
+
+**Outcome:**
+Despite the challenges, the targeted documentation files were successfully updated to use standardized root-relative links, improving the overall consistency and maintainability of the project's documentation. The process provided valuable insights into the nuances of using code editing tools for structured text formats like Markdown.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
