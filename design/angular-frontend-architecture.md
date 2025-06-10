@@ -1,4 +1,93 @@
-# Angular Frontend Architecture Guidelines
+# Hangar Bay - Angular Frontend Architecture
+
+## 1. Introduction
+
+This document outlines the high-level architecture for the Hangar Bay Angular frontend. Our goal is to build a modern, scalable, performant, and maintainable application by leveraging the latest Angular features and best practices. This architecture is significantly informed by Angular's own recommendations for development, including resources tailored for AI-assisted coding.
+
+This document serves as an umbrella, providing concise summaries for key architectural areas. For in-depth details, please refer to the specific guideline documents located in the `design/angular/` directory, starting with [`00-angular-introduction-and-resources.md`](./angular/00-angular-introduction-and-resources.md).
+
+## 2. Core Architectural Tenets
+
+Our frontend architecture is built upon the following core principles:
+
+### 2.1. Component Model: Standalone by Default
+- **Primary Approach:** We will primarily use **Standalone Components, Directives, and Pipes**. This approach, introduced in Angular 14 and refined since, simplifies the component model by reducing the reliance on NgModules.
+- **Benefits:** Enhances modularity, improves tree-shakability, and simplifies the mental model for dependencies.
+- **NgModules:** NgModules will be used sparingly, primarily for organizing routes for lazy loading if absolutely necessary or for library compatibility, but the preference is for component-level imports.
+- **Details:** See [`design/angular/02-component-and-directive-deep-dive.md`](./angular/02-component-and-directive-deep-dive.md)
+
+### 2.2. Reactivity & State Management: Signals First
+- **Primary Reactive Primitive:** **Angular Signals** will be the primary mechanism for managing local component state and service-level state. This includes `signal`, `computed`, and `effect`.
+- **Benefits:** Fine-grained reactivity, improved performance by default, and a more intuitive developer experience compared to manual change detection or full reliance on RxJS for all state.
+- **RxJS Integration:** RxJS will be used for handling complex asynchronous operations, event streams (e.g., WebSocket communication, complex user interactions), and where its powerful operators provide clear benefits. We will leverage `rxjs-interop` utilities like `toSignal` for seamless integration with the Signal-based parts of the application.
+- **State Location:**
+    - **Local UI State:** Managed within components using signals.
+    - **Shared Application State:** Managed in injectable Angular services, exposing state via signals.
+- **Details:** See [`design/angular/04-state-management-and-rxjs.md`](./angular/04-state-management-and-rxjs.md)
+
+### 2.3. Routing: Lazy Loading with Standalone Components
+- **Strategy:** We will utilize Angular's built-in router. **Lazy loading** of feature areas/routes is critical for initial application load performance.
+- **Implementation:** Routes will be configured to lazy-load standalone components directly using `loadComponent`.
+- **Route Guards:** Standard Angular route guards will be implemented for authentication, authorization, and other pre-navigation checks.
+- **Details:** See [`design/angular/06-routing-and-navigation.md`](./angular/06-routing-and-navigation.md)
+
+### 2.4. Styling: Component-Scoped
+- **Approach:** Styles will be component-scoped using Angular's view encapsulation (defaulting to `ViewEncapsulation.Emulated`). This prevents style leakage and promotes modularity.
+- **Global Styles:** A minimal set of global styles (e.g., base typography, resets, theme variables) will be defined in `src/styles.scss` (or equivalent).
+- **CSS Preprocessor:** SCSS will be used for its advanced features like variables, mixins, and nesting.
+- **Details:** See coding style guidelines in [`design/angular/01-coding-style-guide.md`](./angular/01-coding-style-guide.md)
+
+### 2.5. HTTP Communication: Typed `HttpClient`
+- **Client:** Angular's `HttpClient` will be used for all HTTP communication with the backend.
+- **Interceptors:** HTTP interceptors will be used for common tasks like adding authentication tokens, error handling, and logging.
+- **Typing:** Strongly typed request and response models will be used to ensure data integrity and improve developer experience.
+- **Details:** See [`design/angular/07-http-and-data-loading.md`](./angular/07-http-and-data-loading.md)
+
+### 2.6. Forms: Reactive Forms with Strong Typing
+- **Primary Approach:** **Reactive Forms** will be used for all complex forms due to their scalability, testability, and explicit control model.
+- **Typed Forms:** Angular's strictly typed forms will be utilized to ensure type safety throughout the form lifecycle.
+- **Validation:** Both built-in and custom synchronous/asynchronous validators will be employed.
+- **Details:** See [`design/angular/05-forms-and-validation.md`](./angular/05-forms-and-validation.md)
+
+### 2.7. Testing: Comprehensive with `TestBed`
+- **Strategy:** A comprehensive testing strategy will be implemented, covering:
+    - **Unit Tests:** For services, pipes, and utility functions.
+    - **Component Tests:** Using `TestBed` to test component logic, template rendering, and user interactions in isolation.
+- **Focus:** Emphasis on testing public APIs of components and services. Mocking dependencies where appropriate.
+- **Details:** See [`design/angular/09-testing-strategies.md`](./angular/09-testing-strategies.md)
+
+### 2.8. Performance: Proactive Optimization
+- **Key Techniques:**
+    - **Lazy Loading:** As mentioned in Routing.
+    - **`@defer` Blocks:** Extensive use of deferrable views (`@defer`) for non-critical UI sections to improve initial load times and Core Web Vitals.
+    - **`trackBy` / `track`:** Proper use of `trackBy` in `*ngFor` (for NgModules) or `track` in `@for` (for new control flow) to optimize list rendering.
+    - **Change Detection:** Leveraging Signals for optimized change detection.
+    - **SSR/SSG & Hydration:** Exploring Server-Side Rendering (SSR) or Static Site Generation (SSG) with hydration for public-facing parts of the application if applicable, to improve SEO and perceived performance.
+- **Details:** See [`design/angular/08-ssr-and-performance.md`](./angular/08-ssr-and-performance.md)
+
+## 3. Coding Style and Conventions
+
+All Angular code will adhere to the guidelines specified in [`design/angular/01-coding-style-guide.md`](./angular/01-coding-style-guide.md). This includes naming conventions, file organization, DI patterns (preferring the `inject` function), and more, largely derived from the Angular team's official style guide and `llms-full.txt`.
+
+## 4. Directory Structure
+
+The Angular application within `src/app/` will be organized by feature modules/areas rather than by type (e.g., avoid top-level `components`, `services` directories).
+- `src/app/core/`: Core services, guards, interceptors, models (singleton services provided in root).
+- `src/app/features/`: Contains subdirectories for each distinct feature area of the application (e.g., `src/app/features/hangar-management/`, `src/app/features/user-profile/`). Each feature directory will contain its own components, services, routes, etc.
+- `src/app/shared/`: Reusable components, directives, pipes, and models shared across multiple features.
+- `src/assets/`: Static assets like images, fonts.
+- `src/environments/`: Environment-specific configuration.
+
+## 5. State Management (Reiteration)
+
+As highlighted in section 2.2, state management will primarily rely on Angular Signals.
+- **Component State:** Managed locally within components using `signal()`.
+- **Service State:** Services will expose reactive state using `signal()` and `computed()`. `effect()` will be used for side effects reacting to state changes.
+- **Cross-Cutting Concerns:** For more complex scenarios involving multiple services or global state, dedicated state services will be created, still leveraging Signals.
+
+## 6. Future Considerations
+
+This architecture document is a living document and will be updated as the project evolves and as new Angular features or best practices emerge.
 
 **Last Updated:** 2025-06-08
 

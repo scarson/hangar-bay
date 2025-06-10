@@ -2829,31 +2829,110 @@ X
 
 -----------------
 
+TODO:
 
-X
+CONTRIBUTING.md has:
+"Prerequisites
+Git: For version control.
+Python: Version 3.10 or higher recommended.
+Node.js: Version 18.x (LTS) or higher recommended, which includes npm (Node Package Manager).
+Angular CLI: Install globally after Node.js: npm install -g @angular/cli
+(Optional but Recommended) Docker: For running PostgreSQL and Valkey in containers, matching the production environment."
+
+Doesn't line up with our principle of version pinning and reproducible builds. For example, our PDM config is set to >=3.11.
+
+TODO:
+Create an angular testing guidelines doc based on:
+https://angular.dev/guide/testing
+
+Create an angular i18n guidelines doc based on:
+https://angular.dev/guide/i18n
+
+https://angular.dev/ai/develop-with-ai
+https://angular.dev/llms.txt
+https://angular.dev/llms-full.txt
+https://genkit.dev/
 
 
 -----------------
 
 
-X
+I found that the Angular docs have some resources specifically tailored towards helping AI coding assistants like Cascade. 
+Earlier, I gave you links to each page in the Angular docs "Best Practices" section to help inform design\angular-frontend-architecture.md but this is much more comprehensive. 
 
+* https://angular.dev/ai/develop-with-ai - topic landing page
+* https://angular.dev/llms.txt - an index file providing links to key files and resources
+* https://angular.dev/llms-full.txt - a more robust compiled set of resources describing how Angular works and how to build Angular applications. At a glance, this looks like all or almost all of the Angular docs compiled into a single file with markdown formatting, designed for LLM ingestion. Because it combines so many reasources, it is a VERY long file.
 
------------------
+I want you to review these resources exhaustively. 
 
-X
-
-
------------------
-
-
-X
-
+Then, think about multiple ways to best leverage this information for Cascade and compare them against each other. At the simplest end, this could include additional reviews and revisions of the design\angular-frontend-architecture.md file we already have. It could also involve the creating of multiple additional architecture or spec or coding guideline type files and/or memories. These are just examples, do NOT limit your evaluation to them. Think of other ideas to use in your comparison too.
+Justify why you think the proposal would be effective in helping Cascade implement the Hangar Bay project.
 
 -----------------
 
 
-X
+I agree with your proposal for Option 4: The Hybrid Approach for Angular. We're still in the early phases of the implementation, so this is the perfect time to set things up for long-term benefits for the Hangar Bay project in terms of code quality, maintainability, and effective AI collaboration. Please begin comprehensively planning implementing the hybrid approach.
+
+
+-----------------
+
+1. I noticed the following files are over 200 lines long. Should we add a section at the beginning like we did for design\security-spec.md to help remind you about that?
+"## AI Analysis Guidance for Cascade
+
+This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls."
+* design\angular\02-component-and-directive-deep-dive.md
+* design\angular\03-template-syntax-and-control-flow.md
+* design\angular\04-state-management-and-rxjs.md
+* design\angular\05-forms-and-validation.md
+* design\angular\06-routing-and-navigation.md
+* design\angular\07-http-and-data-loading.md
+* design\angular\09-testing-strategies.md
+
+2. At the end of your output, I see:
+"Now, as outlined in our plan, the next crucial step is to extract key information from these documents and create granular AI memories. This will enable me to provide more proactive and context-aware assistance for the Hangar Bay Angular frontend development.
+
+I'll start by creating a memory that summarizes the purpose and location of the Angular design documentation we've just created. This will serve as a foundational memory for navigating these resources.
+
+Cascade error
+Unknown: an internal error occurred (error ID: c18448f9d0304dd39657208df6a447cb)
+Feedback submitted
+
+Auto-generated memory was updated
+Manage
+Created "Angular Design Documentation for Hangar Bay Project" memory."
+
+Do you know what that error was about? Should we be worried?
+
+3. In your implementation plan for the hybrid approach, you talk about creating multiple memories. Here's that response:
+"Phase 3: Cascade Memories
+
+Based on the detailed guidelines, I will create specific, actionable Cascade memories. Examples:
+
+Title: Angular File Naming Convention
+Content: Files are kebab-case (e.g., user-profile.component.ts). Tests end with .spec.ts. Match class name.
+Tags: angular, style_guide, file_naming
+Title: Angular Dependency Injection Preference
+Content: Prefer using the inject() function over constructor parameter injection for better readability and type inference.
+Tags: angular, di, best_practice
+Title: Angular Component Template Access
+Content: Use protected access modifier for component class members intended only for use within the component's template.
+Tags: angular, component_design, template
+Title: Angular Deferred Loading with @defer
+Content: Use @defer blocks to lazy-load non-critical parts of a view. Specify appropriate triggers (e.g., on viewport, on interaction). Use @placeholder, @loading, @error sub-blocks.
+Tags: angular, performance, template, defer
+(And many more covering key aspects from the guideline documents)"
+
+It looks like you only created one memory. Did you mean to create more or did you change your mind? 
+
+-----------------
+
+
+1. Do we still need the design\angular\.gitkeep file now that there are other files in that directory? If not, please delete it.
+
+2. Let's git commit all our changes before proceeding. 
+
+3. First, take an inventory of everything we have under the design\ directory, including contents in subdirectories. What do you think about having other areas under design\ like our new design\angular folder? If so, what would be beneficial to Cascade and why? Justify why you think the proposal would be effective in helping Cascade implement the Hangar Bay project.
 
 
 -----------------

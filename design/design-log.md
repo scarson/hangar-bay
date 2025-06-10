@@ -813,4 +813,28 @@ This structured approach to phase reviews, born from an iterative and reflective
 *   **Impact on Cascade's Operations:** Cascade will leverage this structured review data to provide more insightful, proactive support, contributing to improved task and phase implementation quality, better risk management, and more effective human-AI collaboration.
 
 ---
+
+## Angular Frontend Documentation & AI Memory Initialization (Approx. 2025-06-09 22:58:43-05:00)
+
+*   **Objective:** To establish a comprehensive, AI-friendly knowledge base for Angular frontend development for the Hangar Bay project, improving consistency, quality, and AI collaboration.
+*   **Key Actions & Decisions:**
+    *   The `design/angular/` directory was created to house detailed Angular guidelines.
+    *   A high-level Angular frontend architecture document, `design/angular-frontend-architecture.md`, was established.
+    *   A suite of detailed guideline documents (`00` through `09`) covering introduction, coding style, components, templates, state management (Signals & RxJS), forms, routing, HTTP, SSR/performance, and testing was created within `design/angular/`.
+    *   A Hybrid Documentation Approach was adopted, combining human-readable detailed guides with granular AI memories.
+    *   An "AI Analysis Guidance for Cascade" section was prepended to markdown files exceeding 200 lines to remind AI to read the full content if necessary.
+    *   An initial set of AI memories was created to capture key Angular best practices and project conventions. This includes:
+        *   Overall Angular documentation structure (Memory: `ea3572b4-af10-48a2-83a8-cc4f83f3cf0d`)
+        *   File Naming Convention (Memory: `2bc1d2f0-56a1-489a-a1e4-d392e3b33d06`)
+        *   Dependency Injection Preference (Memory: `deaf34ea-03ac-478b-be6d-0aecd1a9b15d`)
+        *   Component Template Access (Memory: `9e5f9aaf-9f1b-45e4-8796-b2eb4a46d663`)
+        *   Deferred Loading with `@defer` (Memory: `c99834e5-65a8-40cf-a53a-0401af4dd91d`)
+        *   Standalone Components Preference (Memory: `bd7c05f6-6df9-4f84-b9b0-c39ea94d7545`)
+        *   Signals for State Management (Memory: `f72a5380-d354-41cf-b566-b535b5296051`)
+        *   New Control Flow (`@if`, `@for`, `@switch`) (Memory: `4cc11d93-0dc6-4ab7-a8f9-d16771a48d91`)
+        *   `track` with `@for` for Performance (Memory: `11d0a1e2-4982-424d-83a4-aef3a38611ed`)
+*   **Rationale:** This structured documentation and AI memory initiative aims to streamline Angular development, ensure adherence to modern best practices, and enhance the effectiveness of AI-assisted coding for Hangar Bay.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
