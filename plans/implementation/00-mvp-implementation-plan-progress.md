@@ -122,7 +122,7 @@ The MVP development is structured into the following phases. Each task links to 
             *   Alembic migrations created and applied for database schema.
             *   Relationships and F001-specific fields (e.g., `is_ship_contract`) implemented.
         *   Cross-Cutting Concerns (CCC) Review section in task plan (`02.2-data-models-f001.md`) completed and documented.
-        *   **Git:** All changes committed (Commit ID: [To be filled by User after commit]).
+        *   **Git:** All changes committed (Commit IDs: 5a6d9f5 (docs: Complete Phase 2 implementation plan updates and reviews), f2eb488 (feat: Implement Phase 2 Backend - F001 Public Contract Aggregation)).
     *   [02.3 Background Aggregation Service](./phase-02-backend-f001-public-contract-aggregation/02.3-background-aggregation-service.md)
         *   **Status:** Completed
         *   **Key Outcomes & Artifacts:**
