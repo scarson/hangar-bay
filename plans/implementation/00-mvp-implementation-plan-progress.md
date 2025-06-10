@@ -102,12 +102,51 @@ The MVP development is structured into the following phases. Each task links to 
     *   [01.3 Valkey Caching Layer Integration](./phase-01-backend-core-infrastructure/01.3-valkey-cache-integration.md)
 
 ### Phase 2: Backend - F001: Public Contract Aggregation
-*   **Goal:** Implement the core logic for fetching, processing, and storing public EVE Online contract data.
+*   **Goal:** Implement the core logic for fetching, processing, and storing public EVE Online contract data, and expose it via API endpoints.
 *   **Tasks:**
     *   [02.1 ESI API Client (Public Endpoints)](./phase-02-backend-f001-public-contract-aggregation/02.1-esi-client-public.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   ESI client refactored into `ESIClient` class in `core/esi_client_class.py`.
+            *   Handles ETag caching with `redis.asyncio.Redis`.
+            *   Fetches public contracts, items, universe types, market groups, regions.
+            *   Robust error handling (e.g., `ESINotModifiedError`) and graceful degradation for cache issues.
+            *   `httpx.AsyncClient` lifecycle managed in FastAPI app.
+            *   Configuration via Pydantic settings (`ESI_BASE_URL`, `ESI_USER_AGENT`).
+        *   Cross-Cutting Concerns (CCC) Review section in task plan (`02.1-esi-client-public.md`) completed and documented.
+        *   **Git:** All changes committed (Commit ID: [To be filled by User after commit]).
     *   [02.2 Data Models for F001](./phase-02-backend-f001-public-contract-aggregation/02.2-data-models-f001.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   SQLAlchemy ORM models defined: `Contract`, `ContractItem`, `EsiTypeCache`, `EsiMarketGroupCache`, `EsiRegionCache`.
+            *   Alembic migrations created and applied for database schema.
+            *   Relationships and F001-specific fields (e.g., `is_ship_contract`) implemented.
+        *   Cross-Cutting Concerns (CCC) Review section in task plan (`02.2-data-models-f001.md`) completed and documented.
+        *   **Git:** All changes committed (Commit IDs: 5a6d9f5 (docs: Complete Phase 2 implementation plan updates and reviews), f2eb488 (feat: Implement Phase 2 Backend - F001 Public Contract Aggregation)).
     *   [02.3 Background Aggregation Service](./phase-02-backend-f001-public-contract-aggregation/02.3-background-aggregation-service.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   `APScheduler` with `AsyncIOScheduler` and `RedisJobStore` integrated.
+            *   `ContractAggregationService` in `services/background_aggregation.py` implements core aggregation logic.
+            *   Redis-based concurrency lock for job runs.
+            *   Fetches, processes, and stores contract data for configured regions.
+            *   Includes ID-to-name resolution, ship contract identification logic, and `EsiTypeCache` management.
+            *   Detailed structured logging and robust error handling (e.g., `AGGREGATION_REGION_IDS` parsing, missing ESI fields).
+        *   Cross-Cutting Concerns (CCC) Review section in task plan (`02.3-background-aggregation-service.md`) completed and documented.
+        *   **Git:** All changes committed (Commit ID: [To be filled by User after commit]).
     *   [02.4 API Endpoints for F001](./phase-02-backend-f001-public-contract-aggregation/02.4-api-endpoints-f001.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   Pydantic response schemas defined in `schemas/contract.py` and `schemas/market.py`.
+            *   FastAPI `APIRouter`s for contracts and ships created and integrated.
+            *   `GET /api/v1/contracts/ships` endpoint with filtering and pagination.
+            *   `GET /api/v1/ships/market_groups` endpoint.
+            *   Endpoints use SQLAlchemy for queries and transform results to Pydantic schemas.
+            *   Input validation for query parameters.
+        *   Cross-Cutting Concerns (CCC) Review section in task plan (`02.4-api-endpoints-f001.md`) completed and documented.
+        *   **Git:** All changes committed (Commit ID: [To be filled by User after commit]).
+
+*   **Phase 2 Summary:** All backend tasks for F001 (Public Contract Aggregation) are complete. This includes the ESI client, data models, background aggregation service, and API endpoints. The system can now periodically fetch EVE Online public contract data, process it, store it, and expose it via a filterable, paginated API. All associated task plans have had their Cross-Cutting Concerns reviews completed. The backend is stable and ready for frontend integration for F001 features.
 
 ### Phase 3: Frontend Core Infrastructure
 *   **Goal:** Establish the Angular frontend application structure, API communication layer, and basic layout.

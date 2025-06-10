@@ -1,6 +1,8 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base
 
+Base = declarative_base()
+
 from .config import get_settings
 
 settings = get_settings()

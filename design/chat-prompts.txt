@@ -3413,13 +3413,60 @@ Please correct the issue and ensure the new entry is placed at the end, then pro
 
 -----------------
 
-X
+
+Please review the enhanced pre-mortem template at design\reviews\pre-mortems\00-pre-mortem-review-template.md, then the current post-mortem phase review template at design\reviews\post-mortems\phase-reviews\phase-review-template.md, and think about ways to enhance the latter. 
+
+Earlier, you correctly noted that "A document's true value, especially for learning, comes from its clarity, detail, and the explicit connections it draws between problems and solutions. While the current pre-mortem captures the what, I can enhance it to better explain the why and how, making it a more powerful learning tool for my future self and for the team.", so the template update should take into consideration how to guide Cascade to include that type of information in future pre-mortem reviews. Keep that in mind as you review the post-mortem phase review template for enhancements.
 
 
 -----------------
 
 
-X
+These are all excellent suggested changes. Proceed with drafting the updated phase-review-template.md file to include them.
+
+
+-----------------
+
+
+It's time to implement Phase 2. Before we take any actions, let's carefully plan and especially make sure you have ALL the information you need to succeed. We have the four task files within the phase directory plans\implementation\phase-02-backend-f001-public-contract-aggregation. Start by reviewing those, then think very carefully about any other information you'd need to start successfully. Don't make ANY assumptions about anything you aren't highly confident about due to actual, recent knowledge or memories.
+
+
+-----------------
+
+
+I realized I did not include the original feature specification at design\features\F002-Ship-Browsing-Advanced-Search-Filtering.md in the list of items to review, and it doesn't seem to be linked much if at all in the task items. You should review it for awareness too.
+
+
+-----------------
+
+
+I actually meant to link you to the F001 spec at design\features\F001-Public-Contract-Aggregation-Display.md but linked F002 accidentally. Thought it seems awareness of the subsequent feature spec was useful too.
+
+
+-----------------
+
+
+1. ESI Configuration (Task 02.1):
+ESI_BASE_URL: Default to https://esi.evetech.net? - Yes.
+ESI_USER_AGENT: Is "HangarBayApp/0.1.0 (contact@example.com; backend data aggregation)" - Yes. We may update the contact email later after I make one for the app.
+
+2. 
+Region IDs: This website appeas to have a Region ID table: https://www.adam4eve.eu/info_locations.php. I don't know when it was last updated.
+* This pastebin has a text table of regions from 2012: https://pastebin.com/AGxUALMg. I don't know if they change often or if new ones get added. This might represent older, more established regions. 
+* This forum post has a region list from 2009: https://eve-search.com/thread/1052168-0
+* Maybe we should pick 5 named regions that appear in all three lists for the MVP?
+Scheduler Interval: Let's do 15 minutes for the MVP for a quicker feedback loop. Make sure this is an easily configurable value, not hardcoded.
+
+Based on all the information you've reviewed and gathered, are there any changes you think you should make across the four phase 2 task files in plans\implementation\phase-02-backend-f001-public-contract-aggregation that would help you implement them?
+
+-----------------
+
+
+Why did you remove this section in plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.4-api-endpoints-f001.md:
+"*   [ ] **API Router Integration:**
+    *   Create an `APIRouter` in `app/backend/src/fastapi_app/api/v1/endpoints/contracts.py`.
+    *   Include this contracts router in a main v1 router in `app/backend/src/fastapi_app/api/v1/api.py`.
+    *   Mount the main v1 router in `app/backend/src/fastapi_app/main.py` under the `/api/v1` prefix."
 
 
 -----------------
@@ -3431,70 +3478,63 @@ design/architecture/api-design-guide.md
 -----------------
 
 
-X
+Remember that we set up the initial schema in an earlier phase. Will your plan here capture that?
 
 
 -----------------
 
 
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
+We're quickly going through a lot of tasks here. I think it's a good idea to pro-actively update the phase 2 post-mortem review file design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md and have you add notes on items since the last update of that file. There were some really tricky and nuanced Python issues and troubleshooting here. Make sure you capture those in an appropriate level of detail to achieve the post-mortem review goals.
 
 
 -----------------
 
 
-X
+pdm add fastapi uvicorn[standard] httpx "SQLAlchemy[asyncio]" alembic aiosqlite psycopg2-binary aioredis APScheduler python-dotenv greenlet
+Adding packages to default dependencies: fastapi, uvicorn, httpx, SQLAlchemy, alembic, aiosqlite, psycopg2-binary, aioredis, APScheduler, python-dotenv, greenlet
+  0:00:15 🔒 Lock successful.
+Changes are written to pyproject.toml.
+Synchronizing working set with resolved packages: 9 to add, 0 to update, 0 to remove                                                                                                                                                                                              
+
+  ✔ Install aioredis 2.0.1 successful
+  ✔ Install async-timeout 5.0.1 successful
+  ✔ Install tzlocal 5.3.1 successful
+  ✔ Install certifi 2025.4.26 successful
+  ✔ Install httpcore 1.0.9 successful
+  ✔ Install apscheduler 3.11.0 successful
+  ✔ Install httpx 0.28.1 successful
+  ✔ Install psycopg2-binary 2.9.10 successful
+  ✔ Install tzdata 2025.2 successful
+
+  0:00:00 🎉 All complete! 9/9
 
 
 -----------------
 
 
-X
+* All sorts of Python troubleshooting with lots of long terminal outputs getting pasted in went here*
 
 
 -----------------
 
 
-X
+
+I think it's a good idea to pro-actively update the phase 2 post-mortem review file design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md and have you add notes on items since the last update of that file. The last update was recent, but now that the application is stable and all known bugs have been fixed, this is a good checkpoint for an update pass.
+
+
+-----------------
+
+For each of the four task files in plans\implementation\phase-02-backend-f001-public-contract-aggregation: 
+1. Go through and check off completed tasks in "## 3. Key Implementation Steps" per the procedure with [ ] -> [X].
+2. Perform a comprehensive Cross-Cutting Concerns Review following section "## 7. Cross-Cutting Concerns Review" and all applicable specifications and related project guidelines.
 
 
 -----------------
 
 
-X
+1. Update section "### Phase 2: Backend - F001: Public Contract Aggregation" of plans\implementation\00-mvp-implementation-plan-progress.md. Refer to earlier sections "### Phase 0: Foundational Setup" and "### Phase 1: Backend Core Infrastructure" for the structure.
 
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
+2. Commit all pending changes, then draft a PR message with markdown formatting I can use to merge the Phase 2 implementation and doc updates from dev branch to main.
 
 
 -----------------

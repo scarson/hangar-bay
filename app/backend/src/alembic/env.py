@@ -21,17 +21,15 @@ if config.config_file_name is not None:
 # Ensure your application's path is discoverable by Alembic.
 # The `prepend_sys_path = .` in alembic.ini should handle this if running alembic from app/backend/src
 from fastapi_app.config import get_settings
-from fastapi_app.db import (
-    Base,
-)  # , async_engine as app_async_engine # Option to use shared engine
+from fastapi_app.db import Base
 from fastapi_app.models import (
-    common_models,
-)  # noqa: F401  -- Ensures User model is registered with Base.metadata
+    common_models,  # noqa: F401
+    contracts,  # noqa: F401
+)  # Ensures all models are registered with Base.metadata
 
 settings = get_settings()
 
-# add your model's MetaData object here
-# for 'autogenerate' support
+# Import your models here so that Alembic's autogenerate can detect them
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

@@ -21,9 +21,19 @@ class Settings(BaseSettings):
         "hangar_bay_dev.db"  # Will be created in the root of `app/backend/src/` or where app runs
     )
 
+    # Cache settings
     CACHE_URL: str = "redis://localhost:6379/0"
+
+    # ESI (EVE Swagger Interface) settings
+    ESI_BASE_URL: str = "https://esi.evetech.net"
+    ESI_USER_AGENT: str = "HangarBayApp/0.1.0 (contact@example.com; backend data aggregation)"
     ESI_CLIENT_ID: str = ""
     ESI_CLIENT_SECRET: str = ""
+
+    # Background Aggregation Service settings
+    AGGREGATION_SCHEDULER_INTERVAL_SECONDS: int = 900  # 15 minutes
+    # The Forge, Domain, Heimatar, Metropolis, Sinq Laison
+    AGGREGATION_REGION_IDS: list[int] = [10000002, 10000043, 10000030, 10000042, 10000032]
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

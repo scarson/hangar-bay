@@ -1,16 +1,21 @@
-import logging # Added for basic logging config
+import logging
+
+
 from typing import Optional
 
 from fastapi import FastAPI, Depends
-import redis.asyncio as aioredis # For type hinting Redis client
-from .config import get_settings
+from redis.asyncio import Redis # For type hinting Redis client
+from .core.config import settings
 from .core.cache import init_cache, close_cache
+from .core.http_client import init_http_client, close_http_client
+from .core.scheduler import add_aggregation_job, create_scheduler
 from .core.dependencies import get_cache
+from .api import contracts as contracts_router
 
 # Configure basic logging to ensure messages are surfaced
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(name)s - %(message)s')
 
-settings = get_settings()
+
 
 app = FastAPI(
     title="Hangar Bay API",
@@ -33,19 +38,38 @@ async def health_check():
     return {"status": "ok"}
 
 
-# Cache lifecycle event handlers
+# Application lifecycle event handlers
 @app.on_event("startup")
 async def startup_event():
+    """Initializes all necessary services on application startup."""
+    init_http_client(app)
     await init_cache(app)
+
+
+
+    # Initialize and start the scheduler
+    scheduler = create_scheduler(app, settings)
+    add_aggregation_job(scheduler, settings)
+    scheduler.start()
+    logging.info("Application startup complete with all services initialized.")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    await close_cache()
+    """Gracefully shuts down all services on application shutdown."""
+    # Shut down the scheduler first to stop new jobs
+    if hasattr(app.state, "scheduler") and app.state.scheduler.running:
+        app.state.scheduler.shutdown()
+        logging.info("Scheduler has been shut down.")
+
+    await close_http_client(app)
+    await close_cache(app)
+    logging.info("Application shutdown complete.")
 
 
 # CASCADE-PROD-CHECK: Remove or disable this endpoint for production.
 @app.get("/cache-test", tags=["Development/Test"])
-async def cache_test(rd: Optional[aioredis.Redis] = Depends(get_cache)):
+async def cache_test(rd: Optional[Redis] = Depends(get_cache)):
     """Temporary endpoint to test cache connectivity and basic operations."""
     if not rd:
         return {"status": "error", "message": "Redis client not available"}
@@ -63,5 +87,8 @@ async def cache_test(rd: Optional[aioredis.Redis] = Depends(get_cache)):
         logging.error(f"Cache test endpoint error: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
+
+# Include API routers
+app.include_router(contracts_router.router)
 
 # Further application setup, routers, middleware, etc., will go here
