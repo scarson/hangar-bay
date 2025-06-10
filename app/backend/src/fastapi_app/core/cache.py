@@ -15,7 +15,7 @@ Key points about this module:
 import logging # Added for proper logging
 from typing import Optional
 
-import redis.asyncio as aioredis
+from redis.asyncio import Redis, from_url
 from fastapi import FastAPI
 
 from fastapi_app.config import get_settings
@@ -31,7 +31,7 @@ class CacheManager:
     """
 
     def __init__(self):
-        self.redis_client: Optional[aioredis.Redis] = None
+        self.redis_client: Optional[Redis] = None
 
     async def initialize(self, cache_url: str):
         """
@@ -41,7 +41,7 @@ class CacheManager:
         This method should be called on FastAPI application startup.
         """
         if self.redis_client is None:
-            self.redis_client = aioredis.from_url(cache_url, encoding="utf-8", decode_responses=True)
+            self.redis_client = from_url(cache_url, encoding="utf-8", decode_responses=True)
             # Test connection
             try:
                 await self.redis_client.ping()
@@ -49,19 +49,15 @@ class CacheManager:
             except Exception as e:
                 logger.error(f"Error connecting to Redis: {e}", exc_info=True)
                 self.redis_client = None # Ensure client is None if connection failed
-                # Depending on policy, might re-raise or handle gracefully
 
     async def close(self):
-        """
-        Closes the Redis client's connection pool.
-        This method should be called on FastAPI application shutdown to release resources.
-        """
+        """Closes the Redis connection pool if it has been initialized."""
         if self.redis_client:
             await self.redis_client.close()
             self.redis_client = None
             logger.info("Redis connection closed.")
 
-    def get_client(self) -> Optional[aioredis.Redis]:
+    def get_client(self) -> Optional[Redis]:
         """
         Returns the initialized asynchronous Redis client (redis.asyncio.Redis) instance.
         Returns None if the client has not been initialized or connection failed.
@@ -85,6 +81,6 @@ async def init_cache(app: FastAPI):
         logger.critical("Redis client could not be initialized. Cache will not be available.")
 
 
-async def close_cache():
+async def close_cache(app: FastAPI):
     """FastAPI shutdown event handler to close the global cache_manager's connection."""
     await cache_manager.close()
