@@ -3413,6 +3413,33 @@ Please correct the issue and ensure the new entry is placed at the end, then pro
 
 -----------------
 
+
+Please review the enhanced pre-mortem template at design\reviews\pre-mortems\00-pre-mortem-review-template.md, then the current post-mortem phase review template at design\reviews\post-mortems\phase-reviews\phase-review-template.md, and think about ways to enhance the latter. 
+
+Earlier, you correctly noted that "A document's true value, especially for learning, comes from its clarity, detail, and the explicit connections it draws between problems and solutions. While the current pre-mortem captures the what, I can enhance it to better explain the why and how, making it a more powerful learning tool for my future self and for the team.", so the template update should take into consideration how to guide Cascade to include that type of information in future pre-mortem reviews. Keep that in mind as you review the post-mortem phase review template for enhancements.
+
+
+-----------------
+
+
+These are all excellent suggested changes. Proceed with drafting the updated phase-review-template.md file to include them.
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
 X
 
 
@@ -3426,28 +3453,6 @@ X
 
 
 design/architecture/api-design-guide.md
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
 
 
 -----------------
