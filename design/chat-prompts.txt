@@ -3332,16 +3332,77 @@ Explicitly review the current contents of all four task files in the plans\imple
 -----------------
 
 
-X
+Let's capture those "Sources of Inspiration for "Outside-the-Box" Reviews" in a memory for future reviews!:
+"* The Operator's Nightmare: I imagine myself as the person on-call at 3 AM. What could go wrong that would wake me up? This perspective forces a focus on failure modes, resilience, and observability. It asks questions like: What happens if a critical dependency (like the cache, database, or a specific ESI endpoint) is down or slow? How would I diagnose the problem quickly?
+* The Data's Lifecycle: I consider the data not as static information, but as something with a life of its own. Where is it born? How does it change? When does it die? This leads to questions about data integrity, staleness, growth, and eventual archival or deletion. It helps prevent long-term data rot and scaling issues.
+* The Future User's Journey: I look beyond the immediate feature requirements. For example, after a user sees the list of ship contracts (F001), what is their very next click likely to be? This helps anticipate future needs (like the detailed view in F003) and ensures our current design choices don't create future roadblocks. It's about building for the next step, not just the current one.
+* Cross-Phase Friction: I analyze the hand-off points between major project phases. How will the work in this phase (e.g., Phase 2 Backend) impact the next phase (e.g., Phase 3 Frontend)? Are we providing data in a format that's easy for Angular to consume, or are we creating extra work for the frontend developers? This helps smooth the integration between different parts of the application."
+
+Can you think of any more "sources of inspiration" that could be useful for future reviews to add to the list?
 
 
 -----------------
 
 
-X
+Let's try this out. With those new sources of inspiration in mind,  I'd like you to try another "think outside the box" review round.
+Explicitly review the current contents of all four task files in the plans\implementation\phase-02-backend-f001-public-contract-aggregation directory, then perform another round of the task plan review process we just did.
 
 
 -----------------
+
+
+Now let's do our pre-mortem review procedure (acknowledging some overlap with the bigger picture "out of the box" reviews we just did) for phase 2.
+Explicitly review the current contents of all four task files in the plans\implementation\phase-02-backend-f001-public-contract-aggregation directory, then perform another round of the task plan review process we just did.
+
+
+-----------------
+
+
+Those are good enhancements. The phase 2 task files look to be in good shape. Let's fill out the phase 2 pre-mortem review template (design\reviews\pre-mortems\00-pre-mortem-review-template.md) now. Remember that you changed a few of the sections between the template and design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem.md, so if the ones in the phase 3 are better for you to learn from, use that as the template for the structure. For the purposes of this phase 2 pre-mortem review, include both the "official" pre-mortem review we just did, as well as the first and second "outside the box" reviews of phase 2 right before it, as those were done in the same forward-looking spirit.
+
+
+-----------------
+
+
+Please review the phase 2 pre-mortem at design\reviews\pre-mortems\phase-02-backend-f001-pre-mortem.md carefully while you still have the recent memory context from the reviews. It should be very detailed so we can learn from it. Is there anything missing from the pre-mortem that could help Cascade?
+
+
+-----------------
+
+
+I agree! Add those proposed sections. Once that's done, please review and update the design\reviews\pre-mortems\00-pre-mortem-review-template.md template to be based on this much improved design\reviews\pre-mortems\phase-02-backend-f001-pre-mortem.md. You correctly noted that "A document's true value, especially for learning, comes from its clarity, detail, and the explicit connections it draws between problems and solutions. While the current pre-mortem captures the what, I can enhance it to better explain the why and how, making it a more powerful learning tool for my future self and for the team.", so the template update should take into consideration how to guide Cascade to include that type of information in future pre-mortem reviews.
+
+
+-----------------
+
+
+I've identified one more enhancement. The phase review template at design\reviews\post-mortems\phase-reviews\phase-review-template.md has these header fields that can help you follow the sequence of review documents. 
+**Previous Phase Review:** [Link to Previous Phase Review Document or N/A]
+**Next Phase Review:** [Link to Next Phase Review Document or N/A]
+
+We should have equivalents in the pre-mortem template and existing pre-mortem reviews as well. Please update design\reviews\pre-mortems\00-pre-mortem-review-template.md, design\reviews\pre-mortems\phase-02-backend-f001-pre-mortem.md, and design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem.md to include those Previous and Next Pre-Mortem Phase Review header links.
+
+
+-----------------
+
+
+I'm going to stop here for now. Thank you for all your help today. We made significant progress.
+
+1. Please make git commits for all pending changes with commit messages.
+
+2. Write a PR message for me to merge all changes in the dev branch to main since the last PR.
+
+
+-----------------
+
+
+Ah, before we do that, one more update. Please add one or more (as you deem appropriate) design log entries to design\meta\design-log.md capturing important design / process items since the design activities described in the current last entry "**2025-06-10 01:39:35-05:00: Standardization of Markdown Cross-Project Links & Tooling Challenges**". Remember, the design log should provide useful insights to both Cascade and human reviewers. 
+
+After updating the design log, proceed with the git commits (to now include design-log.md) and PR message.
+
+
+-----------------
+
 
 X
 
@@ -3361,47 +3422,6 @@ X
 
 
 design/architecture/api-design-guide.md
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
 
 
 -----------------

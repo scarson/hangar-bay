@@ -8,7 +8,9 @@ RelatedTasks:
   - plans/implementation/phase-03-frontend-core-infrastructure/03.2-backend-api-service-layer.md
   - plans/implementation/phase-03-frontend-core-infrastructure/03.3-basic-layout-routing-navigation.md
 Participants: USER, Cascade
-ReviewRounds: 1 (Initial Draft)
+ReviewRounds: 2 (Initial + "Outside the Box")
+PreviousPreMortemReview: [Phase 02 Pre-Mortem](./phase-02-backend-f001-pre-mortem.md)
+NextPreMortemReview: N/A
 ---
 
 ## 1. Pre-Mortem Review Summary

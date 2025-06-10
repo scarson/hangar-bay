@@ -889,4 +889,20 @@ Despite the challenges, the targeted documentation files were successfully updat
 
 ---
 
+## Pre-Mortem Process Evolution & Standardization (Approx. 2025-06-10 04:08:20-05:00)
+
+*   **Context:** A review of the existing pre-mortem documents revealed an opportunity to significantly enhance their structure and utility, transforming them from simple risk logs into comprehensive strategic guides and learning tools. This effort was inspired by the prompt to better explain the "why and how" behind decisions, not just the "what."
+*   **Decision:** The pre-mortem process and associated artifacts were systematically overhauled.
+*   **Key Enhancements:**
+    *   **New Template Structure:** The `design/reviews/pre-mortems/00-pre-mortem-review-template.md` was completely redesigned to be more robust and prescriptive.
+    *   **Added Strategic Sections:** The template and existing pre-mortems (`phase-02-backend-f001-pre-mortem.md`, `phase-03-frontend-core-infra-pre-mortem.md`) were updated to include:
+        *   `Assumptions and Dependencies`: To explicitly state the foundational context of the design.
+        *   `Implications for Testing Strategy`: To directly link identified risks to concrete quality assurance actions.
+        *   `Monitoring and Observability Requirements`: To ensure operational readiness is a first-class design citizen.
+    *   **Enhanced AI Guidance:** All sections in the new template include detailed `Guidance for Cascade` prompts to improve the quality of AI-assisted reviews and ensure a focus on connecting problems to solutions.
+    *   **Improved Traceability:** `PreviousPreMortemReview` and `NextPreMortemReview` links were added to the frontmatter of all pre-mortem documents to create a clear, navigable history of the project's design evolution.
+*   **Rationale:** This evolution of the pre-mortem process standardizes a higher level of rigor for risk analysis. It ensures that future reviews are more thorough, actionable, and serve as valuable, long-lived documentation for both human developers and AI assistants, capturing not just risks but also the strategic thinking behind their mitigation.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
