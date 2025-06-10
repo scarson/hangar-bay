@@ -3404,7 +3404,11 @@ After updating the design log, proceed with the git commits (to now include desi
 -----------------
 
 
-X
+Your design log entry targeted the wrong content and stuck the new "## Pre-Mortem Process Evolution & Standardization (Approx. 2025-06-10 04:02:55-05:00)" entry in the middle of an old, existing "## Performance Specification Creation (Approx. 2025-06-06 01:05:00-05:00)" section. That's incorrect. New design log entries should ALWAYS be appended to the end of the file unless you're specifically instructed to do otherwise by the USER. 
+We have an AI-friendly footer to mark the end of the design-log.md file:
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
+
+Please correct the issue and ensure the new entry is placed at the end, then proceed with the git commits and PR.
 
 
 -----------------
