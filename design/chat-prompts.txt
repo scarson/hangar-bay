@@ -2829,6 +2829,589 @@ X
 
 -----------------
 
+TODO:
+
+CONTRIBUTING.md has:
+"Prerequisites
+Git: For version control.
+Python: Version 3.10 or higher recommended.
+Node.js: Version 18.x (LTS) or higher recommended, which includes npm (Node Package Manager).
+Angular CLI: Install globally after Node.js: npm install -g @angular/cli
+(Optional but Recommended) Docker: For running PostgreSQL and Valkey in containers, matching the production environment."
+
+Doesn't line up with our principle of version pinning and reproducible builds. For example, our PDM config is set to >=3.11.
+
+TODO:
+Create an angular testing guidelines doc based on:
+https://angular.dev/guide/testing
+
+Create an angular i18n guidelines doc based on:
+https://angular.dev/guide/i18n
+
+https://angular.dev/ai/develop-with-ai
+https://angular.dev/llms.txt
+https://angular.dev/llms-full.txt
+https://genkit.dev/
+
+
+-----------------
+
+
+I found that the Angular docs have some resources specifically tailored towards helping AI coding assistants like Cascade. 
+Earlier, I gave you links to each page in the Angular docs "Best Practices" section to help inform design\angular-frontend-architecture.md but this is much more comprehensive. 
+
+* https://angular.dev/ai/develop-with-ai - topic landing page
+* https://angular.dev/llms.txt - an index file providing links to key files and resources
+* https://angular.dev/llms-full.txt - a more robust compiled set of resources describing how Angular works and how to build Angular applications. At a glance, this looks like all or almost all of the Angular docs compiled into a single file with markdown formatting, designed for LLM ingestion. Because it combines so many reasources, it is a VERY long file.
+
+I want you to review these resources exhaustively. 
+
+Then, think about multiple ways to best leverage this information for Cascade and compare them against each other. At the simplest end, this could include additional reviews and revisions of the design\angular-frontend-architecture.md file we already have. It could also involve the creating of multiple additional architecture or spec or coding guideline type files and/or memories. These are just examples, do NOT limit your evaluation to them. Think of other ideas to use in your comparison too.
+Justify why you think the proposal would be effective in helping Cascade implement the Hangar Bay project.
+
+-----------------
+
+
+I agree with your proposal for Option 4: The Hybrid Approach for Angular. We're still in the early phases of the implementation, so this is the perfect time to set things up for long-term benefits for the Hangar Bay project in terms of code quality, maintainability, and effective AI collaboration. Please begin comprehensively planning implementing the hybrid approach.
+
+
+-----------------
+
+1. I noticed the following files are over 200 lines long. Should we add a section at the beginning like we did for design\security-spec.md to help remind you about that?
+"## AI Analysis Guidance for Cascade
+
+This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls."
+* design\angular\02-component-and-directive-deep-dive.md
+* design\angular\03-template-syntax-and-control-flow.md
+* design\angular\04-state-management-and-rxjs.md
+* design\angular\05-forms-and-validation.md
+* design\angular\06-routing-and-navigation.md
+* design\angular\07-http-and-data-loading.md
+* design\angular\09-testing-strategies.md
+
+2. At the end of your output, I see:
+"Now, as outlined in our plan, the next crucial step is to extract key information from these documents and create granular AI memories. This will enable me to provide more proactive and context-aware assistance for the Hangar Bay Angular frontend development.
+
+I'll start by creating a memory that summarizes the purpose and location of the Angular design documentation we've just created. This will serve as a foundational memory for navigating these resources.
+
+Cascade error
+Unknown: an internal error occurred (error ID: c18448f9d0304dd39657208df6a447cb)
+Feedback submitted
+
+Auto-generated memory was updated
+Manage
+Created "Angular Design Documentation for Hangar Bay Project" memory."
+
+Do you know what that error was about? Should we be worried?
+
+3. In your implementation plan for the hybrid approach, you talk about creating multiple memories. Here's that response:
+"Phase 3: Cascade Memories
+
+Based on the detailed guidelines, I will create specific, actionable Cascade memories. Examples:
+
+Title: Angular File Naming Convention
+Content: Files are kebab-case (e.g., user-profile.component.ts). Tests end with .spec.ts. Match class name.
+Tags: angular, style_guide, file_naming
+Title: Angular Dependency Injection Preference
+Content: Prefer using the inject() function over constructor parameter injection for better readability and type inference.
+Tags: angular, di, best_practice
+Title: Angular Component Template Access
+Content: Use protected access modifier for component class members intended only for use within the component's template.
+Tags: angular, component_design, template
+Title: Angular Deferred Loading with @defer
+Content: Use @defer blocks to lazy-load non-critical parts of a view. Specify appropriate triggers (e.g., on viewport, on interaction). Use @placeholder, @loading, @error sub-blocks.
+Tags: angular, performance, template, defer
+(And many more covering key aspects from the guideline documents)"
+
+It looks like you only created one memory. Did you mean to create more or did you change your mind? 
+
+-----------------
+
+
+1. Do we still need the design\angular\.gitkeep file now that there are other files in that directory? If not, please delete it.
+
+2. Let's git commit all our changes before proceeding. 
+
+3. First, take an inventory of everything we have under the design\ directory, including contents in subdirectories. What do you think about having other areas under design\ like our new design\angular folder? If so, what would be beneficial to Cascade and why? Justify why you think the proposal would be effective in helping Cascade implement the Hangar Bay project.
+
+
+-----------------
+
+
+1. The git commit seems hung on "Committing changes" somehow. I still see the staged changes. Here's the output of the editor's "Output" log, starting from our prior commit:
+2025-06-09 23:11:40.358 [info] > git add -A -- . [63ms]
+2025-06-09 23:11:40.358 [info] warning: in the working copy of 'design/angular-frontend-architecture.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/design-log.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/memory-index.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/.gitkeep', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/00-angular-introduction-and-resources.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/01-coding-style-guide.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/02-component-and-directive-deep-dive.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/03-template-syntax-and-control-flow.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/04-state-management-and-rxjs.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/05-forms-and-validation.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/06-routing-and-navigation.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/07-http-and-data-loading.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/08-ssr-and-performance.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'design/angular/09-testing-strategies.md', LF will be replaced by CRLF the next time Git touches it
+2025-06-09 23:11:40.834 [info] > git show --textconv :.git/COMMIT_EDITMSG [34ms]
+2025-06-09 23:11:40.839 [info] > git ls-files --stage -- .git/COMMIT_EDITMSG [34ms]
+2025-06-09 23:11:40.872 [info] > git hash-object -t tree /dev/null [35ms]
+2025-06-09 23:11:40.872 [warning] [GitFileSystemProvider][readFile] File not found - git:/c%3A/Users/Sam/OneDrive/Documents/Code/hangar-bay/.git/COMMIT_EDITMSG.git?%7B%22path%22%3A%22c%3A%5C%5CUsers%5C%5CSam%5C%5COneDrive%5C%5CDocuments%5C%5CCode%5C%5Changar-bay%5C%5C.git%5C%5CCOMMIT_EDITMSG%22%2C%22ref%22%3A%22%22%7D
+2025-06-09 23:11:40.876 [info] > git hash-object -t tree /dev/null [34ms]
+2025-06-09 23:11:40.876 [warning] [GitFileSystemProvider][stat] File not found - git:/c%3A/Users/Sam/OneDrive/Documents/Code/hangar-bay/.git/COMMIT_EDITMSG.git?%7B%22path%22%3A%22c%3A%5C%5CUsers%5C%5CSam%5C%5COneDrive%5C%5CDocuments%5C%5CCode%5C%5Changar-bay%5C%5C.git%5C%5CCOMMIT_EDITMSG%22%2C%22ref%22%3A%22%22%7D
+2025-06-09 23:11:41.158 [info] > git check-ignore -v -z --stdin [32ms]
+2025-06-09 23:20:39.519 [info] > git config --get commit.template [36ms]
+2025-06-09 23:20:39.528 [info] > git for-each-ref --format=%(refname)%00%(upstream:short)%00%(objectname)%00%(upstream:track)%00%(upstream:remotename)%00%(upstream:remoteref) --ignore-case refs/heads/dev refs/remotes/dev [41ms]
+2025-06-09 23:20:39.580 [info] > git for-each-ref --sort -committerdate --format %(refname)%00%(objectname)%00%(*objectname) [36ms]
+2025-06-09 23:20:39.582 [info] > git status -z -uall [43ms]
+2025-06-09 23:20:39.943 [info] > git show --textconv :design/angular/.gitkeep [32ms]
+2025-06-09 23:20:39.943 [warning] [GitFileSystemProvider][readFile] File not found - git:/c%3A/Users/Sam/OneDrive/Documents/Code/hangar-bay/design/angular/.gitkeep.git?%7B%22path%22%3A%22c%3A%5C%5CUsers%5C%5CSam%5C%5COneDrive%5C%5CDocuments%5C%5CCode%5C%5Changar-bay%5C%5Cdesign%5C%5Cangular%5C%5C.gitkeep%22%2C%22ref%22%3A%22%22%7D
+2025-06-09 23:20:39.945 [info] > git ls-files --stage -- design/angular/.gitkeep [30ms]
+2025-06-09 23:20:39.945 [warning] [GitFileSystemProvider][stat] File not found - git:/c%3A/Users/Sam/OneDrive/Documents/Code/hangar-bay/design/angular/.gitkeep.git?%7B%22path%22%3A%22c%3A%5C%5CUsers%5C%5CSam%5C%5COneDrive%5C%5CDocuments%5C%5CCode%5C%5Changar-bay%5C%5Cdesign%5C%5Cangular%5C%5C.gitkeep%22%2C%22ref%22%3A%22%22%7D
+2025-06-09 23:20:56.281 [info] > git log --format=%H%n%aN%n%aE%n%at%n%ct%n%P%n%D%n%B -z --shortstat --diff-merges=first-parent -n50 --skip=0 --topo-order --decorate=full --stdin [796ms]
+2025-06-09 23:21:34.514 [info] > git log --format=%H%n%aN%n%aE%n%at%n%ct%n%P%n%D%n%B -z --shortstat --diff-merges=first-parent -n50 --skip=0 --topo-order --decorate=full --stdin [762ms]
+
+
+2. I'm considering your idea. One concern I have is that there are MANY references to the existing files throughout the project (including in your memories), especially the files you proposed putting under design/specifications/. How can we address that?
+
+
+-----------------
+
+
+1. It seems the editor was lagged. I closed and reopened it and the source tree is up to date with no hung commits. The matter is resolved.
+
+2. Regarding updating AI memories, you said:
+"Identify Affected Memories: I will review the content of all existing memories to find any that contain file paths that will change. For example, the memory ea3572b4-af10-48a2-83a8-cc4f83f3cf0d (Angular Design Documentation for Hangar Bay Project) mentions design/angular-frontend-architecture.md. If this file moves to design/architecture/angular-frontend-architecture.md, the memory needs an update."
+
+However, (much) earlier you told me there was a create_memory tool call but no view_memory equivalent. How are you able to review the actual content of all existing memories like you describe? Be careful to verify your response and not hallucinate.
+
+
+-----------------
+
+
+1. Regarding design\chat-prompts.txt, I'm manually recording all my own prompts in this file so it's constantly getting updated. You don't need to worry about it.
+
+2. Thank you for clarifying and refining your approach to the memory updates, especially the info about the create_memory tool with Action: "update". That increases my confidence in the proposed approach to an acceptable level.
+
+3. One specific area of the reogranization I'm still unsure about is the inclusion of the design\angular-frontend-architecture.md in design\architecture, separate from everything in design\angular. Think about this and explain why one approach or the other would be most beneficial for Cascade.
+
+-----------------
+
+
+1. It does clarify why centralized architecture documentation is preferable, thank you.
+
+2. Follow-up question. You mention:
+"Scenario 2: design/architecture/angular-frontend-architecture.md (alongside other potential files like backend-architecture.md, system-overview.md)"
+You also in the Scenario 1 response mention: "If each major component's architecture document (e.g., angular-frontend-architecture.md, a future python-backend-architecture.md, database-schema.md) ..."
+design/architecture/angular-frontend-architecture.md is still technology-specific. Should it be simply frontend-architecture.md instead? Or should backend-architecture.md be fastapi/python-backend-architecture.md, etc.? Think through this. What are the pros and cons for Cascade?
+
+
+-----------------
+
+
+1. The refined naming strategy makes sense and I agree with it. Thank you for clearly explaining the details as they related to Cascade functionality, which I appreciate.
+
+2. Let's proceed with the implementation. To recap, here is the exact output of your earlier proposal so it's fresh:
+"Inventory of design/ Directory
+
+Here's the current content of the c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\design directory:
+
+accessibility-spec.md (File)
+ai-system-procedures.md (File)
+angular/ (Directory, 11 children - our new Angular docs)
+angular-frontend-architecture.md (File)
+cascade-log.md (File)
+chat-prompts.txt (File)
+design-log.md (File)
+design-spec.md (File)
+features/ (Directory, 9 children)
+i18n-spec.md (File)
+instruction-recs.md (File)
+memory-index.md (File)
+observability-spec.md (File)
+performance-spec.md (File)
+reviews/ (Directory, 4 children - e.g., pre-mortems, post-mortems)
+risks.md (File)
+security-spec.md (File)
+test-spec.md (File)
+Thoughts on Other Areas under design/
+
+The design/angular/ folder is a great step towards organizing technology-specific design and implementation guidelines. Expanding on this idea, we could further structure the design/ directory to enhance clarity and make it even more beneficial for both human developers and AI assistants like me.
+
+Here are a few proposals for new subdirectories:
+
+design/specifications/
+Current files to move here:
+accessibility-spec.md
+design-spec.md (This could be the top-level project specification)
+i18n-spec.md
+observability-spec.md
+performance-spec.md
+security-spec.md
+test-spec.md
+Benefit to Cascade & Hangar Bay:
+Focused Context for Requirements: When I need to understand specific non-functional requirements (NFRs) or overall system design parameters, I can be directed to or search within this dedicated directory. This provides a clear, uncluttered source for "what" the system must do or "how well" it must perform, distinct from implementation details.
+Improved Accuracy: For queries like "What are the project's security requirements?" or "Summarize the performance specifications," I can more reliably and quickly retrieve the correct documents, leading to more accurate answers and code generation that adheres to these specs.
+Effective Implementation: By having all specifications in one place, it's easier to ensure that development efforts (both human and AI-assisted) are aligned with the defined requirements from the outset.
+design/architecture/
+Current files to move here:
+angular-frontend-architecture.md
+Potential future files: backend-architecture.md, system-overview-architecture.md, data-model.md, etc.
+Benefit to Cascade & Hangar Bay:
+High-Level System Understanding: This directory would house documents describing the "big picture" – how major components of Hangar Bay (frontend, backend, databases, services) are structured and interact. This is crucial for me to understand the impact of changes, make informed architectural suggestions, and ensure new features integrate correctly.
+Guided Development: When implementing new features or refactoring existing ones, I can refer to these architectural blueprints to maintain consistency and adhere to the established structural patterns.
+Clear Separation: It distinguishes high-level architectural designs from more granular implementation guidelines (like those in design/angular/ for specific coding practices within that architecture).
+design/project-meta/ (or design/project-process/ or design/governance/)
+Current files to move here:
+ai-system-procedures.md
+cascade-log.md
+design-log.md
+instruction-recs.md
+memory-index.md
+risks.md
+Potentially chat-prompts.txt (if it's seen as meta-documentation for AI interaction)"
+
+For the proposed design/project-meta/ directory, let call it design/meta/ for simplicity (and because I often type out the path those files are in) unless you think the absence of the "project-" in the name would meaningfully hurt discoverability for Cascade.
+
+-----------------
+
+
+Hold up, this isn't right. 
+
+You combined two different path update types in plans\implementation\phase-10-deployment\10.3-final-documentation-readme.md and some other files.
+Here was the original text from 10.3-final-documentation-readme.md, with the original paths *from the project root*:
+
+ **Links to Key Documents:**
+        *   Link to `design/design-spec.md`.
+        *   Link to `design/security-spec.md`.
+
+You updated it with new paths the combined relative path depth with ../../../ IN FRONT of the updated path from the project root, design/specifications/design-spec.md (and security-spec.md):
+
+ **Links to Key Documents:**
+        *   Link to `../../../design/specifications/design-spec.md`.
+        *   Link to `../../../design/specifications/security-spec.md`.
+		
+Think: If you followed path link "../../../design/specifications/design-spec.md" from plans\implementation\phase-10-deployment\10.3-final-documentation-readme.md, where would that take you? Is it a valid path?
+
+-----------------
+
+
+I am not understanding something about the notation in "../../../design/specifications/security-spec.md".
+
+The absolute local file path to the root directory of this project is:
+C:\Users\Sam\OneDrive\Documents\Code\hangar-bay
+That's the root of the Hangar Bay git repository.
+
+When I use the "Copy relative path" command in the Windsurf/VS Code editor on that file, this is the output:
+design\specifications\performance-spec.md
+Which makes it clear that that's the path *relative* to the project root. These "relative paths" are what I almost always use in my commands to you, and you always seem to be able to find those files with perfect accurancy (as far as I can tell). 
+
+Does the "../../../" followed by "design/specifications/security-spec.md" mean "go up three directory levels from the current directory, then go to "design/specifications/security-spec.md" from there? That seems WAY more complicated, looks messier, and is likely to get screwed up with broken references than simply ALWAYS using the "relative path" from the project root. Does the "../../../" part majorly help Cascade when encountering path links in files vs always using the relative path from the project root? Would a memory assist with that? 
+
+
+
+-----------------
+
+
+1. Yes, let's proceed with root-relative paths. I confirm the convention and appreciate the discussion and now understand that the leading "/" like in "/design/specifications/security-spec.md" is important for signifying relative to project root, rather than current directory.
+
+2. Make sure you have a comprehensive list of everything you need to re-edit, then re-edit the files.
+
+3. Create the memory and update design\meta\memory-index.md with an entry for it.
+
+
+-----------------
+
+
+Please run another search for those traversal type paths with "../". I still see a number of them in spot checks. Here are two examples:
+* plans\implementation\phase-09-cross-cutting-concerns-mvp-scope\09.4-accessibility-i18n-stubs-mvp.md
+* plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.2-data-models-f001.md
+
+
+-----------------
+
+
+1. You missed plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.3-integrating-filters-with-list.md
+2. The phase-03 directory is plans\implementation\phase-03-frontend-core-infrastructure
+3. The phase-02 directory is plans\implementation\phase-02-backend-f001-public-contract-aggregation
+4. The phase-01 directory is plans\implementation\phase-01-backend-core-infrastructure
+5. The phase-00 directory is plans\implementation\phase-00-foundational-setup
+6. Make sure to check all files that are direct children of of plans\implementation as well
+
+
+-----------------
+
+
+The file was named plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing.md but I renamed it to 03.3-basic-layout-routing-navigation.md because you consistently think that's what the path should be, and it's more descriptive anyway.
+
+
+-----------------
+
+
+We changed the structure of phase 3 earlier and renamed and created new files. Please review plans\implementation\00-mvp-implementation-plan-overview.md section "### Phase 3: Frontend Core Infrastructure" for the updated list with links to the files.
+
+
+
+-----------------
+
+Regarding:
+"No ../../design/ or ../../../design/ links found in 01.1-fastapi-app-skeleton.md.
+
+Let's do the broader search for any design/ links."
+
+How are you doing this search? It is missing obvious hits.
+In file plans\implementation\phase-01-backend-core-infrastructure\01.1-fastapi-app-skeleton.md, I am looking directly at this text in the "## 7. Cross-Cutting Concerns Review" section on lines 60-67:
+"## 7. Cross-Cutting Concerns Review
+
+This section documents how the five key cross-cutting concerns were addressed during the completion of this task. Refer to the primary specification documents for detailed guidance:
+*   Security: `../../../design/security-spec.md`
+*   Observability: `../../../design/observability-spec.md`
+*   Testing: `../../../design/test-spec.md`
+*   Accessibility: `../../../design/accessibility-spec.md`
+*   Internationalization (i18n): `../../../design/i18n-spec.md`"
+
+Something isn't working with your search strategy.
+
+
+-----------------
+
+
+"`/design/angular/angular-routing-best-practices.md` (Guidelines for Angular routing)" doesn't exist.
+List the files in design\angular. What is the naming structure of these files? Which one should be referenced? Would an index file or adding an index to design\angular\00-angular-introduction-and-resources.md help you remember in the future? I don't like hallucinating file names and want to try to avoid it.
+
+
+-----------------
+
+
+I see you running these searches in the chat output:
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with query design/security-spec.md
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with query design/observability-spec.md
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with query design/test-spec.md
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with query design/accessibility-spec.md
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with querydesign/i18n-spec.md
+Searched codebase
+0 results
+Searched inc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\plans\implementation\phase-01-backend-core-infrastructure\01.2-database-setup.md with query design-spec.md
+
+Meanwhile, I am looking right at another "## 7. Cross-Cutting Concerns Review" section on lines 112-119 in that file:
+"## 7. Cross-Cutting Concerns Review
+
+This section documents how the five key cross-cutting concerns were addressed during the completion of this task. Refer to the primary specification documents for detailed guidance:
+*   Security: `../../../design/security-spec.md`
+*   Observability: `../../../design/observability-spec.md`
+*   Testing: `../../../design/test-spec.md`
+*   Accessibility: `../../../design/accessibility-spec.md`
+*   Internationalization (i18n): `../../../design/i18n-spec.md`"
+
+Something about your query structure is failing to find the strings like `../../../design/i18n-spec.md`. Why? How can you fix it? We have more files to go through, so let's figure out how to fix the core search query issue or we're going to be doing dozens of manual updates.
+
+In plans\implementation\00-mvp-implementation-plan-overview.md, it also missed finding all of these mentions on line 108:
+"*   **Integrated Cross-Cutting Concerns:** Beyond the dedicated tasks in Phase 09, all five cross-cutting concerns (Security, Observability, Testing, Accessibility, Internationalization) as detailed in their respective specification documents (`../../design/security-spec.md`, `../../design/observability-spec.md`, `../../design/test-spec.md`, `../../design/accessibility-spec.md`, `../../design/i18n-spec.md`) MUST be proactively and systematically integrated into **every task** throughout Phases 00-08. This is a non-negotiable requirement. Cascade will leverage its AI memories established for this purpose and will complete the mandatory "Cross-Cutting Concerns Review" checklist section within each task file to document how these considerations were applied to the specific work of that task."
+
+
+
+
+-----------------
+
+
+In plans\implementation\phase-01-backend-core-infrastructure\01.3-valkey-cache-integration.md
+The original:
+"*   **Notes:** Replaced print statements in `cache.py` with `logging` for connection success/closure, errors (with `exc_info=True`), and critical failures during initialization. A baseline application log format (`%(levelname)s:     %(name)s - %(message)s`) was established in `main.py` via `logging.basicConfig()` to improve readability and consistency with Uvicorn's output (see `design/observability-spec.md` for details). Structured logging (e.g., JSON) remains a future enhancement for more advanced observability."
+
+was replaced with:
+
+"*   **Notes:** Replaced print statements in `cache.py` with `logging` for connection success/closure, errors (with `exc_info=True`), and critical failures during initialization. A baseline application log format (`%(levelname)s:     %(name)s - %(message)s`) was established in `main.py` via `logging.basicConfig()` to improve readability and consistency with Uvicorn's output (see /design/specifications/observability-spec.md for details). Structured logging (e.g., JSON) remains a future enhancement for more advanced observability."
+
+Which got the "/design/specifications/observability-spec.md" path right but lost the `` characters around it. Why did that happen? Where else did it happen?
+
+Until we get these update issues sorted out, I want you to only edit one file at a time, and work through verifying that all the updates were successful with me before proceeding to the next. There are many errors happening and it's getting very difficult for me to track and verify the changes when you're updating so many files at once, often adding new errors we have to fix in many places.
+
+
+-----------------
+
+
+Regarding the "Notes" section of 01.3-valkey-cache-integration.md:
+I am looking directly at the diff. The text from above was copy-pasted directly from the diff. The original has the backticks.
+I went directly to Github and verified the line from https://raw.githubusercontent.com/scarson/hangar-bay/refs/heads/dev/plans/implementation/phase-01-backend-core-infrastructure/01.3-valkey-cache-integration.md. Here it is copy-pasted from the latest dev branch commit:
+"*   **Notes:** Replaced print statements in `cache.py` with `logging` for connection success/closure, errors (with `exc_info=True`), and critical failures during initialization. A baseline application log format (`%(levelname)s:     %(name)s - %(message)s`) was established in `main.py` via `logging.basicConfig()` to improve readability and consistency with Uvicorn's output (see `design/observability-spec.md` for details). Structured logging (e.g., JSON) remains a future enhancement for more advanced observability."
+
+Is it possible you made an intermediate edit that lost the backticks?
+
+-----------------
+
+
+1. Yes, please document the process in design/meta/design-log.md. Be as verbose as necessary to capture the issues we encountered, how they were identified, and their resolutions in a way that Cascade can effectively learn from in the future. That set of path updates for all our design docs and specs was a mess and took a long time. We want to avoid anything like that from happening again.
+
+2. I realize that while we conducted extensive pre-mortem reviews for phase 3 tasks and then created a pre-mortem review template at design\reviews\pre-mortems\00-pre-mortem-review-template.md, we never actually recorded the results of the phase 3 pre-mortem reviews. Do you remember the details of those well enough in your context window to write out an accurate phase 3 pre-mortem review based on the template? Be careful and honest in your assessment - I don't want you to hallucinate details in an important review if you don't remember well enough. I can go back and retrieve your exact text from chat if necessary.
+
+
+-----------------
+
+
+It unfortunately appears that I cannot scroll up far enough in chat history to get to the phase 3 pre-mortem outputs without encountering an IDE/plugin error of "Cannot read properties of undefined (reading 'actionSpec')". I have submitted a support ticket with IDE logs to Windsurf and am awaiting review. 
+
+The content of the draft looks good. I realize I do have screenshots of many of your phase 3 pre-mortem prompt outputs. Would you be able to read and use those if I provided them?
+
+
+-----------------
+
+
+I accepted all of the changes except those in section "## 3. Root Causes & Likelihood/Impact Assessment", which only lists three problems. Did you just try to update the same number of items as the draft's placeholder content had? I'm quite sure you identified more than three problems across over ten rounds of review loops. The purpose of this review document is for Cascade to learn from, so let's make sure it captures everything important.
+
+
+-----------------
+
+
+1. Ready to move on to a review of the phase 2 tasks as defined in the files within plans\implementation\phase-02-backend-f001-public-contract-aggregation. plans\implementation\00-mvp-implementation-plan-overview.md section "### Phase 2: Backend - F001: Public Contract Aggregation" has a list of the task files. We'll do a general review first, focused on:
+* addressing any outstanding design / decision points
+* firming up details and removing ambiguities
+* ensuring internal consistency between task details
+* making an appropriate updates based on work performed in previous phases and other now known details
+
+To prepare for the review of phase 2, it's critical you understand the work performed in phase 0 and phase 1 and the lessons learned in their post-mortem phase reviews. 
+First, read the design log at design\meta\design-log.md for review-related entries. Pay special attention to entries describing how Cascade can make best use of review files. Then:
+* Phase 0
+*   * plans\implementation\00-mvp-implementation-plan-overview.md section "### Phase 0: Foundational Setup" contains a list of all phase 0 task files. Review their contents carefully. 
+*   * read the post-mortem review at design\reviews\post-mortems\phase-reviews\00-foundational-setup-review.md
+* Phase 1
+*   * plans\implementation\00-mvp-implementation-plan-overview.md section "### Phase 1: Backend Core Infrastructure" contains a list of all phase 1 task files. Review their contents carefully. 
+*   * read the post-mortem review at design\reviews\post-mortems\phase-reviews\01-backend-core-infrastructure-review.md
+Then read the phase 3 pre-mortem review at design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem.mdto learn about the types of issues and patterns we were able to identify and resolve with that approach.
+
+2. Then, propose a comprehensive plan to review and enhance the phase 2 tasks within plans\implementation\phase-02-backend-f001-public-contract-aggregation to help Cascade ensure a smooth implementation with minimal errors. Justify why you think the proposal would be effective in helping Cascade implement Phase 2 of the Hangar Bay project MVP.
+
+
+-----------------
+
+
+1. Question. Sometimes when I select "Open diff" from your outputs like:
+"Edited 02.4-api-endpoints-f001.md +51 -30 85 Open diff"
+I can see the changes with red and green highlights as I'd expect, and I can accept or reject each change block individually. There are blue bars along the file scrollbar indicating where the changes are.
+I can see the diff changes in plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.4-api-endpoints-f001.md
+However, in:
+* plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.1-esi-client-public.md
+* plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.2-data-models-f001.md
+* plans\implementation\phase-02-backend-f001-public-contract-aggregation\02.3-background-aggregation-service.md
+
+I only see one "Accept Changes" in the middle for the whole file, and while I can still see the blue bars on the side indicating where changes were, I don't see any red/green highlights or ability to individually accept changed sections. Do you know why that is? Is there a difference in the tool calls you used to update those files that could be responsible?
+
+2. Let's make sure we capture these detailed review insights, including both the specifics and the process (such as reviewing prior work / task files and review files first) for future learning! The current pre-mortem template at design\reviews\pre-mortems\00-pre-mortem-review-template.md doesn't seem quite right for what we just did. How would you suggest capturing ALL useful outputs (both immediate and strategic for future reviews) of this phase 2 review in a way that's most useful to Cascade? Think about multiple ways to best leverage this information for Cascade and compare them against each other. Justify why you think the proposal would be effective in helping Cascade implement the Hangar Bay project.
+
+-----------------
+
+
+The "review loop" for the phase 3 post-mortem reviews seemed effective in identifying additional areas for improvement each time. Let's try something similar here. Explicitly review the current contents of all four task files in the plans\implementation\phase-02-backend-f001-public-contract-aggregation directory, then perform another round of the task plan review process we just did.
+
+
+-----------------
+
+
+Let's do one more loop. This time, try to "think outside the box", like you did for the final review loop of the phase 3 pre-mortem.
+Explicitly review the current contents of all four task files in the plans\implementation\phase-02-backend-f001-public-contract-aggregation directory, then perform another round of the task plan review process we just did.
+
+
+-----------------
+
+1. Let's git commit all pending changes with a commit message.
+
+2. That was such a great insight and improvement. I'm glad the "think outside the box" prompt was successful. Because it worked so well, I'd like you to try another "think outside the box" review round, but first, think about "sources of inspiration" for thinking outside the box that might be relevant to the Hangar Bay, this project phase 3, and other phases it will interact with.
+Explicitly review the current contents of all four task files in the plans\implementation\phase-02-backend-f001-public-contract-aggregation directory, then perform another round of the task plan review process we just did.
+
+
+-----------------
+
+
+Let's capture those "Sources of Inspiration for "Outside-the-Box" Reviews" in a memory for future reviews!:
+"* The Operator's Nightmare: I imagine myself as the person on-call at 3 AM. What could go wrong that would wake me up? This perspective forces a focus on failure modes, resilience, and observability. It asks questions like: What happens if a critical dependency (like the cache, database, or a specific ESI endpoint) is down or slow? How would I diagnose the problem quickly?
+* The Data's Lifecycle: I consider the data not as static information, but as something with a life of its own. Where is it born? How does it change? When does it die? This leads to questions about data integrity, staleness, growth, and eventual archival or deletion. It helps prevent long-term data rot and scaling issues.
+* The Future User's Journey: I look beyond the immediate feature requirements. For example, after a user sees the list of ship contracts (F001), what is their very next click likely to be? This helps anticipate future needs (like the detailed view in F003) and ensures our current design choices don't create future roadblocks. It's about building for the next step, not just the current one.
+* Cross-Phase Friction: I analyze the hand-off points between major project phases. How will the work in this phase (e.g., Phase 2 Backend) impact the next phase (e.g., Phase 3 Frontend)? Are we providing data in a format that's easy for Angular to consume, or are we creating extra work for the frontend developers? This helps smooth the integration between different parts of the application."
+
+Can you think of any more "sources of inspiration" that could be useful for future reviews to add to the list?
+
+
+-----------------
+
+
+Let's try this out. With those new sources of inspiration in mind,  I'd like you to try another "think outside the box" review round.
+Explicitly review the current contents of all four task files in the plans\implementation\phase-02-backend-f001-public-contract-aggregation directory, then perform another round of the task plan review process we just did.
+
+
+-----------------
+
+
+Now let's do our pre-mortem review procedure (acknowledging some overlap with the bigger picture "out of the box" reviews we just did) for phase 2.
+Explicitly review the current contents of all four task files in the plans\implementation\phase-02-backend-f001-public-contract-aggregation directory, then perform another round of the task plan review process we just did.
+
+
+-----------------
+
+
+Those are good enhancements. The phase 2 task files look to be in good shape. Let's fill out the phase 2 pre-mortem review template (design\reviews\pre-mortems\00-pre-mortem-review-template.md) now. Remember that you changed a few of the sections between the template and design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem.md, so if the ones in the phase 3 are better for you to learn from, use that as the template for the structure. For the purposes of this phase 2 pre-mortem review, include both the "official" pre-mortem review we just did, as well as the first and second "outside the box" reviews of phase 2 right before it, as those were done in the same forward-looking spirit.
+
+
+-----------------
+
+
+Please review the phase 2 pre-mortem at design\reviews\pre-mortems\phase-02-backend-f001-pre-mortem.md carefully while you still have the recent memory context from the reviews. It should be very detailed so we can learn from it. Is there anything missing from the pre-mortem that could help Cascade?
+
+
+-----------------
+
+
+I agree! Add those proposed sections. Once that's done, please review and update the design\reviews\pre-mortems\00-pre-mortem-review-template.md template to be based on this much improved design\reviews\pre-mortems\phase-02-backend-f001-pre-mortem.md. You correctly noted that "A document's true value, especially for learning, comes from its clarity, detail, and the explicit connections it draws between problems and solutions. While the current pre-mortem captures the what, I can enhance it to better explain the why and how, making it a more powerful learning tool for my future self and for the team.", so the template update should take into consideration how to guide Cascade to include that type of information in future pre-mortem reviews.
+
+
+-----------------
+
+
+I've identified one more enhancement. The phase review template at design\reviews\post-mortems\phase-reviews\phase-review-template.md has these header fields that can help you follow the sequence of review documents. 
+**Previous Phase Review:** [Link to Previous Phase Review Document or N/A]
+**Next Phase Review:** [Link to Next Phase Review Document or N/A]
+
+We should have equivalents in the pre-mortem template and existing pre-mortem reviews as well. Please update design\reviews\pre-mortems\00-pre-mortem-review-template.md, design\reviews\pre-mortems\phase-02-backend-f001-pre-mortem.md, and design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem.md to include those Previous and Next Pre-Mortem Phase Review header links.
+
+
+-----------------
+
+
+I'm going to stop here for now. Thank you for all your help today. We made significant progress.
+
+1. Please make git commits for all pending changes with commit messages.
+
+2. Write a PR message for me to merge all changes in the dev branch to main since the last PR.
+
+
+-----------------
+
+
+Ah, before we do that, one more update. Please add one or more (as you deem appropriate) design log entries to design\meta\design-log.md capturing important design / process items since the design activities described in the current last entry "**2025-06-10 01:39:35-05:00: Standardization of Markdown Cross-Project Links & Tooling Challenges**". Remember, the design log should provide useful insights to both Cascade and human reviewers. 
+
+After updating the design log, proceed with the git commits (to now include design-log.md) and PR message.
+
+
+-----------------
+
+
+Your design log entry targeted the wrong content and stuck the new "## Pre-Mortem Process Evolution & Standardization (Approx. 2025-06-10 04:02:55-05:00)" entry in the middle of an old, existing "## Performance Specification Creation (Approx. 2025-06-06 01:05:00-05:00)" section. That's incorrect. New design log entries should ALWAYS be appended to the end of the file unless you're specifically instructed to do otherwise by the USER. 
+We have an AI-friendly footer to mark the end of the design-log.md file:
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
+
+Please correct the issue and ensure the new entry is placed at the end, then proceed with the git commits and PR.
+
+
+-----------------
 
 X
 
@@ -2841,244 +3424,8 @@ X
 
 -----------------
 
-X
 
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
+design/architecture/api-design-guide.md
 
 
 -----------------

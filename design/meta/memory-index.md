@@ -27,4 +27,41 @@ This index provides a quick reference to key memories stored and utilized by the
 | `62974893-f9ef-42cb-b031-27fa1a4d19db`     | Python Environment Migration Best Practice       | Advises removing old virtual environment directories before initializing new environment tools (e.g., PDM, Poetry) to prevent conflicts.        |
 | `d3e20aff-aac5-45fd-95e5-ad9ecf10a198`     | Comprehensive Gitignore for New Projects         | Recommends starting new projects with a comprehensive .gitignore, using generators, and regularly updating it for new tools/files.          |
 | `ee09a93d-c516-4049-9d9d-78e80280c63a`     | Project Review Structure and Templates (Hangar Bay) | Defines structure for pre-mortems (`design/reviews/pre-mortems/`) and post-mortems (`design/reviews/post-mortems/`) with templates to enhance project quality and AI learning. |
-| *More entries to be added as needed...*    |                                                  |                                                                                                                                                 |
+| `a2addb01-7ae8-4154-af88-7de2f1e2261c` | Phase 2 (F001) Backend Task Plans: Enhancement Summary | Summarizes enhancements to Phase 2 backend task plans (F001) after a comprehensive review, focusing on integrating lessons learned. |
+| `8cf91e76-360e-4092-a6f3-56099ff44590` | Hangar Bay Project: Best Practices for Task Plan Review | Defines the best practice for reviewing task plans before a new phase, emphasizing historical context gathering and embedding learnings. |
+
+
+## Key Project Review Documents
+
+This section provides direct links to significant project review documents.
+
+*   **Phase 03 Frontend Core Infrastructure Pre-Mortem:** Detailed review identifying potential risks, root causes, and mitigation strategies for the Phase 03 frontend core infrastructure setup. ([`phase-03-frontend-core-infra-pre-mortem.md`](/design/reviews/pre-mortems/phase-03-frontend-core-infra-pre-mortem.md))
+
+## Project Conventions & Standards
+
+This section lists AI memories related to general project conventions, coding standards, and development best practices that apply across the Hangar Bay project.
+
+| Memory ID / Title Placeholder        | Summary of Content / Purpose                                                                                                | Tags                                                              |
+| :----------------------------------- | :-------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------- |
+| `b77171e2-c900-4f20-9620-6fad06e863aa` | Defines the convention for using root-relative paths (e.g., `/path/to/file.md`) for markdown links in project documentation. | `documentation, markdown, linking_convention, path_convention`    |
+
+## Angular Frontend Development
+
+Comprehensive design guidelines and best practices for Hangar Bay's Angular frontend are documented to ensure consistency, maintainability, and leverage modern Angular features.
+*   **Main Architecture:** [design/angular-frontend-architecture.md](/design/architecture/angular-frontend-architecture.md)
+*   **Detailed Guidelines:** [`design/angular/`](./angular/) (directory containing specific guides)
+
+### Key Angular AI Memories
+
+| Memory ID                                  | Memory Title                                                       | Brief Description                                                                                                                               |
+|--------------------------------------------|--------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ea3572b4-af10-48a2-83a8-cc4f83f3cf0d`     | Angular Design Documentation for Hangar Bay Project                | Overview of Angular docs in `design/angular/` and `design/angular-frontend-architecture.md`.                                                    |
+| `2bc1d2f0-56a1-489a-a1e4-d392e3b33d06`     | Angular File Naming Convention (Hangar Bay)                        | Kebab-case for files, `.spec.ts` for tests, match class name. (Ref: `01-coding-style-guide.md`)                                                 |
+| `deaf34ea-03ac-478b-be6d-0aecd1a9b15d`     | Angular Dependency Injection Preference (Hangar Bay)               | Prefer `inject()` function over constructor injection. (Ref: `01-coding-style-guide.md`)                                                          |
+| `9e5f9aaf-9f1b-45e4-8796-b2eb4a46d663`     | Angular Component Template Access (Hangar Bay)                     | Use `protected` for template-exclusive members. (Ref: `01-coding-style-guide.md`)                                                               |
+| `c99834e5-65a8-40cf-a53a-0401af4dd91d`     | Angular Deferred Loading with @defer (Hangar Bay)                  | Use `@defer` with triggers, `@placeholder`, `@loading`, `@error`. (Ref: `08-ssr-and-performance.md`, `03-template-syntax-and-control-flow.md`)     |
+| `bd7c05f6-6df9-4f84-b9b0-c39ea94d7545`     | Angular Standalone Components Preference (Hangar Bay)              | Default to Standalone Components, Directives, Pipes. (Ref: `02-component-and-directive-deep-dive.md`, `01-coding-style-guide.md`)              |
+| `f72a5380-d354-41cf-b566-b535b5296051`     | Angular Signals for State Management (Hangar Bay)                  | Signals primary for state; RxJS for complex async, bridge with `toSignal()`. (Ref: `04-state-management-and-rxjs.md`)                             |
+| `4cc11d93-0dc6-4ab7-a8f9-d16771a48d91`     | Angular New Control Flow (@if, @for, @switch) (Hangar Bay)         | Prefer new `@if`, `@for`, `@switch` over legacy directives. (Ref: `03-template-syntax-and-control-flow.md`)                                        |
+| `11d0a1e2-4982-424d-83a4-aef3a38611ed`     | Angular `track` with `@for` for Performance (Hangar Bay)           | Always use `track` with `@for` for list performance. (Ref: `03-template-syntax-and-control-flow.md`, `08-ssr-and-performance.md`)                 |
+| *More entries to be added as needed...*    |                                                                    |                                                                                                                                                 |

@@ -50,23 +50,23 @@
 ## 5. Cross-Cutting Concerns Review (Phase-Level)
 
 *   **Security:**
-    *   (Overall security posture of deliverables in this phase. Any new risks identified or mitigated? Adherence to `security-spec.md`.)
+    *   (Overall security posture of deliverables in this phase. Any new risks identified or mitigated? Adherence to `/design/specifications/security-spec.md`.)
 *   **Observability:**
-    *   (Logging, monitoring, tracing implemented or improved. Adherence to `observability-spec.md`.)
+    *   (Logging, monitoring, tracing implemented or improved. Adherence to `/design/specifications/observability-spec.md`.)
 *   **Testing:**
-    *   (Test coverage, types of tests implemented, any gaps. Adherence to `test-spec.md`.)
+    *   (Test coverage, types of tests implemented, any gaps. Adherence to `/design/specifications/test-spec.md`.)
 *   **Accessibility:**
-    *   (If applicable to this phase, e.g., UI components. Adherence to `accessibility-spec.md`.)
+    *   (If applicable to this phase, e.g., UI components. Adherence to `/design/specifications/accessibility-spec.md`.)
 *   **Internationalization (i18n):**
-    *   (If applicable. Adherence to `i18n-spec.md`.)
+    *   (If applicable. Adherence to `/design/specifications/i18n-spec.md`.)
 *   **Performance:**
-    *   (Any performance considerations, optimizations, or bottlenecks identified/addressed?. Adherence to `performance-spec.md`.)
+    *   (Any performance considerations, optimizations, or bottlenecks identified/addressed?. Adherence to `/design/specifications/performance-spec.md`.)
 
 ## 6. Key Decisions & Justifications (Technical & Process)
 
 *   (List any significant technical, architectural, or process decisions made or reinforced during this phase)
 *   (Justification for these decisions)
-*   (Cross-reference with `design-log.md` entry IDs where applicable)
+*   (Cross-reference with `/design/meta/design-log.md` entry IDs where applicable)
 
 ## 7. Unresolved Issues & Technical Debt
 

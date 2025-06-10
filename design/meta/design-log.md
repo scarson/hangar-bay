@@ -813,4 +813,96 @@ This structured approach to phase reviews, born from an iterative and reflective
 *   **Impact on Cascade's Operations:** Cascade will leverage this structured review data to provide more insightful, proactive support, contributing to improved task and phase implementation quality, better risk management, and more effective human-AI collaboration.
 
 ---
+
+## Angular Frontend Documentation & AI Memory Initialization (Approx. 2025-06-09 22:58:43-05:00)
+
+*   **Objective:** To establish a comprehensive, AI-friendly knowledge base for Angular frontend development for the Hangar Bay project, improving consistency, quality, and AI collaboration.
+*   **Key Actions & Decisions:**
+    *   The `design/angular/` directory was created to house detailed Angular guidelines.
+    *   A high-level Angular frontend architecture document, `design/angular-frontend-architecture.md`, was established.
+    *   A suite of detailed guideline documents (`00` through `09`) covering introduction, coding style, components, templates, state management (Signals & RxJS), forms, routing, HTTP, SSR/performance, and testing was created within `design/angular/`.
+    *   A Hybrid Documentation Approach was adopted, combining human-readable detailed guides with granular AI memories.
+    *   An "AI Analysis Guidance for Cascade" section was prepended to markdown files exceeding 200 lines to remind AI to read the full content if necessary.
+    *   An initial set of AI memories was created to capture key Angular best practices and project conventions. This includes:
+        *   Overall Angular documentation structure (Memory: `ea3572b4-af10-48a2-83a8-cc4f83f3cf0d`)
+        *   File Naming Convention (Memory: `2bc1d2f0-56a1-489a-a1e4-d392e3b33d06`)
+        *   Dependency Injection Preference (Memory: `deaf34ea-03ac-478b-be6d-0aecd1a9b15d`)
+        *   Component Template Access (Memory: `9e5f9aaf-9f1b-45e4-8796-b2eb4a46d663`)
+        *   Deferred Loading with `@defer` (Memory: `c99834e5-65a8-40cf-a53a-0401af4dd91d`)
+        *   Standalone Components Preference (Memory: `bd7c05f6-6df9-4f84-b9b0-c39ea94d7545`)
+        *   Signals for State Management (Memory: `f72a5380-d354-41cf-b566-b535b5296051`)
+        *   New Control Flow (`@if`, `@for`, `@switch`) (Memory: `4cc11d93-0dc6-4ab7-a8f9-d16771a48d91`)
+        *   `track` with `@for` for Performance (Memory: `11d0a1e2-4982-424d-83a4-aef3a38611ed`)
+*   **Rationale:** This structured documentation and AI memory initiative aims to streamline Angular development, ensure adherence to modern best practices, and enhance the effectiveness of AI-assisted coding for Hangar Bay.
+
+---
+
+---
+**2025-06-10 01:39:35-05:00: Standardization of Markdown Cross-Project Links & Tooling Challenges**
+
+**Context & Objective:**
+A significant effort was undertaken to standardize all cross-project markdown links within the Hangar Bay documentation (implementation plans, design specifications, etc.). The primary goal was to ensure all such links used root-relative paths, typically starting with `/design/specifications/` or `/design/features/`, to improve link robustness, maintainability, and clarity across the entire project. This initiative was driven by the `MEMORY[b77171e2-c900-4f20-9620-6fad06e863aa]` which mandates root-relative paths.
+
+**Process & Challenges:**
+The process involved systematically reviewing and updating markdown files, primarily focusing on Phase 02 (Backend F001) and Phase 03 (Frontend Core Infrastructure) implementation task files. The `replace_file_content` tool was used for these modifications.
+
+Several challenges were encountered during this process:
+1.  **Tool Behavior with Markdown:** The `replace_file_content` tool, while powerful, exhibited some non-ideal behaviors when dealing with markdown links:
+    *   **Incorrect Wrapping:** On several occasions, the tool incorrectly wrapped already correct or newly corrected links with `[path](path)` syntax, duplicating the path.
+    *   **Backtick Preservation:** Ensuring backticks around link paths (`/path/to/file.md`) were preserved or correctly added was sometimes problematic, requiring specific attention in the `ReplacementContent`.
+    *   **Fragment Identifier Handling:** Care was needed to preserve URL fragment identifiers (e.g., `#section-id`) during replacements.
+2.  **Exact `TargetContent` Requirement:** The tool requires the `TargetContent` to be an exact string match. Minor discrepancies, including whitespace or subtle formatting differences between the expected and actual content, led to failed replacements or unintended changes. This necessitated careful file viewing and precise `TargetContent` specification.
+3.  **Iterative Corrections:** Due to the above challenges, updating links in a single file often required multiple iterations of:
+    *   Viewing the file content.
+    *   Identifying incorrect links.
+    *   Crafting `replace_file_content` tool calls.
+    *   Reviewing the diff/output.
+    *   Re-viewing the file and making further corrections if the tool's application was not as expected.
+4.  **Multiple Instances:** Handling multiple instances of the same relative link within a single file sometimes required careful use of `AllowMultiple: true` or breaking down changes into several chunks.
+
+**Files Updated (Examples):**
+*   `plans/implementation/phase-02-backend-f001-public-contract-aggregation/02.3-background-aggregation-service.md`
+*   `plans/implementation/phase-02-backend-f001-public-contract-aggregation/02.4-api-endpoints-f001.md`
+*   `plans/implementation/phase-03-frontend-core-infrastructure/03.0-angular-project-initialization.md`
+*   `plans/implementation/phase-03-frontend-core-infrastructure/03.1-angular-core-module-setup.md`
+*   `plans/implementation/phase-03-frontend-core-infrastructure/03.2-backend-api-service-layer.md`
+*   `plans/implementation/phase-03-frontend-core-infrastructure/03.3-basic-layout-routing-navigation.md`
+*   User also manually updated links in `00-mvp-implementation-plan-overview.md`, `00-mvp-implementation-plan-progress.md`, and `phase-review-template.md`.
+
+**Key Learnings & Recommendations for Cascade:**
+*   **Markdown Link Complexity:** Modifying markdown links, especially with variations in existing formatting (backticks, fragments, relative vs. absolute), is a delicate operation. Automated replacements must be approached with extreme caution.
+*   **Tool Specificity:** When using `replace_file_content` for markdown:
+    *   Be highly precise with `TargetContent`.
+    *   Verify the exact existing string, including any surrounding markdown syntax (backticks, brackets, parentheses).
+    *   In `ReplacementContent`, ensure the desired final markdown syntax is explicitly constructed.
+    *   Anticipate that the tool might reformat or misinterpret complex markdown structures if not perfectly targeted.
+*   **Incremental Changes & Verification:** For tasks involving widespread, similar changes across multiple files or complex changes within a single file, adopt a highly incremental approach:
+    1.  Target a small, specific set of changes.
+    2.  Execute the change.
+    3.  Thoroughly verify the result (view file/diff).
+    4.  Correct any deviations immediately before proceeding.
+*   **Consider Alternative Strategies:** For very complex or widespread refactoring of structured text like markdown, if `replace_file_content` proves consistently problematic, discuss alternative strategies with the USER (e.g., scripts, manual review for edge cases).
+*   **Memory Reinforcement:** This experience reinforces the importance of `MEMORY[b77171e2-c900-4f20-9620-6fad06e863aa]` and the need to be vigilant about link formats.
+
+**Outcome:**
+Despite the challenges, the targeted documentation files were successfully updated to use standardized root-relative links, improving the overall consistency and maintainability of the project's documentation. The process provided valuable insights into the nuances of using code editing tools for structured text formats like Markdown.
+
+---
+
+## Pre-Mortem Process Evolution & Standardization (Approx. 2025-06-10 04:08:20-05:00)
+
+*   **Context:** A review of the existing pre-mortem documents revealed an opportunity to significantly enhance their structure and utility, transforming them from simple risk logs into comprehensive strategic guides and learning tools. This effort was inspired by the prompt to better explain the "why and how" behind decisions, not just the "what."
+*   **Decision:** The pre-mortem process and associated artifacts were systematically overhauled.
+*   **Key Enhancements:**
+    *   **New Template Structure:** The `design/reviews/pre-mortems/00-pre-mortem-review-template.md` was completely redesigned to be more robust and prescriptive.
+    *   **Added Strategic Sections:** The template and existing pre-mortems (`phase-02-backend-f001-pre-mortem.md`, `phase-03-frontend-core-infra-pre-mortem.md`) were updated to include:
+        *   `Assumptions and Dependencies`: To explicitly state the foundational context of the design.
+        *   `Implications for Testing Strategy`: To directly link identified risks to concrete quality assurance actions.
+        *   `Monitoring and Observability Requirements`: To ensure operational readiness is a first-class design citizen.
+    *   **Enhanced AI Guidance:** All sections in the new template include detailed `Guidance for Cascade` prompts to improve the quality of AI-assisted reviews and ensure a focus on connecting problems to solutions.
+    *   **Improved Traceability:** `PreviousPreMortemReview` and `NextPreMortemReview` links were added to the frontmatter of all pre-mortem documents to create a clear, navigable history of the project's design evolution.
+*   **Rationale:** This evolution of the pre-mortem process standardizes a higher level of rigor for risk analysis. It ensures that future reviews are more thorough, actionable, and serve as valuable, long-lived documentation for both human developers and AI assistants, capturing not just risks but also the strategic thinking behind their mitigation.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
