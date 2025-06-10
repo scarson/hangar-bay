@@ -40,7 +40,7 @@ This section guides you through setting up the Hangar Bay project for local deve
 *   **Git:** For version control.
 *   **Python:** Version 3.11 or newer for the backend.
 *   **PDM (Python Dependency Manager):** For managing backend dependencies. Install it via `pipx install pdm` or `pip install --user pdm`. Refer to [PDM's official documentation](https://pdm-project.org/latest/getting-started/installation/) for more options.
-*   **Node.js:** Version 18.x or newer for the frontend (includes npm).
+*   **Node.js:** Version 20.19.0 or newer for the Angular frontend (includes npm). Refer to Angular's [version compatibility](https://angular.dev/reference/versions#actively-supported-versions) for more information.
 *   **Angular CLI:** Install globally using `npm install -g @angular/cli`.
 
 ### 1. Clone the Repository
