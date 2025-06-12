@@ -5237,13 +5237,27 @@ Append the new entry at the end - look for end of file footer string "DESIGN_LOG
 -----------------
 
 
-TODO: Alembic migrations for Postgres so we don't just throw SQL scripts at it for updates
+Entry/sction "**2025-06-12 08:29:39-05:00: Architectural Pattern for Dependency Management in Hybrid Contexts**" in design\meta\design-log.md includes this:
+**Implications for Future Design:**
+*   This dual-pattern approach is now the standard. When creating a new service, the first question must be: "Will this run in a background job?"
+
+How are you going to remember to ask that "first question"? Do you have a memory for it?
 
 
 -----------------
 
 
-X
+Me
+
+Please update design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md with a detailed description of the debug logging techniques you used to identify, narrow down, and ultimately solve the Pickling error in "Challenge 6" with object ID comparsions It was very methodical and successsful and I think Cascade can learn from writing it down.
+
+Revert
+Of
+
+5 hours ago
+a few seconds ago
+Start with History Ctrl + ⏎
+Press Enter again to interrupt and send
 
 
 -----------------
