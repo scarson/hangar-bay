@@ -3540,6 +3540,1545 @@ For each of the four task files in plans\implementation\phase-02-backend-f001-pu
 -----------------
 
 
+I have a question about the Phase 2 implementation. We saw terminal output saying that requests were being made to the ESI API and other things that generally suggested it was running. However, I just loaded our SQLite database app\backend\src\hangar_bay_dev.db in a SQLite databaser browser and while the schema is there, there are no actual rows of data in any table. Is that expected or not? Should I expect to see contract data in the database?
+
+
+-----------------
+
+
+Here's the full terminal output. I set the interval to 60 seconds for this test and waited for it to run once.
+Afterward, I inspected the database again and it has no records.
+
+pdm run dev     
+INFO:     Will watch for changes in these directories: ['C:\\Users\\Sam\\OneDrive\\Documents\\Code\\hangar-bay\\app\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [72804] using WatchFiles
+INFO:     Started server process [80540]
+INFO:     Waiting for application startup.
+INFO:     fastapi_app.core.cache - Successfully connected to Redis.
+INFO:     apscheduler.scheduler - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:     fastapi_app.core.scheduler - Scheduled contract aggregation job to run every 60 seconds.
+INFO:     apscheduler.scheduler - Added job "run_aggregation_job" to job store "default"
+INFO:     apscheduler.scheduler - Scheduler started
+INFO:     root - Application startup complete with all services initialized.
+INFO:     Application startup complete.
+INFO:     apscheduler.executors.default - Running job "run_aggregation_job (trigger: interval[0:01:00], next run at: 2025-06-12 01:18:27 CDT)" (scheduled at 2025-06-12 01:17:27.056942-05:00)
+INFO:     fastapi_app.services.scheduled_jobs - Executing scheduled job: run_aggregation_job
+INFO:     fastapi_app.core.cache - Successfully connected to Redis.
+INFO:     fastapi_app.services.background_aggregation - Concurrency lock acquired for contract aggregation.
+INFO:     fastapi_app.services.background_aggregation - Starting public contract aggregation run.
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=2 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=3 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=4 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=5 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=6 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=7 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=8 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=9 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=10 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=11 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=12 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=13 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=14 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=15 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=16 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=17 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=18 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=19 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=20 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=21 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=22 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=23 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=24 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=25 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=26 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=27 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=28 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=29 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=30 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=31 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=32 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=33 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=34 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=35 "HTTP/1.1 200 OK"
+INFO:     fastapi_app.services.background_aggregation - Fetched 34727 contracts for region 10000002.
+INFO:     fastapi_app.services.background_aggregation - Releasing concurrency lock for contract aggregation.
+ERROR:     fastapi_app.services.background_aggregation - An unexpected error occurred during aggregation: 'for_corporation'
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 107, in run_aggregation
+    await self._process_contracts(all_contracts)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 121, in _process_contracts
+    contract_values = [
+                      ^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 131, in <listcomp>
+    "for_corporation": c["for_corporation"],
+                       ~^^^^^^^^^^^^^^^^^^^
+KeyError: 'for_corporation'
+INFO:     fastapi_app.core.cache - Redis connection closed.
+INFO:     fastapi_app.services.scheduled_jobs - Finished scheduled job: run_aggregation_job
+INFO:     apscheduler.executors.default - Job "run_aggregation_job (trigger: interval[0:01:00], next run at: 2025-06-12 01:18:27 CDT)" executed successfully
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     root - Scheduler has been shut down.
+INFO:     apscheduler.scheduler - Scheduler has been shut down
+INFO:     fastapi_app.core.cache - Redis connection closed.
+INFO:     root - Application shutdown complete.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [80540]
+INFO:     Stopping reloader process [72804]
+
+
+-----------------
+
+
+Before I run that, does the hypothesis for this fix imply that out of all 34,727 contracts we retrieve, 0 were published on behalf of a corporation?
+
+
+-----------------
+
+
+Here's the terminal output from the new run. The error doesn't appear but we still have no data in the database.
+
+pdm run dev
+INFO:     Will watch for changes in these directories: ['C:\\Users\\Sam\\OneDrive\\Documents\\Code\\hangar-bay\\app\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [65484] using WatchFiles
+INFO:     Started server process [69628]
+INFO:     Waiting for application startup.
+INFO:     fastapi_app.core.cache - Successfully connected to Redis.
+INFO:     apscheduler.scheduler - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:     fastapi_app.core.scheduler - Scheduled contract aggregation job to run every 60 seconds.
+INFO:     apscheduler.scheduler - Added job "run_aggregation_job" to job store "default"
+INFO:     apscheduler.scheduler - Scheduler started
+INFO:     root - Application startup complete with all services initialized.
+INFO:     Application startup complete.
+INFO:     apscheduler.executors.default - Running job "run_aggregation_job (trigger: interval[0:01:00], next run at: 2025-06-12 01:31:45 CDT)" (scheduled at 2025-06-12 01:30:45.168760-05:00)
+INFO:     fastapi_app.services.scheduled_jobs - Executing scheduled job: run_aggregation_job
+INFO:     fastapi_app.core.cache - Successfully connected to Redis.
+INFO:     fastapi_app.services.background_aggregation - Concurrency lock acquired for contract aggregation.
+INFO:     fastapi_app.services.background_aggregation - Starting public contract aggregation run.
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=1 "HTTP/1.1 304 Not Modified"
+INFO:     fastapi_app.core.esi_client_class - ETag match for /v1/contracts/public/10000002/?page=1, using cached data.
+INFO:     fastapi_app.services.background_aggregation - Contracts for region 10000002 not modified.
+INFO:     fastapi_app.services.background_aggregation - No new contracts found to process.
+INFO:     fastapi_app.services.background_aggregation - Releasing concurrency lock for contract aggregation.
+INFO:     fastapi_app.core.cache - Redis connection closed.
+INFO:     fastapi_app.services.scheduled_jobs - Finished scheduled job: run_aggregation_job
+INFO:     apscheduler.executors.default - Job "run_aggregation_job (trigger: interval[0:01:00], next run at: 2025-06-12 01:31:45 CDT)" executed successfully
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     root - Scheduler has been shut down.
+INFO:     apscheduler.scheduler - Scheduler has been shut down
+INFO:     fastapi_app.core.cache - Redis connection closed.
+INFO:     root - Application shutdown complete.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [69628]
+INFO:     Stopping reloader process [65484]
+
+
+-----------------
+
+
+Looks like we have (I think) a different ON CONFLICT error this time. The output does appear to include some actual contract data, unlike last time.
+
+Would it be easier if we ditched SQLite and switched to PostgreSQL? I realized we already have a PostgreSQL container running because it's in the same Docker compose.yml file as Valkey.
+
+Anyway, here's the terminal output:
+?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract]
+[parameters: (217990617, 1670878302, 155627335, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 06:42:30.000000', '2025-06-12 06:42:30.000000', None, 25000000.0, 0.0, 0.10999999999999999, 0, 217990820, 1762849464, 1381077931, 60003760, 60003760, 'item_exchange', 'outstanding', 'ME10 TE10 Original Blueprint BPO', 0, '2025-05-15 06:53:54.000000', '2025-06-12 06:53:54.000000', None, 1495000000.0, 0.0, 0.01, 0, 217991114, 2123425560, 98707671, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 07:07:33.000000', '2025-06-12 07:07:33.000000', None, 950000.0, 0.0, 0.01, 0, 217991310, 91516987 ... 554828 parameters truncated ... 0.01, 0, 219192991, 145096068, 187878561, 60003760, 60003760, 'item_exchange', 'outstanding', 'Cap Booster Charge BPOs (ME10, TE20)', 0, '2025-06-12 06:36:57.000000', '2025-06-26 06:36:57.000000', None, 74950000.0, 0.0, 0.08, 0, 219192993, 2114164421, 98797524, 60003760, 60003760, 'item_exchange', 'outstanding', 'Capital BPCs', 0, '2025-06-12 06:37:08.000000', '2025-07-10 06:37:08.000000', None, 50000000.0, 0.0, 0.09999999999999999, 0, 219192995, 93431450, 98712446, 60003760, 60003760, 'item_exchange', 'outstanding', '10/20', 0, '2025-06-12 06:37:12.000000', '2025-07-10 06:37:12.000000', None, 19900000.0, 0.0, 0.01, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+INFO:     fastapi_app.core.cache - Redis connection closed.
+2025-06-12 01:45:47,094 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     sqlalchemy.engine.Engine - ROLLBACK
+INFO:     fastapi_app.services.scheduled_jobs - Finished scheduled job: run_aggregation_job
+INFO:     apscheduler.executors.default - Job "run_aggregation_job (trigger: interval[0:00:30], next run at: 2025-06-12 01:45:58 CDT)" executed successfully
+INFO:     apscheduler.executors.default - Running job "run_aggregation_job (trigger: interval[0:00:30], next run at: 2025-06-12 01:46:28 CDT)" (scheduled at 2025-06-12 01:45:58.318397-05:00)
+INFO:     fastapi_app.services.scheduled_jobs - Executing scheduled job: run_aggregation_job
+INFO:     fastapi_app.core.cache - Successfully connected to Redis.
+INFO:     fastapi_app.services.background_aggregation - Concurrency lock acquired for contract aggregation.
+INFO:     fastapi_app.services.background_aggregation - Starting public contract aggregation run.
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=1 "HTTP/1.1 304 Not Modified"
+INFO:     fastapi_app.core.esi_client_class - ETag match for /v1/contracts/public/10000002/?page=1, using cached data.
+INFO:     fastapi_app.services.background_aggregation - Contracts for region 10000002 not modified.
+INFO:     fastapi_app.services.background_aggregation - No new contracts found to process.
+INFO:     fastapi_app.services.background_aggregation - Releasing concurrency lock for contract aggregation.
+INFO:     fastapi_app.core.cache - Redis connection closed.
+INFO:     fastapi_app.services.scheduled_jobs - Finished scheduled job: run_aggregation_job
+INFO:     apscheduler.executors.default - Job "run_aggregation_job (trigger: interval[0:00:30], next run at: 2025-06-12 01:46:28 CDT)" executed successfully
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     root - Scheduler has been shut down.
+INFO:     apscheduler.scheduler - Scheduler has been shut down
+INFO:     fastapi_app.core.cache - Redis connection closed.
+INFO:     root - Application shutdown complete.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [76108]
+INFO:     Stopping reloader process [83540]
+
+
+-----------------
+
+
+Multiple errors here. I've truncated the question mark blocks into a few rows as they just repeat. This is otherwise the complete terminal output.
+
+pdm run dev
+INFO:     Will watch for changes in these directories: ['C:\\Users\\Sam\\OneDrive\\Documents\\Code\\hangar-bay\\app\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [84576] using WatchFiles
+INFO:     Started server process [74004]
+INFO:     Waiting for application startup.
+INFO:     fastapi_app.core.cache - Successfully connected to Redis.
+INFO:     apscheduler.scheduler - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:     fastapi_app.core.scheduler - Scheduled contract aggregation job to run every 30 seconds.
+INFO:     apscheduler.scheduler - Added job "run_aggregation_job" to job store "default"
+INFO:     apscheduler.scheduler - Scheduler started
+INFO:     root - Application startup complete with all services initialized.
+INFO:     Application startup complete.
+INFO:     apscheduler.executors.default - Running job "run_aggregation_job (trigger: interval[0:00:30], next run at: 2025-06-12 01:52:37 CDT)" (scheduled at 2025-06-12 01:52:07.782991-05:00)
+INFO:     fastapi_app.services.scheduled_jobs - Executing scheduled job: run_aggregation_job
+INFO:     fastapi_app.core.cache - Successfully connected to Redis.
+INFO:     fastapi_app.services.background_aggregation - Concurrency lock acquired for contract aggregation.
+INFO:     fastapi_app.services.background_aggregation - Starting public contract aggregation run.
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=2 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=3 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=4 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=5 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=6 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=7 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=8 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=9 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=10 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=11 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=12 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=13 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=14 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=15 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=16 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=17 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=18 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=19 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=20 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=21 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=22 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=23 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=24 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=25 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=26 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=27 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=28 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=29 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=30 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=31 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=32 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=33 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=34 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=35 "HTTP/1.1 200 OK"
+INFO:     fastapi_app.services.background_aggregation - Fetched 34683 contracts for region 10000002.
+INFO:     fastapi_app.services.background_aggregation - Upserting 34683 contracts in batches of 500.
+INFO:     fastapi_app.services.background_aggregation - Processing batch 1/70 (500 contracts)
+2025-06-12 01:52:14,160 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:     sqlalchemy.engine.Engine - BEGIN (implicit)
+2025-06-12 01:52:14,204 INFO sqlalchemy.engine.Engine INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 01:52:14,205 INFO sqlalchemy.engine.Engine [no key 0.00924s] (217990617, 1670878302, 155627335, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 06:42:30.000000', '2025-06-12 06:42:30.000000', None, 25000000.0, 0.0, 0.10999999999999999, 0, 217990820, 1762849464, 1381077931, 60003760, 60003760, 'item_exchange', 'outstanding', 'ME10 TE10 Original Blueprint BPO', 0, '2025-05-15 06:53:54.000000', '2025-06-12 06:53:54.000000', None, 1495000000.0, 0.0, 0.01, 0, 217991114, 2123425560, 98707671, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 07:07:33.000000', '2025-06-12 07:07:33.000000', None, 950000.0, 0.0, 0.01, 0, 217991310, 91516987 ... 7900 parameters truncated ... 5.0, 0, 218027076, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:07:17.000000', '2025-06-13 07:07:17.000000', None, 100000000.0, 0.0, 5.0, 0, 218027093, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:07:51.000000', '2025-06-13 07:07:51.000000', None, 50000000.0, 0.0, 5.0, 0, 218027101, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:08:11.000000', '2025-06-13 07:08:11.000000', None, 75000000.0, 0.0, 5.0, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00924s] (217990617, 1670878302, 155627335, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 06:42:30.000000', '2025-06-12 06:42:30.000000', None, 25000000.0, 0.0, 0.10999999999999999, 0, 217990820, 1762849464, 1381077931, 60003760, 60003760, 'item_exchange', 'outstanding', 'ME10 TE10 Original Blueprint BPO', 0, '2025-05-15 06:53:54.000000', '2025-06-12 06:53:54.000000', None, 1495000000.0, 0.0, 0.01, 0, 217991114, 2123425560, 98707671, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 07:07:33.000000', '2025-06-12 07:07:33.000000', None, 950000.0, 0.0, 0.01, 0, 217991310, 91516987 ... 7900 parameters truncated ... 5.0, 0, 218027076, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:07:17.000000', '2025-06-13 07:07:17.000000', None, 100000000.0, 0.0, 5.0, 0, 218027093, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:07:51.000000', '2025-06-13 07:07:51.000000', None, 50000000.0, 0.0, 5.0, 0, 218027101, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:08:11.000000', '2025-06-13 07:08:11.000000', None, 75000000.0, 0.0, 5.0, 0)
+INFO:     fastapi_app.services.background_aggregation - Releasing concurrency lock for contract aggregation.
+ERROR:     fastapi_app.services.background_aggregation - An unexpected error occurred during aggregation: (sqlite3.OperationalError) no such table: contracts
+[SQL: INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract]
+[parameters: (217990617, 1670878302, 155627335, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 06:42:30.000000', '2025-06-12 06:42:30.000000', None, 25000000.0, 0.0, 0.10999999999999999, 0, 217990820, 1762849464, 1381077931, 60003760, 60003760, 'item_exchange', 'outstanding', 'ME10 TE10 Original Blueprint BPO', 0, '2025-05-15 06:53:54.000000', '2025-06-12 06:53:54.000000', None, 1495000000.0, 0.0, 0.01, 0, 217991114, 2123425560, 98707671, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 07:07:33.000000', '2025-06-12 07:07:33.000000', None, 950000.0, 0.0, 0.01, 0, 217991310, 91516987 ... 7900 parameters truncated ... 5.0, 0, 218027076, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:07:17.000000', '2025-06-13 07:07:17.000000', None, 100000000.0, 0.0, 5.0, 0, 218027093, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:07:51.000000', '2025-06-13 07:07:51.000000', None, 50000000.0, 0.0, 5.0, 0, 218027101, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:08:11.000000', '2025-06-13 07:08:11.000000', None, 75000000.0, 0.0, 5.0, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1963, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 943, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 149, in execute
+    self._adapt_connection._handle_exception(error)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 300, in _handle_exception
+    raise error
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 131, in execute
+    self.await_(_cursor.execute(operation, parameters))
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 40, in execute
+    await self._execute(self._cursor.execute, sql, parameters)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 32, in _execute
+    return await self._conn._execute(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 122, in _execute
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 105, in run
+    result = function()
+             ^^^^^^^^^^
+sqlite3.OperationalError: no such table: contracts
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 108, in run_aggregation
+    await self._process_contracts(all_contracts)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 159, in _process_contracts
+    await bulk_upsert(self.db, Contract, batch)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\db_upsert.py", line 56, in bulk_upsert
+    await db.execute(stmt)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\ext\asyncio\session.py", line 463, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2260, in _execute_internal
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1415, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 523, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1637, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1842, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1982, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2351, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1963, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 943, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 149, in execute
+    self._adapt_connection._handle_exception(error)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 300, in _handle_exception
+    raise error
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 131, in execute
+    self.await_(_cursor.execute(operation, parameters))
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 40, in execute
+    await self._execute(self._cursor.execute, sql, parameters)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 32, in _execute
+    return await self._conn._execute(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 122, in _execute
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 105, in run
+    result = function()
+             ^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: contracts
+[SQL: INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract]
+[parameters: (217990617, 1670878302, 155627335, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 06:42:30.000000', '2025-06-12 06:42:30.000000', None, 25000000.0, 0.0, 0.10999999999999999, 0, 217990820, 1762849464, 1381077931, 60003760, 60003760, 'item_exchange', 'outstanding', 'ME10 TE10 Original Blueprint BPO', 0, '2025-05-15 06:53:54.000000', '2025-06-12 06:53:54.000000', None, 1495000000.0, 0.0, 0.01, 0, 217991114, 2123425560, 98707671, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 07:07:33.000000', '2025-06-12 07:07:33.000000', None, 950000.0, 0.0, 0.01, 0, 217991310, 91516987 ... 7900 parameters truncated ... 5.0, 0, 218027076, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:07:17.000000', '2025-06-13 07:07:17.000000', None, 100000000.0, 0.0, 5.0, 0, 218027093, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:07:51.000000', '2025-06-13 07:07:51.000000', None, 50000000.0, 0.0, 5.0, 0, 218027101, 954320547, 944606848, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:08:11.000000', '2025-06-13 07:08:11.000000', None, 75000000.0, 0.0, 5.0, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+INFO:     fastapi_app.core.cache - Redis connection closed.
+2025-06-12 01:52:14,220 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     sqlalchemy.engine.Engine - ROLLBACK
+INFO:     fastapi_app.services.scheduled_jobs - Finished scheduled job: run_aggregation_job
+INFO:     apscheduler.executors.default - Job "run_aggregation_job (trigger: interval[0:00:30], next run at: 2025-06-12 01:52:37 CDT)" executed successfully
+INFO:     apscheduler.executors.default - Running job "run_aggregation_job (trigger: interval[0:00:30], next run at: 2025-06-12 01:53:07 CDT)" (scheduled at 2025-06-12 01:52:37.782991-05:00)
+INFO:     fastapi_app.services.scheduled_jobs - Executing scheduled job: run_aggregation_job
+INFO:     fastapi_app.core.cache - Successfully connected to Redis.
+INFO:     fastapi_app.services.background_aggregation - Concurrency lock acquired for contract aggregation.
+INFO:     fastapi_app.services.background_aggregation - Starting public contract aggregation run.
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=1 "HTTP/1.1 304 Not Modified"
+INFO:     fastapi_app.core.esi_client_class - ETag match for /v1/contracts/public/10000002/?page=1, using cached data.
+INFO:     fastapi_app.services.background_aggregation - Contracts for region 10000002 not modified.
+INFO:     fastapi_app.services.background_aggregation - No new contracts found to process.
+INFO:     fastapi_app.services.background_aggregation - Releasing concurrency lock for contract aggregation.
+INFO:     fastapi_app.core.cache - Redis connection closed.
+INFO:     fastapi_app.services.scheduled_jobs - Finished scheduled job: run_aggregation_job
+INFO:     apscheduler.executors.default - Job "run_aggregation_job (trigger: interval[0:00:30], next run at: 2025-06-12 01:53:07 CDT)" executed successfully
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     root - Scheduler has been shut down.
+INFO:     apscheduler.scheduler - Scheduler has been shut down
+INFO:     fastapi_app.core.cache - Redis connection closed.
+INFO:     root - Application shutdown complete.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [74004]
+INFO:     Stopping reloader process [84576]
+
+
+-----------------
+
+
+?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 02:02:45,200 INFO sqlalchemy.engine.Engine [no key 0.00355s] (219191044, 938553623, 98168318, 60003760, 60003760, 'item_exchange', 'outstanding', 'BPC x10 ME10 TE20 J', 1, '2025-06-12 04:57:04.000000', '2025-07-10 04:57:04.000000', None, 1499999.0, 0.0, 0.01, 0, 219191048, 91906868, 98588493, 60006880, 60006880, 'item_exchange', 'outstanding', '9/14', 0, '2025-06-12 04:57:09.000000', '2025-07-10 04:57:09.000000', None, 12500000.0, 0.0, 0.01, 0, 219191049, 938553623, 98168318, 60003760, 60003760, 'item_exchange', 'outstanding', 'BPC x10 ME10 TE20 J', 1, '2025-06-12 04:57:09.000000', '2025-07-10 04:57:09.000000', None, 1499999.0, 0.0, 0.01, 0, 219191050, 91906868 ... 2828 parameters truncated ... 0.01, 0, 219192991, 145096068, 187878561, 60003760, 60003760, 'item_exchange', 'outstanding', 'Cap Booster Charge BPOs (ME10, TE20)', 0, '2025-06-12 06:36:57.000000', '2025-06-26 06:36:57.000000', None, 74950000.0, 0.0, 0.08, 0, 219192993, 2114164421, 98797524, 60003760, 60003760, 'item_exchange', 'outstanding', 'Capital BPCs', 0, '2025-06-12 06:37:08.000000', '2025-07-10 06:37:08.000000', None, 50000000.0, 0.0, 0.09999999999999999, 0, 219192995, 93431450, 98712446, 60003760, 60003760, 'item_exchange', 'outstanding', '10/20', 0, '2025-06-12 06:37:12.000000', '2025-07-10 06:37:12.000000', None, 19900000.0, 0.0, 0.01, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00355s] (219191044, 938553623, 98168318, 60003760, 60003760, 'item_exchange', 'outstanding', 'BPC x10 ME10 TE20 J', 1, '2025-06-12 04:57:04.000000', '2025-07-10 04:57:04.000000', None, 1499999.0, 0.0, 0.01, 0, 219191048, 91906868, 98588493, 60006880, 60006880, 'item_exchange', 'outstanding', '9/14', 0, '2025-06-12 04:57:09.000000', '2025-07-10 04:57:09.000000', None, 12500000.0, 0.0, 0.01, 0, 219191049, 938553623, 98168318, 60003760, 60003760, 'item_exchange', 'outstanding', 'BPC x10 ME10 TE20 J', 1, '2025-06-12 04:57:09.000000', '2025-07-10 04:57:09.000000', None, 1499999.0, 0.0, 0.01, 0, 219191050, 91906868 ... 2828 parameters truncated ... 0.01, 0, 219192991, 145096068, 187878561, 60003760, 60003760, 'item_exchange', 'outstanding', 'Cap Booster Charge BPOs (ME10, TE20)', 0, '2025-06-12 06:36:57.000000', '2025-06-26 06:36:57.000000', None, 74950000.0, 0.0, 0.08, 0, 219192993, 2114164421, 98797524, 60003760, 60003760, 'item_exchange', 'outstanding', 'Capital BPCs', 0, '2025-06-12 06:37:08.000000', '2025-07-10 06:37:08.000000', None, 50000000.0, 0.0, 0.09999999999999999, 0, 219192995, 93431450, 98712446, 60003760, 60003760, 'item_exchange', 'outstanding', '10/20', 0, '2025-06-12 06:37:12.000000', '2025-07-10 06:37:12.000000', None, 19900000.0, 0.0, 0.01, 0)
+INFO:     fastapi_app.services.background_aggregation - Successfully upserted batch 70.
+INFO:     fastapi_app.services.background_aggregation - Finished upserting all 34683 contracts.
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217990617/?page=1 "HTTP/1.1 204 No Content"
+ERROR:     fastapi_app.core.esi_client_class - An unexpected error occurred fetching ESI data for /v1/contracts/public/items/217990617/?page=1: cannot access local variable 'page_data' where it is not associated with a value
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 217990617: ESI request failed with status 0: cannot access local variable 'page_data' where it is not associated with a value
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 84, in get_esi_data_with_etag_caching
+    if not page_data:
+           ^^^^^^^^^
+UnboundLocalError: cannot access local variable 'page_data' where it is not associated with a value
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 114, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 102, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 0: cannot access local variable 'page_data' where it is not associated with a value
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217990820/?page=1 "HTTP/1.1 204 No Content"
+ERROR:     fastapi_app.core.esi_client_class - An unexpected error occurred fetching ESI data for /v1/contracts/public/items/217990820/?page=1: cannot access local variable 'page_data' where it is not associated with a value
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 217990820: ESI request failed with status 0: cannot access local variable 'page_data' where it is not associated with a value
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 84, in get_esi_data_with_etag_caching
+    if not page_data:
+           ^^^^^^^^^
+UnboundLocalError: cannot access local variable 'page_data' where it is not associated with a value
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 114, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 102, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 0: cannot access local variable 'page_data' where it is not associated with a value
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217991114/?page=1 "HTTP/1.1 200 OK"
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 217991114: 'is_singleton'
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 173, in _process_contracts
+    item_values = [
+                  ^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 180, in <listcomp>
+    "is_singleton": i["is_singleton"],
+                    ~^^^^^^^^^^^^^^^^
+KeyError: 'is_singleton'
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217991310/?page=1 "HTTP/1.1 200 OK"
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 217991310: 'is_singleton'
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 173, in _process_contracts
+    item_values = [
+                  ^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 180, in <listcomp>
+    "is_singleton": i["is_singleton"],
+                    ~^^^^^^^^^^^^^^^^
+
+
+
+
+-----------------
+
+
+?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 02:08:39,973 INFO sqlalchemy.engine.Engine [no key 0.00886s] (219159255, 91350391, 98075044, 60000361, 60000361, 'item_exchange', 'outstanding', '30 run 10/20', 1, '2025-06-11 08:47:06.000000', '2025-07-09 08:47:06.000000', None, 300000.0, 0.0, 0.01, 0, 219159259, 706941809, 98029872, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 08:47:15.000000', '2025-06-25 08:47:15.000000', None, 20000000.0, 0.0, 0.01, 0, 219159260, 91350391, 98075044, 60000361, 60000361, 'item_exchange', 'outstanding', '30 run 10/20', 1, '2025-06-11 08:47:17.000000', '2025-07-09 08:47:17.000000', None, 300000.0, 0.0, 0.01, 0, 219159262, 706941809 ... 7900 parameters truncated ... 150.0, 0, 219164733, 690920406, 98013054, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:51:29.000000', '2025-07-09 12:51:29.000000', None, 94900000.0, 0.0, 1.0, 0, 219164775, 2116364717, 98609309, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:52:37.000000', '2025-07-09 12:52:37.000000', None, 900000000.0, 0.0, 0.04, 0, 219164812, 2113526807, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:53:42.000000', '2025-07-09 12:53:42.000000', None, 24000000.0, 0.0, 0.01, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00886s] (219159255, 91350391, 98075044, 60000361, 60000361, 'item_exchange', 'outstanding', '30 run 10/20', 1, '2025-06-11 08:47:06.000000', '2025-07-09 08:47:06.000000', None, 300000.0, 0.0, 0.01, 0, 219159259, 706941809, 98029872, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 08:47:15.000000', '2025-06-25 08:47:15.000000', None, 20000000.0, 0.0, 0.01, 0, 219159260, 91350391, 98075044, 60000361, 60000361, 'item_exchange', 'outstanding', '30 run 10/20', 1, '2025-06-11 08:47:17.000000', '2025-07-09 08:47:17.000000', None, 300000.0, 0.0, 0.01, 0, 219159262, 706941809 ... 7900 parameters truncated ... 150.0, 0, 219164733, 690920406, 98013054, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:51:29.000000', '2025-07-09 12:51:29.000000', None, 94900000.0, 0.0, 1.0, 0, 219164775, 2116364717, 98609309, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:52:37.000000', '2025-07-09 12:52:37.000000', None, 900000000.0, 0.0, 0.04, 0, 219164812, 2113526807, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:53:42.000000', '2025-07-09 12:53:42.000000', None, 24000000.0, 0.0, 0.01, 0)
+INFO:     fastapi_app.services.background_aggregation - Successfully upserted batch 65.
+INFO:     fastapi_app.services.background_aggregation - Processing batch 66/70 (500 contracts)
+2025-06-12 02:08:40,045 INFO sqlalchemy.engine.Engine INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 02:08:40,046 INFO sqlalchemy.engine.Engine [no key 0.00908s] (219164817, 2113526807, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:53:52.000000', '2025-07-09 12:53:52.000000', None, 24000000.0, 0.0, 0.01, 0, 219164843, 2123430835, 98776997, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:54:27.000000', '2025-06-18 12:54:27.000000', None, 20000000.0, 0.0, 0.01, 0, 219164892, 422609392, 98707782, 60013141, 60013141, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:55:17.000000', '2025-07-09 12:55:17.000000', None, 6000000000.0, 0.0, 1300000.0, 0, 219164908, 2122897604 ... 7900 parameters truncated ... 0.01, 0, 219171673, 95281676, 98379876, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 16:19:52.000000', '2025-07-09 16:19:52.000000', None, 40000000.0, 0.0, 0.01, 0, 219171674, 91350391, 98075044, 60003760, 60003760, 'item_exchange', 'outstanding', '200 run 10/20', 0, '2025-06-11 16:19:53.000000', '2025-07-09 16:19:53.000000', None, 1970000.0, 0.0, 0.01, 0, 219171678, 95281676, 98379876, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 16:20:00.000000', '2025-07-09 16:20:00.000000', None, 40000000.0, 0.0, 0.01, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00908s] (219164817, 2113526807, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:53:52.000000', '2025-07-09 12:53:52.000000', None, 24000000.0, 0.0, 0.01, 0, 219164843, 2123430835, 98776997, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:54:27.000000', '2025-06-18 12:54:27.000000', None, 20000000.0, 0.0, 0.01, 0, 219164892, 422609392, 98707782, 60013141, 60013141, 'item_exchange', 'outstanding', '', 0, '2025-06-11 12:55:17.000000', '2025-07-09 12:55:17.000000', None, 6000000000.0, 0.0, 1300000.0, 0, 219164908, 2122897604 ... 7900 parameters truncated ... 0.01, 0, 219171673, 95281676, 98379876, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 16:19:52.000000', '2025-07-09 16:19:52.000000', None, 40000000.0, 0.0, 0.01, 0, 219171674, 91350391, 98075044, 60003760, 60003760, 'item_exchange', 'outstanding', '200 run 10/20', 0, '2025-06-11 16:19:53.000000', '2025-07-09 16:19:53.000000', None, 1970000.0, 0.0, 0.01, 0, 219171678, 95281676, 98379876, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 16:20:00.000000', '2025-07-09 16:20:00.000000', None, 40000000.0, 0.0, 0.01, 0)
+INFO:     fastapi_app.services.background_aggregation - Successfully upserted batch 66.
+INFO:     fastapi_app.services.background_aggregation - Processing batch 67/70 (500 contracts)
+2025-06-12 02:08:40,097 INFO sqlalchemy.engine.Engine INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 02:08:40,098 INFO sqlalchemy.engine.Engine [no key 0.00903s] (219171680, 91350391, 98075044, 60003760, 60003760, 'item_exchange', 'outstanding', '200 run 10/20', 0, '2025-06-11 16:20:03.000000', '2025-07-09 16:20:03.000000', None, 1970000.0, 0.0, 0.01, 0, 219171684, 2117818897, 98469635, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 16:20:07.000000', '2025-07-09 16:20:07.000000', None, 1000000.0, 0.0, 306.0, 0, 219171687, 95281676, 98379876, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 16:20:07.000000', '2025-07-09 16:20:07.000000', None, 40000000.0, 0.0, 0.01, 0, 219171696, 2117818897 ... 7900 parameters truncated ... 10.0, 0, 219177321, 1167942784, 1000165, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:24:27.000000', '2025-06-18 19:24:27.000000', None, 10000000.0, 0.0, 20.0, 0, 219177324, 2121098529, 98801067, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:24:30.000000', '2025-07-09 19:24:30.000000', None, 150000000.0, 0.0, 1.0, 0, 219177333, 2121098529, 98801067, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:24:45.000000', '2025-07-09 19:24:45.000000', None, 100000000.0, 0.0, 1.0, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00903s] (219171680, 91350391, 98075044, 60003760, 60003760, 'item_exchange', 'outstanding', '200 run 10/20', 0, '2025-06-11 16:20:03.000000', '2025-07-09 16:20:03.000000', None, 1970000.0, 0.0, 0.01, 0, 219171684, 2117818897, 98469635, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 16:20:07.000000', '2025-07-09 16:20:07.000000', None, 1000000.0, 0.0, 306.0, 0, 219171687, 95281676, 98379876, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 16:20:07.000000', '2025-07-09 16:20:07.000000', None, 40000000.0, 0.0, 0.01, 0, 219171696, 2117818897 ... 7900 parameters truncated ... 10.0, 0, 219177321, 1167942784, 1000165, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:24:27.000000', '2025-06-18 19:24:27.000000', None, 10000000.0, 0.0, 20.0, 0, 219177324, 2121098529, 98801067, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:24:30.000000', '2025-07-09 19:24:30.000000', None, 150000000.0, 0.0, 1.0, 0, 219177333, 2121098529, 98801067, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:24:45.000000', '2025-07-09 19:24:45.000000', None, 100000000.0, 0.0, 1.0, 0)
+INFO:     fastapi_app.services.background_aggregation - Successfully upserted batch 67.
+INFO:     fastapi_app.services.background_aggregation - Processing batch 68/70 (500 contracts)
+2025-06-12 02:08:40,150 INFO sqlalchemy.engine.Engine INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 02:08:40,151 INFO sqlalchemy.engine.Engine [no key 0.00903s] (219177342, 2119917993, 98783196, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:24:54.000000', '2025-07-09 19:24:54.000000', None, 7200000000.0, 0.0, 5.0, 0, 219177366, 1167942784, 1000165, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:25:04.000000', '2025-06-18 19:25:04.000000', None, 48000000.0, 0.0, 5.0, 0, 219177378, 2121098529, 98801067, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:25:25.000000', '2025-07-09 19:25:25.000000', None, 200000000.0, 0.0, 1.0, 0, 219177385, 2121098529 ... 7900 parameters truncated ... 0.01, 0, 219184866, 90903383, 1000044, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 00:12:11.000000', '2025-07-10 00:12:11.000000', None, 500000.0, 0.0, 0.01, 0, 219184883, 96025802, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '1 run 10/18 Orca BPC', 0, '2025-06-12 00:13:03.000000', '2025-07-10 00:13:03.000000', None, 15000000.0, 0.0, 0.0, 0, 219184885, 96025802, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '1 run 10/10 Avalanche BPC', 0, '2025-06-12 00:13:11.000000', '2025-07-10 00:13:11.000000', None, 40000000.0, 0.0, 0.01, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00903s] (219177342, 2119917993, 98783196, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:24:54.000000', '2025-07-09 19:24:54.000000', None, 7200000000.0, 0.0, 5.0, 0, 219177366, 1167942784, 1000165, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:25:04.000000', '2025-06-18 19:25:04.000000', None, 48000000.0, 0.0, 5.0, 0, 219177378, 2121098529, 98801067, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-11 19:25:25.000000', '2025-07-09 19:25:25.000000', None, 200000000.0, 0.0, 1.0, 0, 219177385, 2121098529 ... 7900 parameters truncated ... 0.01, 0, 219184866, 90903383, 1000044, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 00:12:11.000000', '2025-07-10 00:12:11.000000', None, 500000.0, 0.0, 0.01, 0, 219184883, 96025802, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '1 run 10/18 Orca BPC', 0, '2025-06-12 00:13:03.000000', '2025-07-10 00:13:03.000000', None, 15000000.0, 0.0, 0.0, 0, 219184885, 96025802, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '1 run 10/10 Avalanche BPC', 0, '2025-06-12 00:13:11.000000', '2025-07-10 00:13:11.000000', None, 40000000.0, 0.0, 0.01, 0)
+INFO:     fastapi_app.services.background_aggregation - Successfully upserted batch 68.
+INFO:     fastapi_app.services.background_aggregation - Processing batch 69/70 (500 contracts)
+2025-06-12 02:08:40,202 INFO sqlalchemy.engine.Engine INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 02:08:40,203 INFO sqlalchemy.engine.Engine [no key 0.00896s] (219184890, 96025802, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '10 run 10/20 Retriver BPC', 0, '2025-06-12 00:13:18.000000', '2025-07-10 00:13:18.000000', None, 1100000.0, 0.0, 0.01, 0, 219184895, 96025802, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '10 run 10/20 Retriver BPC', 0, '2025-06-12 00:13:25.000000', '2025-07-10 00:13:25.000000', None, 1100000.0, 0.0, 0.01, 0, 219184897, 96025802, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '10 run 10/20 Retriver BPC', 0, '2025-06-12 00:13:32.000000', '2025-07-10 00:13:32.000000', None, 1100000.0, 0.0, 0.01, 0, 219184926, 96822301 ... 7900 parameters truncated ... 0.01, 0, 219191601, 2123503999, 1000167, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:15:31.000000', '2025-07-10 05:15:31.000000', None, 2500000.0, 0.0, 0.03, 0, 219191632, 1074991172, 98001086, 60003760, 60003760, 'item_exchange', 'outstanding', 'Original - infinite runs', 0, '2025-06-12 05:16:42.000000', '2025-06-26 05:16:42.000000', None, 23000000.0, 0.0, 0.01, 0, 219191636, 95395122, 98802878, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:16:53.000000', '2025-06-19 05:16:53.000000', None, 137000000.0, 0.0, 0.01, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00896s] (219184890, 96025802, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '10 run 10/20 Retriver BPC', 0, '2025-06-12 00:13:18.000000', '2025-07-10 00:13:18.000000', None, 1100000.0, 0.0, 0.01, 0, 219184895, 96025802, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '10 run 10/20 Retriver BPC', 0, '2025-06-12 00:13:25.000000', '2025-07-10 00:13:25.000000', None, 1100000.0, 0.0, 0.01, 0, 219184897, 96025802, 1000107, 60003760, 60003760, 'item_exchange', 'outstanding', '10 run 10/20 Retriver BPC', 0, '2025-06-12 00:13:32.000000', '2025-07-10 00:13:32.000000', None, 1100000.0, 0.0, 0.01, 0, 219184926, 96822301 ... 7900 parameters truncated ... 0.01, 0, 219191601, 2123503999, 1000167, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:15:31.000000', '2025-07-10 05:15:31.000000', None, 2500000.0, 0.0, 0.03, 0, 219191632, 1074991172, 98001086, 60003760, 60003760, 'item_exchange', 'outstanding', 'Original - infinite runs', 0, '2025-06-12 05:16:42.000000', '2025-06-26 05:16:42.000000', None, 23000000.0, 0.0, 0.01, 0, 219191636, 95395122, 98802878, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:16:53.000000', '2025-06-19 05:16:53.000000', None, 137000000.0, 0.0, 0.01, 0)
+INFO:     fastapi_app.services.background_aggregation - Successfully upserted batch 69.
+INFO:     fastapi_app.services.background_aggregation - Processing batch 70/70 (179 contracts)
+2025-06-12 02:08:40,224 INFO sqlalchemy.engine.Engine INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 02:08:40,224 INFO sqlalchemy.engine.Engine [no key 0.00337s] (219191653, 2123503999, 1000167, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:17:38.000000', '2025-07-10 05:17:38.000000', None, 15000000.0, 0.0, 0.01, 0, 219191659, 96651169, 98526635, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:17:49.000000', '2025-06-19 05:17:49.000000', None, 14500000.0, 0.0, 0.1, 0, 219191667, 2123503999, 1000167, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:18:03.000000', '2025-07-10 05:18:03.000000', None, 18000000.0, 0.0, 0.01, 0, 219191678, 95395122 ... 2764 parameters truncated ... 0.01, 0, 219193658, 2115274345, 98671922, 60002287, 60002287, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:06:51.000000', '2025-07-10 07:06:51.000000', None, 29700000.0, 0.0, 3.0, 0, 219193663, 94436399, 98294536, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:07:03.000000', '2025-07-10 07:07:03.000000', None, 19000000.0, 0.0, 0.01, 0, 219193681, 2115274345, 98671922, 60002287, 60002287, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:07:45.000000', '2025-07-10 07:07:45.000000', None, 75950000.0, 0.0, 2.5, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00337s] (219191653, 2123503999, 1000167, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:17:38.000000', '2025-07-10 05:17:38.000000', None, 15000000.0, 0.0, 0.01, 0, 219191659, 96651169, 98526635, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:17:49.000000', '2025-06-19 05:17:49.000000', None, 14500000.0, 0.0, 0.1, 0, 219191667, 2123503999, 1000167, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:18:03.000000', '2025-07-10 05:18:03.000000', None, 18000000.0, 0.0, 0.01, 0, 219191678, 95395122 ... 2764 parameters truncated ... 0.01, 0, 219193658, 2115274345, 98671922, 60002287, 60002287, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:06:51.000000', '2025-07-10 07:06:51.000000', None, 29700000.0, 0.0, 3.0, 0, 219193663, 94436399, 98294536, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:07:03.000000', '2025-07-10 07:07:03.000000', None, 19000000.0, 0.0, 0.01, 0, 219193681, 2115274345, 98671922, 60002287, 60002287, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:07:45.000000', '2025-07-10 07:07:45.000000', None, 75950000.0, 0.0, 2.5, 0)
+INFO:     fastapi_app.services.background_aggregation - Successfully upserted batch 70.
+INFO:     fastapi_app.services.background_aggregation - Finished upserting all 34679 contracts.
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217991310/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217991413/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217991537/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218004072/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218004074/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218004112/?page=1 "HTTP/1.1 200 OK"
+WARNING:     apscheduler.scheduler - Execution of job "run_aggregation_job (trigger: interval[0:00:30], next run at: 2025-06-12 02:09:00 CDT)" skipped: maximum number of running instances reached (1)
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218004123/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218004136/?page=1 "HTTP/1.1 200 OK"
+
+
+
+-----------------
+
+
+Does the AGGREGATION_JOB_INTERVAL_SECONDS interval have to elapse before the first job execution? I can't wait an hour for it to start.
+
+
+-----------------
+
+If this is going to make over 30,000 individual API calls to the items endpoints, it's going to take well over an hour to finish. At what point should we expect to see data in the database, because I still don't see anything in it.
+
+Here's a terminal output snippet. Note that we'll probably need some kind of retry method for those requests that fail with HTTP 502 errors.
+
+
+, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 02:21:08,090 INFO sqlalchemy.engine.Engine [no key 0.00345s] (219191653, 2123503999, 1000167, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:17:38.000000', '2025-07-10 05:17:38.000000', None, 15000000.0, 0.0, 0.01, 0, 219191659, 96651169, 98526635, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:17:49.000000', '2025-06-19 05:17:49.000000', None, 14500000.0, 0.0, 0.1, 0, 219191667, 2123503999, 1000167, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:18:03.000000', '2025-07-10 05:18:03.000000', None, 18000000.0, 0.0, 0.01, 0, 219191678, 95395122 ... 2764 parameters truncated ... 0.01, 0, 219193658, 2115274345, 98671922, 60002287, 60002287, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:06:51.000000', '2025-07-10 07:06:51.000000', None, 29700000.0, 0.0, 3.0, 0, 219193663, 94436399, 98294536, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:07:03.000000', '2025-07-10 07:07:03.000000', None, 19000000.0, 0.0, 0.01, 0, 219193681, 2115274345, 98671922, 60002287, 60002287, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:07:45.000000', '2025-07-10 07:07:45.000000', None, 75950000.0, 0.0, 2.5, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00345s] (219191653, 2123503999, 1000167, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:17:38.000000', '2025-07-10 05:17:38.000000', None, 15000000.0, 0.0, 0.01, 0, 219191659, 96651169, 98526635, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:17:49.000000', '2025-06-19 05:17:49.000000', None, 14500000.0, 0.0, 0.1, 0, 219191667, 2123503999, 1000167, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 05:18:03.000000', '2025-07-10 05:18:03.000000', None, 18000000.0, 0.0, 0.01, 0, 219191678, 95395122 ... 2764 parameters truncated ... 0.01, 0, 219193658, 2115274345, 98671922, 60002287, 60002287, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:06:51.000000', '2025-07-10 07:06:51.000000', None, 29700000.0, 0.0, 3.0, 0, 219193663, 94436399, 98294536, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:07:03.000000', '2025-07-10 07:07:03.000000', None, 19000000.0, 0.0, 0.01, 0, 219193681, 2115274345, 98671922, 60002287, 60002287, 'item_exchange', 'outstanding', '', 0, '2025-06-12 07:07:45.000000', '2025-07-10 07:07:45.000000', None, 75950000.0, 0.0, 2.5, 0)
+INFO:     fastapi_app.services.background_aggregation - Successfully upserted batch 70.
+INFO:     fastapi_app.services.background_aggregation - Finished upserting all 34679 contracts.
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217991310/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217991413/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217991537/?page=1 "HTTP/1.1 200 OK"
+....
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218049565/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218049573/?page=1 "HTTP/1.1 502 Bad Gateway"
+ERROR:     fastapi_app.core.esi_client_class - ESI request failed for /v1/contracts/public/items/218049573/?page=1: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218049573/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 218049573: ESI request failed with status 502: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218049573/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 83, in get_esi_data_with_etag_caching
+    response.raise_for_status()
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218049573/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 115, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 98, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(status_code=e.response.status_code, message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 502: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218049573/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218049580/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218049581/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218049587/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218049596/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218049606/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218049607/?page=1 "HTTP/1.1 200 OK"
+....
+NFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218067897/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218067915/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218067921/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218067928/?page=1 "HTTP/1.1 502 Bad Gateway"
+ERROR:     fastapi_app.core.esi_client_class - ESI request failed for /v1/contracts/public/items/218067928/?page=1: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218067928/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 218067928: ESI request failed with status 502: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218067928/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 83, in get_esi_data_with_etag_caching
+    response.raise_for_status()
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218067928/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 115, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 98, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(status_code=e.response.status_code, message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 502: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218067928/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218067936/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218067957/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218067970/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218067973/?page=1 "HTTP/1.1 200 OK"
+...
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218122408/?page=1 "HTTP/1.1 502 Bad Gateway"
+ERROR:     fastapi_app.core.esi_client_class - ESI request failed for /v1/contracts/public/items/218122408/?page=1: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218122408/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 218122408: ESI request failed with status 502: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218122408/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 83, in get_esi_data_with_etag_caching
+    response.raise_for_status()
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218122408/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 115, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 98, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(status_code=e.response.status_code, message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 502: Server error '502 Bad Gateway' for url 'https://esi.evetech.net/v1/contracts/public/items/218122408/?page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218122452/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218122483/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218122505/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218189361/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218189367/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218189432/?page=1 "HTTP/1.1 200 OK"
+ERROR:     fastapi_app.core.esi_client_class - An unexpected error occurred fetching ESI data for /v1/contracts/public/items/218189450/?page=1: 
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 218189450: ESI request failed with status 0: 
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection.py", line 103, in handle_async_request
+    return await self._connection.handle_async_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 136, in handle_async_request
+    raise exc
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 106, in handle_async_request
+    ) = await self._receive_response_headers(**kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 177, in _receive_response_headers
+    event = await self._receive_event(timeout=timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 217, in _receive_event
+    data = await self._network_stream.read(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 32, in read
+    with map_exceptions(exc_map):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 58, in get_esi_data_with_etag_caching
+    response = await self.http_client.get(paginated_path, headers=headers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1768, in get
+    return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 115, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 103, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 0:
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218189453/?page=1 "HTTP/1.1 200 OK"
+ERROR:     fastapi_app.core.esi_client_class - An unexpected error occurred fetching ESI data for /v1/contracts/public/items/218189456/?page=1: 
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 218189456: ESI request failed with status 0: 
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection.py", line 103, in handle_async_request
+    return await self._connection.handle_async_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 136, in handle_async_request
+    raise exc
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 106, in handle_async_request
+    ) = await self._receive_response_headers(**kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 177, in _receive_response_headers
+    event = await self._receive_event(timeout=timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 217, in _receive_event
+    data = await self._network_stream.read(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 32, in read
+    with map_exceptions(exc_map):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 58, in get_esi_data_with_etag_caching
+    response = await self.http_client.get(paginated_path, headers=headers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1768, in get
+    return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 115, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 103, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 0:
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218189472/?page=1 "HTTP/1.1 200 OK"
+ERROR:     fastapi_app.core.esi_client_class - An unexpected error occurred fetching ESI data for /v1/contracts/public/items/218189903/?page=1: 
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 218189903: ESI request failed with status 0: 
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection.py", line 103, in handle_async_request
+    return await self._connection.handle_async_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 136, in handle_async_request
+    raise exc
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 106, in handle_async_request
+    ) = await self._receive_response_headers(**kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 177, in _receive_response_headers
+    event = await self._receive_event(timeout=timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 217, in _receive_event
+    data = await self._network_stream.read(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 32, in read
+    with map_exceptions(exc_map):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 58, in get_esi_data_with_etag_caching
+    response = await self.http_client.get(paginated_path, headers=headers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1768, in get
+    return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 115, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 103, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 0:
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218189981/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218190242/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218190255/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218190620/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218190655/?page=1 "HTTP/1.1 200 OK"
+ERROR:     fastapi_app.core.esi_client_class - An unexpected error occurred fetching ESI data for /v1/contracts/public/items/218190691/?page=1: 
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 218190691: ESI request failed with status 0: 
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection.py", line 103, in handle_async_request
+    return await self._connection.handle_async_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 136, in handle_async_request
+    raise exc
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 106, in handle_async_request
+    ) = await self._receive_response_headers(**kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 177, in _receive_response_headers
+    event = await self._receive_event(timeout=timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 217, in _receive_event
+    data = await self._network_stream.read(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 32, in read
+    with map_exceptions(exc_map):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 58, in get_esi_data_with_etag_caching
+    response = await self.http_client.get(paginated_path, headers=headers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1768, in get
+    return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 115, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 103, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 0:
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218190774/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191040/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191053/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191083/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191112/?page=1 "HTTP/1.1 200 OK"
+ERROR:     fastapi_app.core.esi_client_class - An unexpected error occurred fetching ESI data for /v1/contracts/public/items/218191117/?page=1: 
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 218191117: ESI request failed with status 0: 
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection.py", line 103, in handle_async_request
+    return await self._connection.handle_async_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 136, in handle_async_request
+    raise exc
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 106, in handle_async_request
+    ) = await self._receive_response_headers(**kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 177, in _receive_response_headers
+    event = await self._receive_event(timeout=timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 217, in _receive_event
+    data = await self._network_stream.read(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 32, in read
+    with map_exceptions(exc_map):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 58, in get_esi_data_with_etag_caching
+    response = await self.http_client.get(paginated_path, headers=headers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1768, in get
+    return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 115, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 103, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 0:
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191147/?page=1 "HTTP/1.1 200 OK"
+ERROR:     fastapi_app.core.esi_client_class - An unexpected error occurred fetching ESI data for /v1/contracts/public/items/218191161/?page=1: 
+ERROR:     fastapi_app.services.background_aggregation - Failed to fetch items for contract 218191161: ESI request failed with status 0: 
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\connection.py", line 103, in handle_async_request
+    return await self._connection.handle_async_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 136, in handle_async_request
+    raise exc
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 106, in handle_async_request
+    ) = await self._receive_response_headers(**kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 177, in _receive_response_headers
+    event = await self._receive_event(timeout=timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_async\http11.py", line 217, in _receive_event
+    data = await self._network_stream.read(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 32, in read
+    with map_exceptions(exc_map):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpcore\_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 58, in get_esi_data_with_etag_caching
+    response = await self.http_client.get(paginated_path, headers=headers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1768, in get
+    return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 170, in _process_contracts
+    items = await self.esi_client.get_contract_items(contract["contract_id"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 115, in get_contract_items
+    return await self.get_esi_data_with_etag_caching(path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\core\esi_client_class.py", line 103, in get_esi_data_with_etag_caching
+    raise ESIRequestFailedError(message=str(e))
+fastapi_app.core.exceptions.ESIRequestFailedError: ESI request failed with status 0:
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191184/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191248/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191316/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191499/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191526/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/218191584/?page=1 "HTTP/1.1 200 OK"
+
+-----------------
+
+
+I stopped the server. There are no database writes. It was 84.0 KB (86,016 bytes) before we started and 84.0 KB (86,016 bytes) after. The app\backend\src\hangar_bay_dev.db file last modified date is 2025-06-10, two days ago. Two different SQLite browsers show no rows in the contracts and contract_items table.
+
+To make this troubleshooting loop faster in real time, can we temporarily limit the fetch to only the first two chunks of 500 contracts?
+
+
+-----------------
+
+
+app\backend\hangar_bay_dev.db-journal
+
+
+-----------------
+
+
+ (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (record_id) DO UPDATE SET contract_id = excluded.contract_id, type_id = excluded.type_id, quantity = excluded.quantity, is_included = excluded.is_included, is_singleton = excluded.is_singleton, raw_quantity = excluded.raw_quantity, type_name = excluded.type_name, category = excluded.category, market_group_id = excluded.market_group_id]
+[parameters: (4782885978, 217991967, 77405, 1, 1, 0, None, 4782891347, 217992099, 41655, 1, 1, 0, None, 4782894561, 217992185, 26129, 1, 1, 0, None, 4782895372, 217992205, 26127, 1, 1, 0, None, 4782898591, 217992352, 28832, 1, 1, 0, None, 4782901011, 217992424, 88270, 1, 1, 0, None, 4782901012, 217992424, 88216, 1, 1, 0, None, 4782901013 ... 65084 parameters truncated ... None, 4785146756, 218072013, 17733, 1, 1, 0, None, 4785146757, 218072013, 17733, 1, 1, 0, None, 4785146758, 218072013, 17733, 1, 1, 0, None, 4785146759, 218072013, 17733, 1, 1, 0, None, 4785146760, 218072013, 17733, 1, 1, 0, None, 4785149488, 218072112, 25309, 1, 1, 0, None, 4785156448, 218072419, 80387, 2, 1, 0, None)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1963, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 943, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 149, in execute
+    self._adapt_connection._handle_exception(error)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 300, in _handle_exception
+    raise error
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 131, in execute
+    self.await_(_cursor.execute(operation, parameters))
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 40, in execute
+    await self._execute(self._cursor.execute, sql, parameters)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 32, in _execute
+    return await self._conn._execute(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 122, in _execute
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 105, in run
+    result = function()
+             ^^^^^^^^^^
+sqlite3.OperationalError: too many SQL variables
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 108, in run_aggregation
+    await self._process_contracts(all_contracts)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\background_aggregation.py", line 193, in _process_contracts
+    await bulk_upsert(self.db, ContractItem, all_items)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\services\db_upsert.py", line 56, in bulk_upsert
+    await db.execute(stmt)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\ext\asyncio\session.py", line 463, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2260, in _execute_internal
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1415, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 523, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1637, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1842, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1982, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2351, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1963, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 943, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 149, in execute
+    self._adapt_connection._handle_exception(error)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 300, in _handle_exception
+    raise error
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py", line 131, in execute
+    self.await_(_cursor.execute(operation, parameters))
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 40, in execute
+    await self._execute(self._cursor.execute, sql, parameters)
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\cursor.py", line 32, in _execute
+    return await self._conn._execute(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 122, in _execute
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\aiosqlite\core.py", line 105, in run
+    result = function()
+             ^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) too many SQL variables
+[SQL: INSERT INTO contract_items (record_id, contract_id, type_id, quantity, is_included, is_singleton, raw_quantity) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?,  ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (record_id) DO UPDATE SET contract_id = excluded.contract_id, type_id = excluded.type_id, quantity = excluded.quantity, is_included = excluded.is_included, is_singleton = excluded.is_singleton, raw_quantity = excluded.raw_quantity, type_name = excluded.type_name, category = excluded.category, market_group_id = excluded.market_group_id]
+[parameters: (4782885978, 217991967, 77405, 1, 1, 0, None, 4782891347, 217992099, 41655, 1, 1, 0, None, 4782894561, 217992185, 26129, 1, 1, 0, None, 4782895372, 217992205, 26127, 1, 1, 0, None, 4782898591, 217992352, 28832, 1, 1, 0, None, 4782901011, 217992424, 88270, 1, 1, 0, None, 4782901012, 217992424, 88216, 1, 1, 0, None, 4782901013 ... 65084 parameters truncated ... None, 4785146756, 218072013, 17733, 1, 1, 0, None, 4785146757, 218072013, 17733, 1, 1, 0, None, 4785146758, 218072013, 17733, 1, 1, 0, None, 4785146759, 218072013, 17733, 1, 1, 0, None, 4785146760, 218072013, 17733, 1, 1, 0, None, 4785149488, 218072112, 25309, 1, 1, 0, None, 4785156448, 218072419, 80387, 2, 1, 0, None)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+INFO:     fastapi_app.core.cache - Redis connection closed.
+2025-06-12 02:55:45,484 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     sqlalchemy.engine.Engine - ROLLBACK
+INFO:     fastapi_app.services.scheduled_jobs - Finished scheduled job: run_aggregation_job
+INFO:     apscheduler.executors.default - Job "run_aggregation_job (trigger: interval[1:00:00], next run at: 2025-06-12 03:53:27 CDT)" executed successfully
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     root - Scheduler has been shut down.
+INFO:     apscheduler.scheduler - Scheduler has been shut down
+INFO:     fastapi_app.core.cache - Redis connection closed.
+INFO:     root - Application shutdown complete.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [71752]
+INFO:     Stopping reloader process [76072]
+
+
+-----------------
+
+
+Is this latest batch size of 500 variables a good general practice applicable to PostgreSQL too? I'm wary of spending a bunch of time making specific changes to adapt to SQLite limitations that won't apply to PostgreSQL unless they're good to do regardless.
+
+
+-----------------
+
+
+Proceed with testing the current fix for SQLite
+
+
+-----------------
+
+Terminal output. The "User note:" in the middle denotes a gap in the terminal output logs.
+
+pdm run dev
+INFO:     Will watch for changes in these directories: ['C:\\Users\\Sam\\OneDrive\\Documents\\Code\\hangar-bay\\app\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [61784] using WatchFiles
+INFO:     Started server process [27024]
+INFO:     Waiting for application startup.
+INFO:     fastapi_app.core.cache - Successfully connected to Redis.
+INFO:     apscheduler.scheduler - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:     fastapi_app.core.scheduler - Scheduled contract aggregation job to run every 3600 seconds.
+INFO:     apscheduler.scheduler - Added job "run_aggregation_job" to job store "default"
+INFO:     apscheduler.scheduler - Scheduler started
+INFO:     root - Application startup complete with all services initialized.
+INFO:     Application startup complete.
+INFO:     apscheduler.executors.default - Running job "run_aggregation_job (trigger: interval[1:00:00], next run at: 2025-06-12 04:03:26 CDT)" (scheduled at 2025-06-12 03:03:26.293274-05:00)
+INFO:     fastapi_app.services.scheduled_jobs - Executing scheduled job: run_aggregation_job
+INFO:     fastapi_app.core.cache - Successfully connected to Redis.
+INFO:     fastapi_app.services.background_aggregation - Concurrency lock acquired for contract aggregation.
+INFO:     fastapi_app.services.background_aggregation - Starting public contract aggregation run.
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/10000002/?page=1 "HTTP/1.1 200 OK"
+INFO:     fastapi_app.services.background_aggregation - Fetched 1000 contracts for region 10000002.
+INFO:     fastapi_app.services.background_aggregation - Upserting 1000 contracts in batches of 500.
+INFO:     fastapi_app.services.background_aggregation - Processing batch 1/2 (500 contracts)
+2025-06-12 03:03:27,198 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:     sqlalchemy.engine.Engine - BEGIN (implicit)
+2025-06-12 03:03:27,261 INFO sqlalchemy.engine.Engine INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 03:03:27,263 INFO sqlalchemy.engine.Engine [no key 0.00921s] (217991967, 2121934348, 98637763, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 07:53:02.000000', '2025-06-12 07:53:02.000000', None, 32900000.0, 0.0, 0.01, 0, 217992099, 2122464115, 98630743, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 07:58:08.000000', '2025-06-12 07:58:08.000000', None, 2500000.0, 0.0, 0.01, 0, 217992185, 2122464115, 98630743, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 08:00:41.000000', '2025-06-12 08:00:41.000000', None, 4500000.0, 0.0, 0.1, 0, 217992205, 2122464115 ... 7900 parameters truncated ... 5.0, 0, 218027964, 91679226, 1000170, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:46:05.000000', '2025-06-13 07:46:05.000000', None, 850000000.0, 0.0, 0.01, 0, 218027979, 2123025304, 98792349, 60003760, 60003760, 'item_exchange', 'outstanding', '', 1, '2025-05-16 07:46:43.000000', '2025-06-13 07:46:43.000000', None, 110000000.0, 0.0, 10.0, 0, 218027984, 2123025304, 98792349, 60003760, 60003760, 'item_exchange', 'outstanding', '', 1, '2025-05-16 07:47:02.000000', '2025-06-13 07:47:02.000000', None, 110000000.0, 0.0, 10.0, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00921s] (217991967, 2121934348, 98637763, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 07:53:02.000000', '2025-06-12 07:53:02.000000', None, 32900000.0, 0.0, 0.01, 0, 217992099, 2122464115, 98630743, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 07:58:08.000000', '2025-06-12 07:58:08.000000', None, 2500000.0, 0.0, 0.01, 0, 217992185, 2122464115, 98630743, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-15 08:00:41.000000', '2025-06-12 08:00:41.000000', None, 4500000.0, 0.0, 0.1, 0, 217992205, 2122464115 ... 7900 parameters truncated ... 5.0, 0, 218027964, 91679226, 1000170, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-16 07:46:05.000000', '2025-06-13 07:46:05.000000', None, 850000000.0, 0.0, 0.01, 0, 218027979, 2123025304, 98792349, 60003760, 60003760, 'item_exchange', 'outstanding', '', 1, '2025-05-16 07:46:43.000000', '2025-06-13 07:46:43.000000', None, 110000000.0, 0.0, 10.0, 0, 218027984, 2123025304, 98792349, 60003760, 60003760, 'item_exchange', 'outstanding', '', 1, '2025-05-16 07:47:02.000000', '2025-06-13 07:47:02.000000', None, 110000000.0, 0.0, 10.0, 0)
+INFO:     fastapi_app.services.background_aggregation - Successfully upserted batch 1.
+INFO:     fastapi_app.services.background_aggregation - Processing batch 2/2 (500 contracts)
+2025-06-12 03:03:27,316 INFO sqlalchemy.engine.Engine INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contracts (contract_id, issuer_id, issuer_corporation_id, start_location_id, end_location_id, type, status, title, for_corporation, date_issued, date_expired, date_completed, price, reward, volume, is_ship_contract) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (contract_id) DO UPDATE SET issuer_id = excluded.issuer_id, issuer_corporation_id = excluded.issuer_corporation_id, start_location_id = excluded.start_location_id, end_location_id = excluded.end_location_id, type = excluded.type, status = excluded.status, title = excluded.title, for_corporation = excluded.for_corporation, date_issued = excluded.date_issued, date_expired = excluded.date_expired, date_completed = excluded.date_completed, price = excluded.price, reward = excluded.reward, volume = excluded.volume, start_location_name = excluded.start_location_name, issuer_name = excluded.issuer_name, issuer_corporation_name = excluded.issuer_corporation_name, is_ship_contract = excluded.is_ship_contract
+2025-06-12 03:03:27,317 INFO sqlalchemy.engine.Engine [no key 0.00919s] (218027996, 1341553461, 98468929, 60003760, 60003760, 'item_exchange', 'outstanding', '', 1, '2025-05-16 07:47:25.000000', '2025-06-13 07:47:25.000000', None, 19000000.0, 0.0, 0.01, 0, 218028000, 1341553461, 98468929, 60003760, 60003760, 'item_exchange', 'outstanding', '', 1, '2025-05-16 07:47:42.000000', '2025-06-13 07:47:42.000000', None, 13500000.0, 0.0, 0.01, 0, 218028009, 2123025304, 98792349, 60003760, 60003760, 'item_exchange', 'outstanding', '', 1, '2025-05-16 07:48:14.000000', '2025-06-13 07:48:14.000000', None, 30000000.0, 0.0, 5.0, 0, 218028039, 2123025304 ... 7900 parameters truncated ... 0.0, 0, 218072013, 2115432462, 98761980, 60003760, 60003760, 'item_exchange', 'outstanding', '10x Tempest fleet issue BPC', 0, '2025-05-17 12:12:18.000000', '2025-06-14 12:12:18.000000', None, 999999999.0, 0.0, 0.09999999999999999, 0, 218072112, 810033447, 98770416, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-17 12:14:27.000000', '2025-06-14 12:14:27.000000', None, 34990000.0, 0.0, 0.01, 0, 218072419, 2114624829, 98702953, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-17 12:22:19.000000', '2025-06-14 12:22:19.000000', None, 14900000.0, 0.0, 0.2, 0)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00919s] (218027996, 1341553461, 98468929, 60003760, 60003760, 'item_exchange', 'outstanding', '', 1, '2025-05-16 07:47:25.000000', '2025-06-13 07:47:25.000000', None, 19000000.0, 0.0, 0.01, 0, 218028000, 1341553461, 98468929, 60003760, 60003760, 'item_exchange', 'outstanding', '', 1, '2025-05-16 07:47:42.000000', '2025-06-13 07:47:42.000000', None, 13500000.0, 0.0, 0.01, 0, 218028009, 2123025304, 98792349, 60003760, 60003760, 'item_exchange', 'outstanding', '', 1, '2025-05-16 07:48:14.000000', '2025-06-13 07:48:14.000000', None, 30000000.0, 0.0, 5.0, 0, 218028039, 2123025304 ... 7900 parameters truncated ... 0.0, 0, 218072013, 2115432462, 98761980, 60003760, 60003760, 'item_exchange', 'outstanding', '10x Tempest fleet issue BPC', 0, '2025-05-17 12:12:18.000000', '2025-06-14 12:12:18.000000', None, 999999999.0, 0.0, 0.09999999999999999, 0, 218072112, 810033447, 98770416, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-17 12:14:27.000000', '2025-06-14 12:14:27.000000', None, 34990000.0, 0.0, 0.01, 0, 218072419, 2114624829, 98702953, 60003760, 60003760, 'item_exchange', 'outstanding', '', 0, '2025-05-17 12:22:19.000000', '2025-06-14 12:22:19.000000', None, 14900000.0, 0.0, 0.2, 0)
+INFO:     fastapi_app.services.background_aggregation - Successfully upserted batch 2.
+INFO:     fastapi_app.services.background_aggregation - Finished upserting all 1000 contracts.
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217991967/?page=1 "HTTP/1.1 204 No Content"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992099/?page=1 "HTTP/1.1 204 No Content"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992185/?page=1 "HTTP/1.1 204 No Content"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992205/?page=1 "HTTP/1.1 204 No Content"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992352/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992424/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992426/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992449/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992469/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992481/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992495/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992685/?page=1 "HTTP/1.1 200 OK"
+INFO:     httpx - HTTP Request: GET https://esi.evetech.net/v1/contracts/public/items/217992718/?page=1 "HTTP/1.1 200 OK"
+I
+
+
+User note: At this point I walked away for a few minutes. This was the rest of the available terminal output when I got back:
+
+
+INFO:     fastapi_app.services.background_aggregation - Upserting batch of 50 contract items (items 9201-9250 of 9308).
+2025-06-12 03:06:27,529 INFO sqlalchemy.engine.Engine INSERT INTO contract_items (record_id, contract_id, type_id, quantity, is_included, is_singleton, raw_quantity) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (record_id) DO UPDATE SET contract_id = excluded.contract_id, type_id = excluded.type_id, quantity = excluded.quantity, is_included = excluded.is_included, is_singleton = excluded.is_singleton, raw_quantity = excluded.raw_quantity, type_name = excluded.type_name, category = excluded.category, market_group_id = excluded.market_group_id
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contract_items (record_id, contract_id, type_id, quantity, is_included, is_singleton, raw_quantity) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (record_id) DO UPDATE SET contract_id = excluded.contract_id, type_id = excluded.type_id, quantity = excluded.quantity, is_included = excluded.is_included, is_singleton = excluded.is_singleton, raw_quantity = excluded.raw_quantity, type_name = excluded.type_name, category = excluded.category, market_group_id = excluded.market_group_id
+2025-06-12 03:06:27,529 INFO sqlalchemy.engine.Engine [no key 0.00052s] (4785142537, 218071846, 17913, 1, 1, 0, None, 4785142538, 218071846, 17913, 1, 1, 0, None, 4785142539, 218071846, 17913, 1, 1, 0, None, 4785142540, 218071846, 10251, 1, 1, 0, None, 4785142541, 218071846, 43912, 1, 1, 0, None, 4785142542, 218071846, 43912, 1, 1, 0, None, 4785142543, 218071846, 43912, 1, 1, 0, None, 4785142544 ... 250 parameters truncated ... None, 4785142580, 218071846, 60342, 1, 1, 0, None, 4785142581, 218071846, 60342, 1, 1, 0, None, 4785142582, 218071846, 60342, 1, 1, 0, None, 4785142583, 218071846, 60342, 1, 1, 0, None, 4785142584, 218071846, 60342, 1, 1, 0, None, 4785142585, 218071846, 60342, 1, 1, 0, None, 4785142586, 218071846, 60342, 1, 1, 0, None)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00052s] (4785142537, 218071846, 17913, 1, 1, 0, None, 4785142538, 218071846, 17913, 1, 1, 0, None, 4785142539, 218071846, 17913, 1, 1, 0, None, 4785142540, 218071846, 10251, 1, 1, 0, None, 4785142541, 218071846, 43912, 1, 1, 0, None, 4785142542, 218071846, 43912, 1, 1, 0, None, 4785142543, 218071846, 43912, 1, 1, 0, None, 4785142544 ... 250 parameters truncated ... None, 4785142580, 218071846, 60342, 1, 1, 0, None, 4785142581, 218071846, 60342, 1, 1, 0, None, 4785142582, 218071846, 60342, 1, 1, 0, None, 4785142583, 218071846, 60342, 1, 1, 0, None, 4785142584, 218071846, 60342, 1, 1, 0, None, 4785142585, 218071846, 60342, 1, 1, 0, None, 4785142586, 218071846, 60342, 1, 1, 0, None)
+INFO:     fastapi_app.services.background_aggregation - Upserting batch of 50 contract items (items 9251-9300 of 9308).
+2025-06-12 03:06:27,533 INFO sqlalchemy.engine.Engine INSERT INTO contract_items (record_id, contract_id, type_id, quantity, is_included, is_singleton, raw_quantity) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (record_id) DO UPDATE SET contract_id = excluded.contract_id, type_id = excluded.type_id, quantity = excluded.quantity, is_included = excluded.is_included, is_singleton = excluded.is_singleton, raw_quantity = excluded.raw_quantity, type_name = excluded.type_name, category = excluded.category, market_group_id = excluded.market_group_id
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contract_items (record_id, contract_id, type_id, quantity, is_included, is_singleton, raw_quantity) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (record_id) DO UPDATE SET contract_id = excluded.contract_id, type_id = excluded.type_id, quantity = excluded.quantity, is_included = excluded.is_included, is_singleton = excluded.is_singleton, raw_quantity = excluded.raw_quantity, type_name = excluded.type_name, category = excluded.category, market_group_id = excluded.market_group_id
+2025-06-12 03:06:27,533 INFO sqlalchemy.engine.Engine [no key 0.00053s] (4785142587, 218071846, 60342, 1, 1, 0, None, 4785142588, 218071846, 60351, 1, 1, 0, None, 4785142589, 218071846, 61219, 1, 1, 0, None, 4785142590, 218071846, 61219, 1, 1, 0, None, 4785142591, 218071846, 17913, 1, 1, 0, None, 4785142592, 218071846, 17913, 1, 1, 0, None, 4785142593, 218071846, 17913, 1, 1, 0, None, 4785142594 ... 250 parameters truncated ... None, 4785142630, 218071846, 784, 1, 1, 0, None, 4785142631, 218071846, 784, 1, 1, 0, None, 4785146185, 218071989, 44992, 500, 0, 0, None, 4785146751, 218072013, 17733, 1, 1, 0, None, 4785146752, 218072013, 17733, 1, 1, 0, None, 4785146753, 218072013, 17733, 1, 1, 0, None, 4785146754, 218072013, 17733, 1, 1, 0, None)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00053s] (4785142587, 218071846, 60342, 1, 1, 0, None, 4785142588, 218071846, 60351, 1, 1, 0, None, 4785142589, 218071846, 61219, 1, 1, 0, None, 4785142590, 218071846, 61219, 1, 1, 0, None, 4785142591, 218071846, 17913, 1, 1, 0, None, 4785142592, 218071846, 17913, 1, 1, 0, None, 4785142593, 218071846, 17913, 1, 1, 0, None, 4785142594 ... 250 parameters truncated ... None, 4785142630, 218071846, 784, 1, 1, 0, None, 4785142631, 218071846, 784, 1, 1, 0, None, 4785146185, 218071989, 44992, 500, 0, 0, None, 4785146751, 218072013, 17733, 1, 1, 0, None, 4785146752, 218072013, 17733, 1, 1, 0, None, 4785146753, 218072013, 17733, 1, 1, 0, None, 4785146754, 218072013, 17733, 1, 1, 0, None)
+INFO:     fastapi_app.services.background_aggregation - Upserting batch of 8 contract items (items 9301-9308 of 9308).
+2025-06-12 03:06:27,534 INFO sqlalchemy.engine.Engine INSERT INTO contract_items (record_id, contract_id, type_id, quantity, is_included, is_singleton, raw_quantity) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (record_id) DO UPDATE SET contract_id = excluded.contract_id, type_id = excluded.type_id, quantity = excluded.quantity, is_included = excluded.is_included, is_singleton = excluded.is_singleton, raw_quantity = excluded.raw_quantity, type_name = excluded.type_name, category = excluded.category, market_group_id = excluded.market_group_id
+INFO:     sqlalchemy.engine.Engine - INSERT INTO contract_items (record_id, contract_id, type_id, quantity, is_included, is_singleton, raw_quantity) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (record_id) DO UPDATE SET contract_id = excluded.contract_id, type_id = excluded.type_id, quantity = excluded.quantity, is_included = excluded.is_included, is_singleton = excluded.is_singleton, raw_quantity = excluded.raw_quantity, type_name = excluded.type_name, category = excluded.category, market_group_id = excluded.market_group_id
+2025-06-12 03:06:27,534 INFO sqlalchemy.engine.Engine [no key 0.00022s] (4785146755, 218072013, 17733, 1, 1, 0, None, 4785146756, 218072013, 17733, 1, 1, 0, None, 4785146757, 218072013, 17733, 1, 1, 0, None, 4785146758, 218072013, 17733, 1, 1, 0, None, 4785146759, 218072013, 17733, 1, 1, 0, None, 4785146760, 218072013, 17733, 1, 1, 0, None, 4785149488, 218072112, 25309, 1, 1, 0, None, 4785156448, 218072419, 80387, 2, 1, 0, None)
+INFO:     sqlalchemy.engine.Engine - [no key 0.00022s] (4785146755, 218072013, 17733, 1, 1, 0, None, 4785146756, 218072013, 17733, 1, 1, 0, None, 4785146757, 218072013, 17733, 1, 1, 0, None, 4785146758, 218072013, 17733, 1, 1, 0, None, 4785146759, 218072013, 17733, 1, 1, 0, None, 4785146760, 218072013, 17733, 1, 1, 0, None, 4785149488, 218072112, 25309, 1, 1, 0, None, 4785156448, 218072419, 80387, 2, 1, 0, None)
+INFO:     fastapi_app.services.background_aggregation - Finished upserting all 9308 contract items.
+INFO:     fastapi_app.services.background_aggregation - Public contract aggregation run finished successfully.
+INFO:     fastapi_app.services.background_aggregation - Releasing concurrency lock for contract aggregation.
+INFO:     fastapi_app.core.cache - Redis connection closed.
+2025-06-12 03:06:27,537 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     sqlalchemy.engine.Engine - ROLLBACK
+INFO:     fastapi_app.services.scheduled_jobs - Finished scheduled job: run_aggregation_job
+INFO:     apscheduler.executors.default - Job "run_aggregation_job (trigger: interval[1:00:00], next run at: 2025-06-12 04:03:26 CDT)" executed successfully
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     root - Scheduler has been shut down.
+INFO:     apscheduler.scheduler - Scheduler has been shut down
+INFO:     fastapi_app.core.cache - Redis connection closed.
+INFO:     root - Application shutdown complete.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [27024]
+INFO:     Stopping reloader process [61784]
+
+-----------------
+
+
+I'd like to keep the Temporary debug limit for now, so I rejected the change to that code block.
+
+Something I noticed is that the database commit doesn't happen until the very end, once we see:
+INFO:     fastapi_app.services.background_aggregation - Finished upserting all 11503 contract items.
+2025-06-12 03:18:42,699 INFO sqlalchemy.engine.Engine COMMIT
+INFO:     sqlalchemy.engine.Engine - COMMIT
+
+Is there any benefit to having such a large transaction be atomic? Is there any reason we don't commit after each batch as indicated by?
+INFO:     fastapi_app.services.background_aggregation - Upserting batch of 3 contract items (items 11501-11503 of 11503).
+
+
+-----------------
+
+
+Re: "Partial Data Persistence: If the job fails, data from successfully processed and committed batches remains in the database. This could be beneficial if restarting the entire process is extremely costly and partial data is acceptable."
+Restarting is costly. In addition to the raw time (likely at least an hour per region per run if our test region is at all representative), retries involve tens of thousands of additional relatively API calls to ESI, increasing our risk of getting rate limited or blocked.
+
+The database I/O performance considerations are likely trivial relative to literal hours of additional real-time API calls.
+
+Is my understanding of this flow correct?
+1. We first get a list of contract IDs and base details and populate the contracts table with it
+2. we then loop through the contracts in the contracts table and make an API call for each to get the contract_items details
+3. We get the contract_items details for every single contract in memory, then batch up database transactions for those, then commit all the batch transactions together at the end
+
+Can we commit after each batch and have some mechanism to only re-pull contract_items that were in uncommitted batches instead of re-pulling the details for every contract ID in the contracts table by default?
+
+Please correct my understanding of how this works if I'm missing something.
+
+
+-----------------
+
+
+Can you explain why in "class Contract(Base):" in app\backend\src\fastapi_app\models\contracts.py you changed:
+is_ship_contract = Column(Boolean, default=False, nullable=False)
+to:
+is_ship_contract: Mapped[bool] = mapped_column(Boolean, default=False, index=True) 
+
+
+-----------------
+
+
+
+1. Can you please do a comprehensive check of anywhere else we can / should align with modern SQLAlchemy 2.0 best practices and style of ORM declarative mapping where we aren't?
+
+2. Terminal output. I'm guessing this means we need to generate and run a migration:
+pdm run alembic check
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+ERROR [alembic.util.messaging] Target database is not up to date.
+FAILED: Target database is not up to date.
+
+
+-----------------
+
+
+I just freshly loaded app\backend\src\hangar_bay_dev.db in a database browser and ran "SELECT version_num FROM alembic_version". It returns "c199a09ccc55". I'm not sure why your app\backend\src\check_alembic_version.py query failed to get that result. Should I still stamp it?
+
+
+-----------------
+
+1. Before you forget, I want you to tell me ALL the lessons from the database transactional commit and batching issues, the priorities on high cost of ESI API calls vs low cost of database transactions, then think about how Cascade can avoid those in the future and use more robust design patterns for database areas from them starts.
+
+2. Then, make a detailed update to design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md to reflect those challenges and lessons and decisions.
+
+3. Then, append a new detailed entry on the topic to design\meta\design-log.md. Remember, the end of the file is indicated by the footer line "DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*"
+
+4. I'm getting really tired of SQLite limitation-related errors. We are switching to PostgreSQL before wasting any more time on this. Prepare a detailed plan to do so.
+
+
+
+
+-----------------
+
+
+Does the migration plan cover reviewing any places we may have made ORM or data type changes to be more generic to work with SQLite or SQLite *and* PostgreSQL, like JSON vs JSONB, that would specifically benefit from being made PostgreSQL specific as part of this?
+
+
+-----------------
+
+
+First, git commit all pending changes with commit messages. Make multiple commits with different messages if that helps with commit documentation clarify. Ensure all pending files are committed at the end.
+
+Then, start working on Phase 1 of the SQLite to PostgreSQL migration plan design\database\sqlite-to-postgresql-migration-plan.md (e.g., installing PostgreSQL, creating the database/user, adding asyncpg)
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
 X
 
 
@@ -3561,6 +5100,635 @@ X
 
 
 -----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
 
 X
 
