@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime # Added for next_run_time
 
 from urllib.parse import urlparse
 
@@ -37,6 +38,7 @@ def add_aggregation_job(scheduler: AsyncIOScheduler, settings: Settings):
         id="aggregate_public_contracts",
         replace_existing=True,
         misfire_grace_time=300,  # 5 minutes
+        next_run_time=datetime.now() # Run immediately on startup
     )
     logger.info(
         f"Scheduled contract aggregation job to run every "

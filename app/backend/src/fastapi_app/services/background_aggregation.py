@@ -2,6 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import List
+from datetime import datetime
 
 from redis.asyncio import Redis
 from fastapi import Depends
@@ -106,18 +107,29 @@ class ContractAggregationService:
 
                 await self._process_contracts(all_contracts)
 
-                logger.info("Public contract aggregation run finished successfully.")
+                await self.db.commit()
+                logger.info("Public contract aggregation run finished successfully and changes committed.")
 
         except ConcurrencyLockError:
             # This is expected if another job is running, so we just return.
             return
         except Exception as e:
             logger.error(f"An unexpected error occurred during aggregation: {e}", exc_info=True)
+            await self.db.rollback()
+            logger.info("Rolled back database changes due to an error.")
 
     async def _process_contracts(self, contracts: List[dict]):
         """
         Processes a list of contracts, fetches their items, and upserts them.
         """
+        # Helper to parse ESI's ISO 8601 date strings into datetime objects.
+        def _parse_datetime(date_string: str | None) -> datetime | None:
+            if date_string is None:
+                return None
+            # ESI dates are like "2024-05-20T14:47:32Z". The 'Z' means UTC.
+            # fromisoformat handles this correctly if we replace 'Z' with '+00:00'.
+            return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+
         contract_values = [
             {
                 "contract_id": c["contract_id"],
@@ -128,10 +140,10 @@ class ContractAggregationService:
                 "type": c["type"],
                 "status": c.get("status", "outstanding"),
                 "title": c.get("title", ""),
-                "for_corporation": c["for_corporation"],
-                "date_issued": c["date_issued"],
-                "date_expired": c["date_expired"],
-                "date_completed": c.get("date_completed"),
+                "for_corporation": c.get("for_corporation", False),
+                "date_issued": _parse_datetime(c["date_issued"]),
+                "date_expired": _parse_datetime(c["date_expired"]),
+                "date_completed": _parse_datetime(c.get("date_completed")),
                 "price": c.get("price"),
                 "reward": c.get("reward"),
                 "volume": c.get("volume"),
@@ -140,8 +152,17 @@ class ContractAggregationService:
             for c in contracts
         ]
 
-        logger.info(f"Upserting {len(contract_values)} contracts.")
-        await bulk_upsert(self.db, Contract, contract_values)
+        batch_size = 500  # Number of contracts to process in each batch
+        total_contracts = len(contract_values)
+        logger.info(f"Upserting {total_contracts} contracts in batches of {batch_size}.")
+
+        for i in range(0, total_contracts, batch_size):
+            batch = contract_values[i:i + batch_size]
+            logger.info(f"Processing batch {i // batch_size + 1}/{(total_contracts + batch_size - 1) // batch_size} ({len(batch)} contracts)")
+            await bulk_upsert(self.db, Contract, batch)
+            logger.info(f"Successfully upserted batch {i // batch_size + 1}.")
+
+        logger.info(f"Finished upserting all {total_contracts} contracts.")
 
         all_items: List[dict] = []
         for contract in contracts:
@@ -159,7 +180,7 @@ class ContractAggregationService:
                         "type_id": i["type_id"],
                         "quantity": i["quantity"],
                         "is_included": i["is_included"],
-                        "is_singleton": i["is_singleton"],
+                        "is_singleton": i.get("is_singleton", False),
                         "raw_quantity": i.get("raw_quantity"),
                     }
                     for i in items
@@ -171,8 +192,15 @@ class ContractAggregationService:
                 logger.error(f"Failed to fetch items for contract {contract['contract_id']}: {e}", exc_info=True)
 
         if all_items:
-            logger.info(f"Upserting {len(all_items)} contract items.")
-            await bulk_upsert(self.db, ContractItem, all_items)
+            logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
+            BATCH_SIZE = 50  # Number of items to process in each batch
+            for i in range(0, len(all_items), BATCH_SIZE):
+                batch_items = all_items[i:i + BATCH_SIZE]
+                logger.info(f"Upserting batch of {len(batch_items)} contract items (items {i+1}-{i+len(batch_items)} of {len(all_items)}).")
+                await bulk_upsert(self.db, ContractItem, batch_items)
+            logger.info(f"Finished upserting all {len(all_items)} contract items.")
+        else:
+            logger.info("No new contract items to process.")
 
 
 # Dependency for getting the service
