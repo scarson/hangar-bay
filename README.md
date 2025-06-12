@@ -8,7 +8,7 @@ I aim to demonstrate how detailed, AI-centric specifications can guide AI coding
 
 This project aims to shows how detailed, AI-focused specifications can steer coding assistants toward producing secure, maintainable software. I’m focused on baking non-functional requirements—security, accessibility, testability, observability, and internationalization (i18n)—into every step of AI-assisted development. Because these assistants tend to default to insecure patterns, I’ve created a [`security-spec.md`](/design/specifications/security-spec.md) that lays out project-specific design principles, a security checklist, and AI prompts for enforcing modern secure-coding practices across our tech stack.
 
-[1]: "I can see where GPT could be useful for code snippets, but I can't imagine it's able to deliver any sort of comprehensive outcome. If I say, "write me an ecommerce site for selling ships in eve online" theres no way its going to do that right? It's going to give me some template code about a shopping cart or something and thats it. Right?"
+[1]: "I can see where GPT could be useful for code snippets, but I can't imagine it's able to deliver any sort of comprehensive outcome. If I say, "write me an ecommerce site for selling ships in eve online" theres no way it's going to do that right? It's going to give me some template code about a shopping cart or something and thats it. Right?"
 There's only one way to find out! 
 
 ## Project Documentation
