@@ -75,20 +75,11 @@ class ContractAggregationService:
             async with self._concurrency_lock():
                 logger.info("Starting public contract aggregation run.")
 
-                region_ids_str = self.settings.AGGREGATION_REGION_IDS
-                if not region_ids_str:
-                    logger.warning("AGGREGATION_REGION_IDS is not set. Skipping aggregation.")
+                region_ids = self.settings.AGGREGATION_REGION_IDS  # This is already a list[int]
+                if not region_ids:  # Check if the list is empty or None
+                    logger.warning("AGGREGATION_REGION_IDS is not set or is empty. Skipping aggregation.")
                     return
-
-                try:
-                    region_ids = [int(rid.strip()) for rid in region_ids_str.split(',')]
-                except (ValueError, AttributeError):
-                    logger.error(
-                        f"Could not parse AGGREGATION_REGION_IDS: '{region_ids_str}'. "
-                        f"Please provide a comma-separated list of integers.",
-                        exc_info=True,
-                    )
-                    return
+                # No parsing needed, region_ids is ready to use. The type hint in Settings ensures it's list[int].
                 all_contracts: List[dict] = []
 
                 for region_id in region_ids:
