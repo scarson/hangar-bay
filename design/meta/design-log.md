@@ -945,3 +945,92 @@ By adopting a stricter model of atomic transactions for logical units of work, t
 
 ---
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
+
+---
+
+**2025-06-12 08:29:39-05:00: Architectural Pattern for Dependency Management in Hybrid Contexts**
+
+**Context & Objective:**
+The application runs in multiple contexts: synchronous API requests managed by FastAPI's lifecycle, and asynchronous background jobs managed by APScheduler running in separate processes. A critical `PicklingError` during background job execution revealed that the dependency management strategy must account for these different contexts. Pickling means serialization. The objective is to define a clear, robust pattern for managing dependencies, especially non-picklable resources like cache or database clients.
+
+**Key Decisions & Pattern:**
+
+1.  **FastAPI Request-Response Context (The Default):**
+    *   **Pattern:** Use FastAPI's built-in dependency injection (`Depends`) system.
+    *   **Mechanism:** Dependencies (e.g., `get_db`, `get_cache`) create and yield resources. FastAPI manages the resource lifecycle, ensuring it's available for the request and properly closed/released afterward.
+    *   **Use Case:** Standard API endpoints (`@router.get`, `@router.post`, etc.).
+
+2.  **APScheduler Background Job Context (The Exception):**
+    *   **Problem:** Objects passed to jobs running in a separate process must be serializable (picklable). Live resource clients (like `aioredis.Redis`) are not picklable. Passing them via dependency injection from the main app to the job fails.
+    *   **Pattern:** "Dynamic Resource Instantiation."
+    *   **Mechanism:**
+        *   Services or classes intended for use in background jobs (`ContractAggregationService`, `ESIClient`) must *not* accept live resource clients in their `__init__` methods.
+        *   Instead, they should accept picklable configuration, primarily the Pydantic `Settings` object.
+        *   Within the method that executes as the background job, the resource client is created, used, and closed dynamically. (e.g., `redis = await aioredis.from_url(settings.CACHE_URL)`).
+    *   **Rationale:** This ensures no non-picklable objects are passed across process boundaries. It makes the service self-contained and responsible for its own resources when operating outside the FastAPI request lifecycle.
+
+**Implications for Future Design:**
+*   This dual-pattern approach is now the standard. When creating a new service, the first question must be: "Will this run in a background job?"
+*   If yes, it *must* follow the "Dynamic Resource Instantiation" pattern.
+*   If no, it can and should leverage the standard FastAPI `Depends` pattern.
+*   This avoids architectural drift and provides a clear, non-negotiable rule for handling resource dependencies, preventing future `PicklingError` issues.
+
+---
+
+**2025-06-12 08:31:00-05:00: Service Architecture: Self-Contained vs. Injected Resources**
+
+**Context & Objective:**
+To further clarify the application's service layer architecture and prevent cyclical refactoring (e.g., toggling between passing a full `Settings` object vs. individual dependencies), this entry defines the philosophy for service construction.
+
+**Key Decisions & Philosophy:**
+
+1.  **Services are Self-Sufficient Units:** A service (e.g., `ContractAggregationService`) is viewed as a self-sufficient component responsible for a specific domain of business logic.
+
+2.  **Configuration over Live Resources:**
+    *   **Decision:** Services should be initialized with *configuration*, not with live, stateful resources like database sessions or cache clients. The primary piece of configuration passed to a service's constructor will be the Pydantic `Settings` object.
+    *   **Rationale:**
+        *   **Decoupling:** This decouples the service's logic from the resource's lifecycle management. The service doesn't need to know *how* a database session is created, only *that* it needs one and how to get it.
+        *   **Flexibility & Testability:** It's easier to instantiate a service in a test environment by passing a mock or test-specific `Settings` object.
+        *   **Pickle-Safety:** As established in the dependency management pattern, passing picklable `Settings` is essential for background job compatibility.
+
+3.  **Resource Acquisition:**
+    *   **Decision:** Services acquire resources *when needed* using one of two methods, depending on context:
+        *   **API Context:** A service method called from an API endpoint can accept a resource (e.g., `db: AsyncSession`) as a method parameter, which is provided by FastAPI's DI system.
+        *   **Background Context:** A service method running as a background job will instantiate its own resources using the `Settings` object it holds, as per the "Dynamic Resource Instantiation" pattern.
+
+**Implications & Anti-Patterns to Avoid:**
+*   **Canonical Pattern:** `my_service = MyService(settings=app_settings)`
+*   **Anti-Pattern:** `my_service = MyService(db=get_db(), cache=get_cache())`. This is an anti-pattern because it tightly couples the service to live resources at instantiation time, making it less flexible, harder to test, and non-picklable.
+*   This decision provides a stable, long-term answer to the "how do we build and provide services?" question, preventing future refactoring churn.
+
+---
+
+**2025-06-12 08:47:26-05:00: Standardized Documentation Structure for Technology Stacks**
+
+**Context & Objective:**
+To ensure consistency and maximize effectiveness for AI-assisted development (particularly for Cascade), a standardized documentation structure for different technology stacks (e.g., FastAPI, Angular) was needed. The previous structure had inconsistencies in the location of architecture overview documents and the organization of pattern/guide documents. The objective is to establish a clear, predictable, and efficient layout.
+
+**Decision: Adopt "Fully Co-located Technology Stacks" Structure (Proposal 2)**
+
+*   **Structure Definition:**
+    *   `design/[technology_name]/` (e.g., `design/angular/`, `design/fastapi/`): Each technology stack will have its own comprehensive directory.
+        *   `00-[technology]-architecture-overview.md`: The main architectural document for that specific stack (e.g., `design/fastapi/00-fastapi-architecture-overview.md`).
+        *   `patterns/`: Subdirectory for specific, prescriptive design pattern documents related to that stack.
+        *   `guides/`: Subdirectory for "how-to" or "cookbook" style guides for that stack.
+        *   Other specific documents related to that technology can reside at the root of this technology-specific directory or be further organized if needed.
+    *   `design/architecture/`: This folder will be reserved for truly global, cross-stack architectural documents, if any. It is not the primary location for stack-specific overviews.
+
+*   **Rationale & Benefits for Cascade (AI Assistant):**
+    *   **Optimal Discoverability & Focus:** All information pertinent to a specific technology stack (overview, patterns, guides) is grouped together in one place. This is highly efficient for AI, allowing quick access to relevant context without navigating disparate directory structures.
+    *   **Enhanced Memory & Consistency:** Co-location is key to helping the AI "remember" and consistently apply established architectural principles for a given stack.
+    *   **Modularity & Scalability:** The `patterns/` and `guides/` subdirectories prevent monolithic documents and cluttered flat folders, making it easier for the AI to find and apply specific rules or procedures.
+    *   **Predictable Layout:** A consistent structure across all technology stacks reduces ambiguity and improves the AI's ability to navigate and utilize the documentation effectively.
+
+*   **Implementation Steps:**
+    *   Create the new structure for FastAPI in `design/fastapi/`.
+    *   Refactor the existing Angular documentation by moving `design/architecture/angular-frontend-architecture.md` to `design/angular/00-angular-architecture-overview.md` and creating `patterns/` and `guides/` subdirectories within `design/angular/`.
+
+**Impact:** This standardized structure will improve the AI's ability to understand, adhere to, and leverage architectural documentation, leading to more consistent, higher-quality code and reduced architectural drift.
+
+--- 
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*

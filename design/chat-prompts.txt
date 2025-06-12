@@ -5168,30 +5168,76 @@ What happens if the tables already exist when the application starts up? Does th
 -----------------
 
 
-X
+So, the last ten or so issues we worked through, basically everything since commit aa9698f64afa9e8f67ec6a9eab734767afbc2775, was a bit of a development nightmare. We need to try to address that, including at minimum by:
+
+1. Updating design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md with a comprehensive accounting of issues, lessons, resolutions, etc. in "## 3. Technical Learnings & Discoveries" and "## 4. Process Learnings & Improvements" since its last update. This must include highly detailed information on how we resolved every aspect of the pickling issues.
+
+As a reminder, here's how you refactored ESI client (which was not the only thing refactored this way to resolve picking issues):
+Refactor ESIClient (esi_client_class.py):
+Modify init to only accept settings: Settings.
+Remove the redis_client parameter and self.redis_client attribute.
+In methods that use Redis (e.g., get_esi_data_with_etag_caching, resolve_ids_to_names), import redis.asyncio as aioredis and create a Redis client instance dynamically using aioredis.from_url(str(self.settings.CACHE_URL)). These methods will then use this locally created client.
+Refactor ContractAggregationService (background_aggregation.py):
+Modify init to remove the cache: Redis parameter and self.cache attribute.
+In methods that use Redis (e.g., _concurrency_lock), import redis.asyncio as aioredis and create a Redis client instance dynamically using aioredis.from_url(str(self.settings.CACHE_URL)).
+Update main.py:
+When instantiating ESIClient in startup_event, only pass settings.
+When instantiating ContractAggregationService in startup_event, remove the cache argument.
+Update get_aggregation_service in background_aggregation.py:
+Remove the cache: Redis = Depends(get_cache) parameter.
+Remove the cache argument when instantiating ContractAggregationService.
+Update get_esi_client in dependencies.py:
+Remove the redis_client: Redis = Depends(get_cache) parameter.
+Remove the redis_client argument when instantiating ESIClient.
+This is a consistent approach to ensure all components involved in the scheduled job are picklable.
+
+2. Add one or more new entries to design\meta\design-log.md that capture the FastAPI architectural pattern to capture everything relevant to the backend service design and architecture since the last entry "**2025-06-12 04:30:57-05:00: Lessons from ESI Data Aggregation: Transaction Management & Batching**". Think about what topics would be useful for Cascade to have design log entries for.
+Append new entries at the end - look for end of file footer string "DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*"
+
+3. It's clear we need architecture and design documentation on the FastAPI (and related packages/components) backend, likely similar to what we have for Angular at design\architecture\angular-frontend-architecture.md and all the files within design\angular. I created a design\fastapifolder for you like the design\angular Angular one. Think carefully about what documentation would help you stay consistent and avoid making errors implementing backend components. I especially want you to think about how you can document referencable design patterns so we can avoid things like you cyclically refactoring Settings into get_settings back into Settings and so on, because that pattern of forgetting why and how you'd set things up and then doing incomplete refactor after incomplete refactor led to the most serious breaking regressions. Don't limit yourself to thinking about that, but do keep it in mind as a priority. Think of several proposals on how to accomplish this in a way that's most effective for Cascade, and compare them against each other. Explain which you think will be most successful and justify your decision.
 
 
 -----------------
 
 
-X
+I agree with Proposal B: The Modular Document Set. However, before you proceed, I want you to look at the layout of design\angular, which has no subfolders, and its main architecture overview doc at design\architecture\angular-frontend-architecture.md. You've mentioned before that consistency helps Cascade, so I want to make sure we have a consistent pattern (which could include rearranging the Angular docs if needed). You made a case in the past for putting the main achitecture doc like design\architecture\angular-frontend-architecture.md or this new fastapi-backend-architecture.md in a design\architecture folder. The design\angular directory is currently flat and doesn't have a patterns or guides subdirectory. Think about this and what would be most effective for Cascade as a standard structure going forward. hink of several proposals on how to accomplish this in a way that's most effective for Cascade, and compare them against each other. Explain which you think will be most successful and justify your decision. Wait for my approval before making any changes.
 
 
 -----------------
 
 
-X
+I agree with your conclusion. 
+
+1. Add a new entry to design\meta\design-log.md that captures the decisions and reasoning and benefits behind:
+"Proposal 2: Fully Co-located Technology Stacks.
+
+This structure offers the best balance of organization, discoverability, and focus from my perspective as an AI assistant. When I'm working on a FastAPI feature, having design/fastapi/00-fastapi-architecture-overview.md, design/fastapi/patterns/, and design/fastapi/guides/ all under a single design/fastapi/ umbrella is the most efficient. It allows me to quickly access the high-level architecture, then drill down into specific patterns (the "rules") or guides (the "how-tos") relevant to the task at hand without navigating to a separate design/architecture folder for the overview.
+
+This co-location is key to helping me "remember" and consistently apply our established architectural principles. The modularity provided by patterns/ and guides/ subdirectories within each technology folder is crucial for avoiding the "single monolithic document" problem and the "cluttered flat folder" problem."
+
+Append the new entry at the end - look for end of file footer string "DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*"
+
+2. Implement proposal 2.
 
 
 -----------------
 
 
-X
+1. I manually move it to design\angular\guides\08-ssr-and-performance.md along with the others because the tool call failed to run.
+
+2. Think about any memories it would be helpful for Cascade to create or update about these documentation updates, then do that and update design\meta\memory-index.md to include entires for them accordingly.
+
+3. Git commit all pending changes.
+
+4. Prepare a PR message with markdown formatting to merge dev to main.
+
+5. Add getting Alembic properly set up for our PostgreSQL schemas to your to-do list. Throwing manual schema updates into Python scripts is not a sustainable and maintainable way to keep our database updated with changes.
 
 
 -----------------
 
-X
+
+TODO: Alembic migrations for Postgres so we don't just throw SQL scripts at it for updates
 
 
 -----------------
