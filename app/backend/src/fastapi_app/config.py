@@ -3,7 +3,7 @@ from typing import Literal, Optional, Union
 
 from pydantic.networks import PostgresDsn, AnyUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import computed_field
+from pydantic import model_validator # Removed computed_field, added model_validator
 
 
 class Settings(BaseSettings):
@@ -35,30 +35,34 @@ class Settings(BaseSettings):
     # The Forge, Domain, Heimatar, Metropolis, Sinq Laison
     AGGREGATION_REGION_IDS: list[int] = [10000002, 10000043, 10000030, 10000042, 10000032]
 
+    DATABASE_URL: Optional[Union[PostgresDsn, AnyUrl]] = None # Will be loaded from .env if present
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    @computed_field
-    @property
-    def DATABASE_URL(self) -> Union[PostgresDsn, AnyUrl]:
-        if all(
-            [
-                self.POSTGRES_USER,
-                self.POSTGRES_PASSWORD,
-                self.POSTGRES_SERVER,
-                self.POSTGRES_DB,
-            ]
-        ):
-            return PostgresDsn.build(
-                scheme="postgresql+asyncpg",
-                username=self.POSTGRES_USER,
-                password=self.POSTGRES_PASSWORD,
-                host=self.POSTGRES_SERVER,
-                path=f"/{self.POSTGRES_DB}",
-            )
-        else:
-            return f"sqlite+aiosqlite:///./{self.SQLITE_DB_NAME}"
+    @model_validator(mode="after")
+    def set_database_url_if_not_provided(self) -> 'Settings':
+        if self.DATABASE_URL is None: # If not set directly in .env
+            if all(
+                [
+                    self.POSTGRES_USER,
+                    self.POSTGRES_PASSWORD,
+                    self.POSTGRES_SERVER,
+                    self.POSTGRES_DB,
+                ]
+            ):
+                self.DATABASE_URL = PostgresDsn.build(
+                    scheme="postgresql+asyncpg",
+                    username=self.POSTGRES_USER,
+                    password=self.POSTGRES_PASSWORD,
+                    host=self.POSTGRES_SERVER,
+                    path=f"/{self.POSTGRES_DB}",
+                )
+            else:
+                # Default to SQLite if no full DATABASE_URL or individual PG vars are provided
+                self.DATABASE_URL = f"sqlite+aiosqlite:///./{self.SQLITE_DB_NAME}"
+        return self
 
 
 def get_settings() -> Settings:
