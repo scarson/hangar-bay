@@ -5153,13 +5153,16 @@ INFO:     Stopping reloader process [48336]
 -----------------
 
 
-X
+In app\backend\src\fastapi_app\core\config.py here what does the default_factory mean? This is a validator but has the same value we've been using in the .env file? 
+    AGGREGATION_REGION_IDS: List[int] = Field(
+        default_factory=lambda: [10000002], # Use default_factory for mutable default
+        description="List of integer region IDs to scan for contracts. Parsed from env var."
 
 
 -----------------
 
 
-X
+What happens if the tables already exist when the application starts up? Does that cause issues? The database will generally be persistent between app restarts.
 
 
 -----------------

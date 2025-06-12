@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
 import httpx
-from redis.asyncio import Redis
+import redis.asyncio as aioredis # Renamed for clarity and to use from_url
 
 from .exceptions import ESIRequestFailedError, ESINotModifiedError
 from .config import Settings # Import Settings for type hint and usage
@@ -23,158 +23,135 @@ class ESIClient:
     with built-in support for Redis-based ETag caching.
     """
 
-    def __init__(self, redis_client: Redis, settings: Settings): # Removed http_client, added settings
-        self.settings = settings # Store settings to create http_client
-        self.redis_client = redis_client
+    def __init__(self, settings: Settings): # Removed http_client and redis_client
+        self.settings = settings # Store settings to create http_client and redis_client
 
     async def get_esi_data_with_etag_caching(
-        self, path: str, all_pages: bool = False
+        self, path: str, all_pages: bool = False, ignore_404: bool = False
     ) -> List[Dict[str, Any]]:
-        async with httpx.AsyncClient(
-            base_url=self.settings.ESI_BASE_URL,
-            headers={"User-Agent": self.settings.ESI_USER_AGENT},
-            timeout=30.0
-        ) as http_client:
-            """Generic method to fetch data from ESI, with ETag and Redis caching.
+        """
+        Generic method to fetch data from ESI, with ETag caching, pagination, and retries.
 
-            Args:
-                path: The ESI API path to request.
-                all_pages: If True, fetches all pages of a paginated endpoint.
+        Args:
+            path: The ESI API path to request.
+            all_pages: If True, fetches all pages of a paginated endpoint.
+            ignore_404: If True, treats a 404 status as the end of pages instead of an error.
 
-            Returns:
-                A list of dictionaries containing the ESI data.
-            """
-            full_data = []
-            page = 1
-            # TEMPORARY: Limit pages for faster debugging of contract fetching
-            MAX_PAGES_FOR_DEBUG = 1
-            is_public_contracts_path = path.startswith("/v1/contracts/public/") and path.endswith("/")
-
-            while True:
-                page_data = [] # Always reset page_data before a new attempt
-                paginated_path = f"{path}?page={page}"
-
-                # ETag Caching Logic
-                etag_key = f"etag:{paginated_path}"
-                data_key = f"data:{paginated_path}"
-                cached_etag = await self.redis_client.get(etag_key)
-                headers = {"If-None-Match": cached_etag.decode() if cached_etag else ""}
-
-                # Retry Logic
+        Returns:
+            A list of dictionaries containing the ESI data.
+        """
+        redis_client = aioredis.from_url(str(self.settings.CACHE_URL))
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.settings.ESI_BASE_URL,
+                headers={"User-Agent": self.settings.ESI_USER_AGENT},
+                timeout=30.0
+            ) as http_client:
+                
+                full_data = []
+                page = 1
                 max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        response = await http_client.get(paginated_path, headers=headers)
-                        response.raise_for_status() # Raise exception for 4xx/5xx responses
-                        break # Success, exit retry loop
-                    except httpx.HTTPStatusError as e:
-                        # Retry on server-side errors (5xx)
-                        if e.response.status_code >= 500:
-                            logger.warning(
-                                f"ESI request failed for {paginated_path} with status {e.response.status_code}. "
-                                f"Attempt {attempt + 1} of {max_retries}. Retrying..."
-                            )
-                            if attempt < max_retries - 1:
-                                await asyncio.sleep(2 * (attempt + 1)) # Exponential backoff
-                            else:
-                                logger.error(f"ESI request failed after {max_retries} retries for {paginated_path}.")
-                                raise ESIRequestFailedError(status_code=e.response.status_code, message=str(e))
-                        else:
-                            # Don't retry on client-side errors (4xx), raise immediately
-                            raise ESIRequestFailedError(status_code=e.response.status_code, message=str(e))
-                    except (httpx.ReadTimeout, httpx.ConnectError) as e:
-                        logger.warning(
-                            f"ESI request failed for {paginated_path} with a network error ({type(e).__name__}). "
-                            f"Attempt {attempt + 1} of {max_retries}. Retrying..."
-                        )
-                        if attempt < max_retries - 1:
-                            await asyncio.sleep(2 * (attempt + 1))
-                        else:
-                            logger.error(f"ESI request failed after {max_retries} retries for {paginated_path}.")
-                            raise ESIRequestFailedError(message=str(e))
-                    except Exception as e:
-                        logger.exception(f"An unexpected error occurred fetching ESI data for {paginated_path}: {e}")
-                        raise ESIRequestFailedError(message=str(e))
+                backoff_factor = 0.5 # seconds
 
-                # Process response
-                if response.status_code == 200:
+                while True:
+                    paginated_path = f"{path}?page={page}"
+                    etag_key = f"etag:{paginated_path}"
+                    data_key = f"data:{paginated_path}"
+                    
+                    cached_etag = await redis_client.get(etag_key)
+                    headers = {"If-None-Match": cached_etag.decode() if cached_etag else ""}
+
+                    response = None
+                    last_exception = None
+
+                    for attempt in range(max_retries):
+                        try:
+                            response = await http_client.get(paginated_path, headers=headers)
+                            
+                            # If status is not a server error (>=500), it's a definitive success or failure.
+                            # No need to retry for 2xx, 3xx, or 4xx codes.
+                            if response.status_code < 500:
+                                last_exception = None # Clear previous exceptions
+                                break # Exit retry loop
+
+                            # It's a 5xx error, so we should retry.
+                            last_exception = httpx.HTTPStatusError(
+                                f"Server error '{response.status_code}'", request=response.request, response=response
+                            )
+                            logger.warning(f"ESI request to {paginated_path} failed with status {response.status_code}. Attempt {attempt + 1}/{max_retries}.")
+
+                        except (httpx.ReadTimeout, httpx.ConnectError) as e:
+                            last_exception = e
+                            logger.warning(f"Network error for {paginated_path} on attempt {attempt + 1}/{max_retries}: {e}")
+                        
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(backoff_factor * (2 ** attempt))
+
+                    if last_exception:
+                        if isinstance(last_exception, httpx.HTTPStatusError):
+                            raise ESIRequestFailedError(status_code=last_exception.response.status_code, message=str(last_exception))
+                        else:
+                            raise ESIRequestFailedError(message=f"Network error for {paginated_path}: {last_exception}")
+
+                    # --- We now have a successful response (or a non-retriable error) ---
+                    if response.status_code == 404 and ignore_404:
+                        logger.debug(f"Received 404 for {paginated_path}, treating as end of pages.")
+                        break
+                    if response.status_code == 204:
+                        logger.debug(f"Received 204 for {paginated_path}, treating as end of pages.")
+                        break
+                    if response.status_code == 304:
+                        logger.debug(f"ETag cache hit for {paginated_path}. Serving data from cache.")
+                        cached_data = await redis_client.get(data_key)
+                        if cached_data:
+                            full_data.extend(json.loads(cached_data))
+                        break
+
+                    response.raise_for_status() # Raise for any remaining client errors (e.g., 401, 403)
+
+                    # Process 200 OK
+                    page_data = response.json()
+                    if not page_data:
+                        break
+
+                    full_data.extend(page_data)
+
+                    # Cache new data
                     new_etag = response.headers.get("ETag")
                     if new_etag:
                         expires_header = response.headers.get("Expires")
-                        cache_duration_seconds = 600  # Default cache duration
+                        cache_duration_seconds = 600  # Default
                         if expires_header:
                             try:
-                                expire_time = parsedate_to_datetime(expires_header)
-                                if expire_time.tzinfo is None:
-                                    expire_time = expire_time.replace(tzinfo=timezone.utc) # Assume UTC if no tzinfo
-                                # Calculate remaining seconds until expiry
-                                # Ensure current_time is also timezone-aware (UTC)
+                                expire_time = parsedate_to_datetime(expires_header).replace(tzinfo=timezone.utc)
                                 current_time = datetime.now(timezone.utc)
                                 if expire_time > current_time:
                                     cache_duration_seconds = int((expire_time - current_time).total_seconds())
-                                else:
-                                    # Header is in the past, use a very short cache or default
-                                    cache_duration_seconds = 10 # Cache for a very short period
-                            except Exception as e:
-                                logger.warning(f"Could not parse 'Expires' header '{expires_header}': {e}. Using default cache duration.")
-                        
-                        await self.redis_client.set(etag_key, new_etag, ex=cache_duration_seconds)
-                        # Also cache the data itself for 304 responses
-                        await self.redis_client.set(data_key, response.content, ex=cache_duration_seconds)
-                    page_data = response.json()
+                            except Exception:
+                                pass # Use default
+                        await redis_client.set(etag_key, new_etag, ex=cache_duration_seconds)
+                        await redis_client.set(data_key, response.content, ex=cache_duration_seconds)
 
-                elif response.status_code == 304:
-                    # Not Modified, data is fresh
-                    logger.debug(f"ETag cache hit for {paginated_path}. Data is fresh.")
-                    # Not Modified, try to serve from cache
-                    cached_data = await self.redis_client.get(data_key)
-                    if cached_data:
-                        logger.debug(f"ETag cache hit for {paginated_path}. Serving data from cache.")
-                        page_data = json.loads(cached_data)
-                    else:
-                        # This case is rare: ETag matches but data is gone from cache.
-                        # We must re-fetch without the ETag to get the data.
-                        logger.warning(f"ETag match but no cached data for {data_key}, re-fetching.")
-                        response = await http_client.get(paginated_path) # Re-fetch without headers
-                        response.raise_for_status()
-                        page_data = response.json()
-
-                elif response.status_code == 204:
-                    # No Content, typically on the last page of items
-                    logger.debug(f"Received 204 No Content for {paginated_path}. Assuming end of pages.")
-                    break
-
-                # Pagination Logic
-                if page_data:
-                    full_data.extend(page_data)
-
-                if not all_pages:
-                    break
-
-                # Check for last page
-                pages_header = response.headers.get("X-Pages")
-                if pages_header:
-                    total_pages = int(pages_header)
-                    if page >= total_pages:
+                    if not all_pages:
                         break
-                elif not page_data:
-                    # If X-Pages header is missing and we get no data, assume we are done.
-                    break
+                    
+                    total_pages_header = response.headers.get("X-Pages")
+                    if total_pages_header and page >= int(total_pages_header):
+                        break
 
-                # Temporary debug limit
-                if is_public_contracts_path and page >= MAX_PAGES_FOR_DEBUG:
-                    logger.info(f"DEV MODE: Stopping public contract fetch at page {page} as per debug limit.")
-                    break
-                page += 1
+                    page += 1
 
-            return full_data
+                return full_data
+        finally:
+            await redis_client.close()
 
 
 
     async def get_public_contracts(self, region_id: int) -> list[dict[str, Any]]:
-        """Fetches all public contracts for a specific region."""
+        """Fetches all public contracts for a specific region, handling pagination."""
         path = f"/v1/contracts/public/{region_id}/"
-        return await self.get_esi_data_with_etag_caching(path)
+        # Set all_pages=True to fetch all pages and ignore_404=True to handle empty pages gracefully.
+        return await self.get_esi_data_with_etag_caching(path, all_pages=True, ignore_404=True)
 
     async def get_contract_items(self, contract_id: int) -> list[dict[str, Any]]:
         """Fetches all items for a specific public contract."""
@@ -265,7 +242,11 @@ class ESIClient:
             return data
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"ESI request failed for {path}: {e}")
+            # If ignore_404 is True and we got a 404, return None as a signal of no data
+            if ignore_404 and e.response.status_code == 404:
+                logging.debug(f"ESI returned 404 for {path}, and ignore_404 is True. Stopping pagination.")
+                return None
+            # Otherwise, re-raise our custom exception to be handled by the caller
             raise ESIRequestFailedError(status_code=e.response.status_code, message=str(e))
         except Exception as e:
             logger.error(f"An unexpected error occurred fetching ESI data for {path}: {e}")

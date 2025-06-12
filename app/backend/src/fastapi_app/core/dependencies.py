@@ -16,22 +16,6 @@ async def get_cache(request: Request) -> Optional[Redis]:
     return getattr(request.app.state, "redis", None)
 
 
-async def get_esi_client(
-    request: Request,
-    rd: Redis = Depends(get_cache)
-) -> ESIClient:
-    """
-    FastAPI dependency to get an instance of the ESIClient.
-    """
-    if not hasattr(request.app.state, 'http_client') or not request.app.state.http_client:
-        raise RuntimeError("HTTP client not initialized. Ensure it's set up in the application startup event.")
-    
-    if not rd:
-        raise RuntimeError("Redis client not available. Ensure it's set up in the application startup event.")
-
-    return ESIClient(http_client=request.app.state.http_client, redis_client=rd)
-
-
 def get_settings() -> Settings:
     """
     FastAPI dependency to get the globally configured Settings object.
@@ -42,3 +26,16 @@ def get_settings() -> Settings:
     # DEBUG: Print statements to verify which settings object is being returned by the dependency.
     print(f"DEPENDENCY_GET_SETTINGS_ID: id(settings)={id(settings)}, AGG_REGION_IDS_TYPE={type(settings.AGGREGATION_REGION_IDS)}, VALUE={settings.AGGREGATION_REGION_IDS!r}", flush=True)
     return settings
+
+
+async def get_esi_client(
+    # request: Request, # No longer needed as http_client is not from app.state
+    s: Settings = Depends(get_settings) # ESIClient now only needs settings
+) -> ESIClient:
+    """
+    FastAPI dependency to get an instance of the ESIClient.
+    The ESIClient now manages its own HTTP and Redis clients using settings.
+    """
+    # ESIClient constructor now only takes settings.
+    # HTTP client and Redis client are created on-demand within ESIClient methods.
+    return ESIClient(settings=s)

@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
     # ESI Configuration
-    ESI_BASE_URL: str = "https://esi.evetech.net/latest"
+    ESI_BASE_URL: str = "https://esi.evetech.net"
     ESI_USER_AGENT: str = Field(..., description="User-Agent header for ESI requests.")
 
     # Aggregation Service Configuration
@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     AGGREGATION_REGION_IDS: List[int] = Field(
         default_factory=lambda: [10000002], # Use default_factory for mutable default
         description="List of integer region IDs to scan for contracts. Parsed from env var."
+    )
+    AGGREGATION_DEV_CONTRACT_LIMIT: int | None = Field( # DO NOT REMOVE UNLESS INSTRUCTED BY USER
+        default=200,
+        description="For dev, limit the number of contracts processed. Set to None or 0 to disable."
     )
 
     # Database and Cache Configuration

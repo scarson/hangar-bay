@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager, AbstractAsyncContextManager
 from typing import List, Callable # Added Callable
 from datetime import datetime
 
-from redis.asyncio import Redis
+import redis.asyncio as aioredis # For on-demand client creation
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,12 +42,12 @@ class ContractAggregationService:
     def __init__(
         self,
         # session_factory: Callable[..., AbstractAsyncContextManager[AsyncSession]], # Removed
-        cache: Redis,
+        # cache: Redis, # Removed cache client from constructor
         esi_client: ESIClient,
         settings: Settings, # Settings will now be injected
     ):
         # self.session_factory = session_factory # Removed
-        self.cache = cache
+        # self.cache = cache # Removed cache client attribute
         self.esi_client = esi_client
         self.settings = settings # Assign the injected settings
         # DEBUG: Print for the settings object as seen by __init__
@@ -61,20 +61,29 @@ class ContractAggregationService:
     async def _concurrency_lock(self):
         """
         An async context manager to handle concurrency locking via Redis.
+        Creates its own Redis client on-demand.
         """
-        lock_acquired = await self.cache.set(
-            AGGREGATION_LOCK_KEY, "1", nx=True, ex=AGGREGATION_LOCK_TIMEOUT
-        )
-        if not lock_acquired:
-            logger.warning("Contract aggregation job is already running. Skipping this run.")
-            raise ConcurrencyLockError("Could not acquire aggregation lock.")
-
+        redis_client = aioredis.from_url(str(self.settings.CACHE_URL))
+        lock_acquired = False
         try:
+            lock_acquired = await redis_client.set(
+                AGGREGATION_LOCK_KEY, "1", nx=True, ex=AGGREGATION_LOCK_TIMEOUT
+            )
+            if not lock_acquired:
+                logger.warning("Contract aggregation job is already running. Skipping this run.")
+                # Do not raise here, allow the finally to close the client, then re-raise or return
+                # For context manager, it's better to let it exit cleanly if lock not acquired.
+                # The caller of the context manager should check if the lock was acquired.
+                # However, the current design raises, so we'll stick to it but ensure client closes.
+                raise ConcurrencyLockError("Could not acquire aggregation lock.")
+
             logger.info("Concurrency lock acquired for contract aggregation.")
-            yield
+            yield # If this raises, the finally block below still runs
         finally:
-            logger.info("Releasing concurrency lock for contract aggregation.")
-            await self.cache.delete(AGGREGATION_LOCK_KEY)
+            if lock_acquired:
+                logger.info("Releasing concurrency lock for contract aggregation.")
+                await redis_client.delete(AGGREGATION_LOCK_KEY)
+            await redis_client.close() # Ensure redis client is closed
 
     async def run_aggregation(self):
         """
@@ -128,6 +137,13 @@ class ContractAggregationService:
                     if not all_contracts_data:
                         logger.info("No new contracts found across all specified regions.")
                         return
+
+                    # Apply development limit if configured
+                    if self.settings.AGGREGATION_DEV_CONTRACT_LIMIT and self.settings.AGGREGATION_DEV_CONTRACT_LIMIT > 0:
+                        limit = self.settings.AGGREGATION_DEV_CONTRACT_LIMIT
+                        if len(all_contracts_data) > limit:
+                            logger.warning(f"DEV_MODE: Limiting contracts to process from {len(all_contracts_data)} to {limit}.")
+                            all_contracts_data = all_contracts_data[:limit]
 
                     await self._process_contracts(db_session, all_contracts_data)
 
@@ -240,7 +256,7 @@ class ContractAggregationService:
 
 # Dependency for getting the service
 async def get_aggregation_service(
-    cache: Redis = Depends(get_cache),
+    # cache: Redis = Depends(get_cache), # Service no longer takes cache client directly
     esi_client: ESIClient = Depends(get_esi_client),
     settings: Settings = Depends(get_settings), # Use the new get_settings dependency
 ) -> ContractAggregationService:
@@ -251,4 +267,4 @@ async def get_aggregation_service(
     """
     # Uses the global `settings` imported at the top of the file for now.
     # If specific settings injection per request is needed later, that would require a `Depends(get_settings_func)`
-    return ContractAggregationService(cache=cache, esi_client=esi_client, settings=settings)
+    return ContractAggregationService(esi_client=esi_client, settings=settings)

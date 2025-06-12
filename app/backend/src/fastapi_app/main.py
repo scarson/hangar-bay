@@ -19,6 +19,8 @@ from .db import AsyncSessionLocal # For manual session creation
 from .core.esi_client_class import ESIClient # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService # For manual service creation
 from .api import contracts as contracts_router
+from .db import async_engine, Base
+from .models import contracts # This import is crucial for Base.metadata to find the tables.
 
 # Configure basic logging to ensure messages are surfaced
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(name)s - %(message)s')
@@ -46,10 +48,23 @@ async def health_check():
     return {"status": "ok"}
 
 
+async def create_db_tables():
+    """
+    Drops and recreates database tables to ensure the schema is up-to-date.
+    NOTE: This is a destructive operation suitable for development.
+    """
+    logger.info("Dropping and recreating database tables...")
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables successfully recreated.")
+
+
 # Application lifecycle event handlers
 @app.on_event("startup")
 async def startup_event():
     """Initializes all necessary services on application startup."""
+    await create_db_tables()
     init_http_client(app)
     await init_cache(app)
 
@@ -67,11 +82,11 @@ async def startup_event():
     if not hasattr(app.state, 'redis') or not app.state.redis:
         raise RuntimeError("Redis client not initialized in app.state before scheduler setup.")
 
-    esi_client = ESIClient(settings=settings, redis_client=app.state.redis)
+    esi_client = ESIClient(settings=settings) # ESIClient now only needs settings
     
     # Instantiate the service with the session factory (AsyncSessionLocal)
     aggregation_service = ContractAggregationService(
-        cache=app.state.redis,
+        # cache=app.state.redis, # ContractAggregationService no longer takes cache client directly
         esi_client=esi_client,
         settings=settings, # Pass the globally imported settings from main.py
     )
