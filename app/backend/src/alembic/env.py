@@ -1,3 +1,10 @@
+import sys
+import os
+
+# Add the 'src' directory to sys.path
+# The 'src' directory is the parent of 'alembic' and 'fastapi_app'
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import asyncio
 from logging.config import fileConfig
 
@@ -22,14 +29,39 @@ if config.config_file_name is not None:
 # The `prepend_sys_path = .` in alembic.ini should handle this if running alembic from app/backend/src
 from fastapi_app.config import get_settings
 from fastapi_app.db import Base
-from fastapi_app.models import (
-    common_models,  # noqa: F401
-    contracts,  # noqa: F401
-)  # Ensures all models are registered with Base.metadata
+# Ensure all models are registered with Base.metadata
+# Import the modules first to ensure their top-level code runs
+from fastapi_app.models import common_models, contracts # noqa: F401
+# Then, explicitly import the model classes themselves
+from fastapi_app.models.common_models import User # noqa: F401
+from fastapi_app.models.contracts import Contract, ContractItem, EsiMarketGroupCache # noqa: F401
 
 settings = get_settings()
 
+
+
 # Import your models here so that Alembic's autogenerate can detect them
+# --- BEGIN ALEMBIC METADATA DEBUG ---
+print("--- ALEMBIC METADATA DEBUG START (stdout) ---", flush=True)
+sys.stderr.write("--- ALEMBIC METADATA DEBUG START (stderr) ---\n")
+sys.stderr.flush()
+if Base.metadata.tables:
+    for table_name, table_obj in Base.metadata.tables.items():
+        msg = f"  Table: {table_name}\n"
+        print(msg, flush=True)
+        sys.stderr.write(msg)
+        for column in table_obj.columns:
+            col_msg = f"    Column: {column.name} (Type: {column.type}, Nullable: {column.nullable}, Default: {column.default}, Server Default: {column.server_default})\n"
+            print(col_msg, flush=True)
+            sys.stderr.write(col_msg)
+else:
+    print("  No tables found in Base.metadata (stdout)", flush=True)
+    sys.stderr.write("  No tables found in Base.metadata (stderr)\n")
+print("--- ALEMBIC METADATA DEBUG END (stdout) ---", flush=True)
+sys.stderr.write("--- ALEMBIC METADATA DEBUG END (stderr) ---\n")
+sys.stderr.flush()
+# --- END ALEMBIC METADATA DEBUG ---
+
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -55,6 +87,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        # compare_type=True,  # Temporarily commented out to detect type changes
     )
 
     with context.begin_transaction():
@@ -62,7 +95,10 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection, target_metadata=target_metadata, 
+        # compare_type=True  # Temporarily commented out to detect type changes
+    )
 
     with context.begin_transaction():
         context.run_migrations()
