@@ -3,7 +3,7 @@ from sqlalchemy import Integer, String, Boolean, Enum as SAEnum, ForeignKey # Ke
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional
 
-from fastapi_app.db import Base
+from ..db import Base
 
 
 class UserType(enum.Enum):

@@ -1,10 +1,10 @@
 import logging
 
-from fastapi_app.core.cache import CacheManager
-from fastapi_app.core.config import settings
-from fastapi_app.db import AsyncSessionLocal as async_session_factory
-from fastapi_app.services.background_aggregation import ContractAggregationService
-from fastapi_app.core.esi_client_class import ESIClient
+from ..core.cache import CacheManager
+from ..core.config import settings
+from ..db import AsyncSessionLocal as async_session_factory
+from .background_aggregation import ContractAggregationService
+from ..core.esi_client_class import ESIClient
 import httpx
 
 logger = logging.getLogger(__name__)
