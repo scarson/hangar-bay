@@ -1,4 +1,9 @@
 import logging
+import pydantic
+
+# Print Pydantic version right at the start for immediate visibility
+print(f"PYDANTIC_VERSION_CHECK_PRINT: {pydantic.__version__}", flush=True)
+logger = logging.getLogger(__name__)
 
 
 from typing import Optional
@@ -10,7 +15,12 @@ from .core.cache import init_cache, close_cache
 from .core.http_client import init_http_client, close_http_client
 from .core.scheduler import add_aggregation_job, create_scheduler
 from .core.dependencies import get_cache
+from .db import AsyncSessionLocal # For manual session creation
+from .core.esi_client_class import ESIClient # For manual ESI client creation
+from .services.background_aggregation import ContractAggregationService # For manual service creation
 from .api import contracts as contracts_router
+from .db import async_engine, Base
+from .models import contracts # This import is crucial for Base.metadata to find the tables.
 
 # Configure basic logging to ensure messages are surfaced
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(name)s - %(message)s')
@@ -38,10 +48,23 @@ async def health_check():
     return {"status": "ok"}
 
 
+async def create_db_tables():
+    """
+    Drops and recreates database tables to ensure the schema is up-to-date.
+    NOTE: This is a destructive operation suitable for development.
+    """
+    logger.info("Dropping and recreating database tables...")
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables successfully recreated.")
+
+
 # Application lifecycle event handlers
 @app.on_event("startup")
 async def startup_event():
     """Initializes all necessary services on application startup."""
+    await create_db_tables()
     init_http_client(app)
     await init_cache(app)
 
@@ -49,7 +72,26 @@ async def startup_event():
 
     # Initialize and start the scheduler
     scheduler = create_scheduler(app, settings)
-    add_aggregation_job(scheduler, settings)
+
+    # Manually create dependencies for the ContractAggregationService for the scheduler
+    # This ensures the scheduler uses the main application's settings instance and a session factory
+
+    # Ensure http_client and redis are available from app.state
+    if not hasattr(app.state, 'http_client') or not app.state.http_client:
+        raise RuntimeError("HTTP client not initialized in app.state before scheduler setup.")
+    if not hasattr(app.state, 'redis') or not app.state.redis:
+        raise RuntimeError("Redis client not initialized in app.state before scheduler setup.")
+
+    esi_client = ESIClient(settings=settings) # ESIClient now only needs settings
+    
+    # Instantiate the service with the session factory (AsyncSessionLocal)
+    aggregation_service = ContractAggregationService(
+        # cache=app.state.redis, # ContractAggregationService no longer takes cache client directly
+        esi_client=esi_client,
+        settings=settings, # Pass the globally imported settings from main.py
+    )
+    add_aggregation_job(scheduler, aggregation_service, settings)
+    
     scheduler.start()
     logging.info("Application startup complete with all services initialized.")
 

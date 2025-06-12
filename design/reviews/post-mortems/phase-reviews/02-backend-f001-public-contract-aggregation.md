@@ -84,11 +84,42 @@
             *   Data from external APIs should never be trusted. Always use defensive coding patterns (e.g., `.get()` for dictionaries) and validate data against the local schema, providing defaults for required fields where appropriate.
             *   The iterative process of fixing a major bug, running the application, and observing the next failure is a powerful, if sometimes tedious, method for uncovering and resolving a chain of nested issues.
 
+    *   **Challenge 6:** Resolving `PicklingError` in background jobs due to non-picklable dependencies.
+        *   **Problem:** After resolving the scheduler startup issues, the background aggregation job began failing with a `PicklingError`. The root cause was that `APScheduler`, when running jobs in a separate process, needs to "pickle" (serialize) the job and its arguments. The application was attempting to pass live, non-picklable objects—specifically the `aioredis.Redis` client instance—from the main application's dependency injection system into the scheduled job's context.
+        *   **Resolution/Architectural Refactor:** A critical architectural pattern was established to resolve this and prevent future occurrences. The solution ensures that any component intended to be used within a scheduled job is fully picklable.
+            1.  **Decouple from Live Instances:** Services like `ESIClient` and `ContractAggregationService` were refactored. Instead of accepting a live `redis_client` instance in their `__init__` methods, they now only accept the picklable `Settings` object.
+            2.  **Dynamic Resource Instantiation:** Within the methods of these services that require a Redis connection, a new client is created dynamically *inside the method's scope*. For example: `client = await aioredis.from_url(str(self.settings.CACHE_URL))`. This ensures the live, non-picklable client object only exists within the context of the running job process and is never passed across process boundaries.
+            3.  **System-Wide Update:** This pattern was propagated throughout the application. All dependency providers (`get_esi_client`, `get_aggregation_service`) and service instantiations (`main.py`) were updated to no longer pass the `cache` or `redis_client` instances to these services.
+        *   **Actionable Learning & Future Application (Cascade & Team):**
+            *   Any object passed to a background job running in a separate process (like with the default `APScheduler` configuration) *must* be picklable. This includes all arguments and the state of the object whose method is being called.
+            *   Live resource connections (database, cache, etc.) are generally not picklable.
+            *   The established pattern—passing configuration (like a `Settings` object) and creating resources dynamically within the job's execution context—is the standard architectural solution for this problem. This pattern must be followed for all future background job implementations.
+
+    *   **Challenge 5:** Optimizing Database Transactions and Batching for ESI Data Aggregation.
+        *   **Initial Approach & Problem:** Early iterations of the aggregation service sometimes committed data to the database too frequently within a larger logical operation (e.g., saving a contract header before all its items were fetched and processed). This approach, while seemingly incremental, risked data inconsistency if subsequent ESI calls or processing steps for the same logical entity (e.g., a contract and all its items) failed.
+        *   **Consequences of Fine-Grained Commits:**
+            *   **Data Inconsistency:** If an ESI call for contract items failed after the contract header was already committed, the database could be left with a contract record missing its essential item details.
+            *   **Orphaned Data:** Partial data for a logical entity could be persisted.
+            *   **Complex Rollback Logic:** Managing rollbacks across multiple small, already-committed transactions for a single logical unit of work would be significantly more complex.
+        *   **Resolution/Refined Strategy:** The strategy was refined to prioritize atomicity for logical units of work:
+            1.  **Define Logical Units of Work:** A "logical unit of work" was clearly defined (e.g., fetching one public contract *and all* its associated items).
+            2.  **Single Database Transaction per Unit:** All database operations (inserts, updates) for a single logical unit of work are now performed within a single database transaction.
+            3.  **Commit on Full Success:** The transaction is committed *only if all* ESI calls for that unit succeed and all associated data processing is successful.
+            4.  **Rollback on Any Failure:** If *any* ESI call within that unit fails, or any processing error occurs, the entire transaction for that unit is rolled back. This ensures the database is not left with partial or inconsistent data for that specific contract. The error is logged, and the unit can be retried (leveraging ESI ETags to minimize redundant data transfer).
+        *   **Actionable Learning & Future Application (Cascade & Team):**
+            *   **Prioritize Data Integrity:** It's preferable to re-fetch data for a logical unit (especially when ESI ETags can prevent actual re-downloading of unchanged data) than to risk committing incomplete or inconsistent data.
+            *   **Atomic Operations for Logical Units:** Treat operations that fetch and process a complete, self-contained entity from an external API (like a contract and its items) as atomic. All related database changes should succeed or fail together within a single transaction.
+            *   **ESI Cost vs. DB Transaction Cost:** Recognize the asymmetry: ESI calls are expensive (network, rate limits), while local database transactions are cheap. Design transaction boundaries to ensure a complete, consistent state is achieved for each "expensive" set of ESI operations.
+
 ## 4. Process Learnings & Improvements
 
 *   **4.3. AI Collaboration (USER & Cascade):**
     *   The interactive, step-by-step troubleshooting of the Alembic issues was highly effective. Cascade's ability to interpret errors, propose a solution, execute, and then analyze the subsequent outcome allowed for rapid iteration.
     *   The USER's request to proactively create this post-mortem is a positive process improvement, shifting documentation from a reactive to a proactive task.
+
+*   **4.4. Addressing Cyclical Refactoring and Architectural Drift:**
+    *   **Observation:** The series of bugs, culminating in the `PicklingError`, was exacerbated by a pattern of "architectural drift." Previous refactoring efforts were sometimes incomplete or their underlying rationale was lost, leading to cycles of breaking and fixing similar issues (e.g., how the `Settings` object is provided vs. a `get_settings` dependency).
+    *   **Improvement:** The resolution of the pickling issue established a firm, documented architectural pattern. To prevent future drift, this post-mortem, along with new entries in the `design-log.md` and a dedicated FastAPI architecture guide, will serve as canonical references. Future development must consult these documents to ensure architectural consistency. This moves us from relying on implicit knowledge to explicit, documented patterns.
 
 ## 7. Unresolved Issues & Technical Debt
 

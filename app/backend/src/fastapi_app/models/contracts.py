@@ -11,18 +11,21 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy import JSON
+from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
+from typing import Optional, Any, Dict, List # Dict and List for relationship type hints if needed, Any for JSON
+from datetime import datetime
 
 class EsiMarketGroupCache(Base):
     __tablename__ = 'esi_market_group_cache'
 
-    market_group_id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
-    description = Column(String, nullable=False)
-    parent_group_id = Column(Integer, ForeignKey('esi_market_group_cache.market_group_id'), nullable=True)
+    market_group_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=False)
+    parent_group_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('esi_market_group_cache.market_group_id'), nullable=True)
     # The full JSON response from ESI, for future-proofing
-    raw_esi_response = Column(JSON, nullable=False)
+    raw_esi_response: Mapped[Any] = mapped_column(JSON, nullable=False)
 
     __table_args__ = (Index('ix_esi_market_group_cache_parent_group_id', 'parent_group_id'),)
 
@@ -33,31 +36,34 @@ class EsiMarketGroupCache(Base):
 class Contract(Base):
     __tablename__ = 'contracts'
 
-    contract_id = Column(BigInteger, primary_key=True, autoincrement=False)
-    issuer_id = Column(Integer, nullable=False)
-    issuer_corporation_id = Column(Integer, nullable=False)
-    start_location_id = Column(BigInteger, nullable=False)
-    end_location_id = Column(BigInteger, nullable=True) # Optional for courier contracts
+    contract_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    issuer_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    issuer_corporation_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_location_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    end_location_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True) # Optional for courier contracts
 
-    type = Column(String, nullable=False)
-    status = Column(String, nullable=False)
-    title = Column(String, nullable=True)
-    for_corporation = Column(Boolean, nullable=False)
-    date_issued = Column(DateTime, nullable=False)
-    date_expired = Column(DateTime, nullable=False)
-    date_completed = Column(DateTime, nullable=True)
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    for_corporation: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    date_issued: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    date_expired: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    date_completed: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    price = Column(Float, nullable=True)
-    reward = Column(Float, nullable=True)
-    volume = Column(Float, nullable=True)
+    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    reward: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    volume: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Denormalized data for search performance
-    start_location_name = Column(String, nullable=True)
-    issuer_name = Column(String, nullable=True)
-    issuer_corporation_name = Column(String, nullable=True)
-    is_ship_contract = Column(Boolean, default=False, nullable=False)
+    start_location_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    issuer_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    issuer_corporation_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    is_ship_contract: Mapped[bool] = mapped_column(Boolean, default=False) 
+    item_processing_status: Mapped[str] = mapped_column(String, default='PENDING_ITEMS', index=True)
+    items_last_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    contract_esi_etag: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    items = relationship("ContractItem", back_populates="contract", cascade="all, delete-orphan")
+    items: Mapped[List["ContractItem"]] = relationship(back_populates="contract", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index('ix_contracts_type_status', 'type', 'status'),
@@ -73,20 +79,20 @@ class Contract(Base):
 class ContractItem(Base):
     __tablename__ = 'contract_items'
 
-    record_id = Column(BigInteger, primary_key=True, autoincrement=True)
-    contract_id = Column(BigInteger, ForeignKey('contracts.contract_id'), nullable=False)
-    type_id = Column(Integer, nullable=False)
-    quantity = Column(Integer, nullable=False)
-    is_included = Column(Boolean, nullable=False)
-    is_singleton = Column(Boolean, nullable=False)
-    raw_quantity = Column(Integer, nullable=True)
+    record_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    contract_id: Mapped[int] = mapped_column(BigInteger, ForeignKey('contracts.contract_id'), nullable=False)
+    type_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_included: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_singleton: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    raw_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Denormalized data from other sources
-    type_name = Column(String, nullable=True)
-    category = Column(String, nullable=True) # e.g., 'ship'
-    market_group_id = Column(Integer, nullable=True)
+    type_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(String, nullable=True) # e.g., 'ship'
+    market_group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    contract = relationship("Contract", back_populates="items")
+    contract: Mapped["Contract"] = relationship(back_populates="items")
 
     __table_args__ = (
         Index('ix_contract_items_contract_id', 'contract_id'),

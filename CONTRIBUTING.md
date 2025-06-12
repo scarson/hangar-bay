@@ -41,6 +41,7 @@ First off, thank you for considering contributing to Hangar Bay! Whether you're 
 *   **Python:** Version 3.10 or higher recommended.
 *   **Node.js:** Version 18.x (LTS) or higher recommended, which includes npm (Node Package Manager).
 *   **Angular CLI:** Install globally after Node.js: `npm install -g @angular/cli`
+*   **PostgreSQL:** Version 15 or 16. Required if not using Docker for the database. (See Backend Setup for details).
 *   **(Optional but Recommended) Docker:** For running PostgreSQL and Valkey in containers, matching the production environment.
 
 ### Cloning the Repository
@@ -78,7 +79,27 @@ This section outlines the steps to set up the development environment for Hangar
     ```
     *(Note: Ensure `requirements.txt` and `requirements-dev.txt` are kept up-to-date and all dependencies are pinned as per project policy.)*
 
-4.  **Set up Environment Variables:**
+4.  **Setting up PostgreSQL (Local Installation):**
+    If you are not using Docker for database services (see [Using Docker for Services](#using-docker-for-services-optional-but-recommended)), you'll need to install and configure PostgreSQL locally.
+
+    *   **Download and Install PostgreSQL:**
+        *   Download PostgreSQL from the [official website](https://www.postgresql.org/download/). Version 15 or 16 is recommended.
+        *   Follow the installation instructions for your operating system. Ensure the PostgreSQL command-line tools (like `psql`) are added to your system's PATH.
+
+    *   **Create Database and User:**
+        Once PostgreSQL is installed and the service is running, connect to PostgreSQL using `psql` (you might need to do this as the `postgres` superuser initially) and run the following commands:
+        ```sql
+        CREATE DATABASE hangar_bay_dev;
+        CREATE USER hangar_bay_user WITH PASSWORD 'your_secure_password_here'; -- Choose a strong password
+        GRANT ALL PRIVILEGES ON DATABASE hangar_bay_dev TO hangar_bay_user;
+        ALTER USER hangar_bay_user CREATEDB; -- Optional: useful if user needs to create/drop DBs for tests
+        ```
+        *Note: Remember the password you set for `hangar_bay_user` as you'll need it for the `.env` file in the next step.*
+
+    *   **Ensure PostgreSQL Service is Running:**
+        Make sure your PostgreSQL server is running before proceeding to the next steps or trying to run the application.
+
+5.  **Set up Environment Variables:**
     *   Create a `.env` file in the `app/backend` directory (this file is ignored by Git).
     *   Populate it with necessary configurations (e.g., database URLs, API keys, ESI client ID/secret). Refer to `app/backend/src/config.py` for how these environment variables are loaded and used.
     *   Example `.env` structure:
@@ -97,7 +118,7 @@ This section outlines the steps to set up the development environment for Hangar
         # ... other application secrets
         ```
 
-5.  **Database Migrations (Alembic):**
+6.  **Database Migrations (Alembic):**
     *(These commands assume Alembic is set up in `app/backend/src/alembic/`)*
     ```bash
     # From app/backend directory
@@ -108,7 +129,7 @@ This section outlines the steps to set up the development environment for Hangar
     alembic upgrade head
     ```
 
-6.  **Running the Backend Server (Uvicorn):**
+7.  **Running the Backend Server (Uvicorn):**
     From the `app/backend` directory:
     ```bash
     uvicorn src.main:app --reload --host 0.0.0.0 --port 8000

@@ -905,4 +905,132 @@ Despite the challenges, the targeted documentation files were successfully updat
 
 ---
 
+---
+
+**2025-06-12 04:30:57-05:00: Lessons from ESI Data Aggregation: Transaction Management & Batching**
+
+**Context & Objective:**
+During the development and troubleshooting of the F001 Public Contract Aggregation backend feature, particularly concerning Alembic migrations and data persistence, critical lessons were learned regarding the interaction between external ESI API calls and internal database transaction management. The objective of this log entry is to capture these learnings to inform future design and implementation patterns for data aggregation and processing.
+
+**Key Learnings & Decisions:**
+
+1.  **Cost Asymmetry and Its Implications:**
+    *   **ESI API Calls:** Recognized as "expensive" due to network latency, rate limits, and potential unreliability. Each call should be treated as a valuable, potentially failing operation.
+    *   **Database Transactions:** Local database operations (commits, rollbacks) are "cheap" and fast in comparison.
+    *   **Decision:** Design patterns must acknowledge this asymmetry, minimizing ESI calls (e.g., via ETags) and ensuring robust handling of their outcomes before committing related data.
+
+2.  **Problem with Fine-Grained Commits:**
+    *   **Initial Approach:** An earlier tendency was to commit data to the database incrementally within a larger logical operation (e.g., commit contract header, then fetch/commit items separately).
+    *   **Identified Risk:** This pattern leads to a high risk of data inconsistency if a subsequent ESI call (e.g., for contract items) or processing step fails after an initial part of the data (e.g., contract header) has already been committed. This can leave orphaned or incomplete records in the database.
+
+3.  **Adoption of "Logical Unit of Work" with Atomic Transactions:**
+    *   **Definition:** A "logical unit of work" encompasses all ESI calls and processing steps required to fetch and store a complete, self-contained entity (e.g., a contract along with *all* its items).
+    *   **Decision:** All database changes related to a single logical unit of work *must* be performed within a *single database transaction*.
+        *   **Success Path:** The transaction is committed only if *all* ESI calls and processing for that unit are successful.
+        *   **Failure Path:** If *any* part of the unit of work fails (ESI error, processing error), the *entire* database transaction for that unit is rolled back.
+    *   **Rationale:** This ensures atomicity and data integrity. It is preferable to re-attempt fetching/processing a complete unit (leveraging ESI ETags to minimize actual data re-transfer) than to persist incomplete or inconsistent data.
+
+4.  **Reinforcement of Idempotency and ESI ETags:**
+    *   **Idempotency:** Operations must be designed so that re-processing the same logical unit (e.g., due to a retry) results in the correct final state without duplicates or errors (typically via upsert logic).
+    *   **ETags:** Continued emphasis on using ESI ETags for conditional GETs is crucial to reduce load on ESI and avoid re-processing unchanged data.
+
+5.  **Implications for Future Design (Cascade & Team):**
+    *   **Transaction Boundaries:** Carefully define transaction boundaries around logical units of work, especially when dealing with external API interactions.
+    *   **Error Handling:** Implement comprehensive error handling for external API calls, with clear rollback strategies for associated database transactions.
+    *   **State Management:** For multi-step external interactions, consider explicit state management within models (e.g., `processing_status` fields) to track progress and facilitate retries for failed units.
+    *   **Background Task Queues:** For complex or long-running aggregations, leverage robust task queues that can manage retries and state for individual units of work.
+
+**Outcome:**
+By adopting a stricter model of atomic transactions for logical units of work, the reliability and data integrity of the ESI aggregation process are significantly improved. This approach minimizes the risk of inconsistent database states resulting from partial failures during interactions with the ESI API. These principles will guide the design of future data ingestion and processing features.
+
+---
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
+
+---
+
+**2025-06-12 08:29:39-05:00: Architectural Pattern for Dependency Management in Hybrid Contexts**
+
+**Context & Objective:**
+The application runs in multiple contexts: synchronous API requests managed by FastAPI's lifecycle, and asynchronous background jobs managed by APScheduler running in separate processes. A critical `PicklingError` during background job execution revealed that the dependency management strategy must account for these different contexts. Pickling means serialization. The objective is to define a clear, robust pattern for managing dependencies, especially non-picklable resources like cache or database clients.
+
+**Key Decisions & Pattern:**
+
+1.  **FastAPI Request-Response Context (The Default):**
+    *   **Pattern:** Use FastAPI's built-in dependency injection (`Depends`) system.
+    *   **Mechanism:** Dependencies (e.g., `get_db`, `get_cache`) create and yield resources. FastAPI manages the resource lifecycle, ensuring it's available for the request and properly closed/released afterward.
+    *   **Use Case:** Standard API endpoints (`@router.get`, `@router.post`, etc.).
+
+2.  **APScheduler Background Job Context (The Exception):**
+    *   **Problem:** Objects passed to jobs running in a separate process must be serializable (picklable). Live resource clients (like `aioredis.Redis`) are not picklable. Passing them via dependency injection from the main app to the job fails.
+    *   **Pattern:** "Dynamic Resource Instantiation."
+    *   **Mechanism:**
+        *   Services or classes intended for use in background jobs (`ContractAggregationService`, `ESIClient`) must *not* accept live resource clients in their `__init__` methods.
+        *   Instead, they should accept picklable configuration, primarily the Pydantic `Settings` object.
+        *   Within the method that executes as the background job, the resource client is created, used, and closed dynamically. (e.g., `redis = await aioredis.from_url(settings.CACHE_URL)`).
+    *   **Rationale:** This ensures no non-picklable objects are passed across process boundaries. It makes the service self-contained and responsible for its own resources when operating outside the FastAPI request lifecycle.
+
+**Implications for Future Design:**
+*   This dual-pattern approach is now the standard. When creating a new service, the first question must be: "Will this run in a background job?"
+*   If yes, it *must* follow the "Dynamic Resource Instantiation" pattern.
+*   If no, it can and should leverage the standard FastAPI `Depends` pattern.
+*   This avoids architectural drift and provides a clear, non-negotiable rule for handling resource dependencies, preventing future `PicklingError` issues.
+
+---
+
+**2025-06-12 08:31:00-05:00: Service Architecture: Self-Contained vs. Injected Resources**
+
+**Context & Objective:**
+To further clarify the application's service layer architecture and prevent cyclical refactoring (e.g., toggling between passing a full `Settings` object vs. individual dependencies), this entry defines the philosophy for service construction.
+
+**Key Decisions & Philosophy:**
+
+1.  **Services are Self-Sufficient Units:** A service (e.g., `ContractAggregationService`) is viewed as a self-sufficient component responsible for a specific domain of business logic.
+
+2.  **Configuration over Live Resources:**
+    *   **Decision:** Services should be initialized with *configuration*, not with live, stateful resources like database sessions or cache clients. The primary piece of configuration passed to a service's constructor will be the Pydantic `Settings` object.
+    *   **Rationale:**
+        *   **Decoupling:** This decouples the service's logic from the resource's lifecycle management. The service doesn't need to know *how* a database session is created, only *that* it needs one and how to get it.
+        *   **Flexibility & Testability:** It's easier to instantiate a service in a test environment by passing a mock or test-specific `Settings` object.
+        *   **Pickle-Safety:** As established in the dependency management pattern, passing picklable `Settings` is essential for background job compatibility.
+
+3.  **Resource Acquisition:**
+    *   **Decision:** Services acquire resources *when needed* using one of two methods, depending on context:
+        *   **API Context:** A service method called from an API endpoint can accept a resource (e.g., `db: AsyncSession`) as a method parameter, which is provided by FastAPI's DI system.
+        *   **Background Context:** A service method running as a background job will instantiate its own resources using the `Settings` object it holds, as per the "Dynamic Resource Instantiation" pattern.
+
+**Implications & Anti-Patterns to Avoid:**
+*   **Canonical Pattern:** `my_service = MyService(settings=app_settings)`
+*   **Anti-Pattern:** `my_service = MyService(db=get_db(), cache=get_cache())`. This is an anti-pattern because it tightly couples the service to live resources at instantiation time, making it less flexible, harder to test, and non-picklable.
+*   This decision provides a stable, long-term answer to the "how do we build and provide services?" question, preventing future refactoring churn.
+
+---
+
+**2025-06-12 08:47:26-05:00: Standardized Documentation Structure for Technology Stacks**
+
+**Context & Objective:**
+To ensure consistency and maximize effectiveness for AI-assisted development (particularly for Cascade), a standardized documentation structure for different technology stacks (e.g., FastAPI, Angular) was needed. The previous structure had inconsistencies in the location of architecture overview documents and the organization of pattern/guide documents. The objective is to establish a clear, predictable, and efficient layout.
+
+**Decision: Adopt "Fully Co-located Technology Stacks" Structure (Proposal 2)**
+
+*   **Structure Definition:**
+    *   `design/[technology_name]/` (e.g., `design/angular/`, `design/fastapi/`): Each technology stack will have its own comprehensive directory.
+        *   `00-[technology]-architecture-overview.md`: The main architectural document for that specific stack (e.g., `design/fastapi/00-fastapi-architecture-overview.md`).
+        *   `patterns/`: Subdirectory for specific, prescriptive design pattern documents related to that stack.
+        *   `guides/`: Subdirectory for "how-to" or "cookbook" style guides for that stack.
+        *   Other specific documents related to that technology can reside at the root of this technology-specific directory or be further organized if needed.
+    *   `design/architecture/`: This folder will be reserved for truly global, cross-stack architectural documents, if any. It is not the primary location for stack-specific overviews.
+
+*   **Rationale & Benefits for Cascade (AI Assistant):**
+    *   **Optimal Discoverability & Focus:** All information pertinent to a specific technology stack (overview, patterns, guides) is grouped together in one place. This is highly efficient for AI, allowing quick access to relevant context without navigating disparate directory structures.
+    *   **Enhanced Memory & Consistency:** Co-location is key to helping the AI "remember" and consistently apply established architectural principles for a given stack.
+    *   **Modularity & Scalability:** The `patterns/` and `guides/` subdirectories prevent monolithic documents and cluttered flat folders, making it easier for the AI to find and apply specific rules or procedures.
+    *   **Predictable Layout:** A consistent structure across all technology stacks reduces ambiguity and improves the AI's ability to navigate and utilize the documentation effectively.
+
+*   **Implementation Steps:**
+    *   Create the new structure for FastAPI in `design/fastapi/`.
+    *   Refactor the existing Angular documentation by moving `design/architecture/angular-frontend-architecture.md` to `design/angular/00-angular-architecture-overview.md` and creating `patterns/` and `guides/` subdirectories within `design/angular/`.
+
+**Impact:** This standardized structure will improve the AI's ability to understand, adhere to, and leverage architectural documentation, leading to more consistent, higher-quality code and reduced architectural drift.
+
+--- 
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*

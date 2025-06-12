@@ -18,7 +18,7 @@ from typing import Optional
 from redis.asyncio import Redis, from_url
 from fastapi import FastAPI
 
-from fastapi_app.config import get_settings
+from ..config import get_settings
 
 # Get a logger instance for this module
 logger = logging.getLogger(__name__)
