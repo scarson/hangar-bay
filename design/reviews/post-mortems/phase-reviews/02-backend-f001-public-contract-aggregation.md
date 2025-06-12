@@ -84,6 +84,22 @@
             *   Data from external APIs should never be trusted. Always use defensive coding patterns (e.g., `.get()` for dictionaries) and validate data against the local schema, providing defaults for required fields where appropriate.
             *   The iterative process of fixing a major bug, running the application, and observing the next failure is a powerful, if sometimes tedious, method for uncovering and resolving a chain of nested issues.
 
+    *   **Challenge 5:** Optimizing Database Transactions and Batching for ESI Data Aggregation.
+        *   **Initial Approach & Problem:** Early iterations of the aggregation service sometimes committed data to the database too frequently within a larger logical operation (e.g., saving a contract header before all its items were fetched and processed). This approach, while seemingly incremental, risked data inconsistency if subsequent ESI calls or processing steps for the same logical entity (e.g., a contract and all its items) failed.
+        *   **Consequences of Fine-Grained Commits:**
+            *   **Data Inconsistency:** If an ESI call for contract items failed after the contract header was already committed, the database could be left with a contract record missing its essential item details.
+            *   **Orphaned Data:** Partial data for a logical entity could be persisted.
+            *   **Complex Rollback Logic:** Managing rollbacks across multiple small, already-committed transactions for a single logical unit of work would be significantly more complex.
+        *   **Resolution/Refined Strategy:** The strategy was refined to prioritize atomicity for logical units of work:
+            1.  **Define Logical Units of Work:** A "logical unit of work" was clearly defined (e.g., fetching one public contract *and all* its associated items).
+            2.  **Single Database Transaction per Unit:** All database operations (inserts, updates) for a single logical unit of work are now performed within a single database transaction.
+            3.  **Commit on Full Success:** The transaction is committed *only if all* ESI calls for that unit succeed and all associated data processing is successful.
+            4.  **Rollback on Any Failure:** If *any* ESI call within that unit fails, or any processing error occurs, the entire transaction for that unit is rolled back. This ensures the database is not left with partial or inconsistent data for that specific contract. The error is logged, and the unit can be retried (leveraging ESI ETags to minimize redundant data transfer).
+        *   **Actionable Learning & Future Application (Cascade & Team):**
+            *   **Prioritize Data Integrity:** It's preferable to re-fetch data for a logical unit (especially when ESI ETags can prevent actual re-downloading of unchanged data) than to risk committing incomplete or inconsistent data.
+            *   **Atomic Operations for Logical Units:** Treat operations that fetch and process a complete, self-contained entity from an external API (like a contract and its items) as atomic. All related database changes should succeed or fail together within a single transaction.
+            *   **ESI Cost vs. DB Transaction Cost:** Recognize the asymmetry: ESI calls are expensive (network, rate limits), while local database transactions are cheap. Design transaction boundaries to ensure a complete, consistent state is achieved for each "expensive" set of ESI operations.
+
 ## 4. Process Learnings & Improvements
 
 *   **4.3. AI Collaboration (USER & Cascade):**
