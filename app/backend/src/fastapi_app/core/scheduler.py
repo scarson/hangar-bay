@@ -7,8 +7,9 @@ from apscheduler.jobstores.redis import RedisJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
-from ..core.config import Settings
+from ..core.config import Settings # Keep for type hint if settings obj is still passed for interval
 from ..services.scheduled_jobs import run_aggregation_job
+from ..services.background_aggregation import ContractAggregationService # Import the service
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +30,12 @@ def create_scheduler(app: FastAPI, settings: Settings) -> AsyncIOScheduler:
     return scheduler
 
 
-def add_aggregation_job(scheduler: AsyncIOScheduler, settings: Settings):
+def add_aggregation_job(scheduler: AsyncIOScheduler, aggregation_service: ContractAggregationService, settings: Settings): # Add service, keep settings for interval
     """Adds the contract aggregation job to the scheduler."""
     scheduler.add_job(
         run_aggregation_job,
-        "interval",
+        trigger="interval",
+        args=[aggregation_service],
         seconds=settings.AGGREGATION_SCHEDULER_INTERVAL_SECONDS,
         id="aggregate_public_contracts",
         replace_existing=True,

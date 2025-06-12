@@ -1,21 +1,24 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager
-from typing import List
+from contextlib import asynccontextmanager, AbstractAsyncContextManager
+from typing import List, Callable # Added Callable
 from datetime import datetime
 
 from redis.asyncio import Redis
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.dependencies import get_cache
-from ..core.config import settings, Settings
-from ..db import get_db
-from ..models.contracts import Contract, ContractItem
-from .db_upsert import bulk_upsert
-from ..core.dependencies import get_esi_client
-from ..core.esi_client_class import ESIClient
-from ..core.exceptions import ESINotModifiedError
+from ..core.dependencies import get_cache, get_esi_client, get_settings # Restored get_cache, added get_settings
+from ..core.config import settings, Settings # Settings instance and Settings type for hinting
+from ..core.esi_client_class import ESIClient # ESIClient class for type hint
+from ..core.exceptions import ESINotModifiedError # Restored ESINotModifiedError
+
+from ..models.contracts import Contract, ContractItem # Models
+# Removed incorrect import: from ..services.esi_client import ESIClient as ESIClientService
+from .db_upsert import bulk_upsert # Upsert utility
+
+# DEBUG: Print for the module-level settings object, AFTER all necessary ..core imports
+print(f"BG_AGG_MODULE_SETTINGS_ID: id(settings)={id(settings)}, AGG_REGION_IDS_TYPE={type(settings.AGGREGATION_REGION_IDS)}, VALUE={settings.AGGREGATION_REGION_IDS!r}", flush=True)
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +41,21 @@ class ContractAggregationService:
 
     def __init__(
         self,
-        db: AsyncSession,
+        # session_factory: Callable[..., AbstractAsyncContextManager[AsyncSession]], # Removed
         cache: Redis,
         esi_client: ESIClient,
-        settings: Settings,
+        settings: Settings, # Settings will now be injected
     ):
-        self.db = db
+        # self.session_factory = session_factory # Removed
         self.cache = cache
         self.esi_client = esi_client
-        self.settings = settings
+        self.settings = settings # Assign the injected settings
+        # DEBUG: Print for the settings object as seen by __init__
+        print(f"BG_AGG___INIT___SETTINGS_ARG_ID: id(settings)={id(settings)}, TYPE={type(settings.AGGREGATION_REGION_IDS)}, VAL={settings.AGGREGATION_REGION_IDS!r}", flush=True)
+        # DEBUG: The AGG_SERVICE_INIT prints are still useful for now to see the settings object ID
+        print(f"AGG_SERVICE_INIT_SETTINGS_ID: id(self.settings)={id(self.settings)}, id(self.settings.AGGREGATION_REGION_IDS)={id(self.settings.AGGREGATION_REGION_IDS)}", flush=True)
+        # DEBUG: Print for AGG_SERVICE_INIT_SETTINGS_VALUE
+        print(f"AGG_SERVICE_INIT_SETTINGS_VALUE: self.settings.AGGREGATION_REGION_IDS = {self.settings.AGGREGATION_REGION_IDS!r} (type: {type(self.settings.AGGREGATION_REGION_IDS)})", flush=True)
 
     @asynccontextmanager
     async def _concurrency_lock(self):
@@ -70,57 +79,83 @@ class ContractAggregationService:
     async def run_aggregation(self):
         """
         Runs the full public contract aggregation and ingestion process.
+        Uses a database session from the session factory.
         """
+        print(f"AGG_RUN_SETTINGS_ID: id(self.settings)={id(self.settings)}, id(self.settings.AGGREGATION_REGION_IDS)={id(self.settings.AGGREGATION_REGION_IDS)}", flush=True)
+        current_region_ids = self.settings.AGGREGATION_REGION_IDS
+        print(f"AGG_DEBUG: AGGREGATION_REGION_IDS from settings: {current_region_ids!r} (type: {type(current_region_ids)} )", flush=True)
+
+        if not isinstance(current_region_ids, list) or not all(isinstance(x, int) for x in current_region_ids):
+            logger.error(f"CRITICAL_ERROR_AGG_SERVICE: AGGREGATION_REGION_IDS is not a list of int: {current_region_ids!r} (type: {type(current_region_ids)}) Aborting aggregation.")
+            return
+
+        if not current_region_ids:
+            logger.warning("AGGREGATION_REGION_IDS is empty. Skipping aggregation.")
+            return
+
+        engine = None  # Initialize engine to None for the finally block
         try:
-            async with self._concurrency_lock():
-                logger.info("Starting public contract aggregation run.")
-
-                region_ids_str = self.settings.AGGREGATION_REGION_IDS
-                if not region_ids_str:
-                    logger.warning("AGGREGATION_REGION_IDS is not set. Skipping aggregation.")
-                    return
-
-                try:
-                    region_ids = [int(rid.strip()) for rid in region_ids_str.split(',')]
-                except (ValueError, AttributeError):
-                    logger.error(
-                        f"Could not parse AGGREGATION_REGION_IDS: '{region_ids_str}'. "
-                        f"Please provide a comma-separated list of integers.",
-                        exc_info=True,
+            async with self._concurrency_lock(): # Handles concurrent job runs
+                    logger.info("Concurrency lock acquired. Starting public contract aggregation run.")
+                    
+                    # Dynamically create engine and session factory
+                    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+                    from sqlalchemy.orm import sessionmaker
+                    
+                    logger.info(f"Creating database engine with URL: {self.settings.DATABASE_URL[:30]}...") # Log part of URL for privacy
+                    engine = create_async_engine(self.settings.DATABASE_URL)
+                    local_session_factory = sessionmaker(
+                        bind=engine,
+                        class_=AsyncSession,
+                        expire_on_commit=False
                     )
-                    return
-                all_contracts: List[dict] = []
+                    
+                    async with local_session_factory() as db_session: # Obtain a new session for this run
+                        logger.info(f"Processing contracts for region IDs: {current_region_ids}")
+                        all_contracts_data: List[dict] = []
 
-                for region_id in region_ids:
-                    try:
-                        contracts = await self.esi_client.get_public_contracts(region_id)
-                        logger.info(f"Fetched {len(contracts)} contracts for region {region_id}.")
-                        all_contracts.extend(contracts)
-                    except ESINotModifiedError:
-                        logger.info(f"Contracts for region {region_id} not modified.")
-                    except Exception as e:
-                        logger.error(f"Failed to fetch contracts for region {region_id}: {e}", exc_info=True)
+                        for region_id in current_region_ids:
+                            try:
+                                contracts_page = await self.esi_client.get_public_contracts(region_id)
+                                logger.info(f"Fetched {len(contracts_page)} contracts for region {region_id}.")
+                                all_contracts_data.extend(contracts_page)
+                            except ESINotModifiedError:
+                                logger.info(f"Contracts for region {region_id} not modified.")
+                            except Exception as e:
+                                logger.error(f"Failed to fetch contracts for region {region_id}: {e}", exc_info=True)
 
-                if not all_contracts:
-                    logger.info("No new contracts found to process.")
-                    return
 
-                await self._process_contracts(all_contracts)
+                    if not all_contracts_data:
+                        logger.info("No new contracts found across all specified regions.")
+                        return
 
-                await self.db.commit()
-                logger.info("Public contract aggregation run finished successfully and changes committed.")
+                    await self._process_contracts(db_session, all_contracts_data)
+
+                    await db_session.commit()
+                    logger.info("Public contract aggregation run finished successfully and changes committed.")
 
         except ConcurrencyLockError:
-            # This is expected if another job is running, so we just return.
+            # This is expected if another job is running, so we just log and return.
+            logger.info("Aggregation job did not run due to existing concurrency lock.")
             return
         except Exception as e:
-            logger.error(f"An unexpected error occurred during aggregation: {e}", exc_info=True)
-            await self.db.rollback()
-            logger.info("Rolled back database changes due to an error.")
+            logger.error(f"An unexpected error occurred during the aggregation process: {e}", exc_info=True)
+            # Rollback should happen within the session context if it was established
+            # However, if error is before session_factory() or in _concurrency_lock, db_session might not exist.
+            # The session context manager itself handles rollback on unhandled exceptions within its block.
+            logger.info("Aggregation run failed. Database changes (if any within an active session) should be rolled back by session context manager.")
+            # No explicit rollback here as the session context manager handles it.
+            # If the error was in _concurrency_lock, no db_session was active yet.
+            return
+        finally:
+            if engine: # Check if engine was initialized
+                logger.info("Disposing of database engine.")
+                await engine.dispose()
+                logger.info("Database engine disposed.")
 
-    async def _process_contracts(self, contracts: List[dict]):
+    async def _process_contracts(self, db_session: AsyncSession, contracts: List[dict]):
         """
-        Processes a list of contracts, fetches their items, and upserts them.
+        Processes a list of contracts, fetches their items, and upserts them using the provided db_session.
         """
         # Helper to parse ESI's ISO 8601 date strings into datetime objects.
         def _parse_datetime(date_string: str | None) -> datetime | None:
@@ -159,7 +194,7 @@ class ContractAggregationService:
         for i in range(0, total_contracts, batch_size):
             batch = contract_values[i:i + batch_size]
             logger.info(f"Processing batch {i // batch_size + 1}/{(total_contracts + batch_size - 1) // batch_size} ({len(batch)} contracts)")
-            await bulk_upsert(self.db, Contract, batch)
+            await bulk_upsert(db_session, Contract, batch)
             logger.info(f"Successfully upserted batch {i // batch_size + 1}.")
 
         logger.info(f"Finished upserting all {total_contracts} contracts.")
@@ -197,7 +232,7 @@ class ContractAggregationService:
             for i in range(0, len(all_items), BATCH_SIZE):
                 batch_items = all_items[i:i + BATCH_SIZE]
                 logger.info(f"Upserting batch of {len(batch_items)} contract items (items {i+1}-{i+len(batch_items)} of {len(all_items)}).")
-                await bulk_upsert(self.db, ContractItem, batch_items)
+                await bulk_upsert(db_session, ContractItem, batch_items)
             logger.info(f"Finished upserting all {len(all_items)} contract items.")
         else:
             logger.info("No new contract items to process.")
@@ -205,13 +240,15 @@ class ContractAggregationService:
 
 # Dependency for getting the service
 async def get_aggregation_service(
-    db: AsyncSession = Depends(get_db),
     cache: Redis = Depends(get_cache),
     esi_client: ESIClient = Depends(get_esi_client),
-) -> "ContractAggregationService":
+    settings: Settings = Depends(get_settings), # Use the new get_settings dependency
+) -> ContractAggregationService:
     """
     FastAPI dependency to get an instance of the ContractAggregationService.
+    The service manages its own database sessions for scheduled tasks.
+    The global `settings` object from `..core.config` is used by default.
     """
-    return ContractAggregationService(
-        db=db, cache=cache, esi_client=esi_client, settings=settings
-    )
+    # Uses the global `settings` imported at the top of the file for now.
+    # If specific settings injection per request is needed later, that would require a `Depends(get_settings_func)`
+    return ContractAggregationService(cache=cache, esi_client=esi_client, settings=settings)

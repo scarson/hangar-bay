@@ -1,4 +1,9 @@
 import logging
+import pydantic
+
+# Print Pydantic version right at the start for immediate visibility
+print(f"PYDANTIC_VERSION_CHECK_PRINT: {pydantic.__version__}", flush=True)
+logger = logging.getLogger(__name__)
 
 
 from typing import Optional
@@ -10,6 +15,9 @@ from .core.cache import init_cache, close_cache
 from .core.http_client import init_http_client, close_http_client
 from .core.scheduler import add_aggregation_job, create_scheduler
 from .core.dependencies import get_cache
+from .db import AsyncSessionLocal # For manual session creation
+from .core.esi_client_class import ESIClient # For manual ESI client creation
+from .services.background_aggregation import ContractAggregationService # For manual service creation
 from .api import contracts as contracts_router
 
 # Configure basic logging to ensure messages are surfaced
@@ -49,7 +57,26 @@ async def startup_event():
 
     # Initialize and start the scheduler
     scheduler = create_scheduler(app, settings)
-    add_aggregation_job(scheduler, settings)
+
+    # Manually create dependencies for the ContractAggregationService for the scheduler
+    # This ensures the scheduler uses the main application's settings instance and a session factory
+
+    # Ensure http_client and redis are available from app.state
+    if not hasattr(app.state, 'http_client') or not app.state.http_client:
+        raise RuntimeError("HTTP client not initialized in app.state before scheduler setup.")
+    if not hasattr(app.state, 'redis') or not app.state.redis:
+        raise RuntimeError("Redis client not initialized in app.state before scheduler setup.")
+
+    esi_client = ESIClient(settings=settings, redis_client=app.state.redis)
+    
+    # Instantiate the service with the session factory (AsyncSessionLocal)
+    aggregation_service = ContractAggregationService(
+        cache=app.state.redis,
+        esi_client=esi_client,
+        settings=settings, # Pass the globally imported settings from main.py
+    )
+    add_aggregation_job(scheduler, aggregation_service, settings)
+    
     scheduler.start()
     logging.info("Application startup complete with all services initialized.")
 

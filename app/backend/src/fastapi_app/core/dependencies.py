@@ -5,6 +5,7 @@ from redis.asyncio import Redis
 from fastapi import Depends
 
 from .esi_client_class import ESIClient
+from .config import settings, Settings # Import global settings and Settings model for type hint
 
 async def get_cache(request: Request) -> Optional[Redis]:
     """
@@ -29,3 +30,15 @@ async def get_esi_client(
         raise RuntimeError("Redis client not available. Ensure it's set up in the application startup event.")
 
     return ESIClient(http_client=request.app.state.http_client, redis_client=rd)
+
+
+def get_settings() -> Settings:
+    """
+    FastAPI dependency to get the globally configured Settings object.
+    """
+    # The 'settings' object is imported from .config and is initialized once.
+    # Pydantic ensures it's validated upon its first creation.
+    # This function simply returns that single, global instance.
+    # DEBUG: Print statements to verify which settings object is being returned by the dependency.
+    print(f"DEPENDENCY_GET_SETTINGS_ID: id(settings)={id(settings)}, AGG_REGION_IDS_TYPE={type(settings.AGGREGATION_REGION_IDS)}, VALUE={settings.AGGREGATION_REGION_IDS!r}", flush=True)
+    return settings

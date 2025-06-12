@@ -1,5 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base
+from typing import Callable
+from contextlib import AbstractAsyncContextManager
 
 Base = declarative_base()
 
@@ -23,6 +25,20 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 Base = declarative_base()
+
+
+async def get_db_session_factory() -> Callable[..., AbstractAsyncContextManager[AsyncSession]]:
+    """
+    FastAPI dependency that provides the async session factory.
+    """
+    return AsyncSessionLocal
+
+
+async def get_db_session_factory() -> Callable[..., AbstractAsyncContextManager[AsyncSession]]:
+    """
+    FastAPI dependency that provides the async session factory.
+    """
+    return AsyncSessionLocal
 
 
 async def get_db() -> AsyncSession:
