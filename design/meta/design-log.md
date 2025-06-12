@@ -905,4 +905,43 @@ Despite the challenges, the targeted documentation files were successfully updat
 
 ---
 
+---
+
+**2025-06-12 04:30:57-05:00: Lessons from ESI Data Aggregation: Transaction Management & Batching**
+
+**Context & Objective:**
+During the development and troubleshooting of the F001 Public Contract Aggregation backend feature, particularly concerning Alembic migrations and data persistence, critical lessons were learned regarding the interaction between external ESI API calls and internal database transaction management. The objective of this log entry is to capture these learnings to inform future design and implementation patterns for data aggregation and processing.
+
+**Key Learnings & Decisions:**
+
+1.  **Cost Asymmetry and Its Implications:**
+    *   **ESI API Calls:** Recognized as "expensive" due to network latency, rate limits, and potential unreliability. Each call should be treated as a valuable, potentially failing operation.
+    *   **Database Transactions:** Local database operations (commits, rollbacks) are "cheap" and fast in comparison.
+    *   **Decision:** Design patterns must acknowledge this asymmetry, minimizing ESI calls (e.g., via ETags) and ensuring robust handling of their outcomes before committing related data.
+
+2.  **Problem with Fine-Grained Commits:**
+    *   **Initial Approach:** An earlier tendency was to commit data to the database incrementally within a larger logical operation (e.g., commit contract header, then fetch/commit items separately).
+    *   **Identified Risk:** This pattern leads to a high risk of data inconsistency if a subsequent ESI call (e.g., for contract items) or processing step fails after an initial part of the data (e.g., contract header) has already been committed. This can leave orphaned or incomplete records in the database.
+
+3.  **Adoption of "Logical Unit of Work" with Atomic Transactions:**
+    *   **Definition:** A "logical unit of work" encompasses all ESI calls and processing steps required to fetch and store a complete, self-contained entity (e.g., a contract along with *all* its items).
+    *   **Decision:** All database changes related to a single logical unit of work *must* be performed within a *single database transaction*.
+        *   **Success Path:** The transaction is committed only if *all* ESI calls and processing for that unit are successful.
+        *   **Failure Path:** If *any* part of the unit of work fails (ESI error, processing error), the *entire* database transaction for that unit is rolled back.
+    *   **Rationale:** This ensures atomicity and data integrity. It is preferable to re-attempt fetching/processing a complete unit (leveraging ESI ETags to minimize actual data re-transfer) than to persist incomplete or inconsistent data.
+
+4.  **Reinforcement of Idempotency and ESI ETags:**
+    *   **Idempotency:** Operations must be designed so that re-processing the same logical unit (e.g., due to a retry) results in the correct final state without duplicates or errors (typically via upsert logic).
+    *   **ETags:** Continued emphasis on using ESI ETags for conditional GETs is crucial to reduce load on ESI and avoid re-processing unchanged data.
+
+5.  **Implications for Future Design (Cascade & Team):**
+    *   **Transaction Boundaries:** Carefully define transaction boundaries around logical units of work, especially when dealing with external API interactions.
+    *   **Error Handling:** Implement comprehensive error handling for external API calls, with clear rollback strategies for associated database transactions.
+    *   **State Management:** For multi-step external interactions, consider explicit state management within models (e.g., `processing_status` fields) to track progress and facilitate retries for failed units.
+    *   **Background Task Queues:** For complex or long-running aggregations, leverage robust task queues that can manage retries and state for individual units of work.
+
+**Outcome:**
+By adopting a stricter model of atomic transactions for logical units of work, the reliability and data integrity of the ESI aggregation process are significantly improved. This approach minimizes the risk of inconsistent database states resulting from partial failures during interactions with the ESI API. These principles will guide the design of future data ingestion and processing features.
+
+---
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
