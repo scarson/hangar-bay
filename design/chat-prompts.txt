@@ -4984,13 +4984,14 @@ Then, start working on Phase 1 of the SQLite to PostgreSQL migration plan design
 -----------------
 
 
-X
+I updated my .env file with:
+DATABASE_URL="postgresql+asyncpg://hangar_bay_user:$passwordRedacted@localhost:5432/hangar_bay_dev"
 
 
 -----------------
 
 
-X
+I completed user tasks 1.1 and 1.2 per the plan.
 
 
 -----------------
