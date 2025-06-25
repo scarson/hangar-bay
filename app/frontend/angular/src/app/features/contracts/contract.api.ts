@@ -59,7 +59,7 @@ export class ContractApi {
       });
     }
 
-    const apiUrl = `${environment.apiUrl}/api/v1/contracts/ships`;
+    const apiUrl = `${environment.apiUrl}/contracts/ships`;
 
     this.http
       .get<PaginatedShipContractsResponse>(apiUrl, { params: httpParams })

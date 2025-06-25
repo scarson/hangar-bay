@@ -1,0 +1,60 @@
+<div class="contract-list-container">
+  <h2 i18n>Ship Contracts</h2>
+
+  <!-- Loading State -->
+  <div *ngIf="apiState().loading" class="loading-shade">
+    <p i18n>Loading contracts...</p>
+    <!-- Add a spinner here if desired -->
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="apiState().error && !apiState().loading" class="error-message">
+    <p>{{ apiState().error }}</p>
+  </div>
+
+  <!-- Data and Empty States -->
+  <div *ngIf="!apiState().loading && !apiState().error">
+    <div *ngIf="apiState().contracts.length > 0; else emptyState" class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th i18n>Ship</th>
+            <th i18n>Title</th>
+            <th i18n>Price</th>
+            <th i18n>Location</th>
+            <th i18n>Expires</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let contract of apiState().contracts">
+            <td>{{ contract.ship_name }}</td>
+            <td>{{ contract.title }}</td>
+            <td>{{ contract.price | currency:'ISK':'symbol':'1.0-0' }}</td>
+            <td>{{ contract.start_location_name }}</td>
+            <td>{{ contract.date_expired | date:'medium' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Empty State -->
+    <ng-template #emptyState>
+      <div class="empty-state">
+        <p i18n>No ship contracts found.</p>
+      </div>
+    </ng-template>
+
+    <!-- Pagination Controls -->
+    <div *ngIf="apiState().totalPages > 1" class="pagination-controls">
+      <button (click)="onPageChange(currentPage - 1)" [disabled]="currentPage === 1">
+        &laquo; <span i18n>Previous</span>
+      </button>
+      <span>
+        Page {{ currentPage }} of {{ apiState().totalPages }}
+      </span>
+      <button (click)="onPageChange(currentPage + 1)" [disabled]="currentPage === apiState().totalPages">
+        <span i18n>Next</span> &raquo;
+      </button>
+    </div>
+  </div>
+</div>

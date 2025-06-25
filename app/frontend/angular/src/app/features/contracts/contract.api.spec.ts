@@ -1,10 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
+import { provideHttpClient, HttpRequest } from '@angular/common/http';
 import {
-  HttpClientTestingModule,
   HttpTestingController,
+  provideHttpClientTesting,
 } from '@angular/common/http/testing';
-import { HttpRequest } from '@angular/common/http';
 
 import { ContractApi } from './contract.api';
 import {
@@ -55,8 +55,12 @@ describe('ContractApi', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
-      providers: [ContractApi, provideZonelessChangeDetection()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideZonelessChangeDetection(),
+        ContractApi,
+      ],
     });
 
     service = TestBed.inject(ContractApi);
@@ -87,7 +91,7 @@ describe('ContractApi', () => {
     expect(service.state().loading).toBe(true);
 
     const req = httpTestingController.expectOne(
-      `${environment.apiUrl}/api/v1/contracts/ships?page=1&size=20`
+      `${environment.apiUrl}/contracts/ships?page=1&size=20`
     );
     expect(req.request.method).toBe('GET');
 
@@ -111,7 +115,7 @@ describe('ContractApi', () => {
     expect(service.state().loading).toBe(true);
 
     const req = httpTestingController.expectOne(
-      `${environment.apiUrl}/api/v1/contracts/ships`
+      `${environment.apiUrl}/contracts/ships`
     );
     req.flush(errorMessage, { status, statusText: errorMessage });
 
@@ -128,7 +132,7 @@ describe('ContractApi', () => {
 
     const req = httpTestingController.expectOne(
       (request: HttpRequest<any>) =>
-        request.url === `${environment.apiUrl}/api/v1/contracts/ships`
+        request.url === `${environment.apiUrl}/contracts/ships`
     );
 
     expect(req.request.params.get('page')).toBe('2');
