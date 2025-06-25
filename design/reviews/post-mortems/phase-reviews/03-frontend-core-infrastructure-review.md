@@ -55,6 +55,16 @@
         *   **Resolution/Workaround:** Instead of relying solely on build-time checks, a runtime guard was added to `main.ts`. This small block of code checks the value of `environment.apiUrl` *before* the Angular application is bootstrapped. If it's invalid in a production environment, it throws a clear, immediate, and catastrophic error, preventing the application from starting in a broken state. This makes debugging such a deployment issue trivial.
         *   **Actionable Learning & Future Application (Cascade & Team):**
             *   For critical configuration variables that are essential for application functionality, implement a runtime startup check. This provides a powerful, final line of defense against deployment and configuration errors that build-time processes might miss.
+
+    *   **Challenge 3:** Overcoming Advanced Zoneless Testing Hurdles.
+        *   **Context:** While the foundational zoneless testing strategy was sound, implementing tests for a reactive, `HttpClient`-dependent service (`ContractSearch`) revealed several advanced challenges that were not immediately obvious. These issues caused significant test failures that required deep-dive analysis to resolve.
+        *   **Resolution/Workaround:** A series of targeted investigations led to four key resolutions:
+            1.  **RxJS Interop:** Replaced `@angular/core/rxjs-interop`'s `toObservable` with a standard RxJS `Subject` to ensure compatibility with `TestScheduler`'s virtual time.
+            2.  **Test Scheduler Scope:** Ensured the service under test was instantiated *within* the `testScheduler.run()` callback, not in `beforeEach`, to correctly scope its asynchronous operations.
+            3.  **HTTP Mocking:** Traced a "phantom" HTTP 500 error back to a simple URL mismatch between the service and the `HttpTestingController` expectation.
+            4.  **Data Model Consistency:** Resolved a linting error by verifying the data model interface (`ContractSearchFilters`) before attempting to access its properties.
+        *   **Actionable Learning & Future Application (Cascade & Team):**
+            *   These specific "gotchas" are common in advanced zoneless testing. They have been documented in detail, with explicit rules for Cascade, in the **[Angular Testing Strategies guide](../../guides/09-testing-strategies.md)** under the "Advanced Scenarios & Zoneless Gotchas" section. This guide is now the primary reference for resolving complex testing issues.
 *   **3.2. Illustrative Example: Anatomy of a Lazy-Loaded Standalone Route**
     *   **Context:** This phase established the core pattern for adding new features: creating a standalone component and lazy-loading it via the router. This visual example connects the key files involved.
     *   **The Route Definition (`app.routes.ts`):** The `contracts` path uses `loadChildren` to lazy-load a set of routes from a separate file. This is the standard for feature modules.

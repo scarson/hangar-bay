@@ -1,6 +1,6 @@
 ## AI Analysis Guidance for Cascade
 
-This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls.
+This file is over 400 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls.
 
 # Angular Testing Strategies (Hangar Bay)
 
@@ -336,15 +336,94 @@ describe('App Routing', () => {
     -   `TestBed` is configured to include the actual child components (not mocks) to test their interaction.
 -   These tests are more complex and slower than unit tests but provide higher confidence in component collaborations.
 
-## 8. Zoneless Testing Considerations
+## 8. Zoneless Testing: Core Principles & Advanced Scenarios
 
 **CRITICAL:** Our Hangar Bay Angular application is configured to be **zoneless**. This has a direct and important impact on how we write asynchronous tests.
 
--   The Angular testing utilities `fakeAsync`, `tick()`, and `waitForAsync` **are fundamentally dependent on `zone.js`** to function.
--   **DO NOT USE** `fakeAsync`, `tick()`, or `waitForAsync` in this project. Their use will lead to errors and contradicts our core architecture.
--   **Correct Approach for Async Tests:**
-    -   For tests involving `HttpClientTestingModule`, no special async utilities are needed. The `HttpTestingController`'s `.flush()` method makes the corresponding `subscribe` or `toPromise` block execute synchronously within the test's scope.
-    -   For other asynchronous operations (e.g., those involving `setTimeout`, router navigation, or other promises), use standard JavaScript `async/await` with `fixture.whenStable()`.
+### 8.1. Core Principles: `async/await` vs. `fakeAsync`
+
+*   The Angular testing utilities `fakeAsync`, `tick()`, and `waitForAsync` **are fundamentally dependent on `zone.js`** to function.
+*   **DO NOT USE** `fakeAsync`, `tick()`, or `waitForAsync` in this project. Their use will lead to errors and contradicts our core architecture.
+*   **Correct Approach for Async Tests:**
+    *   For tests involving `HttpClientTestingModule`, no special async utilities are needed. The `HttpTestingController`'s `.flush()` method makes the corresponding `subscribe` or `toPromise` block execute synchronously within the test's scope.
+    *   For other asynchronous operations (e.g., those involving `setTimeout`, router navigation, or other promises), use standard JavaScript `async/await` with `fixture.whenStable()`.
+
+### 8.2. Advanced Scenario: Testing RxJS `debounceTime` with `TestScheduler`
+
+*   **The Problem:** Tests for services using `debounceTime` would fail, with the `HttpTestingController` reporting "Expected one matching request... found none." The asynchronous pipeline was not executing within the test's virtual time.
+*   **The Root Cause:** A fundamental incompatibility exists between Angular's `toObservable` interop function and the RxJS `TestScheduler` in a zoneless environment. `toObservable` does not reliably schedule its emissions on the virtual scheduler, even when using operators like `subscribeOn`.
+*   **The Solution:** Avoid `toObservable` when testing with `TestScheduler`. Refactor the service to use a standard RxJS `Subject` as the trigger for the reactive pipeline.
+
+    *   **Service Implementation:**
+        ```typescript
+        // contract-search.ts
+        export class ContractSearch {
+          // ...
+          private filterTrigger$ = new Subject<void>();
+
+          constructor() {
+            this.filterTrigger$.pipe(
+              startWith(undefined), // For initial data fetch
+              debounceTime(300, this.scheduler),
+              // ... other operators
+            ).subscribe(/* ... */);
+          }
+
+          updateFilters(newFilters: Partial<ContractSearchFilters>): void {
+            this.#filters.update((current) => ({ ...current, ...newFilters }));
+            this.filterTrigger$.next(); // Manually trigger the pipeline
+          }
+        }
+        ```
+    *   **Test Implementation:** The test can now reliably control the service by calling `updateFilters()` and advancing the `TestScheduler`.
+
+*   **Cascade's Rule:** When testing a service that uses RxJS time-based operators (`debounceTime`, `throttleTime`, etc.) in this zoneless project, **DO NOT** use `toObservable` to trigger the pipeline. **ALWAYS** use a `Subject`-based pattern.
+
+### 8.3. Advanced Scenario: Correctly Instantiating Services in `TestScheduler` Tests
+
+*   **The Problem:** Even with a `Subject`-based pipeline, tests can fail if the service under test is not instantiated correctly.
+*   **The Root Cause:** For `TestScheduler` to have full control, the service's constructor (where the RxJS pipeline is defined and subscribed to) must be executed *within* the `testScheduler.run()` callback. Instantiating it in a `beforeEach` block places it outside the scheduler's virtual time context.
+*   **The Solution:** Inject dependencies in `beforeEach`, but instantiate the service itself inside each `testScheduler.run()` block.
+
+    ```typescript
+    // contract-search.spec.ts
+    describe('ContractSearch with TestScheduler', () => {
+      let httpMock: HttpTestingController;
+      let testScheduler: TestScheduler;
+
+      beforeEach(() => {
+        // ... TestBed configuration ...
+        httpMock = TestBed.inject(HttpTestingController);
+        testScheduler = new TestScheduler(/* ... */);
+      });
+
+      it('should fetch initial data', () => {
+        testScheduler.run(({ expectObservable }) => {
+          // Instantiate the service HERE
+          const service = TestBed.inject(ContractSearch);
+          // ... test logic ...
+        });
+      });
+    });
+    ```
+
+*   **Cascade's Rule:** For any test using `TestScheduler`, **ALWAYS** instantiate the service being tested inside the `testScheduler.run()` callback, not in `beforeEach`.
+
+### 8.4. Advanced Scenario: Debugging "Phantom" HTTP 500 Errors in Tests
+
+*   **The Problem:** Tests were failing with HTTP 500 Internal Server Errors, even though the backend server wasn't running.
+*   **The Root Cause:** The `HttpTestingController` was correctly intercepting a request to an invalid URL (e.g., `/api/contracts/ships` instead of `/api/contracts/`). Because no mock was set up for this incorrect URL, the testing backend correctly returned an error. This error manifested as a 500, masking the true "Not Found" nature of the problem.
+*   **The Solution:** When encountering an unexpected HTTP error in a test, the first step is to meticulously verify the URL being requested in the service against the URL expected in the test's `httpMock.expectOne()` call. They must match exactly.
+
+*   **Cascade's Rule:** If a test fails with an unexpected HTTP error, **ALWAYS** first validate that the request URL in the service code perfectly matches the URL being expected by the `HttpTestingController`.
+
+### 8.5. Advanced Scenario: Preventing Data Model Mismatches
+
+*   **The Problem:** A linting error (`Property 'faction' does not exist...`) was introduced because the service code was referencing a property that had been removed from the `ContractSearchFilters` interface.
+*   **The Root Cause:** Working from a stale or incorrect understanding of the current data model.
+*   **The Solution:** Before writing code that interacts with a specific data model or interface, always verify its current definition. A quick `grep_search` or `view_file` can prevent this entire class of errors.
+
+*   **Cascade's Rule:** Before implementing logic that depends on a specific data interface, **ALWAYS** first view the interface definition to ensure all property access is valid.
 
 ## 9. End-to-End (E2E) Testing
 
@@ -361,10 +440,22 @@ describe('App Routing', () => {
 
 ## 11. Best Practices for Testable Code
 
+### 11.1. Writing Testable Application Code
+
 -   **Single Responsibility Principle:** Components and services that do one thing well are easier to test.
 -   **Dependency Injection:** Makes mocking dependencies straightforward.
 -   **Avoid Logic in Constructors:** Keep constructors simple; move logic to lifecycle hooks or methods.
 -   **Pure Functions/Methods:** Easier to test as they have no side effects.
 -   **Clear Separation of Concerns:** UI logic in components, business logic in services.
+
+### 11.2. Writing Effective & Robust Specs (`.spec.ts` files)
+
+-   **Every Spec Must Have an Expectation:** An `it(...)` block without at least one `expect(...)` call is not a valid test. It will pass regardless of the code's behavior, giving a false sense of security. Karma will produce a warning for such specs, which must be addressed.
+-   **Verify No Outstanding HTTP Requests:** When using `HttpClientTestingModule`, always include an `afterEach` block to verify that no unexpected HTTP requests were made. This ensures tests are clean and do not interfere with one another.
+    ```typescript
+    afterEach(() => {
+      httpMock.verify(); // Fails the test if any requests were made but not handled.
+    });
+    ```
 
 By implementing these testing strategies, Hangar Bay will maintain a high level of quality and stability as it evolves.

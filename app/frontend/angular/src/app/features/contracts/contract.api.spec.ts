@@ -91,7 +91,7 @@ describe('ContractApi', () => {
     expect(service.state().loading).toBe(true);
 
     const req = httpTestingController.expectOne(
-      `${environment.apiUrl}/contracts/ships?page=1&size=20`
+      `${environment.apiUrl}/contracts/?page=1&size=20`
     );
     expect(req.request.method).toBe('GET');
 
@@ -115,7 +115,7 @@ describe('ContractApi', () => {
     expect(service.state().loading).toBe(true);
 
     const req = httpTestingController.expectOne(
-      `${environment.apiUrl}/contracts/ships`
+      `${environment.apiUrl}/contracts/`
     );
     req.flush(errorMessage, { status, statusText: errorMessage });
 
@@ -132,7 +132,7 @@ describe('ContractApi', () => {
 
     const req = httpTestingController.expectOne(
       (request: HttpRequest<any>) =>
-        request.url === `${environment.apiUrl}/contracts/ships`
+        request.url === `${environment.apiUrl}/contracts/`
     );
 
     expect(req.request.params.get('page')).toBe('2');

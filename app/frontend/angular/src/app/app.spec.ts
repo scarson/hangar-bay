@@ -1,3 +1,5 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -10,6 +12,8 @@ import { routes } from './app.routes';
 import { Footer } from './core/layout/footer/footer';
 import { Header } from './core/layout/header/header';
 import { ContractApi } from './features/contracts/contract.api';
+import { ContractSearch } from './features/contracts/contract-search';
+import { ContractBrowsePage } from './features/contracts/contract-browse-page/contract-browse-page';
 
 // Mock components to isolate AppComponent during testing
 @Component({ selector: 'hgb-header', standalone: true, template: '' })
@@ -21,6 +25,18 @@ class MockFooterComponent {}
 describe('App', () => {
   beforeEach(async () => {
     // Mock for the service dependency of the lazy-loaded component
+    // This is a more robust mock for the ContractSearch service.
+    // It prevents the real service's constructor from running and making HTTP calls.
+    const mockContractSearch = jasmine.createSpyObj('ContractSearch', {
+      updateFilters: undefined,
+      setInitialFilters: undefined,
+    });
+    // Mock the public signals that components will bind to.
+    mockContractSearch.loading = signal(false).asReadonly();
+    mockContractSearch.error = signal(null).asReadonly();
+    mockContractSearch.data = signal(null).asReadonly();
+    mockContractSearch.filters = signal({ page: 1, size: 20 }).asReadonly();
+
     const mockContractApi = {
       state: signal({
         contracts: [],
@@ -41,7 +57,10 @@ describe('App', () => {
       ],
       providers: [
         provideZonelessChangeDetection(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
         { provide: ContractApi, useValue: mockContractApi },
+        { provide: ContractSearch, useValue: mockContractSearch },
       ],
     })
       .overrideComponent(App, {
@@ -74,7 +93,7 @@ describe('App', () => {
     await router.navigate(['']);
     await fixture.whenStable(); // Wait for navigation and redirection to complete
 
-    expect(location.path()).toBe('/home');
+    expect(location.path()).toBe('/contracts');
   });
 
   it('should render the router outlet', () => {
@@ -102,10 +121,9 @@ describe('App', () => {
     fixture.detectChanges(); // Update the view with the new component
 
     // Verify the component is rendered
-    const contractListElement = fixture.debugElement.query(
-      By.css('hgb-contract-list')
+    const contractBrowsePage = fixture.debugElement.query(
+      By.css('hgb-contract-browse-page')
     );
-    expect(contractListElement).not.toBeNull();
+    expect(contractBrowsePage).not.toBeNull();
   });
 });
-

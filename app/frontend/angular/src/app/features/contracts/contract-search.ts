@@ -1,9 +1,15 @@
-import { computed, inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal, InjectionToken } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { toObservable } from '@angular/core/rxjs-interop';
-import { catchError, debounceTime, distinctUntilChanged, of, switchMap, tap } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, of, switchMap, tap, Subject, startWith, map } from 'rxjs';
+import { SchedulerLike, asyncScheduler } from 'rxjs';
 
 import { ContractSearchFilters, PaginatedContractsResponse } from './contract.models';
+
+/**
+ * An injection token for providing a scheduler to the ContractSearch service,
+ * primarily for testing purposes.
+ */
+export const SEARCH_SCHEDULER = new InjectionToken<SchedulerLike>('search.scheduler');
 
 /**
  * Defines the shape of an asynchronous data state, including loading and error status.
@@ -40,13 +46,20 @@ export class ContractSearch {
   readonly data = computed(() => this.#state().data);
   readonly filters = this.#filters.asReadonly();
 
+  private readonly apiUrl = '/api/v1/contracts/';
+  private scheduler = inject(SEARCH_SCHEDULER, { optional: true }) ?? asyncScheduler;
+
+  // A subject to trigger the pipeline when filters are updated.
+  private filterTrigger$ = new Subject<void>();
+
   constructor() {
-    // Reactive pipeline that triggers API calls when filters change.
-    toObservable(this.#filters)
+    this.filterTrigger$
       .pipe(
-        debounceTime(300), // Wait for 300ms of silence before proceeding.
-        distinctUntilChanged(), // Only proceed if the filters have actually changed.
-        tap(() => this.#state.update((s) => ({ ...s, loading: true }))), // Set loading to true, preserving old data.
+        startWith(undefined), // Trigger initial fetch
+        debounceTime(300, this.scheduler),
+        map(() => this.#filters()), // Get the latest filters from the signal
+        distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)),
+        tap(() => this.#state.update((s) => ({ ...s, loading: true }))),
         switchMap((filters) => {
           let params = new HttpParams()
             .set('page', filters.page.toString())
@@ -56,20 +69,20 @@ export class ContractSearch {
             params = params.set('search', filters.search);
           }
 
-          return this.http
-            .get<PaginatedContractsResponse>('/api/v1/contracts/', { params })
-            .pipe(
-              catchError((err) => {
-                const errorMessage = err.message ?? 'An unknown error occurred.';
-                this.#state.set({ loading: false, error: errorMessage, data: null });
-                return of(null); // Return a null observable to prevent the stream from dying.
-              })
-            );
+
+
+          return this.http.get<PaginatedContractsResponse>(this.apiUrl, { params }).pipe(
+            catchError((error) => {
+              console.error('API Error fetching contracts:', error);
+              this.#state.update((s) => ({ ...s, loading: false, error: `An unknown error occurred. Please try again later.` }));
+              return of(null);
+            })
+          );
         })
       )
-      .subscribe((data) => {
-        if (data) {
-          this.#state.set({ loading: false, error: null, data });
+      .subscribe((response) => {
+        if (response) {
+          this.#state.update((s) => ({ ...s, loading: false, data: response, error: null }));
         }
       });
   }
@@ -81,6 +94,7 @@ export class ContractSearch {
    */
   updateFilters(newFilters: Partial<ContractSearchFilters>): void {
     this.#filters.update((current) => ({ ...current, ...newFilters }));
+    this.filterTrigger$.next();
   }
 
   /**
