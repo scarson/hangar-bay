@@ -7205,25 +7205,49 @@ Please do a review of the plans\implementation\phase-04-frontend-f001-f002-contr
 -----------------
 
 
-X
+Review the four referenced
+*   **Core Angular Design Guides:**
+    *   `/design/angular/00-angular-architecture-overview.md`
+    *   `/design/angular/guides/04-state-management-and-rxjs.md`
+    *   `/design/angular/guides/07-http-and-data-loading.md`
+    *   `/design/angular/guides/09-testing-strategies.md`
+
+in their entirety (you likely need to read at least 400 lines), then do one more review pass of plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md with those in mind.
 
 
 -----------------
 
 
-X
+In your Thought Process, you said:
+"Refining Implementation Review
+
+I've just finished comparing the implementation plan against the pattern files. It looks solid. The plan for 04.1 -contract-list-component.md is not only aligned, but also improves on the patterns."
+Is there anything "improved" from 04.1 that should be reflected in a pattern file update?
 
 
 -----------------
 
 
-X
+First, /git-commit . Then begin implementation.
 
 
 -----------------
 
 
-X
+You need a better resource index to start. Let's do this methodically. What do you think of the below approach? Would it be effective? How could it be improved for Cascade?
+
+1. Read in their entirety (up to 400 lines):
+* design\reviews\pre-mortems\phase-04-phase-four-frontend-pre-mortem.md - make sure it's fresh
+* plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md
+** Pay attention to the cross-cutting concerns review section up front and take it into consideration while planning task items.
+* design\angular\00-angular-architecture-overview.md
+** Pay attention to ## 3. Directory and File Structure so you know where to find frontend files
+* plans\implementation\00-mvp-implementation-plan-progress.md, section "### Phase 2: Backend - F001: Public Contract Aggregation" for info on the backend. Follow any file references it's helpful to follow.
+* design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md - a great deal of info on the backend and specific locations of where to find things
+
+2. Check your "## 3. Key Implementation Steps" tasks in plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md. Think cohesively about what information you need about the project to achieve the tasks and create a list. Then, verify everything on the list in whatever manner is appropriate, using a source of truth method whenever possible. Once you've verified information you'll need, write it out to your C:\Users\Sam\.codeium\windsurf\brain\2f7e2d6b-53f6-425f-8f97-84904f9a2f68\plan.md so you have it easily available.
+
+3. Proceed with implementation.
 
 
 -----------------
