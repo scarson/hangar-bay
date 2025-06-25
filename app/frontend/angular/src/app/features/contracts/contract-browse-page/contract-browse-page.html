@@ -1,0 +1,65 @@
+<div class="contract-browse-container">
+  <h1>Public Contracts</h1>
+
+  <div class="filter-panel">
+    <input
+      #searchInput
+      type="text"
+      placeholder="Search by title or location..."
+      [value]="filters().search ?? ''"
+      (input)="onSearch(searchInput.value)"
+      aria-label="Search contracts"
+    />
+  </div>
+
+  <!-- Loading Indicator -->
+  @if (loading()) {
+    <div class="loading-indicator">Loading contracts...</div>
+  }
+
+  <!-- Error Message -->
+  @if (error(); as errorMessage) {
+    <div class="error-message">{{ errorMessage }}</div>
+  }
+
+  <!-- Data View -->
+  @if (data(); as contractData) {
+    <div class="results-container">
+      <div class="contract-list">
+        @for (contract of contractData.items; track contract.contract_id) {
+          <div class="contract-card">
+            <h2>{{ contract.title ?? 'Contract #' + contract.contract_id }}</h2>
+            <p><strong>From:</strong> {{ contract.start_location_name }}</p>
+            <p><strong>Issued:</strong> {{ contract.date_issued | date: 'medium' }}</p>
+            <p><strong>Status:</strong> {{ contract.status }}</p>
+          </div>
+        } @empty {
+          <p class="empty-state">No contracts found matching your criteria.</p>
+        }
+      </div>
+
+      <div class="pagination-controls">
+        <button
+          [disabled]="contractData.page <= 1"
+          (click)="changePage(contractData.page - 1)"
+          aria-label="Go to previous page"
+        >
+          &laquo; Previous
+        </button>
+        <span>
+          Page {{ contractData.page }} of
+          {{ calculateTotalPages(contractData.total, contractData.size) }}
+        </span>
+        <button
+          [disabled]="contractData.page >= calculateTotalPages(contractData.total, contractData.size)"
+          (click)="changePage(contractData.page + 1)"
+          aria-label="Go to next page"
+        >
+          Next &raquo;
+        </button>
+      </div>
+    </div>
+  } @else if (!loading() && !error()) {
+    <p class="empty-state">No data available. Start a search to see contracts.</p>
+  }
+</div>

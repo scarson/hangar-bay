@@ -3,7 +3,7 @@ import { Routes } from '@angular/router';
 export const routes: Routes = [
   {
     path: '',
-    redirectTo: 'home',
+    redirectTo: 'contracts',
     pathMatch: 'full',
   },
   {
@@ -12,10 +12,14 @@ export const routes: Routes = [
   },
   {
     path: 'contracts',
-    loadChildren: () => import('./features/contracts/contracts.routes').then(r => r.CONTRACTS_ROUTES)
+    loadChildren: () =>
+      import('./features/contracts/contracts.routes').then(
+        (m) => m.CONTRACTS_ROUTES
+      ),
   },
   {
     path: '**',
-    redirectTo: 'home',
+    redirectTo: 'contracts', // Redirect any unknown paths to the main contracts feature
   },
 ];
+
