@@ -7460,7 +7460,7 @@ Please double check design\angular\00-angular-architecture-overview.md section "
 -----------------
 
 
-X
+Excellent job, I'm proud of you for working through that. It seems like we're having some real growing pains figuring out how to write tests for this zoneless Angular project. Please summarize ALL the test issues you worked through in this phase, structured in a way conducive to Cascade's learning and future effectiveness. You're going to have to look far back in your context window. There were 24/25 tests here, and we started out with only 2 passing.
 
 
 -----------------
@@ -7498,7 +7498,8 @@ X
 -----------------
 
 
-X
+TODO: About page with disclaimer:
+EVE Online, the EVE logo, EVE and all associated logos and designs are the intellectual property of CCP hf. All artwork, screenshots, characters, vehicles, storylines, world facts or other recognizable features of the intellectual property relating to these trademarks are likewise the intellectual property of CCP hf. EVE Online and the EVE logo are the registered trademarks of CCP hf. All rights are reserved worldwide. All other trademarks are the property of their respective owners. CCP is in no way responsible for the content on or functioning of this website, nor can it be liable for any damage arising from the use of this website.
 
 
 -----------------
