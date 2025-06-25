@@ -55,39 +55,47 @@ Our frontend architecture is built upon the following core principles, which tog
 The Angular application in `src/app/` is organized by **feature**. This structure promotes scalability and modularity by grouping related files together. The canonical structure is as follows:
 
 ```
-src/app/
-├── app.config.ts         # Core application providers (routing, http, etc.)
-├── app.component.ts      # Root application component
-├── app.routes.ts         # Top-level application routes
-|
-├── core/                 # Singleton services, guards, and truly global logic.
-│   ├── services/         # App-wide singleton services (e.g., auth, logging)
-│   ├── guards/           # App-wide route guards
-│   └── models/           # App-wide data models
-|
-├── features/             # Feature-specific modules. Each feature is self-contained.
-│   └── contracts/        # Example: Contracts Feature
-│       ├── contract-list/  # Example: Smart component for listing contracts
-│       │   ├── contract-list.component.html
-│       │   ├── contract-list.component.scss
-│       │   └── contract-list.component.ts
-│       │
-│       ├── contract-details/ # Example: Smart component for contract details
-│       │   └── ...
-│       │
-│       ├── contract.api.ts   # Service for this feature's backend communication
-│       ├── contract.model.ts # TypeScript interfaces for this feature
-│       └── contracts.routes.ts # Routes specific to this feature, lazy-loaded
-|
-└── shared/               # Reusable, presentation-agnostic code.
-    ├── components/       # Reusable "dumb" UI components (e.g., button, card)
-    ├── pipes/            # Reusable custom pipes
-    ├── directives/       # Reusable custom directives
-    └── utils/            # Reusable helper functions
+/src
+|-- /app
+|   |-- /core                 # Singleton services, guards, and truly global logic.
+|   |   `-- /layout           # Components that define the main page structure (e.g., header, footer).
+|   |       |-- /footer
+|   |       |   |-- footer.ts       # Footer component class
+|   |       |   |-- footer.html     # Footer component template
+|   |       |   |-- footer.scss     # Footer component styles
+|   |       |   `-- footer.spec.ts  # Tests for the footer component
+|   |       `-- /header
+|   |           |-- header.ts       # Header component class
+|   |           |-- header.html     # Header component template
+|   |           |-- header.scss     # Header component styles
+|   |           `-- header.spec.ts  # Tests for the header component
+|   |-- /features             # Feature-specific modules. Each feature is self-contained.
+|   |   `-- /contracts        # Example: Contracts Feature
+|   |       |-- contract.api.ts   # Service for this feature's backend communication
+|   |       |-- contract.api.spec.ts # Tests for the API service
+|   |       `-- contract.model.ts # TypeScript interfaces for this feature
+|   |-- /shared               # Reusable, presentation-agnostic code.
+|   |   ├── /components       # Reusable "dumb" UI components (e.g., button, card)
+|   |   ├── /directives       # Reusable custom directives
+|   |   ├── /pipes            # Reusable custom pipes
+|   |   `── /utils            # Reusable helper functions
+|   |-- app.config.ts         # Core application providers (routing, http, zoneless, etc.)
+|   |-- app.config.spec.ts    # Tests for app.config.ts
+|   |-- app.routes.ts         # Top-level application routes
+|   |-- app.ts                # Root application component class
+|   |-- app.html              # Root application component template
+|   |-- app.scss              # Root application component styles
+|   `-- app.spec.ts           # Tests for the root application component
+|-- /environments           # Environment-specific configuration files.
+|   |-- environment.prod.ts   # Production environment configuration
+|   `-- environment.ts        # Development environment configuration
+|-- index.html              # The main HTML page that is served.
+|-- main.ts                 # The main entry point for the application, bootstraps Angular.
+`-- styles.scss             # Global application styles and CSS variable definitions.
 ```
 
 **File Naming Conventions:**
-- Components: `*.component.ts`
+- Components: `*.ts`. The class name **must also omit** the `Component` suffix (e.g., `class UserProfile` in `user-profile.ts`). This aligns with the modern CLI and our service naming convention.
 - Services / APIs: `*.api.ts` or `*.service.ts`. The class name should omit the `Service` suffix (e.g., `class Auth` in `auth.service.ts`, not `class AuthService`). The context is provided by the file location and usage.
 - Models / Interfaces: `*.model.ts`
 - Guards: `*.guard.ts`

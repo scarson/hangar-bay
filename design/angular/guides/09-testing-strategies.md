@@ -271,13 +271,72 @@ describe('UserProfileComponent', () => {
 -   **Outputs:** Standard event emitter testing with `spyOn(component.myOutput, 'emit');`
 -   **`computed` and `effect`:** Test the outcomes of computed signals or side effects triggered by effects. Ensure effects are cleaned up (`fixture.destroy()`).
 
-## 6. Integration Testing
+## 6. Testing Routing
+
+Testing the application's routing configuration is crucial for ensuring users can navigate as expected. Key scenarios include default route redirection, route guards, and lazy-loaded components.
+
+### 6.1. Testing Default Route Redirection (Zoneless)
+
+A common requirement is to redirect the default empty path (`''`) to a specific route. You can test this behavior using the `RouterTestingModule` and `async/await` syntax, which is compatible with our zoneless architecture.
+
+**Key Tools:**
+-   `RouterTestingModule.withRoutes(routes)`: Configures the testing module with your application's routes.
+-   `Router`: The Angular router service, used to trigger navigation.
+-   `Location`: An Angular service that allows you to inspect the browser's URL.
+-   `fixture.whenStable()`: Returns a promise that resolves when asynchronous tasks like navigation are complete.
+
+**Example (`app.spec.ts`):**
+
+This test verifies that the application correctly redirects from the root path to `/home`. Note the use of `async` and `await fixture.whenStable()` instead of `fakeAsync/tick`.
+
+```typescript
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
+import { RouterTestingModule } from '@angular/router/testing';
+import { Location } from '@angular/common';
+import { routes } from './app.routes';
+import { App } from './app';
+import { Component } from '@angular/core';
+
+// Create a mock component for the route to avoid importing the real one
+@Component({ selector: 'hgb-home', standalone: true, template: '' })
+class MockHomeComponent {}
+
+describe('App Routing', () => {
+  let location: Location;
+  let fixture: ComponentFixture<App>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [
+        RouterTestingModule.withRoutes(routes),
+        App, // The root component
+        MockHomeComponent, // Provide the mock for the '/home' route
+      ],
+    }).compileComponents();
+
+    const router = TestBed.inject(Router);
+    location = TestBed.inject(Location);
+    fixture = TestBed.createComponent(App);
+    
+    // Initial navigation is triggered by RouterTestingModule. Wait for it to complete.
+    await fixture.whenStable();
+  });
+
+  it('should redirect empty path to /home on initial navigation', () => {
+    // The redirection has already happened in beforeEach after `whenStable()`
+    expect(location.path()).toBe('/home');
+  });
+});
+```
+
+## 7. Integration Testing
 
 -   **Component Integration:** Testing how a parent component interacts with its child components, or how multiple services work together.
     -   `TestBed` is configured to include the actual child components (not mocks) to test their interaction.
 -   These tests are more complex and slower than unit tests but provide higher confidence in component collaborations.
 
-## 7. Zoneless Testing Considerations
+## 8. Zoneless Testing Considerations
 
 **CRITICAL:** Our Hangar Bay Angular application is configured to be **zoneless**. This has a direct and important impact on how we write asynchronous tests.
 
@@ -285,22 +344,22 @@ describe('UserProfileComponent', () => {
 -   **DO NOT USE** `fakeAsync`, `tick()`, or `waitForAsync` in this project. Their use will lead to errors and contradicts our core architecture.
 -   **Correct Approach for Async Tests:**
     -   For tests involving `HttpClientTestingModule`, no special async utilities are needed. The `HttpTestingController`'s `.flush()` method makes the corresponding `subscribe` or `toPromise` block execute synchronously within the test's scope.
-    -   For other asynchronous operations (e.g., those involving `setTimeout` or other non-Angular promises), use standard JavaScript `async/await` with `fixture.detectChanges()` or Jasmine's `done` callback pattern as shown in the service testing example.
+    -   For other asynchronous operations (e.g., those involving `setTimeout`, router navigation, or other promises), use standard JavaScript `async/await` with `fixture.whenStable()`.
 
-## 8. End-to-End (E2E) Testing
+## 9. End-to-End (E2E) Testing
 
 -   **Purpose:** Simulates real user scenarios by interacting with the application through the browser UI.
 -   **Tools:** Cypress, Playwright, Protractor (deprecated for new Angular projects).
 -   **Scope for Hangar Bay:** We will identify critical user flows (e.g., login, creating a hangar, viewing details) for E2E testing. These tests are the slowest and most brittle, so they should be used judiciously.
 -   Angular CLI can set up E2E testing with tools like Cypress (`ng add @cypress/schematic`).
 
-## 8. Code Coverage
+## 10. Code Coverage
 
 -   Angular CLI generates code coverage reports (using Istanbul) when running tests with `ng test --coverage`.
 -   The report is typically found in the `coverage/` directory.
 -   **Goal:** Strive for a high percentage (e.g., >80%), but focus on testing critical paths and logic thoroughly rather than just chasing numbers.
 
-## 9. Best Practices for Testable Code
+## 11. Best Practices for Testable Code
 
 -   **Single Responsibility Principle:** Components and services that do one thing well are easier to test.
 -   **Dependency Injection:** Makes mocking dependencies straightforward.

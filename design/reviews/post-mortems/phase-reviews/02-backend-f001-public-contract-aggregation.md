@@ -28,14 +28,13 @@
 
 ## 2. Key Features & Infrastructure: Design vs. Implementation
 
-*   **2.1. Major Deliverables:**
-    *   ESI Client Service (`services/esi_client.py`)
-    *   SQLAlchemy Data Models (`models/contracts.py`)
-    *   Alembic Database Migrations
-    *   Database Upsert Utility (`services/db_upsert.py`)
-    *   Background Aggregation Service with Redis locking (`services/background_aggregation.py`)
-    *   APScheduler Integration (`core/scheduler.py`)
-    *   FastAPI Lifecycle Integration (`main.py`)
+*   **2.1. Major Deliverables (with verified file paths):**
+    *   **Data Aggregation Service:** The core business logic, including ESI API interaction and data processing. (`app/backend/src/fastapi_app/services/background_aggregation.py`)
+    *   **Database Upsert Service:** A generic service for handling idempotent database write operations (i.e., `INSERT` on new, `UPDATE` on existing). (`app/backend/src/fastapi_app/services/db_upsert.py`)
+    *   **Scheduled Job Trigger:** The entry point for the APScheduler to run the aggregation. (`app/backend/src/fastapi_app/services/scheduled_jobs.py`)
+    *   **Scheduler Configuration:** The setup and lifecycle management for APScheduler. (`app/backend/src/fastapi_app/core/scheduler.py`)
+    *   **Data Models:** The SQLAlchemy model for the `contracts` table. (`app/backend/src/fastapi_app/models/contracts.py`)
+    *   **Alembic Migration:** The database migration script to create the `contracts` table. (`app/backend/alembic/versions/`)
 *   **2.2. Design vs. Implementation - Key Variances & Rationale:**
     *   **Feature/Component A:** Data Model for Market Group Cache
         *   **Variance:** The `raw_esi_response` column in the `EsiMarketGroupCache` model was changed from `postgresql.JSONB` to the generic `JSON` type.
@@ -117,6 +116,33 @@
             1.  **Decouple from Live Instances:** Services like `ESIClient` and `ContractAggregationService` were refactored. Instead of accepting a live `redis_client` instance in their `__init__` methods, they now only accept the picklable `Settings` object.
             2.  **Dynamic Resource Instantiation:** Within the methods of these services that require a Redis connection, a new client is created dynamically *inside the method's scope*. For example: `client = await aioredis.from_url(str(self.settings.CACHE_URL))`. This ensures the live, non-picklable client object only exists within the context of the running job process and is never passed across process boundaries.
             3.  **System-Wide Update:** This pattern was propagated throughout the application. All dependency providers (`get_esi_client`, `get_aggregation_service`) and service instantiations (`main.py`) were updated to no longer pass the `cache` or `redis_client` instances to these services.
+        *   **Illustrative Example (The Fix):**
+            ```python
+            # IN: app/backend/src/fastapi_app/core/scheduler.py
+
+            # BEFORE: Passing a live, unpickleable client to the job's args via Depends()
+            # This fails because the resolved dependency contains an httpx.AsyncClient.
+            scheduler.add_job(
+                aggregate_contracts,
+                "interval",
+                minutes=60,
+                args=[Depends(get_esi_client)],
+            )
+
+            # AFTER: Passing a simple, pickleable Settings object
+            scheduler.add_job(
+                aggregate_contracts,
+                "interval",
+                minutes=60,
+                args=[app.state.settings], # This works!
+            )
+
+            # And inside the job function, clients are created on-demand:
+            async def aggregate_contracts(settings: Settings):
+                esi_client = EsiClient(settings)
+                db_upsert_service = DbUpsertService(settings)
+                # ... rest of the job logic
+            ```
         *   **Actionable Learning & Future Application (Cascade & Team):**
             *   Any object passed to a background job running in a separate process (like with the default `APScheduler` configuration) *must* be picklable. This includes all arguments and the state of the object whose method is being called.
             *   Live resource connections (database, cache, etc.) are generally not picklable.

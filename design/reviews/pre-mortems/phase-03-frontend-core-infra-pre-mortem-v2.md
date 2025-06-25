@@ -70,7 +70,7 @@ This section reframes risks as potential violations of our established best prac
 *   **Resilience & Failure Mode Testing:**
     *   **Test Case 1:** Create integration tests for the global `HttpInterceptor` to ensure that various backend error codes (e.g., 404, 500, 503) are correctly caught and translated into the appropriate user-facing state or message. (Mitigates: Operator's Nightmare risk of unhandled API errors).
 *   **Integration Testing:**
-    *   **Test Case 1:** Implement integration tests that specifically target and verify the application's routing configuration, ensuring all lazy-loaded routes resolve correctly without runtime errors. (Mitigates: New Developer Onboarding risk of confusing "magic string" path errors).
+    *   **Test Case 1:** Implement integration tests that specifically target and verify the application's routing configuration, ensuring all lazy-loaded routes resolve correctly without runtime errors. **Crucially, these tests must follow the zoneless pattern (`async/await` with `fixture.whenStable()`) now codified in `09-testing-strategies.md`.** (Mitigates: New Developer Onboarding risk of confusing "magic string" path errors).
     *   **Test Case 2:** Create tests where the mock API response is intentionally missing optional fields (e.g., `ship_name: null`) to verify that UI components render gracefully without crashing. (Mitigates: Risk of unhandled data gaps from the backend).
 
 ## 6. Monitoring and Observability Requirements
@@ -108,8 +108,21 @@ This section reframes risks as potential violations of our established best prac
     *   **Change:** The task plan `03.3-basic-layout-routing-navigation.md` was updated to require integration tests that verify lazy-loaded routing paths.
     *   **Mitigates:** New Developer Onboarding risk of confusing runtime routing errors.
 
+### 7.1. Post-Implementation Refinements
+
+This section captures key refinements made *during* the implementation of Phase 03, demonstrating the "living document" principle.
+
+*   **Refinement 1: Codified Zoneless Testing Pattern.**
+    *   **Change:** The primary testing guide, `09-testing-strategies.md`, was updated with a specific, authoritative example for testing asynchronous routing in a zoneless application, using `async/await` and `fixture.whenStable()`.
+    *   **Reinforces:** Decision 5 (Require Integration Tests for Routing) by providing a concrete, project-compliant implementation pattern.
+
+*   **Refinement 2: Enhanced AI Memory with Tactical Lessons.**
+    *   **Change:** Updated **AI Memory `ccb05208-4638-4b24-9d0c-5ddcde6963ad`** to include specific, tactical lessons learned during implementation, such as the need to verify component-template data bindings and to double-check file paths before use.
+    *   **Reinforces:** Decision 1 (Enforce Architectural Guardrails via AI Memory) by adding a layer of tactical, "in-the-weeds" knowledge to the high-level architectural principles.
+
 ## 8. Broader Lessons Learned / Insights Gained
 
 *   **Living Documents:** Planning artifacts like pre-mortems are most valuable when they evolve with the project's knowledge base. They should be revisited and updated when significant new documentation or patterns are established.
 *   **Operationalizing Knowledge:** The most effective way to enforce architectural decisions is to translate them from static documents into active, operational guardrails, such as AI memories and mandatory process steps (e.g., PR checklists).
+*   **Tactical Errors Have Strategic Impact:** Seemingly minor, preventable errors—such as a mismatched property name in a template or an incorrect file path—can halt development and debugging cycles. This highlights the value of careful, systematic verification and reinforces the need for AI assistance in catching these issues proactively.
 *   **Value of Advanced Reviews:** A second, deeper review using alternative mental models after initial planning is highly effective at uncovering systemic, cross-cutting risks that may not be apparent at the individual task level.

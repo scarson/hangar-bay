@@ -23,7 +23,9 @@
     *   *Guidance for Cascade: Briefly explain how the achieved outcomes of this phase contribute to the broader strategic goals of the Hangar Bay project. This reinforces the "why" behind the phase's work.*
     *   [Explanation of strategic contribution]
 
-## 2. Key Features & Infrastructure: Design vs. Implementation
+## 2. Key Features & Infrastructure Delivered
+
+<!-- AI_NOTE: For this section, create an 'Actionable Index'. Don't just list features; provide direct, relative links to the key files, design documents, or specific lines of code that represent the implementation. This makes the review a useful navigational tool. -->
 
 *Guidance for Cascade: Detail the major deliverables and critically compare the initial plans with the final implementations. Focus on the rationale for any significant differences.* 
 
@@ -38,13 +40,17 @@
         *   **Impact (Positive/Negative/Neutral):** [Consequence of this variance on cost, timeline, quality, maintainability, etc.]
     *   **(Add more features/components as needed)**
 
-## 3. Technical Learnings & Discoveries
+## 3. Key Technical Decisions & Rationale
+
+<!-- AI_NOTE: Focus on the 'Why'. For each major decision, explain the context, the alternatives considered, and the reasons for the final choice. This is crucial for future maintainers and for avoiding re-litigating past decisions. -->
 
 *Guidance for Cascade: This section is crucial for capturing deep technical insights. Focus on challenges, solutions, and the broader implications for future work and your own learning.* 
 
 *   **3.1. Key Technical Challenges & Resolutions:**
     *   **Challenge 1:** [Brief description of the technical problem encountered]
-        *   **Resolution/Workaround:** [Detailed explanation of the solution implemented, including code snippets or architectural diagrams if helpful]
+        *   **Resolution/Workaround:** [Detailed explanation of the solution implemented, including code snippets
+
+<!-- AI_NOTE: Use concrete 'before' and 'after' code snippets to illustrate significant refactors or the implementation of new patterns. This provides clear, unambiguous evidence of the change and its benefits. -->
         *   **Actionable Learning & Future Application (Cascade & Team):** *Guidance for Cascade: Detail not just the technical fix, but the broader principle or pattern learned. How will this learning be applied proactively in future, similar situations by both Cascade and human team members? Be specific about future actions, design considerations, or checks to perform.* 
             *   [Specific, actionable learning and its future application]
     *   **(Add more challenges as needed)**
@@ -126,6 +132,8 @@
     *   [Any tasks that were planned for this phase but deferred, with reasons for deferral]
 
 ## 8. Recommendations for Subsequent Phases
+
+<!-- AI_NOTE: Recommendations must be specific, actionable, and prioritized. Instead of 'Improve testing', write 'Increase unit test coverage for the `AuthService` from 60% to 85%, focusing on edge cases for token expiration.' Create tickets or task stubs if possible. -->
 
 *Guidance for Cascade: Translate the learnings from this phase into actionable recommendations for the future. Be specific and strategic.* 
 

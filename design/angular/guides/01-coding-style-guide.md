@@ -17,7 +17,7 @@ Referenced from: Angular Style Guide (`llms-full.txt` positions 6+)
 ### 2.1. File Names
 
 -   **General:** Separate words in file names with hyphens (`-`). Example: `user-profile.component.ts`.
--   **Components:** `[name].component.ts`, `[name].component.html`, `[name].component.scss`.
+-   **Components:** `[name].ts`, `[name].html`, `[name].scss`. The modern Angular CLI omits the `.component` infix for standalone components by default. We will follow this default convention. The class name should also omit the `Component` suffix (e.g., `class UserProfile` not `class UserProfileComponent`).
     -   Example: `hangar-bay-status.component.ts`
 -   **Directives:** `[name].directive.ts`.
     -   Example: `highlight-on-hover.directive.ts`
@@ -33,7 +33,7 @@ Referenced from: Angular Style Guide (`llms-full.txt` positions 6+)
 
 ### 2.2. TypeScript Identifiers
 
--   **Classes, Interfaces, Enums, Type Aliases:** Use PascalCase. Examples: `UserProfileComponent`, `Hangar`, `LoadingState`, `AppConfig`.
+-   **Classes, Interfaces, Enums, Type Aliases:** Use PascalCase. Examples: `UserProfile` (for a component), `Auth` (for a service), `Hangar`, `LoadingState`, `AppConfig`.
 -   **Functions, Methods, Properties, Variables:** Use camelCase. Examples: `getUserProfile`, `hangarName`, `isLoading`, `appTitle`.
 -   **Constants:** Use `UPPER_SNAKE_CASE` for true constants (immutable, globally available values). For `readonly` properties or configuration values, camelCase is often preferred if they are not global constants in the traditional sense.
     -   Example: `MAX_HANGAR_CAPACITY = 100;`
@@ -135,6 +135,35 @@ Referenced from: Angular Style Guide (`llms-full.txt` positions 9+)
     ```
 
 ### 5.5. Lifecycle Hooks
+
+-   **Implement Interfaces:** When using lifecycle hooks (e.g., `OnInit`, `OnDestroy`), implement the corresponding interface (e.g., `implements OnInit`).
+-   **Keep Simple:** Lifecycle hook methods should be kept lean. Delegate complex logic to other methods or services.
+-   **`ngOnChanges`:** Use sparingly. Signals often provide a more direct way to react to input changes. If used, ensure logic is efficient as it can fire frequently.
+
+### 5.6. Component Decorator and Template Syntax
+
+-   **`styleUrl` (Singular):** For standalone components, always use the singular `styleUrl` property in the `@Component` decorator. The plural `styleUrls` is a legacy pattern associated with NgModules.
+    ```typescript
+    // PREFER (for standalone components)
+    @Component({
+      ...,
+      styleUrl: './user-profile.component.scss'
+    })
+
+    // AVOID
+    @Component({
+      ...,
+      styleUrls: ['./user-profile.component.scss']
+    })
+    ```
+-   **Standard Component Tags:** In Angular templates, always use standard, explicit opening and closing tags for components. Do not use self-closing tags, as this is not valid Angular template syntax and can lead to parsing errors.
+    ```html
+    <!-- PREFER -->
+    <hb-user-profile></hb-user-profile>
+
+    <!-- AVOID -->
+    <hb-user-profile />
+    ```
 
 -   **Implement Interfaces:** When using lifecycle hooks (e.g., `OnInit`, `OnDestroy`), implement the corresponding interface (e.g., `implements OnInit`).
 -   **Keep Simple:** Lifecycle hook methods should be kept lean. Delegate complex logic to other methods or services.

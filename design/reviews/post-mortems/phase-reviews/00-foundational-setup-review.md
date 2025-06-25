@@ -31,32 +31,36 @@
         *   Angular project initialized (`hangar-bay-frontend`) with SCSS and routing.
         *   Prettier and ESLint configured for code formatting and linting.
         *   Angular environment files (`environment.ts`, `environment.prod.ts`) structured for configuration.
-    *   **Project Root & General:**
-        *   Comprehensive root `.gitignore` file created and updated for PDM.
-        *   Main `README.md` updated with detailed setup instructions for both PDM-based backend and Angular frontend.
-        *   `design/memory-index.md` created and populated.
-        *   `design/risks.md` created and populated with initial risk (PERF-001).
-        *   `design/design-log.md` updated with relevant decisions (e.g., Angular CLI options).
+    *   **Version Control:** (`.gitignore`)
+        *   *Why?* A comprehensive `.gitignore` at the project root is critical for keeping the repository clean of local environment files, IDE settings, and sensitive information.
+*   **Project Documentation:** (`README.md`)
+        *   *Why?* The root `README.md` is the primary entry point for any developer. It must contain clear, up-to-date instructions for setting up and running all parts of the project.
+        *   `design/specifications/memory-index.md` created and populated.
+        *   `design/specifications/risks.md` created and populated with initial risk (PERF-001).
+        *   `design/meta/design-log.md` updated with relevant decisions (e.g., Angular CLI options).
         *   Strategy for production secrets management documented.
 *   **Deviations/Scope Changes:**
     *   The backend dependency management evolved from an initial `requirements.txt` (implied in early 00.1 thoughts) to a full PDM migration (Task 00.3), which was a significant enhancement within this foundational phase.
 
 ## 2. Key Features & Infrastructure Delivered
 
+This section details the foundational components established during Phase 0, providing both a summary of what was built and the rationale for key technology choices.
+
 *   **Backend Project Foundation (`app/backend/`):**
-    *   PDM setup: `pyproject.toml`, `pdm.lock`, `.venv` (managed by PDM).
-    *   Core application stack dependencies installed (FastAPI, Uvicorn, Pydantic, SQLAlchemy, etc.).
-    *   Development tooling: `flake8`, `black` integrated via PDM scripts.
-    *   Configuration: Pydantic `BaseSettings` in `src/fastapi_app/core/config.py`, `.env.example`.
-    *   Basic `src` layout for application code (`src/fastapi_app/`).
+    *   **Dependency Management (`pyproject.toml`):** Migrated to PDM, a modern, all-in-one Python project manager for robust dependency resolution and environment management. Core dependencies (FastAPI, Uvicorn, SQLAlchemy, etc.) are now managed via `pyproject.toml` and `pdm.lock`.
+    *   **Development Tooling:** Integrated `flake8` and `black` for linting and formatting, with convenient run scripts (`lint`, `format`, `dev`) configured in `pyproject.toml`.
+    *   **Configuration (`src/fastapi_app/core/config.py`, `.env.example`):** Implemented a type-safe configuration system using Pydantic's `BaseSettings`. This validates environment variables on startup, preventing common runtime errors. An `.env.example` file provides a clear template for local setup.
+    *   **Application Structure:** Established the basic `src` layout for application code (`src/fastapi_app/`).
+
 *   **Frontend Project Foundation (`app/frontend/angular/`):**
-    *   Angular CLI project: `hangar-bay-frontend` with SCSS & routing.
-    *   Development tooling: Prettier, ESLint configured.
-    *   Configuration: `src/environments/environment.ts` and `src/environments/environment.prod.ts`.
+    *   **Framework Choice:** Initialized a new project using the Angular CLI. Angular was chosen as a robust, feature-rich framework suitable for building the planned scalable single-page application.
+    *   **Core Setup:** The project (`hangar-bay-frontend`) was configured with SCSS for styling and a foundational routing module.
+    *   **Development Tooling:** Configured Prettier and ESLint to enforce consistent code style and quality.
+    *   **Configuration:** Structured environment-specific settings using Angular's `src/environments/environment.ts` and `src/environments/environment.prod.ts` files.
+
 *   **Project-Wide Infrastructure:**
-    *   Version Control: Comprehensive `.gitignore` at project root.
-    *   Documentation: Updated `README.md` with PDM and Angular setup; task-specific documentation for Phase 0.
-    *   Design Artifacts: Initial `design/memory-index.md`, `design/risks.md`, and updates to `design/design-log.md`.
+    *   **Version Control (`.gitignore`):** A comprehensive `.gitignore` was established at the project root. This is critical for keeping the repository clean of local environment files, IDE settings, build artifacts, and sensitive information.
+    *   **Documentation (`README.md`, `design/`):** The root `README.md` was updated to serve as the primary entry point for developers, with clear instructions for setting up both backend and frontend environments. Initial design artifacts were created, including `design/specifications/memory-index.md`, `design/specifications/risks.md`, and the `design/meta/design-log.md`.
 
 ## 3. Technical Learnings & Discoveries
 
@@ -75,6 +79,12 @@
         *   **Resolution:** Deleted old conflicting `.venv` directory before PDM initialization.
     *   **Challenge (00.3):** `pdm run dev` (Uvicorn) failed with `ModuleNotFoundError` for `fastapi_app`.
         *   **Resolution:** Updated Uvicorn script in `pyproject.toml` to use `--app-dir src`.
+        *   **Illustrative Example (`pyproject.toml`):**
+            ```toml
+            [tool.pdm.scripts]
+            # ... other scripts
+            dev = "uvicorn fastapi_app.main:app --reload --app-dir src"
+            ```
 *   **AI/Cascade Learning:**
     *   For new projects, always start with a comprehensive `.gitignore`; suggest `gitignore.io` or similar generators.
     *   For Python backend projects, strongly recommend PDM (or Poetry) over basic `venv` + `requirements.txt` for improved dependency management and tooling.
