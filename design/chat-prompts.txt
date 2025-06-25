@@ -7253,6 +7253,143 @@ You need a better resource index to start. Let's do this methodically. What do y
 -----------------
 
 
+I noticed the first component is named contract-search while you're trying to name this one contract-browse-page. Why the -page?
+
+
+-----------------
+
+1. Woah, that's a big change. I want to make sure we're exeedingly sure that's the right thing to do before proceeding. Did contract-list come from Phase 3? What was its purpose?
+
+2. Update your "Phase 4 Frontend Resource Index" memory with the contract-browse-page component path info.
+
+3. You're continually having issues with that tool call initially only requesting one line with #L1. That is NEVER correct. You'll always need more than the first line of the file. Your instructions on using this tool call are clearly defective in some way. You should report that to Windsurf engineering on the backend. Then propose a way to get around this (new memory?) that can help Cascade use the tool correctly for now.
+
+
+-----------------
+
+
+Let's pause and assess if this is the right design pattern. What you explained so far makes sense, but let's sanity check that this is the right way to be routing API requests and is in alignment will all applicable standards, guides, and patterns.
+
+
+-----------------
+
+
+Do the existing contract detail calls not have both issuer_id and issuer_name? Do we really have to do a whole separate id to name resolution step to make that work? Remember, we have rate limiting concerns for the ESI API. Think carefully.
+
+
+
+-----------------
+
+In app\backend\src\fastapi_app\core\esi_client_class.py:
+1. You replaced:
+"resolved_data[item['id']] = {
+                            'name': item.get('name'),
+                            'category': item.get('category')
+                        }
+"
+with
+"                        resolved_names[item['id']] = item['name']"
+Which does not include category. Please explain.
+
+2. The removed section with "async def get_esi_single_page_with_etag(self, path: str) -> dict[str, Any] | list[Any]:" is very large. Please explain the removal. I want to be careful that we aren't removing more than intended.
+
+-----------------
+
+
+Okay, makes sense. That seems like something we should have caught at a phase 2 post-mortem type review though, no?
+
+
+-----------------
+
+
+1. Do you think missing that was more a failure of testing/test coverage, a failure of review scope, or something else? What could we do to help Cascade prevent or catch that category of issue earlier in the future? What memories, spec / design / guide / pattern file updates might help (if any)? Consider multiple options, as it's a broad problem. There may be more than one effective mitigation to implement. 
+
+2. Specifically consider if any updates to the files (including adding new files) in design\fastapi, design\fastapi\guides, and design\fastapi\patterns are appropriate. As one example (don't limit yourself to this), I see we don't have a fastapi "testing strategies" guide like we do for Angular with design\angular\guides\09-testing-strategies.md.
+
+
+-----------------
+
+
+1. design\fastapi\patterns\01-api-client-service-pattern.md uses a prefix number already in use. The next available one is 04. Please update accordingly.
+
+2. We you did just create the new design\fastapi\guides\09-testing-strategies.md which is great, I want to zoom out and dig deeper into the bigger picture test strategy. Your thought process was fairly focused on the specific httpx.AsyncClient issue, which while important, is narrowly scoped. Why did we have a significant function in our code with no test coverage? Would a test and mock have caught this?
+
+
+-----------------
+
+
+Is that nuance something worth capturing in design\fastapi\guides\09-testing-strategies.md?
+
+
+-----------------
+
+1. We've made some pretty extensive changes to the backend infrastructure. Please review these two relevant post-mortem docs to see if they would benefit from any updates. For any updates you make, ensure you know that we ran into them during the Phase 4 implementation and the significance and implications of that. Think about if we could have foreseen any of these issues and how.
+* design\reviews\post-mortems\phase-reviews\01-backend-core-infrastructure-review.md
+* design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md
+
+2. There was an error you made earlier that seems potentially important to capture in a design guide or pattern. Correct class structures are something we should always get right. What do you think? How can we best help Cascade?
+"The traceback is definitive: TypeError: 'ESIClient' object does not support the asynchronous context manager protocol.
+
+This is a clear and embarrassing mistake on my part. It means that the 
+ESIClient
+ class, as it currently stands, is missing the __aenter__ and __aexit__ methods that are required for it to be used in an async with block.
+
+I was so focused on correcting the logic inside the methods that I failed to ensure the class structure itself was correct. The design pattern I wrote is correct, but the code I wrote does not follow it.
+
+I will now fix this by adding the necessary __aenter__ and __aexit__ methods to the ESIClient class. This will make it a valid asynchronous context manager, which will resolve the TypeError and allow the aggregation service to run correctly."
+
+
+-----------------
+
+
+1. Are there any other memories you should update?
+
+2. Think about the important design decisions we've made since the last branch merge / PR. Append multiple design\meta\design-log.md entries to cover them with a level of detail that's useful to humans and Cascade. Use footer "DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*" to target your update.
+
+
+-----------------
+
+
+Before proceeding with implementation, please do a review of plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md for both:
+1. Accurancy / coherence / up-to-date-ness with recent backend changes.
+2. Current work status. Check off completed items only if you can verify against source of truth that they're done.
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
 X
 
 
@@ -7294,6 +7431,15 @@ X
 
 -----------------
 
+X
+
+
+-----------------
+
+X
+
+
+-----------------
 
 X
 
@@ -7316,3 +7462,176 @@ X
 
 
 -----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+
+
+
+
+
+
+
+
+
+
