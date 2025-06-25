@@ -277,7 +277,17 @@ describe('UserProfileComponent', () => {
     -   `TestBed` is configured to include the actual child components (not mocks) to test their interaction.
 -   These tests are more complex and slower than unit tests but provide higher confidence in component collaborations.
 
-## 7. End-to-End (E2E) Testing
+## 7. Zoneless Testing Considerations
+
+**CRITICAL:** Our Hangar Bay Angular application is configured to be **zoneless**. This has a direct and important impact on how we write asynchronous tests.
+
+-   The Angular testing utilities `fakeAsync`, `tick()`, and `waitForAsync` **are fundamentally dependent on `zone.js`** to function.
+-   **DO NOT USE** `fakeAsync`, `tick()`, or `waitForAsync` in this project. Their use will lead to errors and contradicts our core architecture.
+-   **Correct Approach for Async Tests:**
+    -   For tests involving `HttpClientTestingModule`, no special async utilities are needed. The `HttpTestingController`'s `.flush()` method makes the corresponding `subscribe` or `toPromise` block execute synchronously within the test's scope.
+    -   For other asynchronous operations (e.g., those involving `setTimeout` or other non-Angular promises), use standard JavaScript `async/await` with `fixture.detectChanges()` or Jasmine's `done` callback pattern as shown in the service testing example.
+
+## 8. End-to-End (E2E) Testing
 
 -   **Purpose:** Simulates real user scenarios by interacting with the application through the browser UI.
 -   **Tools:** Cypress, Playwright, Protractor (deprecated for new Angular projects).
