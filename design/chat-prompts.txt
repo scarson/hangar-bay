@@ -6119,36 +6119,96 @@ May not be accurate for Angular 20. Please assess.
 -----------------
 
 
-X
+1. Here's your "Thought Process":
+"Reviewing Inconsistencies
+
+I'm meticulously dissecting the user's critique. It appears my explanations of Angular CLI's naming rules have some gaps. My immediate task is to cross-reference each of their concerns with the official documentation, ensuring I haven't provided misleading information or overlooked nuances. I need to develop a clear, concise summary of the naming conventions to present.
+
+Clarifying the Errors
+
+I've identified my mistakes. The user's observations are spot on: my explanations of Angular CLI's naming conventions were outdated and inconsistent, particularly regarding service file and class names. My response to the user's comments was incorrect. I now need to directly acknowledge these errors and get to the heart of what is correct in the current version of Angular.
+
+Assessing the Feedback
+
+I'm now parsing the user's concerns in detail. They've pinpointed significant errors in my explanations and actions regarding the Angular CLI's naming conventions. My immediate plan is to explicitly admit my mistakes. Then, I'll thoroughly research the current default behaviors in Angular 17/18, especially regarding the .service suffix for files and the Service suffix for class names. I will need to resolve the created inconsistencies.
+
+Addressing the Errors
+
+I've received some very insightful feedback and must amend my prior responses. The user's observations highlight significant inaccuracies regarding Angular CLI's service naming conventions. I need to correct these inaccuracies immediately, including an investigation into Angular 17/18 standards. My primary action is to publicly acknowledge my mistakes. I'll then perform a targeted web search. After this, I'll provide a more accurate explanation of current Angular service naming defaults.
+
+Revising the Approach
+
+I'm now acknowledging the substantial errors in my prior statements and actions, particularly concerning Angular CLI's service naming conventions. My initial explanations were based on an outdated understanding. Consequently, my responses have been inconsistent, especially in the test file. The primary goal is to adopt the prevailing standards in Angular 17/18. I will perform a search, synthesize results, and correct the file names and the class name used in my spec.
+
+Defining the Corrections
+
+I'm now fully acknowledging the errors in my explanations of the Angular CLI's service naming conventions. The user has correctly identified inconsistencies. My plan now is to directly admit my mistakes and research current defaults, specifically in Angular 17/18. I'll search the web to confirm my hypothesis and identify how to fix the files."
+
+Lots of mentions of Angular 17/18. Recall that this is an Angular 20 project. Please specifically re-assess for alignment with Angular 20.
+
+2. You said "My explanation was wrong. The CLI no longer adds the .service infix to the filename or the 
+Service suffix to the class name. The modern approach favors cleaner names where the context (being in a services directory) and the name itself (ContractApi) make its purpose clear."
+
+Is this applicable to the .component names as well? See files under app\frontend\angular\src\app. Should those be in a separate components directory to provide the aforementioned context? Consult Angular 20 standards. Do not guess.
+
+-----------------
+
+
+src/app/
+  |- core/          (Singleton services, guards, core app logic)
+  |- features/
+  |  |- contracts/   (All files for the contracts feature)
+  |  |  |- contract-list/
+  |  |  |  |- contract-list.component.ts
+  |  |  |  |- contract-list.component.html
+  |  |  |- contract-details/
+  |  |  |- contract.model.ts
+  |  |  |- contract.api.ts
+  |  |- user-profile/
+  |- shared/        (Reusable components, pipes, directives)
 
 
 -----------------
 
 
-X
+We have a zoneless app and do not have or want zone.js. Why did you forget that? I'm worried that all our extensive design docs, specs, and memories about this aren't working. You have a memory called "Angular Architecture: Zoneless by Default". 
 
 
 -----------------
 
 
-X
+1. Please carefully review all of design\angular\guides\09-testing-strategies.md (301 lines). Assess it for any changes that are appropriate in light of the challenges we just ran into. Conversely, would reading the existing content before writing tests have helped avoid some of the issues we just ran into?
+
+2. I think we should capture this Angular directory structure somewhere persistent:
+"src/app/
+  |- core/          (Singleton services, guards, core app logic)
+  |- features/
+  |  |- contracts/   (All files for the contracts feature)
+  |  |  |- contract-list/
+  |  |  |  |- contract-list.component.ts
+  |  |  |  |- contract-list.component.html
+  |  |  |- contract-details/
+  |  |  |- contract.model.ts
+  |  |  |- contract.api.ts
+  |  |- user-profile/
+  |- shared/        (Reusable components, pipes, directives)"
+  
+Where would be most helpful for Cascade? It should also be somewhere referencable for humans.
 
 
 -----------------
 
-X
+
+In design\angular\00-angular-architecture-overview.md, the old directory structure had "`shared/data-access/` (Reusable services)"
+What's the equivalent in the new one?
 
 
 -----------------
 
 
-X
+I noticed you said "core/: This is the new home for any truly application-wide singleton services. These are services that are instantiated once and used across multiple features (e.g., AuthService, LoggingService, a hypothetical NotificationService). This is the direct equivalent of the old shared/data-access/ concept.".
 
-
------------------
-
-
-X
+Recall that you told me modern Angular 20 has moved away from having "Service" in the names, instead relying on directory context. Does that apply to those?
 
 
 -----------------

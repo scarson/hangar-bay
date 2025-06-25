@@ -88,7 +88,7 @@ src/app/
 
 **File Naming Conventions:**
 - Components: `*.component.ts`
-- Services / APIs: `*.api.ts` or `*.service.ts`
+- Services / APIs: `*.api.ts` or `*.service.ts`. The class name should omit the `Service` suffix (e.g., `class Auth` in `auth.service.ts`, not `class AuthService`). The context is provided by the file location and usage.
 - Models / Interfaces: `*.model.ts`
 - Guards: `*.guard.ts`
 - Pipes: `*.pipe.ts`
