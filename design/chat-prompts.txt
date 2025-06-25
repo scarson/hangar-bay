@@ -6214,7 +6214,7 @@ Recall that you told me modern Angular 20 has moved away from having "Service" i
 -----------------
 
 
-X
+First, I noticed plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md has all but one cross-cutting review checkbox checked. That's not correct. Review the CCC list, and uncheck any pending review items (all except N/A ones) so we know we have to do them later. Then proceed.
 
 
 -----------------
