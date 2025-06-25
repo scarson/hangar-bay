@@ -5249,7 +5249,7 @@ How are you going to remember to ask that "first question"? Do you have a memory
 
 Me
 
-Please update design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md with a detailed description of the debug logging techniques you used to identify, narrow down, and ultimately solve the Pickling error in "Challenge 6" with object ID comparsions It was very methodical and successsful and I think Cascade can learn from writing it down.
+Please update design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md with a detailed description of the debug logging techniques you used to identify, narrow down, and ultimately solve the Pickling error in "Challenge 6" with object ID comparsions. It was very methodical and successsful and I think Cascade can learn from writing it down.
 
 Revert
 Of
@@ -5263,144 +5263,640 @@ Press Enter again to interrupt and send
 -----------------
 
 
-X
+Windsurf recently introduced a new "Planning Mode" feature in beta. I have enabled the feature. What do you know about it?
 
 
 -----------------
 
 
-X
+We've done extensive work building out files with task implementation plans, such as the four for the next MVP implemenation phase under plans\implementation\phase-03-frontend-core-infrastructure. How do the planning mode files you'd generate differ from what we have (if they do)?
 
 
 -----------------
 
 
-X
+The next MVP implementation phase is 03 Frontend Core Architecture. We did a pre-mortem for it earlier (design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem.md), prior to the improved pre-mortem review process reflected in the updated template (design\reviews\pre-mortems\00-pre-mortem-review-template.md). It was also prior to our significantly enhanced Angular design documentation (all files under design\angular and its subdirectories). 
+
+Review all aforementioned documentation, then suggest how we can improve the phase 3 pre-mortem going forward. Think about multiple ways to best leverage this information for Cascade and compare them against each other. Justify why you think the proposal would be effective in helping Cascade implement the Hangar Bay project.
 
 
 -----------------
 
 
-X
+The new phase 3 v2 pre-mortem does not yet have some of the newer pre-mortem assessment areas described in design\reviews\pre-mortems\phase-02-backend-f001-pre-mortem.md because we haven't done an "out of the box" review. Please conduct a pre-mortem review for phase 3 that incorporates the out of the box sources of inspiration.
+
+With those sources of inspiration in mind,  I'd like you to try a "think outside the box" review round.
+Explicitly review the current contents of all four task files in the plans\implementation\phase-03-frontend-core-infrastructure directory, then perform another round of the task plan review process we just did.
 
 
 -----------------
 
 
-X
+Now let's update our v2 pre-mortem review procedure (acknowledging some overlap with the bigger picture "out of the box" reviews we just did) for phase 3.
+Explicitly review the current contents of all four task files in the 
 
-
------------------
-
-
-X
 
 
 -----------------
 
 
-X
+First, the updates to design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem-v2.md failed. There are no changes to the file, which is still 72 lines as it was before. 
+
+Second, we are engaged in a review phase. We're going to do additional rounds of this. Why did you proceed to implementation before I had a chance to review?
 
 
 -----------------
 
 
-X
+1. As a clarification, you are welcome to take additional *review* steps you think would be useful without asking for approval. I just don't want to jump into the actual implementation until I'm satisfied we're done with the review *phase*.
+
+2. I don't want the structure of our pre-mortems to deviate from the new template in design\reviews\pre-mortems\00-pre-mortem-review-template.md, as inconsistency likely reduces the utility of the set of resources. The phase 3 v2 pre-mortem at design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem-v2.md keeps the structure of the template up through section 4, then loses it. For example, the template has section 7 "## 7. Key Decisions & Changes Resulting from this Review" but the phase 3 v2 doc has section "## 7. Advanced "Out-of-the-Box" Review (Post-Task-Plan Analysis)". This is a mess and we need to fix it. Start by making sure all the section in the template are in design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem-v2.md, then reorganize any content to map into the template sections as necessary.
 
 
 -----------------
 
 
-X
+I recall we set up our Angular project root with the AngularCLI to not be zoneless (so it uses ZoneJS). Angular appears to be strongly moving in a zoneless direction. However, I noticed design\angular\00-angular-architecture-overview.md section "## 11. References" lists "*   **Zoneless Angular Guide:** [https://angular.dev/guide/zoneless](https://angular.dev/guide/zoneless)".
+
+1. Should we have a zoneless Angular frontend app?
+2. Do we need to make any changes to the Angular CLI project setup to be zoneless?
+3. Are our task plans compatible with zoneless?
+4. Is our Angular design documentation under design\angular and design\angular\guides aligned with a zoneless approach? Read all the files - do not assume.
+
+Report your findings before taking any actions.
 
 
 -----------------
 
 
-X
+You appear to have completely forgotten the prior command. Here it is again:
+
+I recall we set up our Angular project root with the AngularCLI to not be zoneless (so it uses ZoneJS). Angular appears to be strongly moving in a zoneless direction. However, I noticed design\angular\00-angular-architecture-overview.md section "## 11. References" lists "*   **Zoneless Angular Guide:** [https://angular.dev/guide/zoneless](https://angular.dev/guide/zoneless)".
+
+1. Should we have a zoneless Angular frontend app?
+2. Do we need to make any changes to the Angular CLI project setup to be zoneless?
+3. Are our task plans compatible with zoneless?
+4. Is our Angular design documentation under design\angular and design\angular\guides aligned with a zoneless approach? Read all the files - do not assume.
+
+Report your findings before taking any actions. Remember, do NOT proceed to the implementation phase without explicit approval from the USER. We are still in the design review stage.
 
 
 -----------------
 
 
-X
+Recommendations & Next Steps
+Adopt Zoneless: I strongly recommend we officially proceed with a zoneless Angular architecture. It aligns with your detailed design documents, leverages the latest Angular features, and will result in a more performant application.
+Reconcile Documentation: I recommend we update 
+00-angular-architecture-overview.md
+ to remove the sections describing the legacy NgModule-based architecture. This will create a single, consistent source of truth.
+Update the Implementation Plan: Before generating any code, I will first revise the task plan (
+03.3-basic-layout-routing-navigation.md
+) to reflect a standalone component architecture, as specified in the guides.
 
 
 -----------------
 
 
-X
+Your updates to plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md lost the task phase section structure. It dropped "## 4. AI Implementation Guidance" and "## 5. Definition of Done", both critical sections.
+
+
+-----------------
+
+Do not proceed with ANY implementation steps until the USER says so. We are not done with this zoneless design review, and once the review phase is done we'll git commit our work before proceeding with any implementation.
+
+1. Section used to include this styling guidance under "**Implement Basic Navigation:**":
+"    *   Style the header and navigation minimally.
+*   [ ] **Styling for Layout:**
+    *   Add basic SCSS. For truly global styles (e.g., `body` background, typography resets, main content area flexbox structure around `<router-outlet>`), use `app/frontend/src/styles.scss`. For styles specific to the `HeaderComponent` or `FooterComponent`'s internal structure and appearance, use their respective encapsulated SCSS files (e.g., `header.component.scss`). Be mindful of Angular's default view encapsulation."
+Is this still relevant?
+
+2. The content of "### 7.3. Testing" previously included:
+"**(Pre-Mortem v2 Recommendation)** Create specific integration tests that verify the application's routing configuration, ensuring all lazy-loaded routes resolve correctly without runtime errors. This provides a safety net against typos in `loadChildren` paths."
+
+3. The content of "### 7.4. Accessibility (A11y)" previously included:
+"Consider `aria-label` for navigation if multiple nav regions exist."
+Is this still relevant?
+
+4. The content of "### 7.5. Internationalization (I18n)" includes:
+"All user-facing text (e.g., "Browse Contracts" in the header) is currently hardcoded. This is acceptable for the MVP but should be marked with `// TODO: i18n` for a future internationalization pass." and "**Notes:** Minimal impact for this task, but hardcoded strings are noted as technical debt for future i18n."
+
+What would be involved in setting the MVP up for internationalization from the start to avoid this technical debt? Should we do that? Why or why not?
+
+-----------------
+
+
+1. Yes, make both changes to plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md.
+
+2. Then, carefully review:
+* plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-core-module-setup.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-core-module-setup.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md
+
+for any appropriate changes for zoneless, i18n, testing, or anything else potentially relevant to recent design decisions. Take special case to ensure any updates are internally consistent between all the task files. As one example, make sure the tasks you outlined under this are captured in the appropriate location:
+"What's involved in setting up i18n for the MVP?" 
+
+Library: We would use Angular's built-in @angular/localize package. It's the official, high-performance solution that works seamlessly with Angular's compiler.
+Configuration: We would configure angular.json to enable i18n and define the source locale (e.g., en-US).
+Markup: Instead of writing plain text in HTML, we would mark strings for translation. For example: <a routerLink="/browse-contracts" i18n>Browse Contracts</a>.
+Translation Files: The build process would automatically extract these marked strings into a source file (e.g., messages.xlf). For the MVP, we would only have this source file. Adding another language later would simply involve copying this file (e.g., to messages.es.xlf) and translating the content."
+
+That's just an example. Make sure to EXTENSIVELY consider other areas as well.
+
+
+-----------------
+
+0. Preface instruction. In each task file, section "## 7. Cross-Cutting Concerns Review" must always contain each CCC item from plans\implementation\00-mvp-implementation-task-template.md. If an item if N/A, mark it as such, but NEVER remove it.
+
+0.1. I noticed you're getting the paths of the spec files wrong. For example, saying `design/accessibility-spec.md` instead of `/design/specifications/accessibility-spec.md`. I think this suggests you're getting the paths from an old memory from before we moved the spec files under /design/specifications for better organization. Do you know which memory so we can update it?
+
+1. In plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md this Note line seems outdated now:
+"### 7.5. Internationalization (I18n)
+*   **Notes:** Minimal impact for this task, but hardcoded strings are noted as technical debt for future i18n"
+Please update it appropriately.
+
+2. In plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md:
+2.1 Section "## 3. Key Implementation Steps" used to include:
+"*   [ ] **Install Angular CLI:**
+    *   Ensure Angular CLI is installed globally or use `npx @angular/cli`.
+*   [ ] **Prepare Frontend Directory and Generate Application:**
+    1.  Ensure the target parent directory `c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\` exists. (Create it if it doesn't: `mkdir app` from the project root `c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\`)
+    2.  Navigate into it: `cd c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\`
+    3.  Run `ng new frontend --style=scss --routing=true --strict=true --standalone=false --prefix=hgb`.
+        *   This will create the Angular project at `c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\frontend\`.
+        *   The Angular application name within `angular.json` will be `frontend`.
+*   [ ] **Verify Component Prefix in `angular.json`:**
+    *   Open `angular.json` (located at the Angular project root, e.g., `c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\frontend\angular.json`).
+    *   Confirm that under `projects.frontend.prefix` (or your app name if different), the value is `hgb`.
+*   [ ] **Initial Project Structure Review:**
+    *   Familiarize with the generated Angular project structure (e.g., `app/frontend/src/`, `app/frontend/src/app/`, `app/frontend/src/assets/`, `app/frontend/src/environments/`).
+*   [ ] **Linting and Formatting Setup (within `app/frontend/` directory):**
+    *   Angular CLI includes ESLint. Review its configuration (`app/frontend/.eslintrc.json`).
+    *   [ ] **Install Linting/Formatting Dev Dependencies:**"
+Compare with the current section content. Are any of these still relevant and other otherwise covered in the file?
+
+2.2 Section "## 2. Relevant Specifications" used to include "*   `/design/specifications/accessibility-spec.md` (Initial considerations for accessible component structure)" and "*   `/design/specifications/design-spec.md` (Sections: Technology Stack, Frontend Architecture)". Are these still relevant?
+
+3. In plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md:
+3.1. Used to say:
+"### 7.2. Observability
+*   [x] **Structured Logging:** Plan for structured logging. Initial implementation may use `console.debug/error` with consistent formatting, with a view to integrate a more formal logging library later if needed.
+*   [x] **Key Events Logged:** Log initiation of API calls (e.g., `console.debug('Fetching ship contracts with params:', params)`) and successful/failed outcomes.
+*   [x] **Error Logging:** Log API call errors comprehensively in the `catchError` block (e.g., `console.error('API Error fetching [resource]:', error)`), including request context if possible.
+*   [ ] **Correlation IDs:** N/A for initial setup, but plan for future integration via an `HttpInterceptor` if cross-service tracing becomes necessary.
+*   [ ] **Metrics:** N/A for this task (e.g., API call duration, error rates could be future metrics).
+*   **Notes:** Adhere to `/design/specifications/observability-spec.md`. Initial logging will use `console` but should be structured enough to convey context. (Ref: Phase 0 Review - Observability)"
+
+Compare with the current section content. Are any of these still relevant and other otherwise covered in the file?
+
+3.2. Used to say:
+"### 7.3. Testing
+*   [x] **Unit Tests:** Create unit tests for the API service methods using `HttpClientTestingModule` and `HttpTestingController` to mock HTTP responses and verify requests.
+*   [ ] **Integration Tests:** N/A for this service alone; will be part of component integration tests.
+*   [x] **Test Coverage:** Aim for high unit test coverage for the API service logic, including parameter handling and response mapping.
+*   [x] **Test Data Management:** Define mock request parameters and response data within the spec files for tests.
+*   **Notes:** Thoroughly test parameter construction, response mapping, and error handling paths. Specifically include test cases that simulate backend responses with `null` values for optional fields (e.g., `ship_name`) to ensure they are handled gracefully, as required by the pre-mortem. Adhere to `/design/specifications/test-spec.md`. (Ref: Phase 0 Review - Testing)"
+
+Compare with the current section content. Are any of these still relevant and other otherwise covered in the file?
+
+3.3. Used to say:
+"## 5. Definition of Done
+*   `HttpClientModule` is imported and available.
+*   An Angular service for backend communication is created and provided via `CoreModule` (or `providedIn: 'root'`).
+*   The service uses `apiUrl` from environment files.
+*   Initial methods for fetching contract data (as per F001 backend API) are implemented with appropriate TypeScript types.
+*   Basic error handling consideration is in place for API calls.
+*   All new files and code changes are committed to version control."
+
+Compare with the current section content. Are any of these still relevant and other otherwise covered in the file?
+
+3.4 You tried to delete this part of ## 3. Key Implementation Steps:
+"        - Return an `Observable<PaginatedShipContractsResponse>`."
+    *   **Note on Reactive Data (Pre-Mortem v2 Recommendation):** To avoid boilerplate and bugs in consuming components (Phase 4+), services **should not** simply return raw `Observable<T>`. Instead, they **must** manage the `AsyncState` (loading, data, error) internally and expose it via a `Signal`. This provides a clean, consistent, and simple interface for all consumers. For example, a service should expose `state = signal<AsyncState<T>>(...)` and provide a `refresh()` method to trigger the API call.
+*   [ ] **Error Handling Strategy (Initial):**
+    *   Implement a basic error handling approach for API calls using the RxJS `catchError` operator. This should, at a minimum:
+    *   Log the detailed error object (e.g., `HttpErrorResponse`) for debugging purposes (see Observability section below, and refer to `/design/observability-spec.md` for structured logging guidance).
+    *   Transform the error into a form that can be gracefully handled by the calling component (e.g., an `Observable` emitting a custom error object or `null`) or re-throw a new error with relevant context. Avoid directly exposing raw `HttpErrorResponse` objects to the UI layer if they contain sensitive information.
+    *   Follow RxJS best practices for error handling in streams (see `/design/specifications/angular-frontend-architecture.md#5.6`).
+*   A more robust, global error handler (e.g., using an `HttpInterceptor` and potentially a dedicated error handling service) can be planned for a later task. **(Pre-Mortem v2 Recommendation):** The priority of this should be elevated. The interceptor is critical for transforming raw technical errors into a user-friendly state (e.g., via a notification service) and preventing the application from appearing broken when the backend is unavailable.
+
+## 4. AI Implementation Guidance
+
+*   Use strong typing for API request and response objects.
+*   Leverage RxJS operators for handling asynchronous data streams from `HttpClient`.
+*   Keep API services focused; consider separate services for different resource types if the API grows complex.
+*   Ensure the `apiUrl` is correctly sourced from environment files.
+*   **Modern Practices:**
+    *   Utilize the `inject()` function for dependency injection (e.g., `inject(HttpClient)`).
+    *   If the service manages or exposes reactive state derived from API calls, prefer Angular Signals (see `/design/specifications/angular-frontend-architecture.md#6.1` and `#6.2`).
+    *   Adhere to RxJS best practices for stream manipulation and error handling (`/design/specifications/angular-frontend-architecture.md#5`).
+*   **Scalability:** To prevent flooding the backend with requests from rapid user actions (e.g., fast pagination, typing in a search box), implement request management patterns. Use `switchMap` to cancel previous, outdated requests when a new one is initiated. Consider `debounceTime` for input-driven queries."
+
+Which looks potentially like a tool call error. Please review the content again.
+
+4. In plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md:
+4.1 Original:
+"## 5. Definition of Done
+
+*   `HeaderComponent` and `FooterComponent` are created as standalone components.
+*   `AppComponent` is standalone and correctly imports and displays the layout components and `<router-outlet>`.
+*   `app.config.ts` is configured with `provideZoneChangeDetection({ ngZone: 'noop' })`.
+*   `app.routes.ts` is created and configured with `provideRouter` to lazy-load a feature route.
+*   A placeholder standalone component and its associated routes file (`*.routes.ts`) exist for the lazy-loaded feature.
+*   Basic navigation from the header to the placeholder component works correctly.
+*   `zone.js` has been removed from the project's polyfills in `angular.json`.
+*   All new files and code changes are committed to version control."
+
+Compare with the current section content. Are any of these still relevant and other otherwise covered in the file?
+
+4.2. Originally said:
+"### 7.4. Accessibility (A11y)
+*   [x] **Semantic HTML/Structure:** Use `<header>`, `<footer>`, `<nav>`, and `<main>` (around `<router-outlet>`) elements appropriately in `app.component.html`. Use `<h1>` for site title/logo in header if applicable.
+*   [x] **ARIA Attributes:** Add `role="banner"` to header, `role="contentinfo"` to footer, and `role="navigation"` to the nav element.
+*   [x] **Keyboard Navigability:** `routerLink` directives are keyboard-accessible by default.
+*   [ ] **Color Contrast:** To be addressed when styling is applied.
+*   [ ] **Screen Reader Compatibility:** Basic structure should be screen-reader friendly.
+*   [ ] **Alternative Text for Images:** To be addressed if images (e.g., logos) are added.
+*   **Notes:** Establishes the foundational accessibility of the page structure."
+Are any of these still relevant and other otherwise covered in the file?
+
+It currently says:
+"*   [x] **Semantic HTML/Structure:** The plan specifies using `<header>`, `<main>`, and `<footer>` elements, which is a key accessibility practice.
+*   **Notes:** The foundational HTML structure is accessible. Further A11y concerns will be addressed in subsequent tasks."
+
+The note says "Further A11y concerns will be addressed in subsequent tasks.", however there aren't any further tasks in Phase 03. Does this refer to tasks in later phases (04 and beyond)?
+
+
+4.3. Originally said:
+"### 7.5. Internationalization (I18n)
+*   [x] **Semantic HTML/Structure:** Use `<header>`, `<footer>`, `<nav>`, and `<main>` (around `<router-outlet>`) elements appropriately in `app.component.html`. Use `<h1>` for site title/logo in header if applicable.
+*   [x] **ARIA Attributes:** Add `role="banner"` to header, `role="contentinfo"` to footer, and `role="navigation"` to the nav element.
+*   [x] **Keyboard Navigability:** `routerLink` directives are keyboard-accessible by default.
+*   [ ] **Color Contrast:** To be addressed when styling is applied.
+*   [ ] **Screen Reader Compatibility:** Basic structure should be screen-reader friendly.
+*   [ ] **Alternative Text for Images:** To be addressed if images (e.g., logos) are added.
+*   **Notes:** Establishes the foundational accessibility of the page structure."
+
+4.4. Originally said:
+"### 7.1. Security
+*   [ ] **Secure Design:** N/A for basic layout structure.
+*   [ ] **Input Validation:** N/A for static layout components.
+*   [x] **Output Encoding:** Angular's standalone components and templates provide default XSS protection.
+*   [ ] **Authentication/Authorization:** N/A for public routes.
+*   [ ] **Secrets Management:** N/A.
+*   [x] **Dependency Management:** No new *external* dependencies. Angular's router is a core dependency.
+*   **Notes:** Using `routerLink` for internal navigation is a security best practice upheld by this plan. Do not use `href` for internal routes to prevent full page reloads and leverage Angular router security features."
+
+Now it just says "*   **Notes:** No direct security actions in this task.".
 
 
 -----------------
 
 
-X
+We need to address the other task files first before git committing. We'll do these one at a time to avoid timeout errors. First, 3.0.
 
+1. In plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md:
+1.1. ### 7.3. Testing previously said:
+"*   [x] **Integration Tests:** Add a test case to verify the runtime `apiUrl` validation. This test should ensure the application fails with a clear error if the production `apiUrl` is invalid, as specified in the pre-mortem. (Mitigates: Operator's Nightmare risk of silent configuration failure)."  and "*   **Notes:** This task ensures the testing framework is initialized. Writing comprehensive tests will be part of subsequent tasks."
+and now says:
+"*   [ ] **Integration Tests:** N/A for this task." and "*   **Notes:** This task ensures the testing framework is initialized and functional."
+Is that correct?
 
------------------
+1.2. Everything related to Prettier, ESLint, linting, and global styles setup seems to have been removed. For example:
+"*   [ ] **Configure Prettier:** Create a `.prettierrc.json` file in the Angular project root (e.g., `app/frontend/.prettierrc.json`) with preferred settings.
+    *   **AI Prompt:** "Provide a good default `.prettierrc.json` configuration (e.g., single quotes, trailing commas, print width)."
+*   [ ] **Configure ESLint for Prettier Integration:**
+    *   In `app/frontend/.eslintrc.json`, add `'prettier'` and potentially `plugin:prettier/recommended` to the `extends` array (usually as the last items). Ensure there are no rule conflicts.
+    *   **AI Prompt:** "Show how to modify an Angular generated `.eslintrc.json` to correctly integrate `eslint-config-prettier` and `eslint-plugin-prettier`."
+*   [ ] **Add/Verify npm scripts** in `app/frontend/package.json` for linting and formatting (e.g., `"lint": "ng lint"`, `"format": "prettier --write ./**/*.{ts,html,scss,json,md}"`).
+    *   **AI Prompt:** "Show an example `package.json` script section for an Angular project to run ESLint and Prettier, covering relevant file types."
+*   [ ] **Global Styles Setup:**
+    *   Locate `app/frontend/src/styles.scss`.
+    *   Plan for basic global style resets or a base theme structure (e.g., variables for colors, typography). For now, ensure it's usable."
 
-X
+1.3. "## 4. AI Implementation Guidance" originally said:
+"*   Use the Angular CLI for generating components, services, etc., to maintain consistency.
+*   Enable strict mode in Angular for better type checking and catching errors early.
+*   Ensure Prettier and ESLint configurations are compatible to avoid conflicts.
+*   Use a custom component prefix (e.g., `hgb`) for all generated components to avoid naming collisions with third-party libraries."
 
+Compare with the current section content. Are any of these still relevant and other otherwise covered in the file? You added the --standalone flag note but lost the strict mode and Prettier/ESLint ones.
 
------------------
+1.4. "## 3. Key Implementation Steps" originally had:
+"    *   Open `app/frontend/src/environments/environment.ts` (created by `ng new`). By default, it contains `export const environment = { production: false };`.
+    *   Modify it to include `apiUrl`. Example for development: `export const environment = { production: false, apiUrl: 'http://localhost:8000/api/v1' };`.
+    *   Open `app/frontend/src/environments/environment.prod.ts`. By default, it contains `export const environment = { production: true };`.
+    *   Modify it to include `apiUrl`. Example for production (actual URL TBD): `export const environment = { production: true, apiUrl: 'https://api.yourdomain.com/api/v1' };`.
+    *   **Note:** The actual production URL will be finalized later. Use a clear placeholder if the final URL is not yet known. This step ensures the property exists for type-safe access.
+*   [ ] **Add Runtime Verification for Production `apiUrl`:**
+    *   As a risk mitigation measure (see pre-mortem v2), add a simple runtime check in `main.ts` or `app.component.ts` to validate the production `apiUrl`. This check should log a catastrophic error if the URL is missing, malformed, or points to a `localhost` address in a production build (`if (environment.production && (!environment.apiUrl || environment.apiUrl.includes('localhost'))) { ... }`).
+*   [ ] **Generate Initial `SharedModule`:**
+    *   From the Angular project root directory (e.g., `app\frontend\` from the Hangar Bay project root), run: `ng generate module shared`.
+    *   This command will create the module at `app/frontend/src/app/shared/shared.module.ts`.
+    *   This module will initially be empty but establishes the place for future reusable components, directives, and pipes.
+*   [ ] **Verify Application Runs:**
+    *   Run `ng serve` and ensure the default Angular application page loads in the browser."
+	
+All this was removed. Is that correct?
 
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
 
 
 -----------------
 
 
-X
+1. In plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md, please carefully review all your changes from the last two revsions to ensure anything important wasn't removed or relevant detail lost.
+
+1.1. ## 5. Definition of Done (DoD) no longer has:
+"*   Basic global style structure in `styles.scss` is considered (e.g., CSS resets, global font settings).
+*   Custom component prefix (e.g., `hgb`) is configured *and verified* in `angular.json` (e.g., in `app/frontend/angular.json`)."
+Are any of these still relevant and other otherwise covered in the file?
+
+This global styles setup section was also removed and I don't see a replacement:
+"*   [ ] **Global Styles Setup:**
+    *   Locate `app/frontend/src/styles.scss`.
+    *   Plan for basic global style resets or a base theme structure (e.g., variables for colors, typography). For now, ensure it's usable."
+
+1.2. You removed this whole block:
+"    *   Commit the newly generated and configured project files to version control to establish a clean baseline.
+    *   Open `app/frontend/src/environments/environment.ts` (created by `ng new`). By default, it contains `export const environment = { production: false };`.
+    *   Modify it to include `apiUrl`. Example for development: `export const environment = { production: false, apiUrl: 'http://localhost:8000/api/v1' };`.
+    *   Open `app/frontend/src/environments/environment.prod.ts`. By default, it contains `export const environment = { production: true };`.
+    *   Modify it to include `apiUrl`. Example for production (actual URL TBD): `export const environment = { production: true, apiUrl: 'https://api.yourdomain.com/api/v1' };`.
+    *   **Note:** The actual production URL will be finalized later. Use a clear placeholder if the final URL is not yet known. This step ensures the property exists for type-safe access.
+*   [ ] **Add Runtime Verification for Production `apiUrl`:**
+    *   As a risk mitigation measure (see pre-mortem v2), add a simple runtime check in `main.ts` or `app.component.ts` to validate the production `apiUrl`. This check should log a catastrophic error if the URL is missing, malformed, or points to a `localhost` address in a production build (`if (environment.production && (!environment.apiUrl || environment.apiUrl.includes('localhost'))) { ... }`).
+*   [ ] **Generate Initial `SharedModule`:**
+    *   From the Angular project root directory (e.g., `app\frontend\` from the Hangar Bay project root), run: `ng generate module shared`.
+    *   This command will create the module at `app/frontend/src/app/shared/shared.module.ts`.
+    *   This module will initially be empty but establishes the place for future reusable components, directives, and pipes.
+*   [ ] **Verify Application Runs:**
+    *   Run `ng serve` and ensure the default Angular application page loads in the browser."
+I'm not sure that was intended. Please review.
+
+1.3. ### 7.1. Security says "*   [x] **Secrets Management:** Confirmed that Angular `environment.ts` files are used for non-sensitive configuration only." and "*   [x] **Secrets Management:** Confirmed that Angular `environment.ts` files are used for non-sensitive configuration only." and "*   **Notes:** Security is addressed by using Angular CLI's secure defaults and establishing a policy against storing secrets in environment files. All items are marked `[x]` as they have been considered and deemed either addressed or Not Applicable for this task.". 
+
+Remember, we are in the planning stage and have not yet implemented anything. CCC tasks that need to be performed CANNOT be written past tense and marked as complete. We haven't done them yet and if they're written like they're done, Cascade may think they don't need to be checked during the actual implementation review because they're written like they've already happened. Only N/A items should be checked off at this point.
+
+I've rejected most of the CCC section changes. Please fix the security section so it doesn't read that it's already complete.
+
+
+2. In plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-core-configuration.md:
+2.1 "### 7.3. Testing" says:
+"*   **Notes:** Verifying the core application configuration via a unit test is a critical step. All items are marked `[x]` as they have been addressed or deemed N/A." yet also says "*   [x] **Unit Tests:** The plan requires creating a unit test for `app.config.ts` to verify that all essential providers are correctly included.". We haven't implemented anything yet. How can this be checked off?
+
+2.2. ## 4. AI Implementation Guidance had this removed:
+*   **Modern Practices for Services:** When services are provided by the application configuration (e.g., `ContractApiService` from Task 03.2):
+        *   Prefer Angular Signals for managing and exposing reactive state (see `/design/specifications/angular-frontend-architecture.md#6.2`).
+        *   Utilize the `inject()` function for dependency injection within these services for better type inference and readability (see `/design/specifications/angular-frontend-architecture.md#8.1`)."
+		
+Was that intentional?
+
+-----------------
+
+1. In plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md:
+Under "## 3. Key Implementation Steps" after "*   [ ] **Initial Commit:**
+    *   Commit the newly generated and configured project files to version control to establish a clean baseline."
+This was removed. It looks like a potential tool error, so I've rejected the removal. Please review each item and assess if it should be included.
+"    *   Open `app/frontend/src/environments/environment.ts` (created by `ng new`). By default, it contains `export const environment = { production: false };`.
+    *   Modify it to include `apiUrl`. Example for development: `export const environment = { production: false, apiUrl: 'http://localhost:8000/api/v1' };`.
+    *   Open `app/frontend/src/environments/environment.prod.ts`. By default, it contains `export const environment = { production: true };`.
+    *   Modify it to include `apiUrl`. Example for production (actual URL TBD): `export const environment = { production: true, apiUrl: 'https://api.yourdomain.com/api/v1' };`.
+    *   **Note:** The actual production URL will be finalized later. Use a clear placeholder if the final URL is not yet known. This step ensures the property exists for type-safe access.
+*   [ ] **Add Runtime Verification for Production `apiUrl`:**
+    *   As a risk mitigation measure (see pre-mortem v2), add a simple runtime check in `main.ts` or `app.component.ts` to validate the production `apiUrl`. This check should log a catastrophic error if the URL is missing, malformed, or points to a `localhost` address in a production build (`if (environment.production && (!environment.apiUrl || environment.apiUrl.includes('localhost'))) { ... }`).
+*   [ ] **Generate Initial `SharedModule`:**
+    *   From the Angular project root directory (e.g., `app\frontend\` from the Hangar Bay project root), run: `ng generate module shared`.
+    *   This command will create the module at `app/frontend/src/app/shared/shared.module.ts`.
+    *   This module will initially be empty but establishes the place for future reusable components, directives, and pipes.
+*   [ ] **Verify Application Runs:**
+    *   Run the `lint` and `format` scripts to ensure they execute correctly.
+    *   Run `ng serve` and ensure the default Angular application page loads in the browser."
+
+2. In plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md:
+
+2.1. "## 3. Key Implementation Steps" previously had:
+"*   [ ] **Create API Service(s):**
+    *   Generate a new Angular service using the CLI (e.g., `ng generate service core/services/contracts`).
+    *   This service should be provided in `CoreModule`'s `providers` array (or use `providedIn: 'root'` if preferred, but for this phase, explicit provision in `CoreModule` is acceptable).
+    *   Inject `HttpClient` into the service, preferably using the `inject(HttpClient)` function as per `/design/specifications/angular-frontend-architecture.md#8.1`.
+*   [ ] **Utilize Base API URL from Environment Files:**
+    *   The API service must read the `apiUrl` property from Angular's environment files (e.g., `import { environment } from '../../environments/environment';`).
+    *   This `apiUrl` property should have been defined in both `src/environments/environment.ts` and `src/environments/environment.prod.ts` during Task 03.1.
+*   [ ] **Implement Initial API Methods:**
+    *   Based on the backend API endpoint from Task 02.4 (`GET /api/v1/contracts/ships`), create an initial method in the service to fetch ship contracts.
+    *   [ ] **(Pre-Mortem v2 Recommendation) Plan for Automated Client Generation:** Before manually creating interfaces, strongly consider creating a separate task to automate the generation of TypeScript interfaces and API client code from the backend's OpenAPI specification. This is a critical mitigation against data contract drift. If proceeding manually for this initial task, the following step is required:
+*   Define TypeScript interfaces for the request parameters and response data structures. **CRITICAL: These interfaces MUST strictly align with the Pydantic schemas defined in the backend (Task 02.2 for `ShipContractRead`) and query parameters specified in API endpoints (Task 02.4).** Backend definitions are the single source of truth. Also consider learnings from Phase 0 (e.g., nullable fields, date formats).
+    *   Example method: `getShipContracts(params?: ShipContractsRequestParams): Observable<PaginatedShipContractsResponse>`
+    *   [ ] **Verify Interface and Parameter Alignment:** Before coding, meticulously compare the TypeScript interface fields/types and request parameter names suggested in the AI prompt below against the authoritative Pydantic schemas in Task 02.2 and API endpoint definitions in Task 02.4. Prioritize backend specifications in case of any discrepancy.
+    *   **AI Prompt (Use as a starting point, verify against backend specs):** "Generate TypeScript interfaces for an Angular API service:
+        *   **Note to Implementer:** The following field names and types are illustrative. Always verify against the definitive Pydantic schemas in Task 02.2 (for response models like `ShipContract`) and API endpoint definitions in Task 02.4 (for request parameters like `ShipContractsRequestParams`). Backend specifications are the source of truth.
+        1.  `ShipContract`: Based on F001 `ShipContractRead` Pydantic schema. Key fields:
+            *   `contract_id: number`
+            *   `title?: string | null`
+            *   `price?: number | null`
+            *   `status: string`
+            *   `date_issued: string` (ISO 8601 date string)
+            *   `date_expired: string` (ISO 8601 date string)
+            *   `start_location_name?: string | null`
+            *   `ship_type_id: number`
+            *   `ship_name: string | null`
+            *   `is_blueprint_copy?: boolean | null`
+            *   `runs?: number | null`
+            *   `material_efficiency?: number | null`
+            *   `time_efficiency?: number | null`
+        2.  `PaginatedShipContractsResponse`: A generic pagination wrapper.
+            *   `items: ShipContract[]`
+            *   `total: number`
+            *   `page: number`
+            *   `size: number`
+            *   `pages: number`
+        3.  `ShipContractsRequestParams`: For query parameters.
+            *   `page?: number`
+            *   `size?: number`
+            *   `ship_type_id?: number`
+            *   `is_bpc?: boolean`
+
+        Then, generate an Angular service method `getShipContracts` that uses `HttpClient`. This method should:
+        - Make a GET request to `[apiUrl]/api/v1/contracts/ships`.
+        - Accept an optional `params: ShipContractsRequestParams` object for query parameters.
+        - Construct `HttpParams` from the `params` object, ensuring undefined/null parameters are omitted. **Clarification Point:** For boolean parameters (e.g., `is_bpc`), consult Task 02.4 or the backend API specification to determine if `false` values should be explicitly sent (e.g., `is_bpc=false`) or omitted.
+        - Return an `Observable<PaginatedShipContractsResponse>`."
+    *   **Note on Reactive Data (Pre-Mortem v2 Recommendation):** To avoid boilerplate and bugs in consuming components (Phase 4+), services **should not** simply return raw `Observable<T>`. Instead, they **must** manage the `AsyncState` (loading, data, error) internally and expose it via a `Signal`. This provides a clean, consistent, and simple interface for all consumers. For example, a service should expose `state = signal<AsyncState<T>>(...)` and provide a `refresh()` method to trigger the API call.
+*   [ ] **Error Handling Strategy (Initial):**
+    *   Implement a basic error handling approach for API calls using the RxJS `catchError` operator. This should, at a minimum:
+    *   Log the detailed error object (e.g., `HttpErrorResponse`) for debugging purposes (see Observability section below, and refer to `/design/observability-spec.md` for structured logging guidance).
+    *   Transform the error into a form that can be gracefully handled by the calling component (e.g., an `Observable` emitting a custom error object or `null`) or re-throw a new error with relevant context. Avoid directly exposing raw `HttpErrorResponse` objects to the UI layer if they contain sensitive information.
+    *   Follow RxJS best practices for error handling in streams (see `/design/specifications/angular-frontend-architecture.md#5.6`).
+*   A more robust, global error handler (e.g., using an `HttpInterceptor` and potentially a dedicated error handling service) can be planned for a later task. **(Pre-Mortem v2 Recommendation):** The priority of this should be elevated. The interceptor is critical for transforming raw technical errors into a user-friendly state (e.g., via a notification service) and preventing the application from appearing broken when the backend is unavailable."
+
+While some of these elements are addressed by new/updated content, many specific details are are no longer present. For example:
+"*   A more robust, global error handler (e.g., using an `HttpInterceptor` and potentially a dedicated error handling service) can be planned for a later task. **(Pre-Mortem v2 Recommendation):** The priority of this should be elevated. The interceptor is critical for transforming raw technical errors into a user-friendly state (e.g., via a notification service) and preventing the application from appearing broken when the backend is unavailable."
+and
+"    *   **Note on Reactive Data (Pre-Mortem v2 Recommendation):** To avoid boilerplate and bugs in consuming components (Phase 4+), services **should not** simply return raw `Observable<T>`. Instead, they **must** manage the `AsyncState` (loading, data, error) internally and expose it via a `Signal`. This provides a clean, consistent, and simple interface for all consumers. For example, a service should expose `state = signal<AsyncState<T>>(...)` and provide a `refresh()` method to trigger the API call."
+and
+"    *   [ ] **(Pre-Mortem v2 Recommendation) Plan for Automated Client Generation:** Before manually creating interfaces, strongly consider creating a separate task to automate the generation of TypeScript interfaces and API client code from the backend's OpenAPI specification. This is a critical mitigation against data contract drift. If proceeding manually for this initial task, the following step is required:
+*   Define TypeScript interfaces for the request parameters and response data structures. **CRITICAL: These interfaces MUST strictly align with the Pydantic schemas defined in the backend (Task 02.2 for `ShipContractRead`) and query parameters specified in API endpoints (Task 02.4).** Backend definitions are the single source of truth. Also consider learnings from Phase 0 (e.g., nullable fields, date formats).
+    *   Example method: `getShipContracts(params?: ShipContractsRequestParams): Observable<PaginatedShipContractsResponse>`"
+
+
+
+2.2. "## 4. AI Implementation Guidance" used to include:
+"*   Use strong typing for API request and response objects.
+*   Leverage RxJS operators for handling asynchronous data streams from `HttpClient`.
+*   Keep API services focused; consider separate services for different resource types if the API grows complex.
+*   Ensure the `apiUrl` is correctly sourced from environment files.
+*   **Modern Practices:**
+    *   Utilize the `inject()` function for dependency injection (e.g., `inject(HttpClient)`).
+    *   If the service manages or exposes reactive state derived from API calls, prefer Angular Signals (see `/design/specifications/angular-frontend-architecture.md#6.1` and `#6.2`).
+    *   Adhere to RxJS best practices for stream manipulation and error handling (`/design/specifications/angular-frontend-architecture.md#5`).
+*   **Scalability:** To prevent flooding the backend with requests from rapid user actions (e.g., fast pagination, typing in a search box), implement request management patterns. Use `switchMap` to cancel previous, outdated requests when a new one is initiated. Consider `debounceTime` for input-driven queries.
+        - Return an `Observable<PaginatedShipContractsResponse>`.
+    *   **Note on Reactive Data (Pre-Mortem v2 Recommendation):** To avoid boilerplate and bugs in consuming components (Phase 4+), services **should not** simply return raw `Observable<T>`. Instead, they **must** manage the `AsyncState` (loading, data, error) internally and expose it via a `Signal`. This provides a clean, consistent, and simple interface for all consumers. For example, a service should expose `state = signal<AsyncState<T>>(...)` and provide a `refresh()` method to trigger the API call.
+*   [ ] **Error Handling Strategy (Initial):**
+    *   Implement a basic error handling approach for API calls using the RxJS `catchError` operator. This should, at a minimum:
+    *   Log the detailed error object (e.g., `HttpErrorResponse`) for debugging purposes (see Observability section below, and refer to `/design/observability-spec.md` for structured logging guidance).
+    *   Transform the error into a form that can be gracefully handled by the calling component (e.g., an `Observable` emitting a custom error object or `null`) or re-throw a new error with relevant context. Avoid directly exposing raw `HttpErrorResponse` objects to the UI layer if they contain sensitive information.
+    *   Follow RxJS best practices for error handling in streams (see `/design/specifications/angular-frontend-architecture.md#5.6`).
+*   A more robust, global error handler (e.g., using an `HttpInterceptor` and potentially a dedicated error handling service) can be planned for a later task. **(Pre-Mortem v2 Recommendation):** The priority of this should be elevated. The interceptor is critical for transforming raw technical errors into a user-friendly state (e.g., via a notification service) and preventing the application from appearing broken when the backend is unavailable."
+
+I'm not sure any or all of these should have been removed. Consider why you removed them (if intentional). Please review each item and assess if it should be included.
+
+2.3 "*   [ ] **Define Data Interfaces:**" has a sub-item:
+    "*   **CRITICAL:** These interfaces must strictly align with the backend Pydantic schemas (Task 02.2) and API endpoint definitions (Task 02.4)."
+Those Task 02.2 and 02.4 references look like search tool call failures waiting to happen. Can we specify the *exact* file or files where Cascade should go to find the authoriative Pydantic schemes and API endpoint definitions?
+
+
+-----------------
+
+plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md looks good now!
+
+1. In plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md:
+
+1.1. "## 4. AI Implementation Guidance" previously had:
+"*   Use strong typing for API request and response objects.
+*   Keep API services focused; consider separate services for different resource types if the API grows complex.
+*   Ensure the `apiUrl` is correctly sourced from environment files."
+
+Which seem relevant. Are those covered elsewhere and I missed them?
+
+1.2 You also removed this subsection:
+"        - Return an `Observable<PaginatedShipContractsResponse>`.
+    *   **Note on Reactive Data (Pre-Mortem v2 Recommendation):** To avoid boilerplate and bugs in consuming components (Phase 4+), services **should not** simply return raw `Observable<T>`. Instead, they **must** manage the `AsyncState` (loading, data, error) internally and expose it via a `Signal`. This provides a clean, consistent, and simple interface for all consumers. For example, a service should expose `state = signal<AsyncState<T>>(...)` and provide a `refresh()` method to trigger the API call."
+
+Which I'm not sure was intended as that seems like potentially useful detail.
+
+-----------------
+
+
+plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md looks good now!
+
+1. In plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md:
+
+1.1. There are duplicate "[ ] **Implement Basic Navigation:**" sections with slightly different content. Consider which to keep, or merge relevant parts if appropriate:
+
+1.2. Is this required?
+"*   [ ] **Remove `zone.js`:**
+    *   Once the application is bootstrapping correctly in zoneless mode, open `angular.json`.
+    *   Find the `polyfills` array and remove the entry for `zone.js`."
+
+1.3. Review "## 5. Definition of Done" and add the "[ ]" checkboxes to its items. Does this cover everything it should?
+
+1.4. Under "## 4. AI Implementation Guidance" there are duplicate "*   **Component Imports:**" entries. Review both together, consider which information is most useful to Cascade, then replace them with one Component Imports entry with the most useful info.
+
+-----------------
+
+
+For "**Implement Basic Navigation:**" I see you chose:
+"        <nav>
+          <a routerLink="/browse-contracts" routerLinkActive="active-link" i18n>Browse Contracts</a>
+        </nav>"		
+over
+"        <nav>
+          <a routerLink="/" i18n>Home</a>
+          <a routerLink="/contracts" i18n>Contracts</a>
+        </nav>"
+
+Why? Should we discuss site structure at this point?
 
 
 -----------------
 
 
-X
+I agree I like / (home) and /contracts more for the foundation, scalability, and clarity. However, I accepted your changes and the current file contents are the browse-contracts version. The are *many* other references to browse-contracts in the file too. 
 
+Please review plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md *very* carefully and update it to be consistent with this approach:
+"Foundational & Scalable: A Home link (/) and a top-level feature link like Contracts (/contracts) provide a standard, scalable starting point. The /contracts route can later expand to have sub-routes like /contracts/browse, /contracts/123, etc., without needing to change the top-level navigation.
+Clarity: The path /contracts is a clear, top-level entry point for the main feature of the application. A more specific path like /browse-contracts is better suited for a sub-view within that feature."
+
+Ensure your tool calls are accurate, precise, and do not unneccessarily change unrelated content, as that's been an issue with some recent update attempts.
 
 -----------------
 
 
-X
+Let's do one last past of the phase 3 task files to check for internal consistency, especially with respect to our recent changes:
+* plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-core-configuration.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md
+
+If you make any updates, be EXTREMELY careful. Ensure your tool calls are accurate, precise, and do not unneccessarily change unrelated content. You did a great job with that on the last updates for plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md.
+
+-----------------
+
+1. In plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md:
+1.1. I approved removing "*   [ ] **Generate Initial `SharedModule`:**".
+
+I'm less sure about removing these:
+1.2.
+    "*   Open `app/frontend/src/environments/environment.ts` (created by `ng new`). By default, it contains `export const environment = { production: false };`.
+    *   Modify it to include `apiUrl`. Example for development: `export const environment = { production: false, apiUrl: 'http://localhost:8000/api/v1' };`.
+    *   Open `app/frontend/src/environments/environment.prod.ts`. By default, it contains `export const environment = { production: true };`.
+    *   Modify it to include `apiUrl`. Example for production (actual URL TBD): `export const environment = { production: true, apiUrl: 'https://api.yourdomain.com/api/v1' };`.
+    *   **Note:** The actual production URL will be finalized later. Use a clear placeholder if the final URL is not yet known. This step ensures the property exists for type-safe access."
+	
+	The paths here are only slightly wrong. The real path is app\frontend\angular\src\environments, which you can verify does exist.
+
+1.3.	
+*   [ ] **Add Runtime Verification for Production `apiUrl`:**
+    *   As a risk mitigation measure (see pre-mortem v2), add a simple runtime check in `main.ts` or `app.component.ts` to validate the production `apiUrl`. This check should log a catastrophic error if the URL is missing, malformed, or points to a `localhost` address in a production build (`if (environment.production && (!environment.apiUrl || environment.apiUrl.includes('localhost'))) { ... }`).
+
+	Is this addressed elsewhere? "This check should log a catastrophic error..." suggests importance.
+
+1.4.
+*   [ ] **Verify Application Runs:**
+    *   Run the `lint` and `format` scripts to ensure they execute correctly.
+    *   Run `ng serve` and ensure the default Angular application page loads in the browser."
+
+Are these two addressed elsewhere? Consider each individually. Why do or don't they belong?
+
+-----------------
+
+We need to document these changes first. We'll do that with design-log.md entries.
+
+1. Append an entry to the end of design\meta\design-log.md capturing this site structure approach:
+"Foundational & Scalable: A Home link (/) and a top-level feature link like Contracts (/contracts) provide a standard, scalable starting point. The /contracts route can later expand to have sub-routes like /contracts/browse, /contracts/123, etc., without needing to change the top-level navigation.
+Clarity: The path /contracts is a clear, top-level entry point for the main feature of the application. A more specific path like /browse-contracts is better suited for a sub-view within that feature."
+Use the "DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*" on line 1036 to help target your update.
+
+2. Append an entry to the end of design\meta\design-log.md capturing the decision to go with a zoneless Angular architecture. Use the "DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*" on line 1036 to help target your update.
+
+3. Are there any files it would be helpful to Cascade to create in design\angular\patterns at this point? You can review the three pattern files in design\fastapi\patterns for the backend for reference.
+
+
+-----------------
+
+1. Create the pattern files. 
+
+2. Review the four task files for where it would be helpful to Cascade to add references to those new pattern files:
+* plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-core-configuration.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md
+
+Be extremely careful with your edits. Use single-line updates to avoid targeting unrelated content.
+
+3. Then we need to commit our work before beginning implementation. Check for all pending changes with git commands. Then, logically group the changes (e.g., pre-mortem v2 separate from task files), prepare commit messages for each, stage, and commit them.
 
 
 -----------------

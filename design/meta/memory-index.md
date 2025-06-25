@@ -50,12 +50,6 @@ This section lists AI memories related to the overall documentation structure, p
 | `dd7c1fa0-1eda-433b-8627-12b77a1da25b`     | Angular Documentation Refactoring: Guides Centralized | Refactored Angular docs under `design/angular/`. Most topical docs moved to `guides/` subdirectory, aligning with new co-located structure. | `documentation, angular, project_structure, refactoring, guides` |
 | `3793aee6-207e-43a8-94ab-b33357db08e6`     | FastAPI Service Creation: The 'Background Job' Litmus Test | Critical rule: When creating a service, first ask if it will run in a background job. If yes, it MUST use dynamic resource instantiation (init with `Settings`) to prevent pickling errors. If no, use standard FastAPI `Depends`. | `fastapi, architecture, service_oriented_architecture, dependency_injection, apscheduler, background_jobs, pickling, design_pattern, process` |
 
-## Key Project Review Documents
-
-This section provides direct links to significant project review documents.
-
-*   **Phase 03 Frontend Core Infrastructure Pre-Mortem:** Detailed review identifying potential risks, root causes, and mitigation strategies for the Phase 03 frontend core infrastructure setup. ([`phase-03-frontend-core-infra-pre-mortem.md`](/design/reviews/pre-mortems/phase-03-frontend-core-infra-pre-mortem.md))
-
 ## Project Conventions & Standards
 
 This section lists AI memories related to general project conventions, coding standards, and development best practices that apply across the Hangar Bay project.
