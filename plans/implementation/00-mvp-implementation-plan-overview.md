@@ -50,7 +50,7 @@ The MVP development is structured into the following phases. Each task links to 
 *   **Goal:** Establish the Angular frontend application structure, API communication layer, and basic layout.
 *   **Tasks:**
     *   [03.0 Angular Project Initialization](./phase-03-frontend-core-infrastructure/03.0-angular-project-initialization.md)
-    *   [03.1 Angular Core Module Setup](./phase-03-frontend-core-infrastructure/03.1-angular-core-module-setup.md)
+    *   [03.1 Angular Core Setup](./phase-03-frontend-core-infrastructure/03.1-angular-core-setup.md)
     *   [03.2 Backend API Service Layer](./phase-03-frontend-core-infrastructure/03.2-backend-api-service-layer.md)
     *   [03.3 Basic Layout, Routing, and Navigation](./phase-03-frontend-core-infrastructure/03.3-basic-layout-routing-navigation.md)
 

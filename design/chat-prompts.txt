@@ -5902,79 +5902,176 @@ Be extremely careful with your edits. Use single-line updates to avoid targeting
 -----------------
 
 
-X
+1. I want to merge Dev to Main at this point. Please write a PR message with markdown formatting that covers that last set of commits.
+
+2. Before beginning implementation, think carefully about if there are any memories it would be beneficial to Cascade to create about the Angular design decisions we made, the new Angular pattern files, etc.
 
 
 -----------------
 
 
-X
+Append the new Angular memories to the "### Key Angular AI Memories" section of design\meta\memory-index.md.
 
 
 -----------------
 
 
-X
+# Note - Updated npm from 11.3.0 -> 11.4.2. This might affect Python. Should follow-up on that.
+
+Is app the right directory to run the ng new command in?
+Recall our structure currently has app\frontend\angular\src. You should look at the files in there and in app\frontend\angular\src\app. Do we need to do anything about them?
 
 
 -----------------
 
 
-X
+1. Do you need a new plan file for the phase 3 implementation? We are no longer in "# Phase 3 Pre-Mortem Improvement Planning". 
 
-
------------------
-
-X
-
-
------------------
-
-
-X
+2. While these updates seem to be going okay, would it make more sense to clean up the original Angular project and create a new one?
 
 
 -----------------
 
 
-X
+Let's pause for a second and discuss Server-Side Rendering (SSR) at this stage. Even if our focus is on building a robust client-side application first, it could make sense to enable SSR and SSG during project setup. What are the implications? Why or why not would we want to do this? Are there downsides?
 
 
 -----------------
 
 
-X
+Regarding:
+"Recommendation for Hangar Bay
+Given that Hangar Bay is a complex, data-intensive application primarily for authenticated users (behind a login), the primary benefits of SSR—public SEO and initial load for anonymous users—are less critical. The downsides, however—the increased complexity and development constraints—would be felt immediately and could slow down our core infrastructure development.
+
+My recommendation is to defer enabling SSR.
+
+Let's build the application as a pure client-side rendered app first. This allows us to focus on building robust, clean, and feature-rich core components without the added constraints of SSR. The Angular CLI makes it very straightforward to add SSR capabilities later on with a single command (ng add @angular/ssr) if and when the need arises (e.g., for performance optimization or if a public-facing component is added to the project).
+
+This approach prioritizes development velocity and reduces complexity now, while keeping the door open for SSR in the future."
+
+This is interesting for a public home page. Let's revisit in the future.
 
 
 -----------------
 
 
-X
+1. Append an entry to the end of design\meta\design-log.md capturing the decision to NOT go with an SSR/SSG Angular architecture, leaving the door open to revisit it for specific public areas of the site in the future. Use the "DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*" to help target your update.
 
 
 -----------------
 
 
-X
+It's done. I see these three deprecation warnings. Do you know what those are from and if we can do anything about them?
+PS C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\frontend\angular> npm install
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
 
 
 -----------------
 
 
-X
+If the latest version of Angular CLI created the files with those names, are you sure they're inconsistent with modern angular best practices?
+
+
+-----------------
+
+1. Results:
+Chrome Headless 137.0.0.0 (Windows 10): Executed 3 of 3 SUCCESS (0.044 secs / 0.04 secs)
+TOTAL: 3 SUCCESS
+
+2. Why did you think it was Angular 17? I want to make sure that incorrect info isn't coming from somewhere like a memory that could cause Cascade to look up incorrect documentation versions, etc. as we work on implementation.
 
 
 -----------------
 
 
-X
+1. We're still on plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md. We can't move on until we go through everything in the task file, verify it's complete and passes our checks, and perform a cross-cutting review. 
+
+2. The next task is 3.1, not 3.2. I think you should add the order of the tasks and links to their task files to your plan so you don't forget this.
+    *   [03.0 Angular Project Initialization](./phase-03-frontend-core-infrastructure/03.0-angular-project-initialization.md)
+    *   [03.1 Angular Core Setup](./phase-03-frontend-core-infrastructure/03.1-angular-core-setup.md)
+    *   [03.2 Backend API Service Layer](./phase-03-frontend-core-infrastructure/03.2-backend-api-service-layer.md)
+    *   [03.3 Basic Layout, Routing, and Navigation](./phase-03-frontend-core-infrastructure/03.3-basic-layout-routing-navigation.md)
+	
+3. Carefully review plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md. What have we done? What's left?
+
+
+-----------------
+
+1. Please also check off completed items in "## 3. Key Implementation Steps" and "## 5. Definition of Done (DoD)"
+
+2. I removed .windsurf from the .gitignore. You not being able to access that cannot be correct.
+
+3. You consistently fail to detect the outcome of these tests in the terminal. Here's the output:
+PS C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\frontend\angular> ng test --no-watch --code-coverage
+Initial chunk files        | Names                   |  Raw size
+chunk-73UEFUY7.js          | -                       |   2.43 MB | 
+polyfills.js               | polyfills               | 920.29 kB | 
+spec-app.component.spec.js | spec-app.component.spec | 231.23 kB | 
+test_main.js               | test_main               |  21.65 kB | 
+styles.css                 | styles                  | 866 bytes | 
+jasmine-cleanup-0.js       | jasmine-cleanup-0       | 519 bytes | 
+
+                           | Initial total           |   3.60 MB
+
+Application bundle generation complete. [1.390 seconds]
+
+25 06 2025 06:50:47.161:INFO [karma-server]: Karma v6.4.4 server started at http://localhost:9876/
+25 06 2025 06:50:47.162:INFO [launcher]: Launching browsers Chrome with concurrency unlimited
+25 06 2025 06:50:47.182:INFO [launcher]: Starting browser Chrome
+25 06 2025 06:50:48.138:INFO [Chrome 137.0.0.0 (Windows 10)]: Connected on socket Rj3xUTyAKPMjXsHAAAAB with id 22408331
+Chrome 137.0.0.0 (Windows 10): Executed 3 of 3 SUCCESS (0.039 secs / 0.035 secs)
+TOTAL: 3 SUCCESS
+
+=============================== Coverage summary ===============================
+Statements   : 100% ( 3/3 )
+Branches     : 100% ( 0/0 )
+Functions    : 100% ( 0/0 )
+Lines        : 100% ( 2/2 )
+================================================================================
+
+and here's your internal Thought Process:
+"Analyzing CCC Review Status
+
+I'm still awaiting the results of the ng test command, the build process is ongoing. I need to check the tool's output for the test results and code coverage reports once complete, before proceeding further.
+
+Waiting on Build Completion
+
+I'm still blocked by the output of the ng test command. It's crucial to assess test results and coverage. The ephemeral message about a stale plan is a good nudge; I've made substantial progress on Task 03.0, like installing prettier and eslint, and setting up linting and formatting, and adding CSS. The current plan needs updating to reflect my actions.
+
+Checking Test Output
+
+I'm still waiting on the ng test output, but the command remains "Building...". I need the results to proceed with the CCC review and plan updates. The tool call status remains pending as well. My current plan is stale, particularly given the substantial progress made on Task 03.0, which I've been actively working on and need to reflect in the current state.
+
+Updating the Task Plan
+
+I'm still awaiting the ng test results. The command is building, and I need the output before further steps. I've completed a lot of Task 03.0 work. The plan's stale, so I'll update the implementation plan to reflect the progress on the checklist, including installing prettier and eslint, setting up linting, formatting, and adding CSS. Once the tests complete, I will review the tool call's status and the results.
+
+Reflecting on the Build State
+
+I'm still waiting for the ng test command to finish, the output showing "Building...". Given the stalled test results and the ephemeral stale plan message, I will now proceed by updating the task plan. I've finished much of Task 03.0, including linting, formatting, and installing dependencies. I will reflect my current progress on the checklist and adjust the current goal.
+
+Waiting on Test Command Output
+
+I'm still stuck waiting for the ng test command output, which currently shows "Building...". I need the full results to move forward with the CCC review and implement my next action: updating the implementation plan. I've also gathered information, like completing much of Task 03.0. Before proceeding with the next steps, I must update the task list for clarity."
+
+"I'm still stuck waiting for the ng test command output, which currently shows "Building..."." makes me think you might be getting hung while this happens: "Application bundle generation complete. [1.390 seconds]" but don't notice when it's done for some reason. What do you think? Is there a better way for you to check for test completion?
 
 
 -----------------
 
 
-X
+I just noticed a possible discrepancy.
 
+*   [x] **Verify Initial Setup:**
+    *   Run `ng serve` from the `app/` directory and verify the default application loads at `http://localhost:4200`.
+	
+	
+    *   Open `app/frontend/angular/src/environments/environment.ts` (created by `ng new`). By default, it contains `export const environment = { production: false };`.
+    *   Modify it to include `apiUrl`. Example for development: `export const environment = { production: false, apiUrl: 'http://localhost:8000/api/v1' };`.
+	
+Does this imply the dev environment should run on port 8000 rather than 4200?
 
 -----------------
 

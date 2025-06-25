@@ -10,7 +10,7 @@ __pycache__/
 *.so
 
 # Windsurf/Cascade tooling
-.windsurf/
+#.windsurf/
 
 # Distribution / packaging
 .Python
