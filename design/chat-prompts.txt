@@ -7093,48 +7093,113 @@ Read those files in their entirety. Are there any updates we should make based o
 -----------------
 
 
-X
+The merge is complete.
+
+Before we begin any phase 4 implementation, we need to do a series of extensive review passes on it and its tasks to bring them up to date and standards with prior phases. How would you propose we start that process, based on what's been effective?
 
 
 -----------------
 
 
-X
+Yes, proceed. You do not need to ask permission to read the core 04.1, 04.2, and 04.3 task file. Make sure you read the original feature specs design\features\F001-Public-Contract-Aggregation-Display.md and design\features\F002-Ship-Browsing-Advanced-Search-Filtering.md too.
 
 
 -----------------
 
 
-X
+Two issues in plans\implementation\00-mvp-implementation-task-template.md:
+1. The sections no longer match those in plans\implementation\00-mvp-implementation-task-template.md. Is consistency with the template or internal utility more important here? Can the information in 4.1 right now be consolidated into the standard sections without losing ANY important details?
+2. The "Cross-Cutting Concerns Review" section is missing items that I'm guessing thought were N/A. But items that are N/A must still be listed and clearly indicated as such so reviewers know it's deliberate.
 
 
 -----------------
 
 
-X
+1. Is this removed information still relevant and if so, captured elsewhere?
+"*   [ ] **Develop Unified Container Component:**
+    *   Generate a single, standalone container component: `ng generate component features/contracts/contract-browse-page`.
+    *   This component will be associated with the primary route for this feature.
+    *   Inject the `ContractSearchService` to connect the view to the state.
+
+*   [ ] **Build the View Template (`contract-browse-page.html`):**
+    *   The template will read all its data directly from the public signals exposed by the `ContractSearchService`.
+    *   **Filter Panel:** Create the UI controls for all filters specified in F002 (keyword search, price range, contract type, etc.). Bind their values and events to the methods on the `ContractSearchService`.
+    *   **Results List/Table:** Display the contract data. Use the `asyncState` signal to show loading, error, and data states (`*ngIf` or `@if`).
+    *   **Pagination Controls:** Create UI elements for pagination. Bind them to the pagination state and methods on the `ContractSearchService`.
+
+*   [ ] **Styling and Finalization:**
+    *   Apply SCSS styling for a clean, responsive, and usable interface.
+    *   Ensure loading and empty/error states are handled gracefully in the UI."
+	
+2. Is this removed information still relevant and if so, captured elsewhere?
+*   **AI Prompt (Service):** "Generate an Angular service named `ContractSearchService` that manages state for fetching a list of contracts. It should use signals for state (filters, pagination, sorting, and the `AsyncState` of the results). Use an `effect` to automatically re-fetch data from a `ContractApi` service whenever a filter or page signal changes. Provide public methods to update the state."
+*   **AI Prompt (Component):** "Generate a standalone Angular component `ContractBrowsePage`. It should inject the `ContractSearchService` and bind its template directly to the service's public signals to display the contract list and filter controls. All user interactions (e.g., changing a filter, clicking 'next page') should call the corresponding methods on the injected service."
+*   Prioritize a clean separation of concerns: the service handles all state and logic, while the component is responsible only for presentation and delegating user events to the service.
+
+3. The CCC review section added the missing areas, but lost all details for the previously existing ones. E.g.,
+Previous:
+Testing
+*   [ ] **Unit Tests:** `ContractSearchService` must be tested in isolation, mocking the `ContractApi`. Test state transitions and logic thoroughly.
+*   [ ] **Integration Tests:** `ContractBrowsePage` will be tested with a mocked `ContractSearchService` to verify that the template correctly reflects the service's state signals.
+*   [ ] **Test Coverage:** Aim for >90% coverage for the new service and component.
+*   **Notes:** Adhere to the patterns in `design/angular/guides/09-testing-strategies.md`.
+
+Current:
+### 7.3. Testing
+*   [ ] **Unit Tests:** [ ]
+*   [ ] **Integration Tests:** [ ]
+*   [ ] **Test Coverage:** [ ]
+*   [ ] **Test Data Management:** [ ]
+*   **Notes:** Unit tests will cover the service in isolation (mocking the API). Integration tests will cover the component with a mocked service. Test data will be managed via mock objects/files. Target >90% coverage.
+
+-----------------
+
+
+Note that I renamed the phase 4 pre-mortem design\reviews\pre-mortems\04-phase-four-frontend-pre-mortem.md to design\reviews\pre-mortems\phase-04-phase-four-frontend-pre-mortem.md to follow convention. I think it looks weak relative to our other pre-mortems.
+
+Please conduct four rounds of pre-mortem reviews. For the third round, do a "think outside the box" review.
+
+Review both:
+* plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md
+* design\reviews\pre-mortems\phase-04-phase-four-frontend-pre-mortem.md
+
+You can update those two files freely as you go. You can read other files to assist your review, but do not make edits to them without asking and receving USER permission. 
 
 
 -----------------
 
 
-X
+Cascade thought:
+A robust pre-mortem is a cornerstone of our quality process, and your instinct that the current one is underdeveloped is correct. A superficial review leads to predictable problems. We will rectify this immediately by conducting a thorough, multi-round analysis.
+
+I will adopt the rigorous, multi-round review process that has served us well in previous phases. My plan is as follows:
+
+Round 1: Foundational Review & Alignment: I will ensure both the pre-mortem and the task plan are internally consistent and perfectly aligned with our established Angular architecture, feature specifications, and cross-cutting concern documents.
+Round 2: Technical Deep Dive & Specificity: I will inject deep technical detail, identifying specific risks in our proposed signal-based service and component interaction (e.g., race conditions, state representation) and prescribing concrete patterns and mitigations.
+Round 3: "Think Outside the Box" Analysis: As requested, I will simulate creative failure scenarios inspired by our previous "Operator's Nightmare" and "Data's Lifecycle" reviews, but tailored to this new frontend feature. This will uncover non-obvious risks.
+Round 4: Final Polish & Consolidation: I will perform a final pass to ensure both documents are clear, actionable, and that every risk identified in the pre-mortem has a corresponding, trackable action in the implementation plan.
+I will update both the pre-mortem and the task plan files throughout this process.
+
+
 
 
 -----------------
 
-X
+
+1. In Section 3.2 (UI), you replaced:
+*   [ ] **Step 2.3:** Build the view template (`contract-browse-page.html`). The service will define a clear, immutable `ContractFilter` interface. State updates will be atomic; any method that changes the filter criteria must accept a complete `ContractFilter` object to avoid partial updates and race conditions. The service will have methods to update the full filter object and trigger a new data fetch from the `ContractApi` service.
+
+with
+
+"*   [ ] **Step 2.3:** Build the view template (`contract-browse-page.html`)."
+
+Was that an intentional reduction in detail?
 
 
 -----------------
 
 
-X
-
-
------------------
-
-
-X
+Please do a review of the plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md "## 7. Cross-Cutting Concerns Review" section. The items seem light on details, especially the N/A ones, which should indicate why they're N/A.
 
 
 -----------------
