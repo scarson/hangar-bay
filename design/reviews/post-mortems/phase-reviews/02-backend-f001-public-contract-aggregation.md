@@ -148,6 +148,14 @@
             *   Live resource connections (database, cache, etc.) are generally not picklable.
             *   The established pattern—passing configuration (like a `Settings` object) and creating resources dynamically within the job's execution context—is the standard architectural solution for this problem. This pattern must be followed for all future background job implementations.
 
+    *   **Challenge 7:** `TypeError` due to Incorrect Implementation of a Correct Design Pattern.
+        *   **Problem:** After the extensive refactoring to solve the `PicklingError`, the application once again failed with a `TypeError: 'ESIClient' object does not support the asynchronous context manager protocol`. This occurred during the Phase 4 implementation work, revealing a flaw in the previous fix.
+        *   **Root Cause:** The `Dual-Mode Service Pattern` was correctly designed and documented, specifying that the `ESIClient` should function as an async context manager. However, in the rush to implement the fix, the `ESIClient` class was written *without* the required `__aenter__` and `__aexit__` methods. The high-level architectural change was made, but the low-level implementation contract was not fulfilled.
+        *   **Foresight Analysis:** Could this have been foreseen? Yes. This was not a knowledge gap but a process failure. A simple unit test designed to check `isinstance(client, collections.abc.AsyncContextManager)` or to simply use the client in an `async with` block would have caught this immediately. It highlights a critical risk: even with a perfect design, implementation errors can re-introduce bugs.
+        *   **Actionable Learning & Future Application (Cascade & Team):**
+            *   When a class is intended to implement a specific protocol (e.g., context manager, iterator), a dedicated unit test **must** be written to validate that protocol's contract. This is non-negotiable.
+            *   This learning will be codified in the `design/fastapi/guides/09-testing-strategies.md` guide to make it a mandatory practice for all future development.
+
 ## 4. Process Learnings & Improvements
 
 *   **4.3. AI Collaboration (USER & Cascade):**

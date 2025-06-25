@@ -5,6 +5,7 @@
 *   [Pattern: Dependency Management in Hybrid Contexts](..\patterns\01-dependency-injection.md)
 *   [Pattern: Service Construction - Configuration over Live Resources](..\patterns\02-service-construction.md)
 *   [Pattern: Atomic Database Transactions for Logical Units of Work](..\patterns\03-database-transactions.md)
+*   [Pattern: Dual-Mode Service for Background Jobs](../patterns/05-dual-mode-service-pattern.md)
 
 ## AI Analysis Guidance for Cascade
 
@@ -186,8 +187,8 @@ class ContractAggregationService:
 **Explanation:**
 
 *   When `scheduler.add_job(aggregation_service_for_scheduler.run_public_contract_aggregation_job, ...)` is called in `main.py`, the `aggregation_service_for_scheduler` instance is pickled by APScheduler (because the job target is a method of this instance) and sent to the process pool worker.
-*   For this to work, `ContractAggregationService` and `ESIClient` (if held as `self.esi_client`) must be picklable. This is achieved by them only storing `settings` or other similarly picklable objects, as per the "Service Construction" pattern.
-*   Inside `run_public_contract_aggregation_job`, non-picklable resources like database sessions (`db`) or direct Redis clients for locks are acquired dynamically.
+*   For this to work, `ContractAggregationService` and `ESIClient` (if held as `self.esi_client`) must be picklable. This is achieved by them only storing `settings` or other similarly picklable objects.
+*   The service then uses the **[Dual-Mode Service Pattern](../patterns/05-dual-mode-service-pattern.md)** to acquire live, non-picklable resources like HTTP clients or database sessions dynamically *within* the job's execution context, typically using an `async with` block. This is the key to making the service both picklable for the scheduler and functional for I/O operations.
 
 ### 3.2. Adding Jobs in `main.py`
 
@@ -294,7 +295,7 @@ finally:
 
 ## 6. Best Practices & Troubleshooting
 
-*   **PicklingError:** The most common issue. Ensure services are initialized with picklable `Settings` and dynamically create non-picklable resources (DB connections, HTTP clients) *inside* job methods when using `processpool` executor. Refer to the "Dependency Management" and "Service Construction" patterns.
+*   **PicklingError:** The most common issue. This is solved by adhering to the **[Dual-Mode Service for Background Jobs](../patterns/05-dual-mode-service-pattern.md)**. This pattern ensures services are initialized with only picklable `Settings`, and then dynamically create non-picklable resources (DB connections, HTTP clients) *inside* the job's execution context.
 *   **Blocking Jobs:** If a job blocks the asyncio event loop (for `asyncio` executor) or takes too long, it can affect FastAPI's performance. Use `processpool` executor for such jobs.
 *   **Database Sessions:** Each job execution in a separate process should manage its own database session lifecycle (acquire, use, commit/rollback, close).
 *   **Configuration:** Ensure the `settings` object passed to or used by jobs contains all necessary configurations (database URLs, API keys, etc.).

@@ -1054,4 +1054,43 @@ To ensure consistency and maximize effectiveness for AI-assisted development (pa
 **Impact:** All Phase 3 implementation plans have been updated to reflect this structure. Future feature development should follow this pattern for top-level navigation.
 
 ---
+### 2025-06-25 16:08:06-05:00 :: Established Mandatory Structural Protocol Testing
+
+**Decision:** To prevent implementation errors of correct architectural patterns, a new mandatory testing practice has been added to the project's quality strategy. Any class designed to implement a specific Python protocol (e.g., async context manager, iterator) must be accompanied by a dedicated unit test that verifies its structural contract.
+
+**Rationale:**
+*   **Prevent Recurrence of Errors:** This decision is a direct result of a `TypeError` caused by the `ESIClient` class correctly being designed as an async context manager but failing to implement the required `__aenter__` and `__aexit__` methods.
+*   **Shifting Failure Detection Left:** Structural tests are fast and simple. They catch fundamental implementation bugs during development and CI, long before they can cause runtime failures in a deployed environment.
+*   **Enforcing Architectural Integrity:** This practice provides an automated guarantee that our code adheres to the low-level contracts of our chosen patterns, improving overall system robustness.
+
+**Impact:** The `design/fastapi/guides/09-testing-strategies.md` guide has been updated with this new rule and a concrete example. Cascade has also internalized this as a persistent memory to enforce the practice in all future work.
+
+---
+
+### 2025-06-25 16:08:06-05:00 :: Codified the "Dual-Mode Service" Pattern
+
+**Decision:** A new architectural pattern, the "Dual-Mode Service," has been formally documented in `design/fastapi/patterns/05-dual-mode-service-pattern.md`. This pattern governs the design of services that need to operate in two distinct contexts: (1) as a dependency-injected singleton in the main FastAPI application, and (2) as a freshly instantiated object within a separate process, such as an `APScheduler` background job.
+
+**Rationale:**
+*   **Resolving `PicklingError`:** The primary driver was to solve the `PicklingError` from `APScheduler`'s `ProcessPoolExecutor`, which cannot serialize services holding unpicklable resources like database or HTTP client connections.
+*   **Architectural Clarity:** The pattern provides a clear, reusable solution. It dictates that services should be initialized with lightweight, picklable configuration (like a `Settings` object) and dynamically create their unpicklable resources (like an `httpx.AsyncClient`) on-demand, typically within an async context manager.
+*   **Decoupling:** It decouples the service's lifecycle from the lifecycle of its heavy resources, making the service itself safe to pass between processes.
+
+**Impact:** This is now the standard pattern for any service intended for use in background jobs. The `ESIClient` and `ContractAggregationService` have been refactored to follow this pattern, resolving the critical bug that blocked background processing.
+
+---
+
+### 2025-06-25 16:08:06-05:00 :: Corrected ESIClient to Implement Async Context Management
+
+**Decision:** The `ESIClient` service class has been refactored to correctly implement the asynchronous context manager protocol by adding the `__aenter__` and `__aexit__` methods. These methods now manage the lifecycle of the internal `httpx.AsyncClient`.
+
+**Rationale:**
+*   **Fixing a `TypeError`:** The immediate cause was a `TypeError` because the class was being used in an `async with` block without supporting the protocol.
+*   **Adherence to Design Patterns:** This change brings the `ESIClient` into compliance with two established patterns: the `API Client Service Pattern`, which requires a long-lived client instance, and the `Dual-Mode Service Pattern`, which requires on-demand resource creation for background jobs.
+*   **Resource Management:** Proper implementation ensures that the `httpx.AsyncClient` is created when the context is entered and guaranteed to be closed when the context is exited, preventing resource leaks.
+
+**Impact:** The `ESIClient` is now a robust, reusable service that functions correctly both when injected into API endpoints and when instantiated within the `ContractAggregationService` background job. This resolved a critical runtime bug.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
