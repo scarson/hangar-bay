@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 from typing import Optional
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, APIRouter
 from redis.asyncio import Redis # For type hinting Redis client
 from .core.config import settings
 from .core.cache import init_cache, close_cache
@@ -133,6 +133,9 @@ async def cache_test(rd: Optional[Redis] = Depends(get_cache)):
 
 
 # Include API routers
-app.include_router(contracts_router.router)
+api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(contracts_router.router)
+
+app.include_router(api_router)
 
 # Further application setup, routers, middleware, etc., will go here

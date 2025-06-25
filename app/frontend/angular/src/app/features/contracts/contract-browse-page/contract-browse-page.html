@@ -1,11 +1,12 @@
 <div class="contract-browse-container">
-  <h1>Public Contracts</h1>
+  <h1 i18n="Page title for browsing public contracts">Public Contracts</h1>
 
   <div class="filter-panel">
     <input
       #searchInput
       type="text"
       placeholder="Search by title or location..."
+      i18n-placeholder="Placeholder text for the contract search input"
       [value]="filters().search ?? ''"
       (input)="onSearch(searchInput.value)"
       aria-label="Search contracts"
@@ -14,7 +15,7 @@
 
   <!-- Loading Indicator -->
   @if (loading()) {
-    <div class="loading-indicator">Loading contracts...</div>
+    <div class="loading-indicator" i18n="Message displayed while contracts are loading">Loading contracts...</div>
   }
 
   <!-- Error Message -->
@@ -24,17 +25,23 @@
 
   <!-- Data View -->
   @if (data(); as contractData) {
-    <div class="results-container">
+    <div class="results-container" aria-live="polite">
       <div class="contract-list">
         @for (contract of contractData.items; track contract.contract_id) {
           <div class="contract-card">
-            <h2>{{ contract.title ?? 'Contract #' + contract.contract_id }}</h2>
-            <p><strong>From:</strong> {{ contract.start_location_name }}</p>
-            <p><strong>Issued:</strong> {{ contract.date_issued | date: 'medium' }}</p>
-            <p><strong>Status:</strong> {{ contract.status }}</p>
+            <h2>{{ contract.title || ('Contract #' + contract.contract_id) }}</h2>
+            <p><strong i18n="Label for the contract's starting location">From:</strong> {{ contract.start_location_name }}</p>
+            <p><strong i18n="Label for the contract's issue date">Issued:</strong> {{ contract.date_issued | date: 'medium' }}</p>
+            <p><strong i18n="Label for the contract's status">Status:</strong> {{ contract.status }}</p>
+            @if(contract.price) {
+              <p><strong i18n="Label for the contract's price">Price:</strong> {{ contract.price | number: '1.2-2' }} ISK</p>
+            }
+            @if(contract.volume) {
+              <p><strong i18n="Label for the contract's volume in cubic meters">Volume:</strong> {{ contract.volume | number: '1.0-2' }} m³</p>
+            }
           </div>
         } @empty {
-          <p class="empty-state">No contracts found matching your criteria.</p>
+          <p class="empty-state" i18n="Message displayed when no contracts match the search criteria">No contracts found matching your criteria.</p>
         }
       </div>
 
@@ -43,23 +50,25 @@
           [disabled]="contractData.page <= 1"
           (click)="changePage(contractData.page - 1)"
           aria-label="Go to previous page"
+          i18n-aria-label="Accessibility label for the previous page button"
         >
-          &laquo; Previous
+          &laquo; <span i18n="Button text for previous page">Previous</span>
         </button>
         <span>
-          Page {{ contractData.page }} of
+          <span i18n="Pagination status text part 1">Page</span> {{ contractData.page }} <span i18n="Pagination status text part 2">of</span>
           {{ calculateTotalPages(contractData.total, contractData.size) }}
         </span>
         <button
           [disabled]="contractData.page >= calculateTotalPages(contractData.total, contractData.size)"
           (click)="changePage(contractData.page + 1)"
           aria-label="Go to next page"
+          i18n-aria-label="Accessibility label for the next page button"
         >
-          Next &raquo;
+          <span i18n="Button text for next page">Next</span> &raquo;
         </button>
       </div>
     </div>
   } @else if (!loading() && !error()) {
-    <p class="empty-state">No data available. Start a search to see contracts.</p>
+    <p class="empty-state" i18n="Message displayed when no data is available initially">No data available. Start a search to see contracts.</p>
   }
 </div>

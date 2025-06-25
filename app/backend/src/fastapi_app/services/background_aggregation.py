@@ -184,10 +184,25 @@ class ContractAggregationService:
             # fromisoformat handles this correctly if we replace 'Z' with '+00:00'.
             return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
 
-        # Step 1: Collect all unique issuer and corporation IDs from the current batch of contracts.
+        # Step 1: Collect all unique IDs from the current batch of contracts.
         issuer_ids = {c['issuer_id'] for c in contracts}
         corporation_ids = {c['issuer_corporation_id'] for c in contracts}
-        all_ids_to_resolve = list(issuer_ids.union(corporation_ids))
+        start_location_ids = {c.get('start_location_id') for c in contracts if c.get('start_location_id')}
+        end_location_ids = {c.get('end_location_id') for c in contracts if c.get('end_location_id')}
+
+        all_ids_to_resolve = list(
+            issuer_ids.union(corporation_ids).union(start_location_ids).union(end_location_ids)
+        )
+
+        # Player-owned structures have IDs > 10^11 and are not resolvable
+        # by the public /universe/names/ endpoint. We filter them out.
+        original_id_count = len(all_ids_to_resolve)
+        all_ids_to_resolve = [
+            id_ for id_ in all_ids_to_resolve if id_ < 100_000_000_000
+        ]
+        filtered_count = len(all_ids_to_resolve)
+        if original_id_count > filtered_count:
+            logger.info(f"Filtered out {original_id_count - filtered_count} unresolvable structure IDs.")
 
         # Step 2: Resolve all IDs to names in a single batch operation.
         id_to_name_map = {}
@@ -202,11 +217,11 @@ class ContractAggregationService:
                 "contract_id": c["contract_id"],
                 "issuer_id": c["issuer_id"],
                 "issuer_corporation_id": c["issuer_corporation_id"],
-                "start_location_id": c["start_location_id"],
+                "start_location_id": c.get("start_location_id"),
                 "end_location_id": c.get("end_location_id"),
                 "type": c["type"],
-                "status": c.get("status", "outstanding"),
-                "title": c.get("title", ""),
+                "status": c.get("status", "unknown"),
+                "title": c.get("title"),
                 "for_corporation": c.get("for_corporation", False),
                 "date_issued": _parse_datetime(c["date_issued"]),
                 "date_expired": _parse_datetime(c["date_expired"]),
@@ -214,9 +229,12 @@ class ContractAggregationService:
                 "price": c.get("price"),
                 "reward": c.get("reward"),
                 "volume": c.get("volume"),
-                "issuer_name": id_to_name_map.get(c['issuer_id']),
-                "issuer_corporation_name": id_to_name_map.get(c['issuer_corporation_id']),
-                "is_ship_contract": False,  # Placeholder, to be enriched later
+                # Denormalized data for search performance
+                "start_location_name": id_to_name_map.get(c.get("start_location_id")),
+                "issuer_name": id_to_name_map.get(c.get('issuer_id')),
+                "issuer_corporation_name": id_to_name_map.get(c.get('issuer_corporation_id')),
+                "is_ship_contract": False,  # Default, will be updated later
+                "item_processing_status": "PENDING_ITEMS",
             }
             for c in contracts
         ]

@@ -7358,63 +7358,103 @@ Before proceeding with implementation, please do a review of plans\implementatio
 -----------------
 
 
-X
+The commits are in. Let's move onto the "## 5. Definition of Done (DoD)" and "## 7. Cross-Cutting Concerns Review" reviews.
 
 
 -----------------
 
 
-X
+1. app\frontend\angular\src\app\features\contracts has potentially inconsistent organizatino. some files are direct children, while app\frontend\angular\src\app\features\contracts\contract-browse-page is organized under a subdirectory. Please investigate.
+2. You created a big stylesheet for something earlier but I never looked at it. What was that? How can we check it's not broken?
+3. You appear to have forgotten how to do a cross-cutting concerns review. Review each item in each section carefully, verfiy it (or its N/A status) against sources of truth (wherever possible), and only then check it off.
 
 
 -----------------
 
 
-X
+I just noticed two other issues.
+
+1. Some items have big font titles, like:
+8 run, ME4/TE4
+From:
+Issued: May 28, 2025, 5:11:05 PM
+Status: outstanding
+Price: 800,000,000.00 ISK
+Volume: 0.01 m³
+----
+While others have no title and are missing that big header. See attached image.
+
+From:
+Issued: May 28, 2025, 5:22:08 PM
+Status: outstanding
+Price: 5,000,000,000.00 ISK
+Volume: 3 m³
+----
+
+2. All the "From" fields are still empty. Is that expected? Did we fully implement the ID to name resolver?
 
 
 -----------------
 
-X
+There's another issue where the contracts cards on the first page are wider than the ones on subsequent pages.
 
 
 -----------------
 
-X
+Is the info on https://developers.eveonline.com/docs/guides/id-ranges/ useful to you?
+Intro:
+"ID Ranges
+A lot of entities in EVE have a sequential identifier. These identifiers are grouped into ranges based on the type of entity they represent. This document lists the ranges and the entities they represent.
+
+The ranges are inclusive, meaning that the first and last ID in the range are valid IDs, however (except ID 0), the first ID is generally not used.
+
+Keep in mind it is not possible to tell if an ID is a character, as characters created before 2010-11-03 share ID ranges with other entities (corporations and alliances)."
 
 
 -----------------
 
-X
+Regarding:
+"And yes, the information on EVE Online ID ranges is extremely useful! Thank you for sharing it. Here’s why it’s so valuable:
+
+Data Validation: It allows us to confirm that an ID we receive from the API is valid for the type of entity we expect (e.g., checking if a station_id actually falls within the range for stations).
+Smarter Lookups: When we resolve IDs to names, knowing the entity type beforehand can help make our requests more efficient and our error handling more robust.
+Handling Ambiguity: Your link points out a critical edge case: some old character, corporation, and alliance IDs can overlap. Knowing this helps us write code that doesn't make incorrect assumptions.
+This is a fundamental concept for working with the ESI API, and I've saved this information to my memory to ensure I handle these IDs correctly in all future tasks."
+
+More than a memory, this seems like something it could be useful to have a set of ID validator helper functions for. What do you think? What are the pros and cons?
 
 
 -----------------
 
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
+Are there any potential downsides of using the fetch API?
 
 
 -----------------
 
 
-X
+Regarding:
+"Error Handling Differences: The fetch API only considers a network failure to be a true error. It does not reject on HTTP error statuses like 404 (Not Found) or 500 (Internal Server Error). You have to manually check the response.ok status to see if the request was successful.
+How Angular Helps: Fortunately, HttpClient abstracts this away for you. It will still emit an error in the RxJS stream for non-successful HTTP statuses, so your catchError blocks will work as expected."
+
+Please explain this in depth. I'm very used to handling HTTP error codes and don't immediately understand what's meant by and involved with "manually check the response.ok status to see if the request was successful". What are the implications of this for Hangar Bay for both existing and future work?
+
+-----------------
+
+
+I'm sold on fetch. /design-log the decision. 
+Should we update any of our design\angular (and subdirectory) docs to reflect this?
+
+
+-----------------
+
+
+Please double check design\angular\00-angular-architecture-overview.md section "## 9. Key Code Review Guidelines (Architectural)". There was a weird edit in there. Do a general review on the section for consistency with project standards.
+
+
+-----------------
+
+
+/git-commit , then return to plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md, asses where you are with the comprehensive item by item cross-cutting review, and proceed from there.
 
 
 -----------------
