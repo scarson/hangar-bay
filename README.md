@@ -28,7 +28,7 @@ For a comprehensive understanding of the Hangar Bay project, please refer to the
 *   **Caching:** Valkey
 *   **Authentication:** EVE Online SSO (OAuth 2.0)
 
-## Implementation Plans - IN PROGRESS
+## Implementation Status
 
 ## Development Setup
 
@@ -81,8 +81,8 @@ cd hangar-bay
 
 1.  **Navigate to the frontend directory:**
     ```bash
-    cd ../frontend # Assuming you are in app/backend/
-    # Or from project root: cd frontend/
+    # From the project root
+    cd app/frontend/angular
     ```
 
 2.  **Install dependencies:**
@@ -92,7 +92,7 @@ cd hangar-bay
 
 3.  **Running Linters and Formatters:**
     *   Lint: `npm run lint` (or `ng lint`)
-    *   Format: `npx prettier --write .` (or configure as an npm script)
+    *   Format: `npm run format` (runs Prettier)
 
 4.  **Running the Development Server:**
     ```bash

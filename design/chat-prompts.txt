@@ -7069,15 +7069,25 @@ If so, run  /git-commit . We've done a LOT of work, so make to use as many logic
 
 -----------------
 
+Cascade said about markdown for PRs:
+That's a great question. It helps us work together more efficiently.
 
-X
+The way you just asked is perfect. Phrases like these are very effective:
+
+"Provide that as a copyable markdown block."
+"Can you put that in a markdown code block?"
+"Wrap that in triple backticks so I can copy it."
+Any of these will tell me to format the content with markdown ... , which creates the clean, copyable block you're looking for.
 
 
 -----------------
 
 
+Let's take a look at:
+* README.me
+* CONTRIBUTING.md
 
-
+Read those files in their entirety. Are there any updates we should make based on the latest design and implementation work?
 
 
 -----------------
