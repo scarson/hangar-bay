@@ -232,7 +232,6 @@ This document records major design discussion points, considerations, and decisi
 
 ---
 
-
 ## AI System Procedure Documentation (Approx. 2025-06-06 03:25:07-05:00)
 
 *   **Context:** Recognizing the critical importance of consistent and reliable execution of complex, recurring AI-involved operational patterns (like the newly defined procedure for maintaining `feature-index.md`). There's a need to document these procedures formally for transparency, maintainability, reusability, and continuous improvement.
@@ -944,9 +943,6 @@ During the development and troubleshooting of the F001 Public Contract Aggregati
 By adopting a stricter model of atomic transactions for logical units of work, the reliability and data integrity of the ESI aggregation process are significantly improved. This approach minimizes the risk of inconsistent database states resulting from partial failures during interactions with the ESI API. These principles will guide the design of future data ingestion and processing features.
 
 ---
-DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
-
----
 
 **2025-06-12 08:29:39-05:00: Architectural Pattern for Dependency Management in Hybrid Contexts**
 
@@ -1033,4 +1029,29 @@ To ensure consistency and maximize effectiveness for AI-assisted development (pa
 **Impact:** This standardized structure will improve the AI's ability to understand, adhere to, and leverage architectural documentation, leading to more consistent, higher-quality code and reduced architectural drift.
 
 --- 
+
+### 2025-06-25 05:21:32-05:00 :: Confirmed Zoneless Angular Architecture
+
+**Decision:** The Hangar Bay frontend will be a fully zoneless Angular application. This will be achieved by providing the `noop` zone implementation in `app.config.ts` and removing the `zone.js` polyfill.
+
+**Rationale:**
+*   **Performance:** Eliminating Zone.js reduces the initial bundle size and removes the performance overhead associated with its automatic change detection patching of browser APIs.
+*   **Modern Practices:** This aligns with the direction of modern Angular development, encouraging more explicit and fine-grained control over change detection using signals and other manual triggers.
+*   **Predictability:** It makes application behavior more predictable, as change detection cycles are triggered intentionally rather than automatically by any async operation.
+
+**Impact:** All core infrastructure plans and AI implementation guidance have been updated to enforce this. All new components and services must be written with the assumption that Zone.js is not present.
+
+---
+
+### 2025-06-25 05:21:32-05:00 :: Standardized Top-Level Routing Structure
+
+**Decision:** Adopted a standardized, scalable top-level routing structure for the application. The primary navigation will consist of a root "Home" link (`/`) and top-level feature links, such as "Contracts" (`/contracts`).
+
+**Rationale:**
+*   **Foundational & Scalable:** This approach provides a standard, scalable starting point. The `/contracts` route can later expand to have sub-routes like `/contracts/browse`, `/contracts/123`, etc., without needing to change the top-level navigation.
+*   **Clarity:** The path `/contracts` is a clear, top-level entry point for the main feature of the application. A more specific path like `/browse-contracts` is better suited for a sub-view within that feature.
+
+**Impact:** All Phase 3 implementation plans have been updated to reflect this structure. Future feature development should follow this pattern for top-level navigation.
+
+---
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*

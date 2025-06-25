@@ -59,13 +59,57 @@ This section reframes risks as potential violations of our established best prac
     *   **Internal:** Hangar Bay Backend API (for data), Valkey/Redis (for backend caching/locking that may affect data freshness).
     *   **External:** EVE Online SSO (for authentication), ESI API (as the ultimate source of data).
 
-## 5. Mitigation Strategies & Proactive Actions
+*   **Backend API Characteristics (from Phase 2 Pre-Mortem):**
+    *   The backend API may return `null` for optional fields (e.g., `ship_name`) if its own data sources are incomplete. The frontend must handle this gracefully.
+    *   The backend currently uses `OFFSET`-based pagination, which is known to have performance limitations at scale. Future migration to keyset pagination should be anticipated.
 
-1.  **Operationalized AI Memory:** The primary mitigation is the creation and enforcement of the **AI Memory `bc0358c8-bf02-475d-beff-3fa5a0a02f9e`**. This memory serves as a persistent, high-level directive for Cascade to always validate its actions against the sources of truth.
-2.  **Mandatory PR Checklist Item:** All frontend pull requests must include a checklist item: "Verified that the changes adhere to the relevant architectural patterns and guides in `design/angular/`."
-3.  **Proactive Referencing:** Cascade is explicitly tasked with referencing the relevant design document when proposing a solution or generating code for a new feature.
+## 5. Implications for Testing Strategy
 
-## 6. Broader Lessons Learned / Insights Gained
+*   **Configuration Testing:**
+    *   **Test Case 1:** Verify the application fails fast with a clear, catastrophic error during startup if the production `apiUrl` is missing, malformed, or points to a development address in a production build. (Mitigates: Operator's Nightmare risk of silent configuration failure).
+*   **Resilience & Failure Mode Testing:**
+    *   **Test Case 1:** Create integration tests for the global `HttpInterceptor` to ensure that various backend error codes (e.g., 404, 500, 503) are correctly caught and translated into the appropriate user-facing state or message. (Mitigates: Operator's Nightmare risk of unhandled API errors).
+*   **Integration Testing:**
+    *   **Test Case 1:** Implement integration tests that specifically target and verify the application's routing configuration, ensuring all lazy-loaded routes resolve correctly without runtime errors. (Mitigates: New Developer Onboarding risk of confusing "magic string" path errors).
+    *   **Test Case 2:** Create tests where the mock API response is intentionally missing optional fields (e.g., `ship_name: null`) to verify that UI components render gracefully without crashing. (Mitigates: Risk of unhandled data gaps from the backend).
+
+## 6. Monitoring and Observability Requirements
+
+*   **Key Metrics to Track:**
+    *   **API Service Layer:**
+        *   **Metric 1:** Frontend API request error rate (by status code, e.g., 4xx, 5xx).
+        *   **Metric 2:** Frontend API request latency (p50, p90, p99).
+*   **Critical Alerts:**
+    *   **Alert 1:** A sustained spike in 5xx errors from the frontend, indicating a potential backend outage.
+*   **Structured Logging:**
+    *   **Requirement 1:** All caught exceptions, especially in the global `HttpInterceptor`, must be logged as structured JSON with a clear error message, component/service context, and the original `HttpErrorResponse` details.
+    *   **Requirement 2:** Log a catastrophic error if the runtime `apiUrl` validation fails in production.
+    *   **Requirement 3:** When logging API errors, capture and include any correlation ID (e.g., `X-Request-ID`) sent by the backend in response headers to facilitate end-to-end request tracing.
+
+## 7. Key Decisions & Changes Resulting from this Review
+
+*   **Decision 1: Enforce Architectural Guardrails via AI Memory.**
+    *   **Change:** Created and will enforce **AI Memory `bc0358c8-bf02-475d-beff-3fa5a0a02f9e`**, which mandates that Cascade validate all Angular work against the project's five core architectural principles (module structure, state management, data contracts, routing, testing).
+    *   **Mitigates:** All risks identified in Section 2 (Architectural Drift, Inconsistent State, Data Divergence, etc.).
+
+*   **Decision 2: Implement Runtime Production Configuration Validation.**
+    *   **Change:** The task plan `03.0-angular-project-initialization.md` was updated to include a mandatory runtime check to validate the `apiUrl` in production builds.
+    *   **Mitigates:** Operator's Nightmare risk of silent configuration failure.
+
+*   **Decision 3: Mandate Signals for Reactive State & Prioritize Global Error Handling.**
+    *   **Change:** The task plan `03.2-backend-api-service-layer.md` was updated to mandate that services expose state via `Signal<AsyncState<T>>` and to elevate the priority of implementing a global `HttpInterceptor`.
+    *   **Mitigates:** Data's Lifecycle risk of stale data, Cross-Phase Friction risk of component boilerplate, and Operator's Nightmare risk of poor error handling.
+
+*   **Decision 4: Plan for Automated API Client Generation.**
+    *   **Change:** The task plan `03.2-backend-api-service-layer.md` was updated to strongly recommend creating a future task for automated client/interface generation from the backend OpenAPI spec.
+    *   **Mitigates:** Data's Lifecycle risk of data contract drift, New Developer Onboarding friction, and the **explicitly identified "Cross-Phase Friction" risk** from the Phase 2 backend pre-mortem.
+
+*   **Decision 5: Require Integration Tests for Routing.**
+    *   **Change:** The task plan `03.3-basic-layout-routing-navigation.md` was updated to require integration tests that verify lazy-loaded routing paths.
+    *   **Mitigates:** New Developer Onboarding risk of confusing runtime routing errors.
+
+## 8. Broader Lessons Learned / Insights Gained
 
 *   **Living Documents:** Planning artifacts like pre-mortems are most valuable when they evolve with the project's knowledge base. They should be revisited and updated when significant new documentation or patterns are established.
 *   **Operationalizing Knowledge:** The most effective way to enforce architectural decisions is to translate them from static documents into active, operational guardrails, such as AI memories and mandatory process steps (e.g., PR checklists).
+*   **Value of Advanced Reviews:** A second, deeper review using alternative mental models after initial planning is highly effective at uncovering systemic, cross-cutting risks that may not be apparent at the individual task level.

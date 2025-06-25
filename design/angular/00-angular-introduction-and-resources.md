@@ -21,4 +21,9 @@ The documents within `design/angular/` are intended to:
 - Capture project-specific architectural decisions related to the Angular frontend.
 - Facilitate onboarding of new team members (human or AI) to our Angular practices.
 
+It has two subdirectories:
+
+- `guides/`: Contains detailed guides for specific Angular topics.
+- `patterns/`: Contains project-specific patterns and best practices.
+
 This structured approach to documentation, combined with Angular's AI-specific resources, will empower Cascade to provide more accurate, context-aware, and high-quality assistance throughout the development lifecycle of the Hangar Bay Angular application.
