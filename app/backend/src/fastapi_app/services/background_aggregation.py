@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager, AbstractAsyncContextManager
 from typing import List, Callable # Added Callable
@@ -104,7 +105,9 @@ class ContractAggregationService:
 
         engine = None  # Initialize engine to None for the finally block
         try:
-            async with self._concurrency_lock(): # Handles concurrent job runs
+            async with self._concurrency_lock():  # Handles concurrent job runs
+                # Use the ESIClient as a context manager to ensure its http_client is initialized.
+                async with self.esi_client:
                     logger.info("Concurrency lock acquired. Starting public contract aggregation run.")
                     
                     # Dynamically create engine and session factory
@@ -134,21 +137,21 @@ class ContractAggregationService:
                                 logger.error(f"Failed to fetch contracts for region {region_id}: {e}", exc_info=True)
 
 
-                    if not all_contracts_data:
-                        logger.info("No new contracts found across all specified regions.")
-                        return
+                        if not all_contracts_data:
+                            logger.info("No new contracts found across all specified regions.")
+                            # No need to commit or process further if no data was fetched.
+                        else:
+                            # Apply development limit if configured
+                            if self.settings.AGGREGATION_DEV_CONTRACT_LIMIT and self.settings.AGGREGATION_DEV_CONTRACT_LIMIT > 0:
+                                limit = self.settings.AGGREGATION_DEV_CONTRACT_LIMIT
+                                if len(all_contracts_data) > limit:
+                                    logger.warning(f"DEV_MODE: Limiting contracts to process from {len(all_contracts_data)} to {limit}.")
+                                    all_contracts_data = all_contracts_data[:limit]
 
-                    # Apply development limit if configured
-                    if self.settings.AGGREGATION_DEV_CONTRACT_LIMIT and self.settings.AGGREGATION_DEV_CONTRACT_LIMIT > 0:
-                        limit = self.settings.AGGREGATION_DEV_CONTRACT_LIMIT
-                        if len(all_contracts_data) > limit:
-                            logger.warning(f"DEV_MODE: Limiting contracts to process from {len(all_contracts_data)} to {limit}.")
-                            all_contracts_data = all_contracts_data[:limit]
+                            await self._process_contracts(db_session, all_contracts_data)
 
-                    await self._process_contracts(db_session, all_contracts_data)
-
-                    await db_session.commit()
-                    logger.info("Public contract aggregation run finished successfully and changes committed.")
+                            await db_session.commit()
+                            logger.info("Public contract aggregation run finished successfully and changes committed.")
 
         except ConcurrencyLockError:
             # This is expected if another job is running, so we just log and return.
@@ -181,6 +184,19 @@ class ContractAggregationService:
             # fromisoformat handles this correctly if we replace 'Z' with '+00:00'.
             return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
 
+        # Step 1: Collect all unique issuer and corporation IDs from the current batch of contracts.
+        issuer_ids = {c['issuer_id'] for c in contracts}
+        corporation_ids = {c['issuer_corporation_id'] for c in contracts}
+        all_ids_to_resolve = list(issuer_ids.union(corporation_ids))
+
+        # Step 2: Resolve all IDs to names in a single batch operation.
+        id_to_name_map = {}
+        if all_ids_to_resolve:
+            logger.info(f"Resolving {len(all_ids_to_resolve)} unique IDs to names.")
+            id_to_name_map = await self.esi_client.resolve_ids_to_names(all_ids_to_resolve)
+            logger.info(f"Successfully resolved {len(id_to_name_map)} names.")
+
+        # Step 3: Transform contracts into the format for the database model, enriching with names.
         contract_values = [
             {
                 "contract_id": c["contract_id"],
@@ -198,6 +214,8 @@ class ContractAggregationService:
                 "price": c.get("price"),
                 "reward": c.get("reward"),
                 "volume": c.get("volume"),
+                "issuer_name": id_to_name_map.get(c['issuer_id']),
+                "issuer_corporation_name": id_to_name_map.get(c['issuer_corporation_id']),
                 "is_ship_contract": False,  # Placeholder, to be enriched later
             }
             for c in contracts

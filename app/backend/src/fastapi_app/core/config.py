@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # ESI Configuration
     ESI_BASE_URL: str = "https://esi.evetech.net"
     ESI_USER_AGENT: str = Field(..., description="User-Agent header for ESI requests.")
+    ESI_TIMEOUT: float = Field(
+        default=20.0, description="Default timeout in seconds for ESI requests."
+    )
 
     # Aggregation Service Configuration
     AGGREGATION_SCHEDULER_INTERVAL_SECONDS: int = 3600

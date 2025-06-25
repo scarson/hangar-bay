@@ -82,7 +82,9 @@ async def startup_event():
     if not hasattr(app.state, 'redis') or not app.state.redis:
         raise RuntimeError("Redis client not initialized in app.state before scheduler setup.")
 
-    esi_client = ESIClient(settings=settings) # ESIClient now only needs settings
+    # For the scheduler, we create a picklable ESIClient that will manage
+    # its own clients on-demand within the job's execution context.
+    esi_client = ESIClient(settings=settings)
     
     # Instantiate the service with the session factory (AsyncSessionLocal)
     aggregation_service = ContractAggregationService(
