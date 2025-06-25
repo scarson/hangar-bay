@@ -5902,7 +5902,1169 @@ Be extremely careful with your edits. Use single-line updates to avoid targeting
 -----------------
 
 
-X
+1. I want to merge Dev to Main at this point. Please write a PR message with markdown formatting that covers that last set of commits.
+
+2. Before beginning implementation, think carefully about if there are any memories it would be beneficial to Cascade to create about the Angular design decisions we made, the new Angular pattern files, etc.
+
+
+-----------------
+
+
+Append the new Angular memories to the "### Key Angular AI Memories" section of design\meta\memory-index.md.
+
+
+-----------------
+
+
+# Note - Updated npm from 11.3.0 -> 11.4.2. This might affect Python. Should follow-up on that.
+
+Is app the right directory to run the ng new command in?
+Recall our structure currently has app\frontend\angular\src. You should look at the files in there and in app\frontend\angular\src\app. Do we need to do anything about them?
+
+
+-----------------
+
+
+1. Do you need a new plan file for the phase 3 implementation? We are no longer in "# Phase 3 Pre-Mortem Improvement Planning". 
+
+2. While these updates seem to be going okay, would it make more sense to clean up the original Angular project and create a new one?
+
+
+-----------------
+
+
+Let's pause for a second and discuss Server-Side Rendering (SSR) at this stage. Even if our focus is on building a robust client-side application first, it could make sense to enable SSR and SSG during project setup. What are the implications? Why or why not would we want to do this? Are there downsides?
+
+
+-----------------
+
+
+Regarding:
+"Recommendation for Hangar Bay
+Given that Hangar Bay is a complex, data-intensive application primarily for authenticated users (behind a login), the primary benefits of SSR—public SEO and initial load for anonymous users—are less critical. The downsides, however—the increased complexity and development constraints—would be felt immediately and could slow down our core infrastructure development.
+
+My recommendation is to defer enabling SSR.
+
+Let's build the application as a pure client-side rendered app first. This allows us to focus on building robust, clean, and feature-rich core components without the added constraints of SSR. The Angular CLI makes it very straightforward to add SSR capabilities later on with a single command (ng add @angular/ssr) if and when the need arises (e.g., for performance optimization or if a public-facing component is added to the project).
+
+This approach prioritizes development velocity and reduces complexity now, while keeping the door open for SSR in the future."
+
+This is interesting for a public home page. Let's revisit in the future.
+
+
+-----------------
+
+
+1. Append an entry to the end of design\meta\design-log.md capturing the decision to NOT go with an SSR/SSG Angular architecture, leaving the door open to revisit it for specific public areas of the site in the future. Use the "DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*" to help target your update.
+
+
+-----------------
+
+
+It's done. I see these three deprecation warnings. Do you know what those are from and if we can do anything about them?
+PS C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\frontend\angular> npm install
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+
+
+-----------------
+
+
+If the latest version of Angular CLI created the files with those names, are you sure they're inconsistent with modern angular best practices?
+
+
+-----------------
+
+1. Results:
+Chrome Headless 137.0.0.0 (Windows 10): Executed 3 of 3 SUCCESS (0.044 secs / 0.04 secs)
+TOTAL: 3 SUCCESS
+
+2. Why did you think it was Angular 17? I want to make sure that incorrect info isn't coming from somewhere like a memory that could cause Cascade to look up incorrect documentation versions, etc. as we work on implementation.
+
+
+-----------------
+
+
+1. We're still on plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md. We can't move on until we go through everything in the task file, verify it's complete and passes our checks, and perform a cross-cutting review. 
+
+2. The next task is 3.1, not 3.2. I think you should add the order of the tasks and links to their task files to your plan so you don't forget this.
+    *   [03.0 Angular Project Initialization](./phase-03-frontend-core-infrastructure/03.0-angular-project-initialization.md)
+    *   [03.1 Angular Core Setup](./phase-03-frontend-core-infrastructure/03.1-angular-core-setup.md)
+    *   [03.2 Backend API Service Layer](./phase-03-frontend-core-infrastructure/03.2-backend-api-service-layer.md)
+    *   [03.3 Basic Layout, Routing, and Navigation](./phase-03-frontend-core-infrastructure/03.3-basic-layout-routing-navigation.md)
+	
+3. Carefully review plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md. What have we done? What's left?
+
+
+-----------------
+
+1. Please also check off completed items in "## 3. Key Implementation Steps" and "## 5. Definition of Done (DoD)"
+
+2. I removed .windsurf from the .gitignore. You not being able to access that cannot be correct.
+
+3. You consistently fail to detect the outcome of these tests in the terminal. Here's the output:
+PS C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\frontend\angular> ng test --no-watch --code-coverage
+Initial chunk files        | Names                   |  Raw size
+chunk-73UEFUY7.js          | -                       |   2.43 MB | 
+polyfills.js               | polyfills               | 920.29 kB | 
+spec-app.component.spec.js | spec-app.component.spec | 231.23 kB | 
+test_main.js               | test_main               |  21.65 kB | 
+styles.css                 | styles                  | 866 bytes | 
+jasmine-cleanup-0.js       | jasmine-cleanup-0       | 519 bytes | 
+
+                           | Initial total           |   3.60 MB
+
+Application bundle generation complete. [1.390 seconds]
+
+25 06 2025 06:50:47.161:INFO [karma-server]: Karma v6.4.4 server started at http://localhost:9876/
+25 06 2025 06:50:47.162:INFO [launcher]: Launching browsers Chrome with concurrency unlimited
+25 06 2025 06:50:47.182:INFO [launcher]: Starting browser Chrome
+25 06 2025 06:50:48.138:INFO [Chrome 137.0.0.0 (Windows 10)]: Connected on socket Rj3xUTyAKPMjXsHAAAAB with id 22408331
+Chrome 137.0.0.0 (Windows 10): Executed 3 of 3 SUCCESS (0.039 secs / 0.035 secs)
+TOTAL: 3 SUCCESS
+
+=============================== Coverage summary ===============================
+Statements   : 100% ( 3/3 )
+Branches     : 100% ( 0/0 )
+Functions    : 100% ( 0/0 )
+Lines        : 100% ( 2/2 )
+================================================================================
+
+and here's your internal Thought Process:
+"Analyzing CCC Review Status
+
+I'm still awaiting the results of the ng test command, the build process is ongoing. I need to check the tool's output for the test results and code coverage reports once complete, before proceeding further.
+
+Waiting on Build Completion
+
+I'm still blocked by the output of the ng test command. It's crucial to assess test results and coverage. The ephemeral message about a stale plan is a good nudge; I've made substantial progress on Task 03.0, like installing prettier and eslint, and setting up linting and formatting, and adding CSS. The current plan needs updating to reflect my actions.
+
+Checking Test Output
+
+I'm still waiting on the ng test output, but the command remains "Building...". I need the results to proceed with the CCC review and plan updates. The tool call status remains pending as well. My current plan is stale, particularly given the substantial progress made on Task 03.0, which I've been actively working on and need to reflect in the current state.
+
+Updating the Task Plan
+
+I'm still awaiting the ng test results. The command is building, and I need the output before further steps. I've completed a lot of Task 03.0 work. The plan's stale, so I'll update the implementation plan to reflect the progress on the checklist, including installing prettier and eslint, setting up linting, formatting, and adding CSS. Once the tests complete, I will review the tool call's status and the results.
+
+Reflecting on the Build State
+
+I'm still waiting for the ng test command to finish, the output showing "Building...". Given the stalled test results and the ephemeral stale plan message, I will now proceed by updating the task plan. I've finished much of Task 03.0, including linting, formatting, and installing dependencies. I will reflect my current progress on the checklist and adjust the current goal.
+
+Waiting on Test Command Output
+
+I'm still stuck waiting for the ng test command output, which currently shows "Building...". I need the full results to move forward with the CCC review and implement my next action: updating the implementation plan. I've also gathered information, like completing much of Task 03.0. Before proceeding with the next steps, I must update the task list for clarity."
+
+"I'm still stuck waiting for the ng test command output, which currently shows "Building..."." makes me think you might be getting hung while this happens: "Application bundle generation complete. [1.390 seconds]" but don't notice when it's done for some reason. What do you think? Is there a better way for you to check for test completion?
+
+
+-----------------
+
+
+I just noticed a possible discrepancy.
+
+*   [x] **Verify Initial Setup:**
+    *   Run `ng serve` from the `app/` directory and verify the default application loads at `http://localhost:4200`.
+	
+	
+    *   Open `app/frontend/angular/src/environments/environment.ts` (created by `ng new`). By default, it contains `export const environment = { production: false };`.
+    *   Modify it to include `apiUrl`. Example for development: `export const environment = { production: false, apiUrl: 'http://localhost:8000/api/v1' };`.
+	
+Does this imply the dev environment should run on port 8000 rather than 4200?
+
+-----------------
+
+
+Let's discuss the service naming briefly. What services other than contract-api do we expect to have?
+
+
+-----------------
+
+
+The command you proposed earlier says "ng generate service services/contract-api". What does "services/contract-api" mean in this command? Does that make "contract-api" the service name rather than "ContractApiService"?
+
+
+-----------------
+
+
+1. You said "the Angular CLI created contract-api.ts, not contract-api.service.ts as I had anticipated."
+That made me think of earlier, with the app.ts -> app.component.ts naming for the root component. 
+Should these services have a .service in the middle? Why or why not? 
+
+2. You said "I now have the correct content of the generated test file. The class name is 
+ContractApi, not ContractApiService as I had assumed. I will now proceed with replacing the entire content of the file with the correct and complete unit tests."
+ 
+and then:
+
+"The unit tests for the ContractApiService have been created."
+
+3. These discrepancies make me think your earlier reply:
+"When you run ng generate service services/contract-api, the Angular CLI will:
+
+Create a directory src/app/services/.
+Generate two files inside that directory:
+contract-api.service.ts
+contract-api.service.spec.ts
+Inside contract-api.service.ts, it will create a class named ContractApiService.
+The CLI automatically converts the kebab-case base name (contract-api) into a PascalCase class name (ContractApiService) and appends the Service suffix.
+
+So, you are correct that contract-api is part of the file name, but the resulting class name will be ContractApiService, which aligns perfectly with our desired naming convention.
+
+It's a smart default in the CLI that helps maintain consistency between file names and class names."
+
+May not be accurate for Angular 20. Please assess.
+
+
+-----------------
+
+
+1. Here's your "Thought Process":
+"Reviewing Inconsistencies
+
+I'm meticulously dissecting the user's critique. It appears my explanations of Angular CLI's naming rules have some gaps. My immediate task is to cross-reference each of their concerns with the official documentation, ensuring I haven't provided misleading information or overlooked nuances. I need to develop a clear, concise summary of the naming conventions to present.
+
+Clarifying the Errors
+
+I've identified my mistakes. The user's observations are spot on: my explanations of Angular CLI's naming conventions were outdated and inconsistent, particularly regarding service file and class names. My response to the user's comments was incorrect. I now need to directly acknowledge these errors and get to the heart of what is correct in the current version of Angular.
+
+Assessing the Feedback
+
+I'm now parsing the user's concerns in detail. They've pinpointed significant errors in my explanations and actions regarding the Angular CLI's naming conventions. My immediate plan is to explicitly admit my mistakes. Then, I'll thoroughly research the current default behaviors in Angular 17/18, especially regarding the .service suffix for files and the Service suffix for class names. I will need to resolve the created inconsistencies.
+
+Addressing the Errors
+
+I've received some very insightful feedback and must amend my prior responses. The user's observations highlight significant inaccuracies regarding Angular CLI's service naming conventions. I need to correct these inaccuracies immediately, including an investigation into Angular 17/18 standards. My primary action is to publicly acknowledge my mistakes. I'll then perform a targeted web search. After this, I'll provide a more accurate explanation of current Angular service naming defaults.
+
+Revising the Approach
+
+I'm now acknowledging the substantial errors in my prior statements and actions, particularly concerning Angular CLI's service naming conventions. My initial explanations were based on an outdated understanding. Consequently, my responses have been inconsistent, especially in the test file. The primary goal is to adopt the prevailing standards in Angular 17/18. I will perform a search, synthesize results, and correct the file names and the class name used in my spec.
+
+Defining the Corrections
+
+I'm now fully acknowledging the errors in my explanations of the Angular CLI's service naming conventions. The user has correctly identified inconsistencies. My plan now is to directly admit my mistakes and research current defaults, specifically in Angular 17/18. I'll search the web to confirm my hypothesis and identify how to fix the files."
+
+Lots of mentions of Angular 17/18. Recall that this is an Angular 20 project. Please specifically re-assess for alignment with Angular 20.
+
+2. You said "My explanation was wrong. The CLI no longer adds the .service infix to the filename or the 
+Service suffix to the class name. The modern approach favors cleaner names where the context (being in a services directory) and the name itself (ContractApi) make its purpose clear."
+
+Is this applicable to the .component names as well? See files under app\frontend\angular\src\app. Should those be in a separate components directory to provide the aforementioned context? Consult Angular 20 standards. Do not guess.
+
+-----------------
+
+
+src/app/
+  |- core/          (Singleton services, guards, core app logic)
+  |- features/
+  |  |- contracts/   (All files for the contracts feature)
+  |  |  |- contract-list/
+  |  |  |  |- contract-list.component.ts
+  |  |  |  |- contract-list.component.html
+  |  |  |- contract-details/
+  |  |  |- contract.model.ts
+  |  |  |- contract.api.ts
+  |  |- user-profile/
+  |- shared/        (Reusable components, pipes, directives)
+
+
+-----------------
+
+
+We have a zoneless app and do not have or want zone.js. Why did you forget that? I'm worried that all our extensive design docs, specs, and memories about this aren't working. You have a memory called "Angular Architecture: Zoneless by Default". 
+
+
+-----------------
+
+
+1. Please carefully review all of design\angular\guides\09-testing-strategies.md (301 lines). Assess it for any changes that are appropriate in light of the challenges we just ran into. Conversely, would reading the existing content before writing tests have helped avoid some of the issues we just ran into?
+
+2. I think we should capture this Angular directory structure somewhere persistent:
+"src/app/
+  |- core/          (Singleton services, guards, core app logic)
+  |- features/
+  |  |- contracts/   (All files for the contracts feature)
+  |  |  |- contract-list/
+  |  |  |  |- contract-list.component.ts
+  |  |  |  |- contract-list.component.html
+  |  |  |- contract-details/
+  |  |  |- contract.model.ts
+  |  |  |- contract.api.ts
+  |  |- user-profile/
+  |- shared/        (Reusable components, pipes, directives)"
+  
+Where would be most helpful for Cascade? It should also be somewhere referencable for humans.
+
+
+-----------------
+
+
+In design\angular\00-angular-architecture-overview.md, the old directory structure had "`shared/data-access/` (Reusable services)"
+What's the equivalent in the new one?
+
+
+-----------------
+
+
+I noticed you said "core/: This is the new home for any truly application-wide singleton services. These are services that are instantiated once and used across multiple features (e.g., AuthService, LoggingService, a hypothetical NotificationService). This is the direct equivalent of the old shared/data-access/ concept.".
+
+Recall that you told me modern Angular 20 has moved away from having "Service" in the names, instead relying on directory context. Does that apply to those?
+
+
+-----------------
+
+
+First, I noticed plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md has all but one cross-cutting review checkbox checked. That's not correct. Review the CCC list, and uncheck any pending review items (all except N/A ones) so we know we have to do them later. Then proceed.
+
+
+-----------------
+
+
+Are these two points:
+In the AppComponent code snippet, styleUrls: ['./app.component.scss'] (plural) is used. The current CLI standard for standalone components is the singular styleUrl.
+In the app.component.html snippet, self-closing tags (<hgb-header />) are used. The standard convention for Angular components is to use explicit opening and closing tags (<hgb-header></hgb-header>).
+
+Captured in our documentation, specs, memories, and/or guides?
+You described them as "minor inconsistencies" but those could get annoying as the project grows.
+
+
+-----------------
+
+
+Exit codes aren't working for assessing test results. I think you should look for the "ERROR" string and whatever the warning one is.
+
+
+-----------------
+
+
+Exit codes aren't working for assessing test results. I think you should look for the "ERROR" string and whatever the warning one is.
+I rebooted the IDE, reran the two ng generate commands, and both still returned "Nothing to be done."
+
+I think I see the issue. Look at the names of the files in app\frontend\angular\src\app\core\layout\footer and app\frontend\angular\src\app\core\layout\header. Compare them to the paths that couldn't resolve. Angular is once again omitting the .component from the file names. You're either going to have to always remember to add those in, or we can skip them as a convention. What do you think?
+
+
+-----------------
+
+
+Check the files under app\frontend\angular\src\app. Some still have app.component. Fix the names, then consider if there are any references to those that need to be updated as well.
+
+
+-----------------
+
+
+1. Okay, you need to start asking me to provide the actual test output because you clearly cannot correctly access the terminal output. You should report that to Windsurf on the backend as a bug. You cannot assume tests pass. We know you cannot read the results. Ask me to provide the output when we run tests.
+
+2. Here's the output:
+
+25 06 2025 08:26:46.907:INFO [Chrome 137.0.0.0 (Windows 10)]: Connected on socket PppZZoWGn0P6t5M0AAAB with id 89466659
+Chrome 137.0.0.0 (Windows 10) Footer should create FAILED
+        Error: NG0908: In this configuration Angular requires Zone.js
+        error properties: Object({ code: 908 })
+            at new _NgZone (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/zone/ng_zone.ts:150:13)
+            at Object.ngZoneFactory [as useFactory] (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/change_detection/scheduling/ng_zone_scheduling.ts:95:5)
+            at Object.factory (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/r3_injector.ts:629:32)
+            at http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/r3_injector.ts:509:35
+            at runInInjectorProfilerContext (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/render3/debug/injector_profiler.ts:362:5)
+            at R3Injector.hydrate (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/r3_injector.ts:507:11)
+            at R3Injector.get (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/r3_injector.ts:366:23)
+            at R3Injector.retrieve (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/r3_injector.ts:246:52)
+            at injectInjectorOnly (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/injector_compatibility.ts:108:35)
+            at ɵɵinject (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/injector_compatibility.ts:142:40)
+Chrome 137.0.0.0 (Windows 10) Header should create FAILED
+        Error: NG0908: In this configuration Angular requires Zone.js
+        error properties: Object({ code: 908 })
+            at new _NgZone (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/zone/ng_zone.ts:150:13)
+            at Object.ngZoneFactory [as useFactory] (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/change_detection/scheduling/ng_zone_scheduling.ts:95:5)
+            at Object.factory (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/r3_injector.ts:629:32)
+            at http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/r3_injector.ts:509:35
+            at runInInjectorProfilerContext (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/render3/debug/injector_profiler.ts:362:5)
+            at R3Injector.hydrate (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/r3_injector.ts:507:11)
+            at R3Injector.get (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/r3_injector.ts:366:23)
+            at R3Injector.retrieve (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/r3_injector.ts:246:52)
+            at injectInjectorOnly (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/injector_compatibility.ts:108:35)
+            at ɵɵinject (http://localhost:9876/darwin_arm64-fastbuild-ST-46c76129e412/bin/packages/core/src/di/injector_compatibility.ts:142:40)
+Chrome 137.0.0.0 (Windows 10) App should render the header component FAILED
+        Expected null not to be null.
+            at <Jasmine>
+            at UserContext.<anonymous> (src/app/app.spec.ts:38:54)
+            at <Jasmine>
+Chrome 137.0.0.0 (Windows 10) App should render the footer component FAILED                                                                                                                             
+        Expected null not to be null.
+            at <Jasmine>
+            at UserContext.<anonymous> (src/app/app.spec.ts:52:54)
+            at <Jasmine>
+ERROR: 'API Error fetching contracts:', HttpErrorResponse{headers: _HttpHeaders{headers: Map{}, normalizedNames: Map{}, lazyInit: undefined, lazyUpdate: null}, status: 500, statusText: 'Internal Server Error', url: 'http://localhost:8000/api/v1/api/v1/contracts/ships', ok: false, type: undefined, name: 'HttpErrorResponse', message: 'Http failure response for http://localhost:8000/api/v1/api/v1/contracts/ships: 500 Internal Server Error', error: 'Internal Server Error'}
+Chrome 137.0.0.0 (Windows 10): Executed 11 of 14 (4 FAILED) (0 secs / 0.082 secs)
+ERROR: 'API Error fetching contracts:', HttpErrorResponse{headers: _HttpHeaders{headers: Map{}, normalizedNames: Map{}, lazyInit: undefined, lazyUpdate: null}, status: 500, statusText: 'Internal Server Error', url: 'http://localhost:8000/api/v1/api/v1/contracts/ships', ok: false, type: undefined, name: 'HttpErrorResponse', message: 'Http failure response for http://localhost:8000/api/v1/api/v1/conChrome 137.0.0.0 (Windows 10): Executed 14 of 14 (4 FAILED) (0.092 secs / 0.085 secs)                                                                                                                   
+TOTAL: 4 FAILED, 10 SUCCESS
+
+=============================== Coverage summary ===============================
+Statements   : 100% ( 30/30 )
+Branches     : 100% ( 4/4 )
+Functions    : 100% ( 10/10 )
+Lines        : 100% ( 23/23 )
+================================================================================
+
+
+
+-----------------
+
+
+I noticed your Thought Process said:
+"Verifying Template Integrity
+
+I've reviewed app.html. The self-closing tags in the original prompt are correct. The header and footer are represented as <hgb-header /> and <hgb-footer />."
+
+Yet I recall you earlier saying that explicit closing tags were required and self-closing tags were invalid Angular syntax.
+
+
+-----------------
+
+
+PS C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\frontend\angular> npm test 
+
+> hangar-bay-frontend@0.0.0 test
+> ng test
+
+Initial chunk files       | Names                  |  Raw size
+chunk-7G2RIETU.js         | -                      |   2.20 MB | 
+polyfills.js              | polyfills              | 920.29 kB | 
+chunk-TZZP6B3D.js         | -                      | 251.12 kB | 
+chunk-XCJZDKLT.js         | -                      | 238.18 kB | 
+chunk-ZRIWPTYU.js         | -                      |  87.91 kB | 
+chunk-DQGZYDQ3.js         | -                      |  20.33 kB | 
+spec-contract.api.spec.js | spec-contract.api.spec |  17.08 kB | 
+chunk-HBJHKB2P.js         | -                      |  10.07 kB | 
+test_main.js              | test_main              |   4.34 kB | 
+spec-app.spec.js          | spec-app.spec          |   3.83 kB | 
+spec-app.config.spec.js   | spec-app.config.spec   |   1.49 kB | 
+spec-header.spec.js       | spec-header.spec       |   1.26 kB | 
+chunk-MAWP2MDX.js         | -                      |   1.22 kB | 
+spec-footer.spec.js       | spec-footer.spec       |   1.02 kB | 
+chunk-MH3I4KTZ.js         | -                      | 979 bytes | 
+styles.css                | styles                 | 866 bytes | 
+jasmine-cleanup-0.js      | jasmine-cleanup-0      | 519 bytes | 
+
+                          | Initial total          |   3.76 MB
+
+Application bundle generation complete. [1.018 seconds]
+
+Watch mode enabled. Watching for file changes...
+25 06 2025 08:56:11.106:WARN [karma]: No captured browser, open http://localhost:9876/
+25 06 2025 08:56:11.127:INFO [karma-server]: Karma v6.4.4 server started at http://localhost:9876/
+25 06 2025 08:56:11.128:INFO [launcher]: Launching browsers Chrome with concurrency unlimited
+25 06 2025 08:56:11.135:INFO [launcher]: Starting browser Chrome
+25 06 2025 08:56:12.078:INFO [Chrome 137.0.0.0 (Windows 10)]: Connected on socket hqlFqq-hUajw0dTEAAAB with id 81472641
+ERROR: 'API Error fetching contracts:', HttpErrorResponse{headers: _HttpHeaders{headers: Map{}, normalizedNames: Map{}, lazyInit: undefined, lazyUpdate: null}, status: 500, statusText: 'Internal Server Error', url: 'http://localhost:8000/api/v1/api/v1/contracts/ships', ok: false, type: undefined, name: 'HttpErrorResponse', message: 'Http failure response for http://localhost:8000/api/v1/api/v1/contracts/ships: 500 Internal Server Error', error: 'Internal Server Error'}
+Chrome 137.0.0.0 (Windows 10): Executed 4 of 14 SUCCESS (0 secs / 0.01 secs)
+ERROR: 'API Error fetching contracts:', HttpErrorResponse{headers: _HttpHeaders{headers: Map{}, normalizedNames: Map{}, lazyInit: undefined, lazyUpdate: null}, status: 500, statusText: 'Internal Server Error', url: 'http://localhost:8000/api/v1/api/v1/contracts/ships', ok: false, type: undefined, name: 'HttpErrorResponse', messaChrome 137.0.0.0 (Windows 10): Executed 14 of 14 SUCCESS (0.046 secs / 0.039 secs)
+TOTAL: 14 SUCCESS
+
+
+-----------------
+
+
+1. Proceed with that update.
+
+2. That new minimalist app.html lost ALL our styling. I'd like it back. The original app.html from before the change follows:
+
+
+-----------------
+
+
+1. Update design\angular\00-angular-architecture-overview.md section "## 3. Directory and File Structure" with that latest canonical directory structure for the Hangar Bay Angular frontend as well.
+
+"/src
+|-- /app
+|   |-- /core
+|   |   |-- /layout
+|   |       |-- /footer
+|   |       |   |-- footer.html
+|   |       |   |-- footer.scss
+|   |       |   |-- footer.spec.ts
+|   |       |   `-- footer.ts
+|   |       `-- /header
+|   |           |-- header.html
+|   |           |-- header.scss
+|   |           |-- header.spec.ts
+|   |           `-- header.ts
+|   |-- /features
+|   |   `-- /contracts
+|   |       |-- contract.api.spec.ts
+|   |       |-- contract.api.ts
+|   |       `-- contract.model.ts
+|   |-- /shared
+|   |-- app.config.spec.ts
+|   |-- app.config.ts
+|   |-- app.html
+|   |-- app.routes.ts
+|   |-- app.scss
+|   |-- app.spec.ts
+|   `-- app.ts
+|-- /environments
+|   |-- environment.prod.ts
+|   `-- environment.ts
+|-- index.html
+|-- main.ts
+`-- styles.scss"
+
+2. Here is the whole style block:
+<style>
+  :host {
+    --bright-blue: oklch(51.01% 0.274 263.83);
+    --electric-violet: oklch(53.18% 0.28 296.97);
+    --french-violet: oklch(47.66% 0.246 305.88);
+    --vivid-pink: oklch(69.02% 0.277 332.77);
+    --hot-red: oklch(61.42% 0.238 15.34);
+    --orange-red: oklch(63.32% 0.24 31.68);
+
+    --gray-900: oklch(19.37% 0.006 300.98);
+    --gray-700: oklch(36.98% 0.014 302.71);
+    --gray-400: oklch(70.9% 0.015 304.04);
+
+    --red-to-pink-to-purple-vertical-gradient: linear-gradient(
+      180deg,
+      var(--orange-red) 0%,
+      var(--vivid-pink) 50%,
+      var(--electric-violet) 100%
+    );
+
+    --red-to-pink-to-purple-horizontal-gradient: linear-gradient(
+      90deg,
+      var(--orange-red) 0%,
+      var(--vivid-pink) 50%,
+      var(--electric-violet) 100%
+    );
+
+    --pill-accent: var(--bright-blue);
+
+    font-family:
+      'Inter',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      Roboto,
+      Helvetica,
+      Arial,
+      sans-serif,
+      'Apple Color Emoji',
+      'Segoe UI Emoji',
+      'Segoe UI Symbol';
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1 {
+    font-size: 3.125rem;
+    color: var(--gray-900);
+    font-weight: 500;
+    line-height: 100%;
+    letter-spacing: -0.125rem;
+    margin: 0;
+    font-family:
+      'Inter Tight',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      Roboto,
+      Helvetica,
+      Arial,
+      sans-serif,
+      'Apple Color Emoji',
+      'Segoe UI Emoji',
+      'Segoe UI Symbol';
+  }
+
+  p {
+    margin: 0;
+    color: var(--gray-700);
+  }
+
+  main {
+    width: 100%;
+    min-height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1rem;
+    box-sizing: inherit;
+    position: relative;
+  }
+
+  .angular-logo {
+    max-width: 9.2rem;
+  }
+
+  .content {
+    display: flex;
+    justify-content: space-around;
+    width: 100%;
+    max-width: 700px;
+    margin-bottom: 3rem;
+  }
+
+  .content h1 {
+    margin-top: 1.75rem;
+  }
+
+  .content p {
+    margin-top: 1.5rem;
+  }
+
+  .divider {
+    width: 1px;
+    background: var(--red-to-pink-to-purple-vertical-gradient);
+    margin-inline: 0.5rem;
+  }
+
+  .pill-group {
+    display: flex;
+    flex-direction: column;
+    align-items: start;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+  }
+
+  .pill {
+    display: flex;
+    align-items: center;
+    --pill-accent: var(--bright-blue);
+    background: color-mix(in srgb, var(--pill-accent) 5%, transparent);
+    color: var(--pill-accent);
+    padding-inline: 0.75rem;
+    padding-block: 0.375rem;
+    border-radius: 2.75rem;
+    border: 0;
+    transition: background 0.3s ease;
+    font-family: var(--inter-font);
+    font-size: 0.875rem;
+    font-style: normal;
+    font-weight: 500;
+    line-height: 1.4rem;
+    letter-spacing: -0.00875rem;
+    text-decoration: none;
+  }
+
+  .pill:hover {
+    background: color-mix(in srgb, var(--pill-accent) 15%, transparent);
+  }
+
+  .pill-group .pill:nth-child(6n + 1) {
+    --pill-accent: var(--bright-blue);
+  }
+  .pill-group .pill:nth-child(6n + 2) {
+    --pill-accent: var(--french-violet);
+  }
+  .pill-group .pill:nth-child(6n + 3),
+  .pill-group .pill:nth-child(6n + 4),
+  .pill-group .pill:nth-child(6n + 5) {
+    --pill-accent: var(--hot-red);
+  }
+
+  .pill-group svg {
+    margin-inline-start: 0.25rem;
+  }
+
+  .social-links {
+    display: flex;
+    align-items: center;
+    gap: 0.73rem;
+    margin-top: 1.5rem;
+  }
+
+  .social-links path {
+    transition: fill 0.3s ease;
+    fill: var(--gray-400);
+  }
+
+  .social-links a:hover svg path {
+    fill: var(--gray-900);
+  }
+
+  @media screen and (max-width: 650px) {
+    .content {
+      flex-direction: column;
+      width: max-content;
+    }
+
+    .divider {
+      height: 1px;
+      width: 100%;
+      background: var(--red-to-pink-to-purple-horizontal-gradient);
+      margin-block: 1.5rem;
+    }
+  }
+</style>
+
+-----------------
+
+1. The update to design\angular\00-angular-architecture-overview.md section "## 3. Directory and File Structure" lost these useful comments that were there before. Restore them and add any new appropriate comments for the new directories.
+
+src/app/
+├── app.config.ts         # Core application providers (routing, http, etc.)
+├── app.component.ts      # Root application component
+├── app.routes.ts         # Top-level application routes
+|
+├── core/                 # Singleton services, guards, and truly global logic.
+│   ├── services/         # App-wide singleton services (e.g., auth, logging)
+│   ├── guards/           # App-wide route guards
+│   └── models/           # App-wide data models
+|
+├── features/             # Feature-specific modules. Each feature is self-contained.
+│   └── contracts/        # Example: Contracts Feature
+│       ├── contract-list/  # Example: Smart component for listing contracts
+│       │   ├── contract-list.component.html
+│       │   ├── contract-list.component.scss
+│       │   └── contract-list.component.ts
+│       │
+│       ├── contract-details/ # Example: Smart component for contract details
+│       │   └── ...
+│       │
+│       ├── contract.api.ts   # Service for this feature's backend communication
+│       ├── contract.model.ts # TypeScript interfaces for this feature
+│       └── contracts.routes.ts # Routes specific to this feature, lazy-loaded
+
+
+2. You removed:
+
+└── shared/               # Reusable, presentation-agnostic code.
+    ├── components/       # Reusable "dumb" UI components (e.g., button, card)
+    ├── pipes/            # Reusable custom pipes
+    ├── directives/       # Reusable custom directives
+    └── utils/            # Reusable helper functions
+	
+Why? If we plan to have those directories eventually, let's create them with .gitkeep files for now. Do we?
+
+-----------------
+
+
+Why did you remove the individual files in the tree under /footer?
+The /header ones aren't present either.
+Should they be?
+
+
+-----------------
+
+
+Our app\frontend\angular\src\app\app.html is still absolutely barebones and looks sad compared to the placeholder we had before.
+Here's the placeholder content, excluding the style block we moved into app.scss:
+---
+<main class="main">
+  <div class="content">
+    <div class="left-side">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 982 239"
+        fill="none"
+        class="angular-logo"
+      >
+        <g clip-path="url(#a)">
+          <path
+            fill="url(#b)"
+            d="M388.676 191.625h30.849L363.31 31.828h-35.758l-56.215 159.797h30.848l13.174-39.356h60.061l13.256 39.356Zm-65.461-62.675 21.602-64.311h1.227l21.602 64.311h-44.431Zm126.831-7.527v70.202h-28.23V71.839h27.002v20.374h1.392c2.782-6.71 7.2-12.028 13.255-15.956 6.056-3.927 13.584-5.89 22.503-5.89 8.264 0 15.465 1.8 21.684 5.318 6.137 3.518 10.964 8.673 14.319 15.382 3.437 6.71 5.074 14.81 4.992 24.383v76.175h-28.23v-71.92c0-8.019-2.046-14.237-6.219-18.819-4.173-4.5-9.819-6.791-17.102-6.791-4.91 0-9.328 1.063-13.174 3.272-3.846 2.128-6.792 5.237-9.001 9.328-2.046 4.009-3.191 8.918-3.191 14.728ZM589.233 239c-10.147 0-18.82-1.391-26.103-4.091-7.282-2.7-13.092-6.382-17.511-10.964-4.418-4.582-7.528-9.655-9.164-15.219l25.448-6.136c1.145 2.372 2.782 4.663 4.991 6.954 2.209 2.291 5.155 4.255 8.837 5.81 3.683 1.554 8.428 2.291 14.074 2.291 8.019 0 14.647-1.964 19.884-5.81 5.237-3.845 7.856-10.227 7.856-19.064v-22.665h-1.391c-1.473 2.946-3.601 5.892-6.383 9.001-2.782 3.109-6.464 5.645-10.965 7.691-4.582 2.046-10.228 3.109-17.101 3.109-9.165 0-17.511-2.209-25.039-6.545-7.446-4.337-13.42-10.883-17.757-19.474-4.418-8.673-6.628-19.473-6.628-32.565 0-13.091 2.21-24.301 6.628-33.383 4.419-9.082 10.311-15.955 17.839-20.7 7.528-4.746 15.874-7.037 25.039-7.037 7.037 0 12.846 1.145 17.347 3.518 4.582 2.373 8.182 5.236 10.883 8.51 2.7 3.272 4.746 6.382 6.137 9.327h1.554v-19.8h27.821v121.749c0 10.228-2.454 18.737-7.364 25.447-4.91 6.709-11.538 11.7-20.048 15.055-8.509 3.355-18.165 4.991-28.884 4.991Zm.245-71.266c5.974 0 11.047-1.473 15.302-4.337 4.173-2.945 7.446-7.118 9.573-12.519 2.21-5.482 3.274-12.027 3.274-19.637 0-7.609-1.064-14.155-3.274-19.8-2.127-5.646-5.318-10.064-9.491-13.255-4.174-3.11-9.329-4.746-15.384-4.746s-11.537 1.636-15.792 4.91c-4.173 3.272-7.365 7.772-9.492 13.418-2.128 5.727-3.191 12.191-3.191 19.392 0 7.2 1.063 13.745 3.273 19.228 2.127 5.482 5.318 9.736 9.573 12.764 4.174 3.027 9.41 4.582 15.629 4.582Zm141.56-26.51V71.839h28.23v119.786h-27.412v-21.273h-1.227c-2.7 6.709-7.119 12.191-13.338 16.446-6.137 4.255-13.747 6.382-22.748 6.382-7.855 0-14.81-1.718-20.783-5.237-5.974-3.518-10.72-8.591-14.075-15.382-3.355-6.709-5.073-14.891-5.073-24.464V71.839h28.312v71.921c0 7.609 2.046 13.664 6.219 18.083 4.173 4.5 9.655 6.709 16.365 6.709 4.173 0 8.183-.982 12.111-3.028 3.927-2.045 7.118-5.072 9.655-9.082 2.537-4.091 3.764-9.164 3.764-15.218Zm65.707-109.395v159.796h-28.23V31.828h28.23Zm44.841 162.169c-7.61 0-14.402-1.391-20.457-4.091-6.055-2.7-10.883-6.791-14.32-12.109-3.518-5.319-5.237-11.946-5.237-19.801 0-6.791 1.228-12.355 3.765-16.773 2.536-4.419 5.891-7.937 10.228-10.637 4.337-2.618 9.164-4.664 14.647-6.055 5.4-1.391 11.046-2.373 16.856-3.027 7.037-.737 12.683-1.391 17.102-1.964 4.337-.573 7.528-1.555 9.574-2.782 1.963-1.309 3.027-3.273 3.027-5.973v-.491c0-5.891-1.718-10.391-5.237-13.664-3.518-3.191-8.51-4.828-15.056-4.828-6.955 0-12.356 1.473-16.447 4.5-4.009 3.028-6.71 6.546-8.183 10.719l-26.348-3.764c2.046-7.282 5.483-13.336 10.31-18.328 4.746-4.909 10.638-8.59 17.511-11.045 6.955-2.455 14.565-3.682 22.912-3.682 5.809 0 11.537.654 17.265 2.045s10.965 3.6 15.711 6.71c4.746 3.109 8.51 7.282 11.455 12.6 2.864 5.318 4.337 11.946 4.337 19.883v80.184h-27.166v-16.446h-.9c-1.719 3.355-4.092 6.464-7.201 9.328-3.109 2.864-6.955 5.237-11.619 6.955-4.828 1.718-10.229 2.536-16.529 2.536Zm7.364-20.701c5.646 0 10.556-1.145 14.729-3.354 4.173-2.291 7.364-5.237 9.655-9.001 2.292-3.763 3.355-7.854 3.355-12.273v-14.155c-.9.737-2.373 1.391-4.5 2.046-2.128.654-4.419 1.145-7.037 1.636-2.619.491-5.155.9-7.692 1.227-2.537.328-4.746.655-6.628.901-4.173.572-8.019 1.472-11.292 2.781-3.355 1.31-5.973 3.11-7.855 5.401-1.964 2.291-2.864 5.318-2.864 8.918 0 5.237 1.882 9.164 5.728 11.782 3.682 2.782 8.51 4.091 14.401 4.091Zm64.643 18.328V71.839h27.412v19.965h1.227c2.21-6.955 5.974-12.274 11.292-16.038 5.319-3.763 11.456-5.645 18.329-5.645 1.555 0 3.355.082 5.237.163 1.964.164 3.601.328 4.91.573v25.938c-1.227-.41-3.109-.819-5.646-1.146a58.814 58.814 0 0 0-7.446-.49c-5.155 0-9.738 1.145-13.829 3.354-4.091 2.209-7.282 5.236-9.655 9.164-2.373 3.927-3.519 8.427-3.519 13.5v70.448h-28.312ZM222.077 39.192l-8.019 125.923L137.387 0l84.69 39.192Zm-53.105 162.825-57.933 33.056-57.934-33.056 11.783-28.556h92.301l11.783 28.556ZM111.039 62.675l30.357 73.803H80.681l30.358-73.803ZM7.937 165.115 0 39.192 84.69 0 7.937 165.115Z"
+          />
+          <path
+            fill="url(#c)"
+            d="M388.676 191.625h30.849L363.31 31.828h-35.758l-56.215 159.797h30.848l13.174-39.356h60.061l13.256 39.356Zm-65.461-62.675 21.602-64.311h1.227l21.602 64.311h-44.431Zm126.831-7.527v70.202h-28.23V71.839h27.002v20.374h1.392c2.782-6.71 7.2-12.028 13.255-15.956 6.056-3.927 13.584-5.89 22.503-5.89 8.264 0 15.465 1.8 21.684 5.318 6.137 3.518 10.964 8.673 14.319 15.382 3.437 6.71 5.074 14.81 4.992 24.383v76.175h-28.23v-71.92c0-8.019-2.046-14.237-6.219-18.819-4.173-4.5-9.819-6.791-17.102-6.791-4.91 0-9.328 1.063-13.174 3.272-3.846 2.128-6.792 5.237-9.001 9.328-2.046 4.009-3.191 8.918-3.191 14.728ZM589.233 239c-10.147 0-18.82-1.391-26.103-4.091-7.282-2.7-13.092-6.382-17.511-10.964-4.418-4.582-7.528-9.655-9.164-15.219l25.448-6.136c1.145 2.372 2.782 4.663 4.991 6.954 2.209 2.291 5.155 4.255 8.837 5.81 3.683 1.554 8.428 2.291 14.074 2.291 8.019 0 14.647-1.964 19.884-5.81 5.237-3.845 7.856-10.227 7.856-19.064v-22.665h-1.391c-1.473 2.946-3.601 5.892-6.383 9.001-2.782 3.109-6.464 5.645-10.965 7.691-4.582 2.046-10.228 3.109-17.101 3.109-9.165 0-17.511-2.209-25.039-6.545-7.446-4.337-13.42-10.883-17.757-19.474-4.418-8.673-6.628-19.473-6.628-32.565 0-13.091 2.21-24.301 6.628-33.383 4.419-9.082 10.311-15.955 17.839-20.7 7.528-4.746 15.874-7.037 25.039-7.037 7.037 0 12.846 1.145 17.347 3.518 4.582 2.373 8.182 5.236 10.883 8.51 2.7 3.272 4.746 6.382 6.137 9.327h1.554v-19.8h27.821v121.749c0 10.228-2.454 18.737-7.364 25.447-4.91 6.709-11.538 11.7-20.048 15.055-8.509 3.355-18.165 4.991-28.884 4.991Zm.245-71.266c5.974 0 11.047-1.473 15.302-4.337 4.173-2.945 7.446-7.118 9.573-12.519 2.21-5.482 3.274-12.027 3.274-19.637 0-7.609-1.064-14.155-3.274-19.8-2.127-5.646-5.318-10.064-9.491-13.255-4.174-3.11-9.329-4.746-15.384-4.746s-11.537 1.636-15.792 4.91c-4.173 3.272-7.365 7.772-9.492 13.418-2.128 5.727-3.191 12.191-3.191 19.392 0 7.2 1.063 13.745 3.273 19.228 2.127 5.482 5.318 9.736 9.573 12.764 4.174 3.027 9.41 4.582 15.629 4.582Zm141.56-26.51V71.839h28.23v119.786h-27.412v-21.273h-1.227c-2.7 6.709-7.119 12.191-13.338 16.446-6.137 4.255-13.747 6.382-22.748 6.382-7.855 0-14.81-1.718-20.783-5.237-5.974-3.518-10.72-8.591-14.075-15.382-3.355-6.709-5.073-14.891-5.073-24.464V71.839h28.312v71.921c0 7.609 2.046 13.664 6.219 18.083 4.173 4.5 9.655 6.709 16.365 6.709 4.173 0 8.183-.982 12.111-3.028 3.927-2.045 7.118-5.072 9.655-9.082 2.537-4.091 3.764-9.164 3.764-15.218Zm65.707-109.395v159.796h-28.23V31.828h28.23Zm44.841 162.169c-7.61 0-14.402-1.391-20.457-4.091-6.055-2.7-10.883-6.791-14.32-12.109-3.518-5.319-5.237-11.946-5.237-19.801 0-6.791 1.228-12.355 3.765-16.773 2.536-4.419 5.891-7.937 10.228-10.637 4.337-2.618 9.164-4.664 14.647-6.055 5.4-1.391 11.046-2.373 16.856-3.027 7.037-.737 12.683-1.391 17.102-1.964 4.337-.573 7.528-1.555 9.574-2.782 1.963-1.309 3.027-3.273 3.027-5.973v-.491c0-5.891-1.718-10.391-5.237-13.664-3.518-3.191-8.51-4.828-15.056-4.828-6.955 0-12.356 1.473-16.447 4.5-4.009 3.028-6.71 6.546-8.183 10.719l-26.348-3.764c2.046-7.282 5.483-13.336 10.31-18.328 4.746-4.909 10.638-8.59 17.511-11.045 6.955-2.455 14.565-3.682 22.912-3.682 5.809 0 11.537.654 17.265 2.045s10.965 3.6 15.711 6.71c4.746 3.109 8.51 7.282 11.455 12.6 2.864 5.318 4.337 11.946 4.337 19.883v80.184h-27.166v-16.446h-.9c-1.719 3.355-4.092 6.464-7.201 9.328-3.109 2.864-6.955 5.237-11.619 6.955-4.828 1.718-10.229 2.536-16.529 2.536Zm7.364-20.701c5.646 0 10.556-1.145 14.729-3.354 4.173-2.291 7.364-5.237 9.655-9.001 2.292-3.763 3.355-7.854 3.355-12.273v-14.155c-.9.737-2.373 1.391-4.5 2.046-2.128.654-4.419 1.145-7.037 1.636-2.619.491-5.155.9-7.692 1.227-2.537.328-4.746.655-6.628.901-4.173.572-8.019 1.472-11.292 2.781-3.355 1.31-5.973 3.11-7.855 5.401-1.964 2.291-2.864 5.318-2.864 8.918 0 5.237 1.882 9.164 5.728 11.782 3.682 2.782 8.51 4.091 14.401 4.091Zm64.643 18.328V71.839h27.412v19.965h1.227c2.21-6.955 5.974-12.274 11.292-16.038 5.319-3.763 11.456-5.645 18.329-5.645 1.555 0 3.355.082 5.237.163 1.964.164 3.601.328 4.91.573v25.938c-1.227-.41-3.109-.819-5.646-1.146a58.814 58.814 0 0 0-7.446-.49c-5.155 0-9.738 1.145-13.829 3.354-4.091 2.209-7.282 5.236-9.655 9.164-2.373 3.927-3.519 8.427-3.519 13.5v70.448h-28.312ZM222.077 39.192l-8.019 125.923L137.387 0l84.69 39.192Zm-53.105 162.825-57.933 33.056-57.934-33.056 11.783-28.556h92.301l11.783 28.556ZM111.039 62.675l30.357 73.803H80.681l30.358-73.803ZM7.937 165.115 0 39.192 84.69 0 7.937 165.115Z"
+          />
+        </g>
+        <defs>
+          <radialGradient
+            id="c"
+            cx="0"
+            cy="0"
+            r="1"
+            gradientTransform="rotate(118.122 171.182 60.81) scale(205.794)"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop stop-color="#FF41F8" />
+            <stop offset=".707" stop-color="#FF41F8" stop-opacity=".5" />
+            <stop offset="1" stop-color="#FF41F8" stop-opacity="0" />
+          </radialGradient>
+          <linearGradient id="b" x1="0" x2="982" y1="192" y2="192" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#F0060B" />
+            <stop offset="0" stop-color="#F0070C" />
+            <stop offset=".526" stop-color="#CC26D5" />
+            <stop offset="1" stop-color="#7702FF" />
+          </linearGradient>
+          <clipPath id="a"><path fill="#fff" d="M0 0h982v239H0z" /></clipPath>
+        </defs>
+      </svg>
+      <h1>Hello, {{ title }}</h1>
+      <p>Congratulations! Your app is running. 🎉</p>
+    </div>
+    <div class="divider" role="separator" aria-label="Divider"></div>
+    <div class="right-side">
+      <div class="pill-group">
+        @for (
+          item of [
+            { title: 'Explore the Docs', link: 'https://angular.dev' },
+            { title: 'Learn with Tutorials', link: 'https://angular.dev/tutorials' },
+            { title: 'CLI Docs', link: 'https://angular.dev/tools/cli' },
+            {
+              title: 'Angular Language Service',
+              link: 'https://angular.dev/tools/language-service',
+            },
+            { title: 'Angular DevTools', link: 'https://angular.dev/tools/devtools' },
+          ];
+          track item.title
+        ) {
+          <a class="pill" [href]="item.link" target="_blank" rel="noopener">
+            <span>{{ item.title }}</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              height="14"
+              viewBox="0 -960 960 960"
+              width="14"
+              fill="currentColor"
+            >
+              <path
+                d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h280v80H200v560h560v-280h80v280q0 33-23.5 56.5T760-120H200Zm188-212-56-56 372-372H560v-80h280v280h-80v-144L388-332Z"
+              />
+            </svg>
+          </a>
+        }
+      </div>
+      <div class="social-links">
+        <a
+          href="https://github.com/angular/angular"
+          aria-label="Github"
+          target="_blank"
+          rel="noopener"
+        >
+          <svg
+            width="25"
+            height="24"
+            viewBox="0 0 25 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            alt="Github"
+          >
+            <path
+              d="M12.3047 0C5.50634 0 0 5.50942 0 12.3047C0 17.7423 3.52529 22.3535 8.41332 23.9787C9.02856 24.0946 9.25414 23.7142 9.25414 23.3871C9.25414 23.0949 9.24389 22.3207 9.23876 21.2953C5.81601 22.0377 5.09414 19.6444 5.09414 19.6444C4.53427 18.2243 3.72524 17.8449 3.72524 17.8449C2.61064 17.082 3.81137 17.0973 3.81137 17.0973C5.04697 17.1835 5.69604 18.3647 5.69604 18.3647C6.79321 20.2463 8.57636 19.7029 9.27978 19.3881C9.39052 18.5924 9.70736 18.0499 10.0591 17.7423C7.32641 17.4347 4.45429 16.3765 4.45429 11.6618C4.45429 10.3185 4.9311 9.22133 5.72065 8.36C5.58222 8.04931 5.16694 6.79833 5.82831 5.10337C5.82831 5.10337 6.85883 4.77319 9.2121 6.36459C10.1965 6.09082 11.2424 5.95546 12.2883 5.94931C13.3342 5.95546 14.3801 6.09082 15.3644 6.36459C17.7023 4.77319 18.7328 5.10337 18.7328 5.10337C19.3942 6.79833 18.9789 8.04931 18.8559 8.36C19.6403 9.22133 20.1171 10.3185 20.1171 11.6618C20.1171 16.3888 17.2409 17.4296 14.5031 17.7321C14.9338 18.1012 15.3337 18.8559 15.3337 20.0084C15.3337 21.6552 15.3183 22.978 15.3183 23.3779C15.3183 23.7009 15.5336 24.0854 16.1642 23.9623C21.0871 22.3484 24.6094 17.7341 24.6094 12.3047C24.6094 5.50942 19.0999 0 12.3047 0Z"
+            />
+          </svg>
+        </a>
+        <a href="https://twitter.com/angular" aria-label="Twitter" target="_blank" rel="noopener">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            alt="Twitter"
+          >
+            <path
+              d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+            />
+          </svg>
+        </a>
+        <a
+          href="https://www.youtube.com/channel/UCbn1OgGei-DV7aSRo_HaAiw"
+          aria-label="Youtube"
+          target="_blank"
+          rel="noopener"
+        >
+          <svg
+            width="29"
+            height="20"
+            viewBox="0 0 29 20"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            alt="Youtube"
+          >
+            <path
+              fill-rule="evenodd"
+              clip-rule="evenodd"
+              d="M27.4896 1.52422C27.9301 1.96749 28.2463 2.51866 28.4068 3.12258C29.0004 5.35161 29.0004 10 29.0004 10C29.0004 10 29.0004 14.6484 28.4068 16.8774C28.2463 17.4813 27.9301 18.0325 27.4896 18.4758C27.0492 18.9191 26.5 19.2389 25.8972 19.4032C23.6778 20 14.8068 20 14.8068 20C14.8068 20 5.93586 20 3.71651 19.4032C3.11363 19.2389 2.56449 18.9191 2.12405 18.4758C1.68361 18.0325 1.36732 17.4813 1.20683 16.8774C0.613281 14.6484 0.613281 10 0.613281 10C0.613281 10 0.613281 5.35161 1.20683 3.12258C1.36732 2.51866 1.68361 1.96749 2.12405 1.52422C2.56449 1.08095 3.11363 0.76113 3.71651 0.596774C5.93586 0 14.8068 0 14.8068 0C14.8068 0 23.6778 0 25.8972 0.596774C26.5 0.76113 27.0492 1.08095 27.4896 1.52422ZM19.3229 10L11.9036 5.77905V14.221L19.3229 10Z"
+            />
+          </svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</main>
+---
+
+
+-----------------
+
+
+Wait, don't those two 500 errors indicate it's still making a real HTTP request? The issue we were trying to solve? That looks like the same npm test output we got before, which was this:
+
+25 06 2025 09:25:42.360:INFO [Chrome 137.0.0.0 (Windows 10)]: Connected on socket hr3FseQuapXDCcwLAAAB with id 45174183
+ERROR: 'API Error fetching contracts:', HttpErrorResponse{headers: _HttpHeaders{headers: Map{}, normalizedNames: Map{}, lazyInit: undefined, lazyUpdate: null}, status: 500, statusText: 'Internal Server Error', url: 'http://localhost:8000/api/v1/contracts/ships', ok: false, type: undefined, name: 'HttpErrorResponse', message: 'Http failure response for http://localhost:8000/api/v1/contracts/ships: 500 Internal Server Error', error: 'Internal Server Error'}
+Chrome 137.0.0.0 (Windows 10): Executed 4 of 16 SUCCESS (0 secs / 0.009 secs)
+ERROR: 'API Error fetching contracts:', HttpErrorResponse{headers: _HttpHeaders{headers: Map{}, normalizedNames: Map{}, lazyInit: undefined, lazyUpdate: null}, status: 500, statusText: 'Internal Server Error', url: 'http://localhost:8000/api/v1/contracts/ships', ok: false, type: undefined, name: 'HttpErrorResponse', message: 'HttChrome 137.0.0.0 (Windows 10): Executed 16 of 16 SUCCESS (0.072 secs / 0.061 secs)
+TOTAL: 16 SUCCESS
+
+
+-----------------
+
+
+I am unconvinced.
+
+This is the current output:
+"25 06 2025 09:39:44.332:INFO [Chrome 137.0.0.0 (Windows 10)]: Connected on socket BmdnEpGN1-PWyBebAAAB with id 96914172
+ERROR: 'API Error fetching contracts:', HttpErrorResponse{headers: _HttpHeaders{headers: Map{}, normalizedNames: Map{}, lazyInit: undefined, lazyUpdate: null}, status: 500, statusText: 'Internal Server Error', url: 'http://localhost:8000/api/v1/contracts/ships', ok: false, type: undefined, name: 'HttpErrorResponse', message: 'Http failure response for http://localhost:8000/api/v1/contracts/ships: 500 Internal Server Error', error: 'Internal Server Error'}
+Chrome 137.0.0.0 (Windows 10): Executed 12 of 16 SUCCESS (0 secs / 0.055 secs)
+ERROR: 'API Error fetching contracts:', HttpErrorResponse{headers: _HttpHeaders{headers: Map{}, normalizedNames: Map{}, lazyInit: undefined, lazyUpdate: null}, status: 500, statusText: 'Internal Server Error', url: 'http://localhost:8000/api/v1/contracts/ships', ok: false, type: undefined, name: 'HttpErrorResponse', message: 'HttChrome 137.0.0.0 (Windows 10): Executed 16 of 16 SUCCESS (0.068 secs / 0.062 secs)
+TOTAL: 16 SUCCESS"
+
+This is the earlier output:
+"25 06 2025 09:25:42.360:INFO [Chrome 137.0.0.0 (Windows 10)]: Connected on socket hr3FseQuapXDCcwLAAAB with id 45174183
+ERROR: 'API Error fetching contracts:', HttpErrorResponse{headers: _HttpHeaders{headers: Map{}, normalizedNames: Map{}, lazyInit: undefined, lazyUpdate: null}, status: 500, statusText: 'Internal Server Error', url: 'http://localhost:8000/api/v1/contracts/ships', ok: false, type: undefined, name: 'HttpErrorResponse', message: 'Http failure response for http://localhost:8000/api/v1/contracts/ships: 500 Internal Server Error', error: 'Internal Server Error'}
+Chrome 137.0.0.0 (Windows 10): Executed 4 of 16 SUCCESS (0 secs / 0.009 secs)
+ERROR: 'API Error fetching contracts:', HttpErrorResponse{headers: _HttpHeaders{headers: Map{}, normalizedNames: Map{}, lazyInit: undefined, lazyUpdate: null}, status: 500, statusText: 'Internal Server Error', url: 'http://localhost:8000/api/v1/contracts/ships', ok: false, type: undefined, name: 'HttpErrorResponse', message: 'HttChrome 137.0.0.0 (Windows 10): Executed 16 of 16 SUCCESS (0.072 secs / 0.061 secs)
+TOTAL: 16 SUCCESS"
+
+Both show all 16 tests passing.
+Are those messages occuring on different tests?
+
+
+-----------------
+
+
+Thank you for the explanation. I commented it out, re-ran the test myself, verified it didn't appear, and uncommented. I'm satisifed. What's next?
+
+
+-----------------
+
+
+1. Looks good. 
+
+2. What are the main lessons we recently learned? How and where should we capture those so they're useful to Cascade? Updating design\angular\guides\09-testing-strategies.md seems especially important.
+
+
+-----------------
+
+
+1. You need to read the whole design\angular\guides\09-testing-strategies.md file first, which is over 100 lines long. You added your new section with redundant numbering in the middle. Revert your change, read the whole thing, then re-assess. 
+
+2. Think further back for lessons. Don't limit yourself to three. Consider as many as would be useful to Cascade. The whole http mock misconfiguration took significant time to resolve.
+
+
+-----------------
+
+
+We have some phase 3 wrap-up tasks before moving on to phase 4.
+
+1. Carefully review design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem-v2.md, which is 115 lines. Think through if there are any updates it would be helpful to Cascade and humans to add. What are they and why? Remember you proposed this be a "living document".
+
+
+
+-----------------
+
+We're not done. I'm just giving you tasks one at a time since we've been hitting lots of timeout errors lately.
+
+Next, review the entirety of plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md and assess it against our progress. What's complete? What's left to do?
+
+
+-----------------
+
+
+Before doing ANY of the following:
+Create Layout Components: Generate the standalone HeaderComponent and FooterComponent.
+Integrate Layout: Update AppComponent to import and display the new header and footer.
+Add Navigation: Implement basic navigation links within the HeaderComponent.
+Add Contracts Route: Create the placeholder component and lazy-loaded route for the /contracts feature.
+
+You need to do a VERY careful assessment of the current project state since you didn't update the task file as you went. A few hints: We don't use "Component" in the names of components any more, and the header and footer already exist. 
+
+
+-----------------
+
+
+Do we have adequate test coverage for the /contracts feature? Review design\angular\patterns\03-lazy-loaded-routes.md and design\angular\guides\09-testing-strategies.md (reminder, this is almost a 400 line file) and then consider.
+
+
+-----------------
+
+
+You said you would create a new test in 
+app.spec.ts
+ to cover this exact scenario. However, you seem to have modified the existing "'should lazy load and render the ContractListComponent on navigation to /contracts'" test. Was that the intention?
+
+
+-----------------
+
+
+Please return to plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md and conduct a thorough cross-cutting reivew.
+
+
+-----------------
+
+
+1. First we need to do the phase 3 post-mortem phase review based on the design\reviews\post-mortems\phase-reviews\phase-review-template.md template. To prepare for this review, read the current state of these files in their entirety:
+* design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem-v2.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-core-configuration.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md
+
+1.1. Think about any files within the design\angular, design\angular\guides, and design\angular\patterns directories it may also be useful to include in your review prep, and read them in their entriety. Be careful about partial reads. Look for hints like:
+"## AI Analysis Guidance for Cascade
+
+This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls." 
+
+but do not rely solely on them.
+
+1.2. Think about any files under app\frontend\angular or its subdirectories it may also be useful to include in your review prep, and read them in their entriety. Be careful about partial reads.
+
+2. Conduct the phase 3 post-mortem phase review based on the design\reviews\post-mortems\phase-reviews\phase-review-template.md. You will need to create phase-03-frontend-core-infra-reivew.md.
+
+3. Update "### Phase 3: Frontend Core Infrastructure" of plans\implementation\00-mvp-implementation-plan-progress.md to reflect the work completed in the phase. Review the entries for the previous phases to understand the structure before crafting the phase 3 section.
+
+
+-----------------
+
+
+You completely lost the original instructions in your context window and just did a review of task 03.2. We're doing a review of the whole phase. I'm going to give you the instruction again. Do not unnecessarily repeat work you've already done, but refocus on the post-mortem review task. I also noticed you didn't look at the design\angular\patterns files. 
+
+Here are the instructions again:
+1. First we need to do the phase 3 post-mortem phase review based on the design\reviews\post-mortems\phase-reviews\phase-review-template.md template. To prepare for this review, read the current state of these files in their entirety:
+* design\reviews\pre-mortems\phase-03-frontend-core-infra-pre-mortem-v2.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.0-angular-project-initialization.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-core-configuration.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.2-backend-api-service-layer.md
+* plans\implementation\phase-03-frontend-core-infrastructure\03.3-basic-layout-routing-navigation.md
+
+1.1. Think about any files within the design\angular, design\angular\guides, and design\angular\patterns directories it may also be useful to include in your review prep, and read them in their entriety. Be careful about partial reads. Look for hints like:
+"## AI Analysis Guidance for Cascade
+
+This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls." 
+
+but do not rely solely on them.
+
+1.2. Think about any files under app\frontend\angular or its subdirectories it may also be useful to include in your review prep, and read them in their entriety. Be careful about partial reads.
+
+2. Last step before we write it. Review the earlier phase reviews for inspiration, with a special focus on the types of information that are most useful for Cascade:
+* design\reviews\post-mortems\phase-reviews\00-foundational-setup-review.md
+* design\reviews\post-mortems\phase-reviews\01-backend-core-infrastructure-review.md
+* design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md
+
+3. Write up the phase 3 post-mortem phase review based on the design\reviews\post-mortems\phase-reviews\phase-review-template.md. You will need to create phase-03-frontend-core-infra-reivew.md. 
+
+
+
+-----------------
+
+
+Please give design\reviews\post-mortems\phase-reviews\03-frontend-core-infrastructure-review.md a careful read. Take the outside perspective of "future Cascade", who is returning to this project after a long haitus and no immediate context. Is anything missing that could be helpful?
+
+
+-----------------
+
+
+
+Yes. Then, perform a similar "future Cascade" review of design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md and look for potential improvements.
+
+
+
+
+
+
+-----------------
+
+
+1. Yes. 
+2. Then, perform a similar "future Cascade" review of design\reviews\post-mortems\phase-reviews\01-backend-core-infrastructure-review.md and look for potential improvements. 
+3. Then, perform a similar "future Cascade" review of design\reviews\post-mortems\phase-reviews\00-foundational-setup-review.md and look for potential improvements.
+
+
+-----------------
+
+
+1. Yes, proceed. Explicitly verify all file paths against the actual code base.
+2. In you added:
+"*   **2.1. Major Deliverables (with file paths):**
+    *   **ESI API Client Service:** A dedicated, injectable service for interacting with the ESI API. (`app/backend/src/hangar_bay/services/esi_client.py`)
+    *   **Database Upsert Service:** A generic service for handling idempotent database write operations (i.e., `INSERT` on new, `UPDATE` on existing). (`app/backend/src/hangar_bay/services/db_upsert.py`)
+    *   **Contract Aggregation Service:** The core business logic service orchestrating the data fetching and saving. (`app/backend/src/hangar_bay/services/contract_aggregator.py`)
+    *   **APScheduler Job:** A scheduled job to run the aggregation service periodically. (`app/backend/src/hangar_bay/jobs.py`)
+    *   **Alembic Migration:** A database migration script to create the `contracts` table. (`app/backend/alembic/versions/`)"
+These are great comments, but at least some of the file paths are wrong. The directory app/backend/src/hangar_bay doesn't exist, for example; those files are elsewhere. Explicitly verify all file paths against the actual code base and update accordingly.
+
+
+-----------------
+
+1. Yes.
+
+2. Update "### Phase 3: Frontend Core Infrastructure" of plans\implementation\00-mvp-implementation-plan-progress.md to reflect the work completed in the phase. Review the entries for the previous phases to understand the structure before crafting the phase 3 section.
+
+
+-----------------
+
+In design\reviews\post-mortems\phase-reviews\00-foundational-setup-review.md, I don't like the details we lost in the removal of:
+"## 2. Key Features & Infrastructure Delivered
+
+*   **Backend Project Foundation (`app/backend/`):**
+    *   PDM setup: `pyproject.toml`, `pdm.lock`, `.venv` (managed by PDM).
+    *   Core application stack dependencies installed (FastAPI, Uvicorn, Pydantic, SQLAlchemy, etc.).
+    *   Development tooling: `flake8`, `black` integrated via PDM scripts.
+    *   Configuration: Pydantic `BaseSettings` in `src/fastapi_app/core/config.py`, `.env.example`.
+    *   Basic `src` layout for application code (`src/fastapi_app/`).
+*   **Frontend Project Foundation (`app/frontend/angular/`):**
+    *   Angular CLI project: `hangar-bay-frontend` with SCSS & routing.
+    *   Development tooling: Prettier, ESLint configured.
+    *   Configuration: `src/environments/environment.ts` and `src/environments/environment.prod.ts`.
+*   **Project-Wide Infrastructure:**
+    *   Version Control: Comprehensive `.gitignore` at project root.
+    *   Documentation: Updated `README.md` with PDM and Angular setup; task-specific documentation for Phase 0.
+    *   Design Artifacts: Initial `design/memory-index.md`, `design/risks.md`, and updates to `design/design-log.md`."
+	
+Even though this is the first phase review, we must keep the structure consistent. The new "## 2. Developer Onboarding Quick-Start" should probably go in CONTRIBUTING.md instead.
+
+Similarly the new:
+"## 3. Project Blueprint: Foundational Files
+
+This section serves as a high-level map of the repository's foundational configuration.
+
+*   **Backend Dependency & Tooling (`app/backend/pyproject.toml`):**
+    *   *Why PDM, Ruff, & Black?* PDM was chosen as a modern, all-in-one Python project manager. Ruff and Black are a best-in-class combination for extremely fast, consistent code linting and formatting.
+*   **Backend Configuration (`app/backend/src/fastapi_app/config.py` & `.env.example`):**
+    *   *Why Pydantic Settings?* Provides type-safe validation of environment variables, preventing common configuration errors at startup.
+*   **Frontend Project (`app/frontend/angular/`):**
+    *   *Why Angular?* A robust, feature-rich framework suitable for building scalable single-page applications.
+*   **Version Control (`.gitignore`):**
+    *   *Why?* A comprehensive `.gitignore` at the project root is critical for keeping the repository clean of local environment files, IDE settings, and sensitive information.
+*   **Project Documentation (`README.md`):**
+    *   *Why?* The root `README.md` is the primary entry point for any developer and must contain clear setup instructions."
+
+Seem to cover some but not all of the removed "## 2. Key Features & Infrastructure Delivered".
+Reivew these and merge them back under "## 2. Key Features & Infrastructure Delivered". Make sure all the sections are correct for a phase review.
+
+
+
+
+-----------------
+
+
+1. Perform a "Future Cascade" review of the phase post-mortem template at design\reviews\post-mortems\phase-reviews\phase-review-template.md. Try to capture instructions and guidance to Cascade that will proactively lead to adding the types of valuable insights and actionable enhancements you found in the Future Cascade reviews for Phases 0, 1, 2, and 3.
+
+2. Create a memory for "Future Cascade" reviews.
+
+
+-----------------
+
+
+We have made a major error by proceeding with work on Phase 4, which I never authorized. We didn't commit our work for phase 3 before moving on. We also weren't done with review updates. 
+
+1. Perform a "Future Cascade" review of the phase post-mortem template at design\reviews\post-mortems\phase-reviews\phase-review-template.md. Try to capture instructions and guidance to Cascade that will proactively lead to adding the types of valuable insights and actionable enhancements you found in the Future Cascade reviews for Phases 0, 1, 2, and 3.
+
+2. Create a memory for "Future Cascade" reviews.
+
+3. How do you propose we address the commit issue?
+
+4. Create a memory that Cascade must not move onto the next phase task or entire phase without explicitly asking the USER for permission to proceed and receiving confirmation.
+
+
+-----------------
+
+
+These are scary, high-risk changes. We haven't implemented that much of 4.1 and it's fairly tightly related to all of Phase 3. While slightly less clean in terms of keeping phase work isolated, would it be lower risk to commit what we have?
+If so, run  /git-commit . We've done a LOT of work, so make to use as many logical groupings as necessary to ensure commit clarity.
 
 
 -----------------
@@ -5914,338 +7076,8 @@ X
 -----------------
 
 
-X
 
 
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
 
 
 -----------------

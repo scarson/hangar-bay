@@ -1,12 +1,14 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { Footer } from './core/layout/footer/footer';
+import { Header } from './core/layout/header/header';
 
 @Component({
-  selector: 'app-root',
-  imports: [RouterOutlet],
+  selector: 'hgb-root',
+  standalone: true,
+  imports: [RouterOutlet, Header, Footer],
   templateUrl: './app.html',
-  styleUrl: './app.scss'
+  styleUrl: './app.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class App {
-  protected title = 'hangar-bay-frontend';
-}
+export class App {}

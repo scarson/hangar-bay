@@ -1,6 +1,6 @@
 # Hangar Bay - MVP Implementation Plan Overview
 
-**Last Updated:** 2025-06-06 <!-- To be updated manually or by AI as plan evolves -->
+**Last Updated:** 2025-06-25 <!-- To be updated manually or by AI as plan evolves -->
 
 ## 1. Introduction
 
@@ -23,6 +23,9 @@ This plan is designed to be used by AI coding assistants (specifically Cascade) 
 ## 2. Development Phases & Tasks
 
 The MVP development is structured into the following phases. Each task links to a detailed plan file.
+Unless otherwise specified:
+* **A strict sequential order must be followed for these tasks.** Before proceeding to the next task, the current task must be fully complete, which includes all implementation steps, Definition of Done (DoD) items, and a full Cross-Cutting Concerns review.
+* **All tasks must be completed before proceeding to the next phase.** Before proceeding to the next phase, all tasks in the current phase must be fully complete, which includes all implementation steps, Definition of Done (DoD) items, and a full Cross-Cutting Concerns review.
 
 ### Phase 0: Foundational Setup
 *   **Goal:** Establish the project structure, development environment, tooling, and core configuration management.
@@ -50,7 +53,7 @@ The MVP development is structured into the following phases. Each task links to 
 *   **Goal:** Establish the Angular frontend application structure, API communication layer, and basic layout.
 *   **Tasks:**
     *   [03.0 Angular Project Initialization](./phase-03-frontend-core-infrastructure/03.0-angular-project-initialization.md)
-    *   [03.1 Angular Core Module Setup](./phase-03-frontend-core-infrastructure/03.1-angular-core-module-setup.md)
+    *   [03.1 Angular Core Setup](./phase-03-frontend-core-infrastructure/03.1-angular-core-setup.md)
     *   [03.2 Backend API Service Layer](./phase-03-frontend-core-infrastructure/03.2-backend-api-service-layer.md)
     *   [03.3 Basic Layout, Routing, and Navigation](./phase-03-frontend-core-infrastructure/03.3-basic-layout-routing-navigation.md)
 

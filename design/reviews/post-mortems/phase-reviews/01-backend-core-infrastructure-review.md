@@ -21,17 +21,26 @@
     *   Implemented PostgreSQL database connectivity, defined a `User` model, and established Alembic for schema migrations. SQLite was used for local dev/testing convenience for the DB, Valkey for caching.
     *   Integrated Valkey cache with asynchronous `redis.asyncio` client, managed via FastAPI lifecycle events.
     *   Basic logging configured in `main.py` for improved visibility.
-    *   All primary backend services (FastAPI app, PostgreSQL, Valkey) are containerized in `docker-compose.yml` and validated.
+    *   All primary backend services (FastAPI app, PostgreSQL, Valkey) are containerized in `compose.yml` and validated.
     *   Task documentation for 01.1, 01.2, and 01.3 updated with detailed learnings and AI guidance.
 *   **Deviations/Scope Changes:**
-    *   Initial database setup used SQLite for local development simplicity, with PostgreSQL targeted for production (as per `docker-compose.yml`). This was an implicit understanding clarified during the phase.
+    *   Initial database setup used SQLite for local development simplicity, with PostgreSQL targeted for production (as per `compose.yml`). This was an implicit understanding clarified during the phase.
+        * Note: SQLite was later abandoned in Phase 2in favor of PostgreSQL for both Development and Production.
     *   Logging setup was initially overlooked for custom modules and added reactively during cache integration; now a key learning.
 
 ## 2. Key Features & Infrastructure Delivered
 
-*   **FastAPI Application Skeleton:** (`app/backend/src/fastapi_app/`)
-    *   Core application setup in `main.py`.
-    *   Pydantic settings management in `config.py`.
+*   **2.1. Major Deliverables (with verified file paths & rationale):**
+    *   **FastAPI Application Skeleton:** The core application structure. (`app/backend/src/fastapi_app/main.py`)
+        *   *Why FastAPI?* Chosen for its high performance, automatic OpenAPI/Swagger documentation, and dependency injection system, which simplifies development and testing.
+    *   **Pydantic Settings Management:** Centralized configuration management. (`app/backend/src/fastapi_app/config.py`)
+        *   *Why Pydantic?* Provides type-safe validation of environment variables, preventing common configuration errors at startup.
+    *   **Dockerized Local Services:** A Docker Compose setup for external dependencies. (`app/backend/docker/compose.yml`)
+        *   *Why Docker Compose?* Ensures consistent, isolated, and easily reproducible development environments for the database and cache, without requiring local installation.
+    *   **PostgreSQL Database:** The primary data store. (via `compose.yml`)
+        *   *Why PostgreSQL?* A robust, open-source relational database with strong support for complex queries and data integrity.
+    *   **Valkey Cache:** The in-memory cache. (via `compose.yml`)
+        *   *Why Valkey?* A community-driven, open-source fork of Redis, chosen for its performance and compatibility while avoiding Redis's recent license changes.
     *   Basic `/health` endpoint.
     *   Refer to: `plans/implementation/phase-01-backend-core-infrastructure/01.1-fastapi-app-skeleton.md`
 *   **Database Setup (PostgreSQL with Alembic):**
@@ -46,7 +55,7 @@
     *   Refer to: `plans/implementation/phase-01-backend-core-infrastructure/01.3-valkey-cache-integration.md`
 *   **Dockerization:**
     *   `Dockerfile` for the backend application.
-    *   `docker-compose.yml` defining `backend`, `db` (PostgreSQL), and `cache` (Valkey) services.
+    *   `compose.yml` defining `backend`, `db` (PostgreSQL), and `cache` (Valkey) services.
     *   `.env.example` and support for `.env` files for configuration.
 
 ## 3. Technical Learnings & Discoveries
@@ -113,15 +122,15 @@
 
 ## 6. Key Decisions & Justifications (Technical & Process)
 
-*   **FastAPI as the core backend framework:** Chosen for its async capabilities, Pydantic integration, and performance. (Ref: `design-spec.md` initial thoughts, `01.1-fastapi-app-skeleton.md`)
-*   **PostgreSQL as the primary database (for production):** Standard, robust relational DB. SQLite used for local dev convenience in this phase. (Ref: `01.2-database-setup.md`)
-*   **Valkey (Redis fork) for caching:** High-performance in-memory cache. (Ref: `01.3-valkey-cache-integration.md`)
-*   **Docker for containerization:** Standard for development and deployment consistency. (Ref: `docker-compose.yml`, `Dockerfile`)
+*   **FastAPI as the core backend framework:** Chosen for its async capabilities, Pydantic integration, and performance. (Ref: `design/specifications/design-spec.md` initial thoughts, `plans/implementation/phase-01-backend-core-infrastructure/01.1-fastapi-app-skeleton.md`)
+*   **PostgreSQL as the primary database (for production):** Standard, robust relational DB. SQLite used for local dev convenience in this phase. (Ref: `plans/implementation/phase-01-backend-core-infrastructure/01.2-database-setup.md`)
+*   **Valkey (Redis fork) for caching:** High-performance in-memory cache. (Ref: `plans/implementation/phase-01-backend-core-infrastructure/01.3-valkey-cache-integration.md`)
+*   **Docker for containerization:** Standard for development and deployment consistency. (Ref: `plans/implementation/phase-01-backend-core-infrastructure/compose.yml`, `plans/implementation/phase-01-backend-core-infrastructure/Dockerfile`)
 *   **PDM for Python package management:** Modern, user-friendly tool. (Project setup decision)
-*   **Application package name `fastapi_app`:** To avoid import conflicts with `fastapi` library. (Ref: `01.1-fastapi-app-skeleton.md` - Challenge 1)
-*   **Centralized Pydantic settings (`config.py`):** For managing environment variables and application configuration securely and conveniently. (Ref: `01.1-fastapi-app-skeleton.md`)
-*   **FastAPI Lifecycle events for resource management:** For cache client initialization/shutdown. (Ref: `01.3-valkey-cache-integration.md`, `main.py`)
-*   **Standardized Logging Format:** Adopted `%(levelname)s:     %(name)s - %(message)s` for readability and consistency. (Ref: `main.py`, `observability-spec.md`)
+*   **Application package name `fastapi_app`:** To avoid import conflicts with `fastapi` library. (Ref: `plans/implementation/phase-01-backend-core-infrastructure/01.1-fastapi-app-skeleton.md` - Challenge 1)
+*   **Centralized Pydantic settings (`config.py`):** For managing environment variables and application configuration securely and conveniently. (Ref: `plans/implementation/phase-01-backend-core-infrastructure/01.1-fastapi-app-skeleton.md`)
+*   **FastAPI Lifecycle events for resource management:** For cache client initialization/shutdown. (Ref: `plans/implementation/phase-01-backend-core-infrastructure/01.3-valkey-cache-integration.md`, `main.py`)
+*   **Standardized Logging Format:** Adopted `%(levelname)s:     %(name)s - %(message)s` for readability and consistency. (Ref: `main.py`, `design/specifications/observability-spec.md`)
 *   **Introduction of Phase Review Process:** Decision to create phase review documents to consolidate learnings. (This document itself!)
 
 ## 7. Unresolved Issues & Technical Debt

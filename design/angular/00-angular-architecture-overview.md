@@ -1,87 +1,115 @@
 # Hangar Bay - Angular Frontend Architecture
 
+**Last Updated:** 2025-06-25
+
 ## 1. Introduction
 
 This document outlines the high-level architecture for the Hangar Bay Angular frontend. Our goal is to build a modern, scalable, performant, and maintainable application by leveraging the latest Angular features and best practices.
 
-This document serves as an umbrella, providing concise summaries for key architectural areas. For in-depth details, please refer to the specific guideline documents located in the `design/angular/guides/` directory.
+This document serves as the single source of truth for our architectural decisions. For in-depth details on specific topics, refer to the guideline documents in the `design/angular/guides/` directory.
 
 ## 2. Core Architectural Tenets
 
 Our frontend architecture is built upon the following core principles, which together enable a high-performance, **zoneless** application.
 
 ### 2.1. Change Detection: Zoneless by Default
-- **Primary Approach:** The application will be **zoneless**. We will bootstrap Angular without `zone.js` to achieve better performance, smaller bundle sizes, and clearer stack traces.
-- **Mechanism:** Change detection is triggered automatically by Angular's modern reactivity primitives. This means relying on **Signals** for state management and using the `async` pipe for RxJS observables in templates.
-- **Compatibility:** This approach requires adherence to patterns that work without Zone.js's automatic change detection. All new code must be written with this in mind.
+- **Primary Approach:** The application is **zoneless**. We bootstrap Angular without `zone.js` to achieve better performance, smaller bundle sizes, and clearer stack traces.
+- **Mechanism:** Change detection is driven by **Angular Signals**. All state should be managed via signals (`signal`, `computed`, `effect`) to ensure fine-grained, automatic reactivity.
+- **Details:** See [`design/angular/guides/09-testing-strategies.md`](./guides/09-testing-strategies.md) for critical information on testing in a zoneless environment.
 
 ### 2.2. Component Model: Standalone by Default
-- **Primary Approach:** We will exclusively use **Standalone Components, Directives, and Pipes**. This approach simplifies the component model by completely removing the need for `NgModules` for component declaration.
-- **Benefits:** Enhances modularity, improves tree-shakability, simplifies dependency management at the component level, and is the standard for modern Angular applications.
+- **Primary Approach:** We exclusively use **Standalone Components, Directives, and Pipes**. This approach completely removes the need for `NgModules`.
+- **Benefits:** Enhances modularity, improves tree-shakability, and simplifies dependency management at the component level.
 - **Details:** See [`design/angular/guides/02-component-and-directive-deep-dive.md`](./guides/02-component-and-directive-deep-dive.md)
 
 ### 2.3. Reactivity & State Management: Signals First
-- **Primary Reactive Primitive:** **Angular Signals** are the primary mechanism for managing all application state. This includes `signal`, `computed`, and `effect`.
-- **Benefits:** Provides fine-grained reactivity, which is essential for a zoneless architecture. It offers excellent performance by default and a more intuitive developer experience.
-- **RxJS Integration:** RxJS will be used for handling complex asynchronous operations and event streams. We will leverage `rxjs-interop` utilities like `toSignal` for seamless integration into the Signal-based state model.
+- **Primary Reactive Primitive:** **Angular Signals** are the primary mechanism for managing all application state.
+- **RxJS Integration:** RxJS is reserved for handling complex asynchronous operations (e.g., orchestrating multiple HTTP requests). Use `rxjs-interop` utilities like `toSignal` to integrate RxJS streams into the signal-based state model.
 - **Details:** See [`design/angular/guides/04-state-management-and-rxjs.md`](./guides/04-state-management-and-rxjs.md)
 
 ### 2.4. Routing: Lazy Loading with Standalone Components
 - **Strategy:** We will utilize Angular's router with **lazy loading** as the default for all feature routes to ensure optimal initial load performance.
-- **Implementation:** Routes will be configured to lazy-load standalone components directly using `loadComponent` or route groups using `loadChildren` that, in turn, load a set of routes.
+- **Implementation:** Routes will be configured to lazy-load standalone components (`loadComponent`) or entire sets of routes (`loadChildren`).
 - **Details:** See [`design/angular/guides/06-routing-and-navigation.md`](./guides/06-routing-and-navigation.md)
 
-### 2.5. Styling: Component-Scoped
-- **Approach:** Styles will be component-scoped using Angular's view encapsulation. This prevents style leakage and promotes modularity.
-- **Global Styles:** A minimal set of global styles (e.g., base typography, resets, theme variables) will be defined in `src/styles.scss`.
-- **Details:** See coding style guidelines in [`design/angular/guides/01-coding-style-guide.md`](./guides/01-coding-style-guide.md)
+### 2.5. Styling: Component-Scoped SCSS
+- **Approach:** Styles will be component-scoped using Angular's view encapsulation and written in SCSS.
+- **Global Styles:** A minimal set of global styles (e.g., CSS resets, theme variables) is defined in `src/styles.scss`.
+- **Details:** See [`design/angular/guides/01-coding-style-guide.md`](./guides/01-coding-style-guide.md)
 
-### 2.6. HTTP Communication: Typed `HttpClient` with Functional Interceptors
-- **Client:** Angular's `HttpClient`, configured using `provideHttpClient(withInterceptors([...]))`, will be used for all HTTP communication.
-- **Interceptors:** We will use modern, functional HTTP interceptors for tasks like authentication, caching, and error handling.
+### 2.6. HTTP Communication: Typed `HttpClient`
+- **Client:** Angular's `HttpClient` is used for all HTTP communication, configured via `provideHttpClient(withInterceptors([...]))`.
+- **Interceptors:** Use modern, functional HTTP interceptors for cross-cutting concerns like authentication and error handling.
 - **Details:** See [`design/angular/guides/07-http-and-data-loading.md`](./guides/07-http-and-data-loading.md)
 
-### 2.7. Forms: Reactive Forms with Strong Typing
-- **Primary Approach:** **Reactive Forms** will be used for all forms due to their scalability, testability, and explicit, signal-friendly control model.
-- **Details:** See [`design/angular/guides/05-forms-and-validation.md`](./guides/05-forms-and-validation.md)
-
-### 2.8. Performance: Proactive Optimization
+### 2.7. Performance: Proactive Optimization
 - **Key Techniques:**
     - **Zoneless:** The foundation of our performance strategy.
-    - **Lazy Loading & `@defer` Blocks:** Extensive use of lazy loading for routes and deferrable views (`@defer`) for non-critical UI sections.
-    - **`track` Function:** Use of the `track` function in the new `@for` control flow to optimize list rendering.
+    - **`@defer` Blocks:** Extensive use of deferrable views for non-critical UI sections.
+    - **`@for` with `track`:** Use of the built-in control flow's `track` function to optimize list rendering.
     - **SSR/SSG & Hydration:** Server-Side Rendering (SSR) with hydration will be implemented to improve SEO and perceived performance.
 - **Details:** See [`design/angular/guides/08-ssr-and-performance.md`](./guides/08-ssr-and-performance.md)
 
-## 3. Directory Structure
+## 3. Directory and File Structure
 
-The Angular application within `src/app/` will be organized by **feature**. Avoid top-level directories like `components` or `services`. A typical feature directory will contain all its own components, services, routes, and type definitions.
+The Angular application in `src/app/` is organized by **feature**. This structure promotes scalability and modularity by grouping related files together. The canonical structure is as follows:
 
-- `src/app/`
-    - `app.config.ts`
-    - `app.component.ts`
-    - `app.routes.ts`
-    - `features/`
-        - `hangar-management/`
-        - `user-profile/`
-    - `shared/`
-        - `ui/` (Reusable, stateless UI components)
-        - `data-access/` (Reusable services)
-        - `utils/` (Helper functions)
+```
+/src
+|-- /app
+|   |-- /core                 # Singleton services, guards, and truly global logic.
+|   |   `-- /layout           # Components that define the main page structure (e.g., header, footer).
+|   |       |-- /footer
+|   |       |   |-- footer.ts       # Footer component class
+|   |       |   |-- footer.html     # Footer component template
+|   |       |   |-- footer.scss     # Footer component styles
+|   |       |   `-- footer.spec.ts  # Tests for the footer component
+|   |       `-- /header
+|   |           |-- header.ts       # Header component class
+|   |           |-- header.html     # Header component template
+|   |           |-- header.scss     # Header component styles
+|   |           `-- header.spec.ts  # Tests for the header component
+|   |-- /features             # Feature-specific modules. Each feature is self-contained.
+|   |   `-- /contracts        # Example: Contracts Feature
+|   |       |-- contract.api.ts   # Service for this feature's backend communication
+|   |       |-- contract.api.spec.ts # Tests for the API service
+|   |       `-- contract.model.ts # TypeScript interfaces for this feature
+|   |-- /shared               # Reusable, presentation-agnostic code.
+|   |   ├── /components       # Reusable "dumb" UI components (e.g., button, card)
+|   |   ├── /directives       # Reusable custom directives
+|   |   ├── /pipes            # Reusable custom pipes
+|   |   `── /utils            # Reusable helper functions
+|   |-- app.config.ts         # Core application providers (routing, http, zoneless, etc.)
+|   |-- app.config.spec.ts    # Tests for app.config.ts
+|   |-- app.routes.ts         # Top-level application routes
+|   |-- app.ts                # Root application component class
+|   |-- app.html              # Root application component template
+|   |-- app.scss              # Root application component styles
+|   `-- app.spec.ts           # Tests for the root application component
+|-- /environments           # Environment-specific configuration files.
+|   |-- environment.prod.ts   # Production environment configuration
+|   `-- environment.ts        # Development environment configuration
+|-- index.html              # The main HTML page that is served.
+|-- main.ts                 # The main entry point for the application, bootstraps Angular.
+`-- styles.scss             # Global application styles and CSS variable definitions.
+```
+
+**File Naming Conventions:**
+- Components: `*.ts`. The class name **must also omit** the `Component` suffix (e.g., `class UserProfile` in `user-profile.ts`). This aligns with the modern CLI and our service naming convention.
+- Services / APIs: `*.api.ts` or `*.service.ts`. The class name should omit the `Service` suffix (e.g., `class Auth` in `auth.service.ts`, not `class AuthService`). The context is provided by the file location and usage.
+- Models / Interfaces: `*.model.ts`
+- Guards: `*.guard.ts`
+- Pipes: `*.pipe.ts`
+- Directives: `*.directive.ts`
+- Routes: `*.routes.ts`
 
 ## 4. Coding Style and Conventions
 
-All Angular code will adhere to the guidelines specified in [`design/angular/guides/01-coding-style-guide.md`](./guides/01-coding-style-guide.md). This includes naming conventions, file organization, DI patterns (preferring the `inject` function), and more.
+All Angular code will adhere to the guidelines specified in [`design/angular/guides/01-coding-style-guide.md`](./guides/01-coding-style-guide.md). This includes naming conventions, DI patterns (preferring the `inject` function), and strong typing.
 
 ## 5. Living Document
 
-This architecture document is a living document and will be updated as the project evolves and as new Angular features or best practices emerge.
-
-**Last Updated:** 2025-06-08
-        // Preferred
-        private readonly myService = inject(MyService);
-        // Over
-        // constructor(private readonly myService: MyService) {}
+This architecture document is a living document and will be updated as the project evolves and as new Angular features or best practices emerge. All significant deviations or new patterns must be discussed and documented here.
         ```
     *   **Readonly Properties:** Mark Angular-initialized properties (like those from `inject()`, `@Input()`, `@ViewChild()`) as `readonly` if they are not reassigned after initialization.
     *   **Class/Style Bindings:** Prefer direct class and style bindings (`[class.active]`, `[style.color]`) over `[ngClass]` and `[ngStyle]` for better performance and type checking, unless complex conditional logic makes `ngClass/ngStyle` more readable.

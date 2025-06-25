@@ -149,12 +149,39 @@ The MVP development is structured into the following phases. Each task links to 
 *   **Phase 2 Summary:** All backend tasks for F001 (Public Contract Aggregation) are complete. This includes the ESI client, data models, background aggregation service, and API endpoints. The system can now periodically fetch EVE Online public contract data, process it, store it, and expose it via a filterable, paginated API. All associated task plans have had their Cross-Cutting Concerns reviews completed. The backend is stable and ready for frontend integration for F001 features.
 
 ### Phase 3: Frontend Core Infrastructure
-*   **Goal:** Establish the Angular frontend application structure, API communication layer, and basic layout.
+*   **Goal:** Establish a modern, standalone, zoneless Angular frontend application structure, including the API communication layer and basic layout, ready for feature development.
 *   **Tasks:**
     *   [03.0 Angular Project Initialization](./phase-03-frontend-core-infrastructure/03.0-angular-project-initialization.md)
-    *   [03.1 Angular Core Module Setup](./phase-03-frontend-core-infrastructure/03.1-angular-core-module-setup.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   New Angular project generated with modern defaults: standalone, zoneless, strict, SCSS, custom 'hgb' prefix.
+            *   Prettier, ESLint, and `@angular/localize` (for i18n) installed and configured.
+            *   Global CSS reset applied in `styles.scss`.
+            *   `shared/` directory structure established for reusable components.
+            *   `npm audit` confirmed zero vulnerabilities.
+    *   [03.1 Angular Core Configuration](./phase-03-frontend-core-infrastructure/03.1-angular-core-module-setup.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   Application configured for zoneless change detection via `provideZonelessChangeDetection()` in `app.config.ts`.
+            *   `HttpClient` provided for the application.
+            *   Unit tests for `app.config.ts` created and passing, verifying the zoneless setup.
+            *   Shared subdirectories (`components`, `directives`, `pipes`, `utils`) scaffolded with `.gitkeep` files.
     *   [03.2 Backend API Service Layer](./phase-03-frontend-core-infrastructure/03.2-backend-api-service-layer.md)
-    *   [03.3 Basic Layout, Routing, and Navigation](./phase-03-frontend-core-infrastructure/03.3-basic-layout-routing.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   `ContractApi` service created for interacting with the backend contract endpoints.
+            *   Service tests implemented using `HttpTestingController` to mock backend responses.
+            *   Codebase refactored to align with modern Angular conventions (e.g., `ContractApi` instead of `ContractApiService`).
+    *   [03.3 Basic Layout, Routing, and Navigation](./phase-03-frontend-core-infrastructure/03.3-basic-layout-routing-navigation.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   `Header` and `Footer` layout components integrated into the main `app.html` shell.
+            *   `HomeComponent` created and set as the default route (`/`).
+            *   Navigation links in the header use `routerLink` and `routerLinkActive`.
+            *   User-facing text marked with `i18n` attributes.
+            *   All component and application tests are passing with 100% coverage.
+
+*   **Phase 3 Summary:** The entire frontend core infrastructure is now complete and built on a modern, robust, and scalable foundation. The application is zoneless, uses standalone components, has a clean project structure, includes a data service layer for backend communication, and features a basic, fully tested layout with routing. The project is now prepared for feature-specific UI development in Phase 4.
 
 ### Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering
 *   **Goal:** Develop the UI for displaying contracts and implementing initial filtering capabilities.
