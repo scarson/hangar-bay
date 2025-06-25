@@ -37,9 +37,10 @@ Our frontend architecture is built upon the following core principles, which tog
 - **Global Styles:** A minimal set of global styles (e.g., CSS resets, theme variables) is defined in `src/styles.scss`.
 - **Details:** See [`design/angular/guides/01-coding-style-guide.md`](./guides/01-coding-style-guide.md)
 
-### 2.6. HTTP Communication: Typed `HttpClient`
-- **Client:** Angular's `HttpClient` is used for all HTTP communication, configured via `provideHttpClient(withInterceptors([...]))`.
-- **Interceptors:** Use modern, functional HTTP interceptors for cross-cutting concerns like authentication and error handling.
+### 2.6. HTTP Communication: Typed `HttpClient` with Fetch
+- **Client:** Angular's `HttpClient` is used for all HTTP communication.
+- **Transport Layer:** It is a project-wide standard to configure `HttpClient` to use the modern `fetch` API as its transport mechanism. This improves stability, especially in proxied development environments, and is configured once in `app.config.ts` via `provideHttpClient(withFetch())`.
+- **Interceptors:** Modern, functional HTTP interceptors are used for cross-cutting concerns like authentication and error handling.
 - **Details:** See [`design/angular/guides/07-http-and-data-loading.md`](./guides/07-http-and-data-loading.md)
 
 ### 2.7. Performance: Proactive Optimization
@@ -157,37 +158,34 @@ This architecture document is a living document and will be updated as the proje
 
 ## 9. Key Code Review Guidelines (Architectural)
 
-In addition to general code quality, pay specific attention to these architectural aspects during reviews:
+In addition to general code quality, pay specific attention to these architectural aspects during reviews, ensuring they align with our **zoneless, standalone, and signal-first** architecture.
 
-*   **Module Boundaries & Responsibilities:**
-    *   `CoreModule` imported only in `AppModule`.
-    *   No services provided in `SharedModule`.
-    *   Feature modules are lazy-loaded and well-encapsulated.
+*   **Service Provision & Scoping:**
+    *   Services intended to be singletons should be `providedIn: 'root'`.
+    *   For feature-specific services, provide them directly in the feature's routing configuration or within the component that requires them, not at the root level.
+    *   Avoid providing services in shared, presentational components.
+
 *   **Component Design:**
-    *   Adherence to SRP; components are not overly complex.
-    *   Use of Smart/Dumb component pattern where appropriate.
-    *   `ChangeDetectionStrategy.OnPush` used, especially for presentational components.
-    *   Templates are declarative, with logic primarily in the component class.
-*   **Service Design:**
-    *   Services follow SRP.
-    *   Proper error handling, especially for API interactions.
-*   **RxJS Usage:**
-    *   Observables are unsubscribed (e.g., `async` pipe, `takeUntil`).
-    *   No nested subscriptions; higher-order mapping operators used correctly.
-    *   `subscribe()` blocks are lean.
-    *   Subjects not exposed directly from services.
-*   **State Management:**
-    *   Appropriate use of Signals for local and service-based state.
-    *   State is managed in the correct scope.
-    *   Clear distinction if/when RxJS is used for state vs. Signals.
+    *   **Signal-Based Inputs:** Prefer `input()` for component inputs over `@Input()` decorators to leverage signal-based reactivity.
+    *   **State Encapsulation:** Component state should be managed with signals (`signal`, `computed`).
+    *   **Adherence to SRP:** Components should have a single responsibility and not be overly complex.
+    *   **Smart/Dumb Pattern:** Use the "Smart/Container" and "Dumb/Presentational" component pattern where it clarifies data flow. Presentational components should receive all data via inputs and emit events via outputs.
+
+*   **State Management & Reactivity:**
+    *   **Signals First:** Signals are the default for all state management.
+    *   **RxJS for Complex Async:** Reserve RxJS for orchestrating complex asynchronous events (e.g., websockets, multi-step async flows). Use `toSignal` from `@angular/core/rxjs-interop` to bridge RxJS streams back into the signal ecosystem.
+    *   **Lean Subscriptions:** If `subscribe()` is used, the block should be minimal, typically just updating a signal. Avoid nested subscriptions.
+    *   **Avoid Exposed Subjects:** Do not expose RxJS Subjects publicly from services. Expose signals or observables instead.
+
 *   **Performance:**
-    *   `trackBy` used with `*ngFor`.
-    *   Pure pipes preferred.
-    *   Mindful of slow computations and optimization techniques.
-    *   Consideration for zoneless compatibility (e.g., explicit change notification if not using signals).
+    *   **`@for` with `track`:** Always use `track` with the built-in `@for` block for list rendering to ensure optimal performance. The legacy `*ngFor` with `trackBy` should not be used.
+    *   **`@defer` for Non-Critical UI:** Use deferrable views (`@defer`) extensively to lazy-load components and UI sections that are not critical for the initial view.
+    *   **Pure Pipes:** Prefer pure pipes for data transformation in templates.
+
 *   **Coding Style & Conventions:**
-    *   Adherence to the Angular Style Guide ([angular.dev/style-guide](https://angular.dev/style-guide)) and project-specific conventions, including v20+ recommendations (e.g., `inject()`).
-    *   Strong typing is used; `any` type is avoided.
+    *   **`inject()` Function:** Use the `inject()` function for dependency injection within the constructor or at the class field level. Avoid `constructor(private ...)` where possible.
+    *   **Strong Typing:** Strictly avoid the `any` type. Define interfaces or classes for all data structures.
+    *   **Adherence to Guides:** Follow all conventions outlined in this document and the linked guides in `design/angular/guides/`.
 
 ## 10. Team Knowledge Sharing & Onboarding
 

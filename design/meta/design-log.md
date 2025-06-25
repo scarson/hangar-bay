@@ -1093,4 +1093,29 @@ To ensure consistency and maximize effectiveness for AI-assisted development (pa
 
 ---
 
+## API Versioning & Proxy Alignment (2025-06-25 17:11:35-05:00)
+
+*   **Context:** During the initial implementation of the contract listing feature (Phase 4), a mismatch was discovered between the backend API's expected path and the Angular frontend's proxy configuration.
+*   **Problem:**
+    *   The backend FastAPI router (`contracts.py`) was updated to serve endpoints under a versioned prefix: `/api/v1`.
+    *   The Angular development proxy (`proxy.conf.json`) was configured to forward requests for `/api/v1` to the backend, but it also included a `pathRewrite` rule (`"^/api/v1": ""`) that *removed* this prefix before forwarding.
+    *   This resulted in the frontend requesting `/api/v1/contracts/` but the backend receiving a request for `/contracts/`, causing a 404 Not Found error.
+*   **Decision:** The `pathRewrite` rule was removed from `proxy.conf.json`.
+*   **Rationale:**
+    *   **Consistency:** This ensures that the path used by the frontend to make an API call is the exact same path that the backend server receives.
+    *   **Explicit Versioning:** It enforces the API versioning scheme (`/api/v1`) as a fundamental part of the communication contract, making the architecture clearer and preventing future misconfigurations.
+    *   **Maintainability:** By keeping the paths consistent, it simplifies debugging and makes it easier to reason about the flow of data between the frontend and backend during development. The proxy configuration now correctly reflects the backend's routing structure.
+
+---
+
+### 2025-06-25 17:33:36-05:00: Standardize on Fetch API for Angular HttpClient
+
+**Problem:** The frontend application was stuck in a "Loading contracts..." state. Investigation confirmed the backend API was running correctly and the `proxy.conf.json` was properly configured. This indicated a subtle issue in the HTTP communication layer between the Angular development server and the backend, likely related to the default `XMLHttpRequest` transport used by `HttpClient`.
+
+**Decision:** Enabled the modern `fetch` API as the underlying transport mechanism for Angular's `HttpClient` across the entire application. This was accomplished by updating `app.config.ts` to use `provideHttpClient(withFetch())`.
+
+**Rationale:** The `fetch` API is a more modern, robust, and reliable standard for making web requests compared to the legacy `XMLHttpRequest`. It often resolves complex or hard-to-debug issues in proxied development environments where requests can hang or fail silently. By making this a project-wide standard, we improve development stability and align with modern web practices.
+
+**Implications:** This change has no negative impact on existing application logic. Angular's `HttpClient` provides a powerful abstraction layer that normalizes the behavior of the underlying transport. All existing error handling (e.g., `catchError` for `4xx`/`5xx` statuses) and success callbacks will continue to function identically. The primary benefit is a more stable and predictable development experience.
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
