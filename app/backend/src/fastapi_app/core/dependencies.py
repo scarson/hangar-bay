@@ -1,41 +1,57 @@
 from typing import Optional
 
-from fastapi import Request
+import httpx
+from fastapi import Depends, HTTPException, Request, status
 from redis.asyncio import Redis
-from fastapi import Depends
 
+from .config import Settings, settings
 from .esi_client_class import ESIClient
-from .config import settings, Settings # Import global settings and Settings model for type hint
 
-async def get_cache(request: Request) -> Optional[Redis]:
+
+async def get_cache(request: Request) -> Redis:
     """
-    FastAPI dependency to get the initialized Redis client instance
-    from the application state.
-    Returns None if the client is not available (e.g., connection failed).
+    FastAPI dependency to get the initialized Redis client from the app state.
+    Raises HTTPException if the client is not available.
     """
-    return getattr(request.app.state, "redis", None)
+    redis_client = getattr(request.app.state, "redis", None)
+    if redis_client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Redis client is not available.",
+        )
+    return redis_client
+
+
+async def get_http_client(request: Request) -> httpx.AsyncClient:
+    """
+    FastAPI dependency to get the shared httpx.AsyncClient from the app state.
+    Raises HTTPException if the client is not available.
+    """
+    http_client = getattr(request.app.state, "http_client", None)
+    if http_client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="HTTP client is not available.",
+        )
+    return http_client
 
 
 def get_settings() -> Settings:
     """
     FastAPI dependency to get the globally configured Settings object.
     """
-    # The 'settings' object is imported from .config and is initialized once.
-    # Pydantic ensures it's validated upon its first creation.
-    # This function simply returns that single, global instance.
-    # DEBUG: Print statements to verify which settings object is being returned by the dependency.
-    print(f"DEPENDENCY_GET_SETTINGS_ID: id(settings)={id(settings)}, AGG_REGION_IDS_TYPE={type(settings.AGGREGATION_REGION_IDS)}, VALUE={settings.AGGREGATION_REGION_IDS!r}", flush=True)
     return settings
 
 
 async def get_esi_client(
-    # request: Request, # No longer needed as http_client is not from app.state
-    s: Settings = Depends(get_settings) # ESIClient now only needs settings
+    settings: Settings = Depends(get_settings),
+    http_client: httpx.AsyncClient = Depends(get_http_client),
+    redis_client: Redis = Depends(get_cache),
 ) -> ESIClient:
     """
-    FastAPI dependency to get an instance of the ESIClient.
-    The ESIClient now manages its own HTTP and Redis clients using settings.
+    FastAPI dependency to get an instance of the ESIClient, configured with
+    shared, application-level HTTP and Redis clients.
     """
-    # ESIClient constructor now only takes settings.
-    # HTTP client and Redis client are created on-demand within ESIClient methods.
-    return ESIClient(settings=s)
+    return ESIClient(
+        settings=settings, http_client=http_client, redis_client=redis_client
+    )

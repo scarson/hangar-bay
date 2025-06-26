@@ -1,6 +1,22 @@
 import { Routes } from '@angular/router';
-import { ContractList } from './contract-list/contract-list';
 
+import { ContractBrowsePage } from './contract-browse-page/contract-browse-page';
+
+/**
+ * Defines the routes for the lazy-loaded contracts feature.
+ */
+import { contractFilterResolver } from './contract-filter-resolver';
+
+/**
+ * Defines the routes for the lazy-loaded contracts feature.
+ */
 export const CONTRACTS_ROUTES: Routes = [
-  { path: '', component: ContractList }
+  {
+    path: '',
+    component: ContractBrowsePage,
+    title: 'Browse Contracts',
+    resolve: {
+      filters: contractFilterResolver,
+    },
+  },
 ];

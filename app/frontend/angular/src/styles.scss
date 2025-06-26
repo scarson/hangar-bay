@@ -10,6 +10,11 @@
   box-sizing: border-box;
 }
 
+/* Force scrollbar to prevent layout shift */
+html {
+  overflow-y: scroll;
+}
+
 /* Remove default margin */
 body,
 h1,

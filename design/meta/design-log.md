@@ -1054,4 +1054,94 @@ To ensure consistency and maximize effectiveness for AI-assisted development (pa
 **Impact:** All Phase 3 implementation plans have been updated to reflect this structure. Future feature development should follow this pattern for top-level navigation.
 
 ---
-DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
+### 2025-06-25 16:08:06-05:00 :: Established Mandatory Structural Protocol Testing
+
+**Decision:** To prevent implementation errors of correct architectural patterns, a new mandatory testing practice has been added to the project's quality strategy. Any class designed to implement a specific Python protocol (e.g., async context manager, iterator) must be accompanied by a dedicated unit test that verifies its structural contract.
+
+**Rationale:**
+*   **Prevent Recurrence of Errors:** This decision is a direct result of a `TypeError` caused by the `ESIClient` class correctly being designed as an async context manager but failing to implement the required `__aenter__` and `__aexit__` methods.
+*   **Shifting Failure Detection Left:** Structural tests are fast and simple. They catch fundamental implementation bugs during development and CI, long before they can cause runtime failures in a deployed environment.
+*   **Enforcing Architectural Integrity:** This practice provides an automated guarantee that our code adheres to the low-level contracts of our chosen patterns, improving overall system robustness.
+
+**Impact:** The `design/fastapi/guides/09-testing-strategies.md` guide has been updated with this new rule and a concrete example. Cascade has also internalized this as a persistent memory to enforce the practice in all future work.
+
+---
+
+### 2025-06-25 16:08:06-05:00 :: Codified the "Dual-Mode Service" Pattern
+
+**Decision:** A new architectural pattern, the "Dual-Mode Service," has been formally documented in `design/fastapi/patterns/05-dual-mode-service-pattern.md`. This pattern governs the design of services that need to operate in two distinct contexts: (1) as a dependency-injected singleton in the main FastAPI application, and (2) as a freshly instantiated object within a separate process, such as an `APScheduler` background job.
+
+**Rationale:**
+*   **Resolving `PicklingError`:** The primary driver was to solve the `PicklingError` from `APScheduler`'s `ProcessPoolExecutor`, which cannot serialize services holding unpicklable resources like database or HTTP client connections.
+*   **Architectural Clarity:** The pattern provides a clear, reusable solution. It dictates that services should be initialized with lightweight, picklable configuration (like a `Settings` object) and dynamically create their unpicklable resources (like an `httpx.AsyncClient`) on-demand, typically within an async context manager.
+*   **Decoupling:** It decouples the service's lifecycle from the lifecycle of its heavy resources, making the service itself safe to pass between processes.
+
+**Impact:** This is now the standard pattern for any service intended for use in background jobs. The `ESIClient` and `ContractAggregationService` have been refactored to follow this pattern, resolving the critical bug that blocked background processing.
+
+---
+
+### 2025-06-25 16:08:06-05:00 :: Corrected ESIClient to Implement Async Context Management
+
+**Decision:** The `ESIClient` service class has been refactored to correctly implement the asynchronous context manager protocol by adding the `__aenter__` and `__aexit__` methods. These methods now manage the lifecycle of the internal `httpx.AsyncClient`.
+
+**Rationale:**
+*   **Fixing a `TypeError`:** The immediate cause was a `TypeError` because the class was being used in an `async with` block without supporting the protocol.
+*   **Adherence to Design Patterns:** This change brings the `ESIClient` into compliance with two established patterns: the `API Client Service Pattern`, which requires a long-lived client instance, and the `Dual-Mode Service Pattern`, which requires on-demand resource creation for background jobs.
+*   **Resource Management:** Proper implementation ensures that the `httpx.AsyncClient` is created when the context is entered and guaranteed to be closed when the context is exited, preventing resource leaks.
+
+**Impact:** The `ESIClient` is now a robust, reusable service that functions correctly both when injected into API endpoints and when instantiated within the `ContractAggregationService` background job. This resolved a critical runtime bug.
+
+---
+
+## API Versioning & Proxy Alignment (2025-06-25 17:11:35-05:00)
+
+*   **Context:** During the initial implementation of the contract listing feature (Phase 4), a mismatch was discovered between the backend API's expected path and the Angular frontend's proxy configuration.
+*   **Problem:**
+    *   The backend FastAPI router (`contracts.py`) was updated to serve endpoints under a versioned prefix: `/api/v1`.
+    *   The Angular development proxy (`proxy.conf.json`) was configured to forward requests for `/api/v1` to the backend, but it also included a `pathRewrite` rule (`"^/api/v1": ""`) that *removed* this prefix before forwarding.
+    *   This resulted in the frontend requesting `/api/v1/contracts/` but the backend receiving a request for `/contracts/`, causing a 404 Not Found error.
+*   **Decision:** The `pathRewrite` rule was removed from `proxy.conf.json`.
+*   **Rationale:**
+    *   **Consistency:** This ensures that the path used by the frontend to make an API call is the exact same path that the backend server receives.
+    *   **Explicit Versioning:** It enforces the API versioning scheme (`/api/v1`) as a fundamental part of the communication contract, making the architecture clearer and preventing future misconfigurations.
+    *   **Maintainability:** By keeping the paths consistent, it simplifies debugging and makes it easier to reason about the flow of data between the frontend and backend during development. The proxy configuration now correctly reflects the backend's routing structure.
+
+---
+
+### 2025-06-25 17:33:36-05:00: Standardize on Fetch API for Angular HttpClient
+
+**Problem:** The frontend application was stuck in a "Loading contracts..." state. Investigation confirmed the backend API was running correctly and the `proxy.conf.json` was properly configured. This indicated a subtle issue in the HTTP communication layer between the Angular development server and the backend, likely related to the default `XMLHttpRequest` transport used by `HttpClient`.
+
+**Decision:** Enabled the modern `fetch` API as the underlying transport mechanism for Angular's `HttpClient` across the entire application. This was accomplished by updating `app.config.ts` to use `provideHttpClient(withFetch())`.
+
+**Rationale:** The `fetch` API is a more modern, robust, and reliable standard for making web requests compared to the legacy `XMLHttpRequest`. It often resolves complex or hard-to-debug issues in proxied development environments where requests can hang or fail silently. By making this a project-wide standard, we improve development stability and align with modern web practices.
+
+**Implications:** This change has no negative impact on existing application logic. Angular's `HttpClient` provides a powerful abstraction layer that normalizes the behavior of the underlying transport. All existing error handling (e.g., `catchError` for `4xx`/`5xx` statuses) and success callbacks will continue to function identically. The primary benefit is a more stable and predictable development experience.
+
+---
+
+## Formalizing the "Stateful Service" Pattern for Asynchronous Operations (2025-06-25 19:23:34-05:00)
+
+*   **Context:** The post-mortem review for the Phase 4 contract listing feature identified the `ContractSearch` service as a "gold standard" implementation for managing state derived from asynchronous operations triggered by user input (e.g., search/filtering).
+*   **Problem:** This pattern, which uses a signal-based service with an RxJS pipeline featuring `debounceTime` and `switchMap` to prevent race conditions, was not formally documented in the project's design guides. This created a risk of inconsistent or less robust implementations in future features.
+*   **Decision:** To ensure consistency, promote best practices, and reduce future development risks, this "Stateful Service" pattern will be formalized as the standard approach for such scenarios.
+*   **Action:** The `design/angular/guides/04-state-management-and-rxjs.md` document was updated with a new section (3.3) that explicitly details this pattern. The section outlines the core principles and includes a code sample from the `ContractSearch` service as the canonical example for AI and human developers to follow.
+*   **Rationale:** Formalizing proven, successful patterns in design documentation is crucial for maintaining code quality, ensuring architectural consistency, and providing clear, actionable guidance for the development team (both human and AI). This update codifies a key learning from Phase 4, making the entire project more robust.
+
+---
+
+## Ad-hoc Frontend Utility: ISK Formatting Pipe (Approx. 2025-06-25 20:02:07-05:00)
+
+*   **Context:** During the development and debugging of the contract browsing UI, a need arose to format large numerical values (e.g., contract prices) into a human-readable ISK format (e.g., "1.23B ISK", "500.00K ISK"). This was implemented outside of a formal task file to address an immediate UI requirement.
+*   **Decision & Implementation:** A reusable Angular pipe, `IskPipe`, was created.
+    *   **Location:** `app/frontend/angular/src/app/shared/pipes/isk.pipe.ts`
+    *   **Architecture:** Implemented as a standalone, pure pipe for optimal performance. It transforms a number into a string with appropriate suffixes (K, M, B, T) and two decimal places.
+*   **Rationale:**
+    *   **Reusability & Consistency:** Creating a shared pipe ensures that ISK values are formatted consistently across the entire application.
+    *   **Maintainability:** Centralizes the formatting logic in one place, making it easy to update or modify in the future.
+    *   **Cleanliness:** Keeps presentation logic out of component class files, adhering to Angular best practices.
+*   **Documentation:** This design log entry serves as the official record for this ad-hoc feature work, ensuring its visibility for future development and team awareness.
+
+---
+
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line.)* Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*

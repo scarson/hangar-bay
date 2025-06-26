@@ -197,6 +197,85 @@ Angular provides the `rxjs-interop` package to bridge Signals and Observables se
       .subscribe(value => console.log(value));
     ```
 
+### 3.3. The "Stateful Service" Pattern for Asynchronous Data
+
+When building features that fetch data based on user input (e.g., search, filtering), a more robust pattern is required to handle race conditions and manage state transitions gracefully. The `ContractSearch` service from Phase 4 is the canonical example of this pattern.
+
+**Core Principles:**
+
+1.  **Centralized State in a Service:** The injectable service is the single source of truth.
+2.  **Private Writable Signals:** The service uses private `signal` instances to hold the internal state (`AsyncState` and filters). This prevents components from directly mutating the state.
+3.  **Public Read-Only Signals:** The service exposes state to the application via public `computed` or `asReadonly()` signals. Components react to this state but cannot change it directly.
+4.  **RxJS for the Pipeline:** An RxJS pipeline is used to orchestrate the asynchronous data fetching, providing crucial operators like `debounceTime` and `switchMap`.
+5.  **Explicit Trigger:** A method (`updateFilters`) is exposed to allow components to signal their intent to change the state, which then triggers the RxJS pipeline.
+
+**Canonical Example: `ContractSearch` Service**
+
+This service manages fetching a paginated list of contracts based on filter criteria.
+
+```typescript
+import { computed, inject, Injectable, signal, InjectionToken } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { catchError, debounceTime, distinctUntilChanged, of, switchMap, tap, Subject, startWith, map } from 'rxjs';
+import { SchedulerLike, asyncScheduler } from 'rxjs';
+
+import { ContractSearchFilters, PaginatedContractsResponse } from './contract.models';
+
+// ... AsyncState interface ...
+
+@Injectable({
+  providedIn: 'root',
+})
+export class ContractSearch {
+  private http = inject(HttpClient);
+
+  // Private, internal state
+  #state = signal<AsyncState<PaginatedContractsResponse>>({ loading: false, error: null, data: null });
+  #filters = signal<ContractSearchFilters>({ page: 1, size: 20 });
+
+  // Public, read-only signals for consumers
+  readonly loading = computed(() => this.#state().loading);
+  readonly error = computed(() => this.#state().error);
+  readonly data = computed(() => this.#state().data);
+  readonly filters = this.#filters.asReadonly();
+
+  private readonly apiUrl = '/api/v1/contracts/';
+  private scheduler = inject(SEARCH_SCHEDULER, { optional: true }) ?? asyncScheduler;
+
+  private filterTrigger$ = new Subject<void>();
+
+  constructor() {
+    this.filterTrigger$
+      .pipe(
+        startWith(undefined), // Trigger initial fetch
+        debounceTime(300, this.scheduler), // Wait for user to stop typing
+        map(() => this.#filters()), // Get the latest filters from the signal
+        distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)),
+        tap(() => this.#state.update((s) => ({ ...s, loading: true }))), // Set loading state
+        switchMap((filters) => { // Key operator: cancels previous, stale requests
+          let params = new HttpParams() // ... build params
+          return this.http.get<PaginatedContractsResponse>(this.apiUrl, { params }).pipe(
+            catchError((error) => { // Handle errors within the stream
+              this.#state.update((s) => ({ ...s, loading: false, error: `An error occurred.` }));
+              return of(null); // Prevent pipeline from dying
+            })
+          );
+        })
+      )
+      .subscribe((response) => {
+        if (response) {
+          this.#state.update((s) => ({ ...s, loading: false, data: response, error: null }));
+        }
+      });
+  }
+
+  updateFilters(newFilters: Partial<ContractSearchFilters>): void {
+    this.#filters.update((current) => ({ ...current, ...newFilters }));
+    this.filterTrigger$.next(); // Trigger the pipeline
+  }
+}
+```
+
 ## 4. Choosing Between Signals and RxJS
 
 | Feature / Scenario             | Prefer Signals                                  | Prefer RxJS                                       |

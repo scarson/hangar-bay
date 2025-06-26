@@ -38,8 +38,9 @@ First off, thank you for considering contributing to Hangar Bay! Whether you're 
 ### Prerequisites
 
 *   **Git:** For version control.
-*   **Python:** Version 3.10 or higher recommended.
-*   **Node.js:** Version 18.x (LTS) or higher recommended, which includes npm (Node Package Manager).
+*   **Python:** Version 3.11 or newer for the backend.
+*   **PDM (Python Dependency Manager):** For managing backend dependencies. Install it via `pipx install pdm` or `pip install --user pdm`. Refer to [PDM's official documentation](https://pdm-project.org/latest/getting-started/installation/) for more options.
+*   **Node.js:** Version 20.19.0 or newer for the Angular frontend (includes npm). Refer to Angular's [version compatibility](https://angular.dev/reference/versions#actively-supported-versions) for more information.
 *   **Angular CLI:** Install globally after Node.js: `npm install -g @angular/cli`
 *   **PostgreSQL:** Version 15 or 16. Required if not using Docker for the database. (See Backend Setup for details).
 *   **(Optional but Recommended) Docker:** For running PostgreSQL and Valkey in containers, matching the production environment.
@@ -54,52 +55,23 @@ cd hangar-bay
 
 This section outlines the steps to set up the development environment for Hangar Bay, covering both the Python backend and the Angular frontend.
 
-### Backend Setup (Python/FastAPI)
+### Backend Setup (Python/FastAPI with PDM)
 
-1.  **Navigate to Backend Directory:**
+1.  **Navigate to the backend directory:**
     ```bash
     cd app/backend
     ```
 
-2.  **Create and Activate a Virtual Environment:**
-    *   Using `venv` (Python's built-in module):
-        ```bash
-        python -m venv .venv # This creates the .venv folder inside app/backend/
-        # On Windows
-        .\.venv\Scripts\activate
-        # On macOS/Linux
-        source .venv/bin/activate
-        ```
-    *   Ensure your `.gitignore` file at the project root ignores `.venv/`.
-
-3.  **Install Dependencies:**
+2.  **Install dependencies (including development tools like linters/formatters):
     ```bash
-    pip install -r requirements.txt
-    pip install -r requirements-dev.txt # For development-specific tools
+    pdm install -G dev
     ```
-    *(Note: Ensure `requirements.txt` and `requirements-dev.txt` are kept up-to-date and all dependencies are pinned as per project policy.)*
+    This command reads the `pyproject.toml` and `pdm.lock` files, creates a virtual environment (in `.venv/` inside `app/backend/` if you've run `pdm config venv.in_project true`), and installs all necessary packages.
 
-4.  **Setting up PostgreSQL (Local Installation):**
-    If you are not using Docker for database services (see [Using Docker for Services](#using-docker-for-services-optional-but-recommended)), you'll need to install and configure PostgreSQL locally.
+3.  **Activate the virtual environment (optional but recommended for IDEs):
+    PDM automatically uses the project's virtual environment when you use `pdm run`. However, if your IDE or other tools need the environment to be explicitly activated, you can find the activation scripts within `app/backend/.venv/` (e.g., `app/backend/.venv/Scripts/activate` on Windows PowerShell/CMD, or `source app/backend/.venv/bin/activate` on Linux/macOS).
 
-    *   **Download and Install PostgreSQL:**
-        *   Download PostgreSQL from the [official website](https://www.postgresql.org/download/). Version 15 or 16 is recommended.
-        *   Follow the installation instructions for your operating system. Ensure the PostgreSQL command-line tools (like `psql`) are added to your system's PATH.
-
-    *   **Create Database and User:**
-        Once PostgreSQL is installed and the service is running, connect to PostgreSQL using `psql` (you might need to do this as the `postgres` superuser initially) and run the following commands:
-        ```sql
-        CREATE DATABASE hangar_bay_dev;
-        CREATE USER hangar_bay_user WITH PASSWORD 'your_secure_password_here'; -- Choose a strong password
-        GRANT ALL PRIVILEGES ON DATABASE hangar_bay_dev TO hangar_bay_user;
-        ALTER USER hangar_bay_user CREATEDB; -- Optional: useful if user needs to create/drop DBs for tests
-        ```
-        *Note: Remember the password you set for `hangar_bay_user` as you'll need it for the `.env` file in the next step.*
-
-    *   **Ensure PostgreSQL Service is Running:**
-        Make sure your PostgreSQL server is running before proceeding to the next steps or trying to run the application.
-
-5.  **Set up Environment Variables:**
+4.  **Set up Environment Variables:**
     *   Create a `.env` file in the `app/backend` directory (this file is ignored by Git).
     *   Populate it with necessary configurations (e.g., database URLs, API keys, ESI client ID/secret). Refer to `app/backend/src/config.py` for how these environment variables are loaded and used.
     *   Example `.env` structure:
@@ -118,23 +90,22 @@ This section outlines the steps to set up the development environment for Hangar
         # ... other application secrets
         ```
 
-6.  **Database Migrations (Alembic):**
+5.  **Database Migrations (Alembic):**
     *(These commands assume Alembic is set up in `app/backend/src/alembic/`)*
     ```bash
     # From app/backend directory
     # To generate a new migration script after model changes:
-    # alembic revision -m "short_description_of_changes"
+    pdm run alembic revision -m "short_description_of_changes"
     # Then edit the generated script in app/backend/src/alembic/versions/
     # To apply migrations:
-    alembic upgrade head
+    pdm run alembic upgrade head
     ```
 
-7.  **Running the Backend Server (Uvicorn):**
-    From the `app/backend` directory:
+6.  **Running the Development Server:**
     ```bash
-    uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+    pdm run dev
     ```
-    *(Assumes your FastAPI app instance is named `app` in `src/main.py`)*
+    The FastAPI application should be available at `http://localhost:8000`.
 
 ### Frontend Setup (Angular)
 
@@ -166,20 +137,17 @@ This section outlines the steps to set up the development environment for Hangar
 ### Running Linters and Formatters
 
 *   **Backend (Python):**
-    *(Assumes Flake8 and Black are installed in the virtual environment, as per `requirements-dev.txt`)*
-    From `app/backend` directory:
+    From the `app/backend` directory:
     ```bash
-    flake8 ./src
-    black ./src
+    pdm run lint  # Runs Flake8
+    pdm run format # Runs Black
     ```
 
 *   **Frontend (Angular):**
-    From `app/frontend/angular` directory:
+    From the `app/frontend/angular` directory:
     ```bash
     npm run lint  # Runs ESLint
-    npm run format # Runs Prettier (ensure this script exists in package.json)
-    # Or run Prettier directly:
-    # npx prettier --write .
+    npm run format # Runs Prettier
     ```
 
 ### Using Docker for Services (Optional but Recommended)
@@ -246,37 +214,31 @@ If you have Docker installed, you can use it to run PostgreSQL and Valkey. A `do
 *   Run all relevant tests locally before pushing changes or creating a PR.
 *   Aim for high test coverage.
 
-## 6. Dependency Management
+## Dependency Management
 
 This project follows a strict dependency version pinning policy to ensure reproducible and stable builds. The full policy statement and rationale can be found in [`design/design-spec.md`](design/design-spec.md) (Section 6.0). All developers and AI assistants MUST adhere to the following practices:
 
 *   **Python (Backend):**
-    *   All packages listed in `app/backend/requirements.txt` (and any development-specific requirement files like `requirements-dev.txt`) MUST have their exact versions specified.
-    *   **Example:** `fastapi==0.100.0`
-    *   Add new dependencies to `requirements.in` (and `requirements-dev.in` for dev tools).
-    *   Regenerate `requirements.txt` and `requirements-dev.txt` using `pip-compile` from the `pip-tools` package:
+    *   Dependencies are managed by **PDM** via the `pyproject.toml` file.
+    *   To add a new dependency, navigate to `app/backend` and run:
         ```bash
-        # From app/backend directory
-        pip-compile requirements.in -o requirements.txt
-        pip-compile requirements-dev.in -o requirements-dev.txt
+        # For a production dependency
+        pdm add <package-name>
+
+        # For a development-only dependency (like linters or test tools)
+        pdm add -G dev <package-name>
         ```
-    *   Commit both the `.in` and `.txt` files.
+    *   PDM automatically pins the exact version in `pdm.lock` and updates `pyproject.toml`.
+    *   Commit both the `pyproject.toml` and `pdm.lock` files to the repository.
 
 *   **JavaScript/TypeScript (Frontend - Angular):**
     *   All packages listed in `app/frontend/angular/package.json` (in both `dependencies` and `devDependencies`) MUST have their versions pinned.
     *   Use `npm install --save-exact <package-name>` or `npm install --save-dev --save-exact <package-name>` to add new dependencies with exact versions to `package.json`.
-    *   **Example (in `package.json`):** `"@angular/core": "16.2.0"` (ensure no `^` or `~` prefixes unless a specific, conscious decision is made and documented for a valid reason).
+    *   **Example (in `package.json`):** `"@angular/core": "20.0.0"` (ensure no `^` or `~` prefixes).
     *   Always commit the `package.json` and `package-lock.json` files.
 
-*   **Containerization (Docker):**
-    *   **Base Images:** Dockerfiles (e.g., `app/backend/Dockerfile`, `app/frontend/angular/Dockerfile`) MUST use specific version tags for base images. Avoid using `latest` or broad version tags like `python:3`.
-        *   **Example:** `FROM python:3.11.9-slim-buster` (preferred) instead of `FROM python:latest` or `FROM python:3.11`.
-    *   **Package Installations within Dockerfiles:** Any packages installed within Dockerfiles using system package managers (e.g., `apt-get` for Debian/Ubuntu, `apk add` for Alpine) SHOULD also have their versions pinned if the package manager supports it and it's practical to do so. This adds an extra layer of reproducibility.
-        *   **Example (Debian/Ubuntu):** `RUN apt-get update && apt-get install -y --no-install-recommends mypackage=1.2.3-1ubuntu1`
-        *   **Example (Alpine):** `RUN apk add --no-cache mypackage=1.2.3-r0`
-
-*   **Database Systems:**
-    *   While not typically pinned in a version control file in the same way as application dependencies, ensure that the major version of database systems like PostgreSQL used in development, testing, and production environments is consistent and explicitly chosen (e.g., PostgreSQL 15.x). This is usually managed through Docker image selection for development (e.g., `postgres:15-alpine`) or infrastructure-as-code for deployed environments.
+*   **Containerization (Docker) & Database Systems:**
+    *   The guidance for pinning versions for Docker base images and database systems remains the same. Always use specific version tags (e.g., `python:3.11.9-slim-buster`, `postgres:16-alpine`) and avoid `latest`.
 
 ## Issue Tracking
 

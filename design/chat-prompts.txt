@@ -7069,6 +7069,678 @@ If so, run  /git-commit . We've done a LOT of work, so make to use as many logic
 
 -----------------
 
+Cascade said about markdown for PRs:
+That's a great question. It helps us work together more efficiently.
+
+The way you just asked is perfect. Phrases like these are very effective:
+
+"Provide that as a copyable markdown block."
+"Can you put that in a markdown code block?"
+"Wrap that in triple backticks so I can copy it."
+Any of these will tell me to format the content with markdown ... , which creates the clean, copyable block you're looking for.
+
+
+-----------------
+
+
+Let's take a look at:
+* README.me
+* CONTRIBUTING.md
+
+Read those files in their entirety. Are there any updates we should make based on the latest design and implementation work?
+
+
+-----------------
+
+
+The merge is complete.
+
+Before we begin any phase 4 implementation, we need to do a series of extensive review passes on it and its tasks to bring them up to date and standards with prior phases. How would you propose we start that process, based on what's been effective?
+
+
+-----------------
+
+
+Yes, proceed. You do not need to ask permission to read the core 04.1, 04.2, and 04.3 task file. Make sure you read the original feature specs design\features\F001-Public-Contract-Aggregation-Display.md and design\features\F002-Ship-Browsing-Advanced-Search-Filtering.md too.
+
+
+-----------------
+
+
+Two issues in plans\implementation\00-mvp-implementation-task-template.md:
+1. The sections no longer match those in plans\implementation\00-mvp-implementation-task-template.md. Is consistency with the template or internal utility more important here? Can the information in 4.1 right now be consolidated into the standard sections without losing ANY important details?
+2. The "Cross-Cutting Concerns Review" section is missing items that I'm guessing thought were N/A. But items that are N/A must still be listed and clearly indicated as such so reviewers know it's deliberate.
+
+
+-----------------
+
+
+1. Is this removed information still relevant and if so, captured elsewhere?
+"*   [ ] **Develop Unified Container Component:**
+    *   Generate a single, standalone container component: `ng generate component features/contracts/contract-browse-page`.
+    *   This component will be associated with the primary route for this feature.
+    *   Inject the `ContractSearchService` to connect the view to the state.
+
+*   [ ] **Build the View Template (`contract-browse-page.html`):**
+    *   The template will read all its data directly from the public signals exposed by the `ContractSearchService`.
+    *   **Filter Panel:** Create the UI controls for all filters specified in F002 (keyword search, price range, contract type, etc.). Bind their values and events to the methods on the `ContractSearchService`.
+    *   **Results List/Table:** Display the contract data. Use the `asyncState` signal to show loading, error, and data states (`*ngIf` or `@if`).
+    *   **Pagination Controls:** Create UI elements for pagination. Bind them to the pagination state and methods on the `ContractSearchService`.
+
+*   [ ] **Styling and Finalization:**
+    *   Apply SCSS styling for a clean, responsive, and usable interface.
+    *   Ensure loading and empty/error states are handled gracefully in the UI."
+	
+2. Is this removed information still relevant and if so, captured elsewhere?
+*   **AI Prompt (Service):** "Generate an Angular service named `ContractSearchService` that manages state for fetching a list of contracts. It should use signals for state (filters, pagination, sorting, and the `AsyncState` of the results). Use an `effect` to automatically re-fetch data from a `ContractApi` service whenever a filter or page signal changes. Provide public methods to update the state."
+*   **AI Prompt (Component):** "Generate a standalone Angular component `ContractBrowsePage`. It should inject the `ContractSearchService` and bind its template directly to the service's public signals to display the contract list and filter controls. All user interactions (e.g., changing a filter, clicking 'next page') should call the corresponding methods on the injected service."
+*   Prioritize a clean separation of concerns: the service handles all state and logic, while the component is responsible only for presentation and delegating user events to the service.
+
+3. The CCC review section added the missing areas, but lost all details for the previously existing ones. E.g.,
+Previous:
+Testing
+*   [ ] **Unit Tests:** `ContractSearchService` must be tested in isolation, mocking the `ContractApi`. Test state transitions and logic thoroughly.
+*   [ ] **Integration Tests:** `ContractBrowsePage` will be tested with a mocked `ContractSearchService` to verify that the template correctly reflects the service's state signals.
+*   [ ] **Test Coverage:** Aim for >90% coverage for the new service and component.
+*   **Notes:** Adhere to the patterns in `design/angular/guides/09-testing-strategies.md`.
+
+Current:
+### 7.3. Testing
+*   [ ] **Unit Tests:** [ ]
+*   [ ] **Integration Tests:** [ ]
+*   [ ] **Test Coverage:** [ ]
+*   [ ] **Test Data Management:** [ ]
+*   **Notes:** Unit tests will cover the service in isolation (mocking the API). Integration tests will cover the component with a mocked service. Test data will be managed via mock objects/files. Target >90% coverage.
+
+-----------------
+
+
+Note that I renamed the phase 4 pre-mortem design\reviews\pre-mortems\04-phase-four-frontend-pre-mortem.md to design\reviews\pre-mortems\phase-04-phase-four-frontend-pre-mortem.md to follow convention. I think it looks weak relative to our other pre-mortems.
+
+Please conduct four rounds of pre-mortem reviews. For the third round, do a "think outside the box" review.
+
+Review both:
+* plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md
+* design\reviews\pre-mortems\phase-04-phase-four-frontend-pre-mortem.md
+
+You can update those two files freely as you go. You can read other files to assist your review, but do not make edits to them without asking and receving USER permission. 
+
+
+-----------------
+
+
+Cascade thought:
+A robust pre-mortem is a cornerstone of our quality process, and your instinct that the current one is underdeveloped is correct. A superficial review leads to predictable problems. We will rectify this immediately by conducting a thorough, multi-round analysis.
+
+I will adopt the rigorous, multi-round review process that has served us well in previous phases. My plan is as follows:
+
+Round 1: Foundational Review & Alignment: I will ensure both the pre-mortem and the task plan are internally consistent and perfectly aligned with our established Angular architecture, feature specifications, and cross-cutting concern documents.
+Round 2: Technical Deep Dive & Specificity: I will inject deep technical detail, identifying specific risks in our proposed signal-based service and component interaction (e.g., race conditions, state representation) and prescribing concrete patterns and mitigations.
+Round 3: "Think Outside the Box" Analysis: As requested, I will simulate creative failure scenarios inspired by our previous "Operator's Nightmare" and "Data's Lifecycle" reviews, but tailored to this new frontend feature. This will uncover non-obvious risks.
+Round 4: Final Polish & Consolidation: I will perform a final pass to ensure both documents are clear, actionable, and that every risk identified in the pre-mortem has a corresponding, trackable action in the implementation plan.
+I will update both the pre-mortem and the task plan files throughout this process.
+
+
+
+
+-----------------
+
+
+1. In Section 3.2 (UI), you replaced:
+*   [ ] **Step 2.3:** Build the view template (`contract-browse-page.html`). The service will define a clear, immutable `ContractFilter` interface. State updates will be atomic; any method that changes the filter criteria must accept a complete `ContractFilter` object to avoid partial updates and race conditions. The service will have methods to update the full filter object and trigger a new data fetch from the `ContractApi` service.
+
+with
+
+"*   [ ] **Step 2.3:** Build the view template (`contract-browse-page.html`)."
+
+Was that an intentional reduction in detail?
+
+
+-----------------
+
+
+Please do a review of the plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md "## 7. Cross-Cutting Concerns Review" section. The items seem light on details, especially the N/A ones, which should indicate why they're N/A.
+
+
+-----------------
+
+
+Review the four referenced
+*   **Core Angular Design Guides:**
+    *   `/design/angular/00-angular-architecture-overview.md`
+    *   `/design/angular/guides/04-state-management-and-rxjs.md`
+    *   `/design/angular/guides/07-http-and-data-loading.md`
+    *   `/design/angular/guides/09-testing-strategies.md`
+
+in their entirety (you likely need to read at least 400 lines), then do one more review pass of plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md with those in mind.
+
+
+-----------------
+
+
+In your Thought Process, you said:
+"Refining Implementation Review
+
+I've just finished comparing the implementation plan against the pattern files. It looks solid. The plan for 04.1 -contract-list-component.md is not only aligned, but also improves on the patterns."
+Is there anything "improved" from 04.1 that should be reflected in a pattern file update?
+
+
+-----------------
+
+
+First, /git-commit . Then begin implementation.
+
+
+-----------------
+
+
+You need a better resource index to start. Let's do this methodically. What do you think of the below approach? Would it be effective? How could it be improved for Cascade?
+
+1. Read in their entirety (up to 400 lines):
+* design\reviews\pre-mortems\phase-04-phase-four-frontend-pre-mortem.md - make sure it's fresh
+* plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md
+** Pay attention to the cross-cutting concerns review section up front and take it into consideration while planning task items.
+* design\angular\00-angular-architecture-overview.md
+** Pay attention to ## 3. Directory and File Structure so you know where to find frontend files
+* plans\implementation\00-mvp-implementation-plan-progress.md, section "### Phase 2: Backend - F001: Public Contract Aggregation" for info on the backend. Follow any file references it's helpful to follow.
+* design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md - a great deal of info on the backend and specific locations of where to find things
+
+2. Check your "## 3. Key Implementation Steps" tasks in plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md. Think cohesively about what information you need about the project to achieve the tasks and create a list. Then, verify everything on the list in whatever manner is appropriate, using a source of truth method whenever possible. Once you've verified information you'll need, write it out to your C:\Users\Sam\.codeium\windsurf\brain\2f7e2d6b-53f6-425f-8f97-84904f9a2f68\plan.md so you have it easily available.
+
+3. Proceed with implementation.
+
+
+-----------------
+
+
+I noticed the first component is named contract-search while you're trying to name this one contract-browse-page. Why the -page?
+
+
+-----------------
+
+1. Woah, that's a big change. I want to make sure we're exeedingly sure that's the right thing to do before proceeding. Did contract-list come from Phase 3? What was its purpose?
+
+2. Update your "Phase 4 Frontend Resource Index" memory with the contract-browse-page component path info.
+
+3. You're continually having issues with that tool call initially only requesting one line with #L1. That is NEVER correct. You'll always need more than the first line of the file. Your instructions on using this tool call are clearly defective in some way. You should report that to Windsurf engineering on the backend. Then propose a way to get around this (new memory?) that can help Cascade use the tool correctly for now.
+
+
+-----------------
+
+
+Let's pause and assess if this is the right design pattern. What you explained so far makes sense, but let's sanity check that this is the right way to be routing API requests and is in alignment will all applicable standards, guides, and patterns.
+
+
+-----------------
+
+
+Do the existing contract detail calls not have both issuer_id and issuer_name? Do we really have to do a whole separate id to name resolution step to make that work? Remember, we have rate limiting concerns for the ESI API. Think carefully.
+
+
+
+-----------------
+
+In app\backend\src\fastapi_app\core\esi_client_class.py:
+1. You replaced:
+"resolved_data[item['id']] = {
+                            'name': item.get('name'),
+                            'category': item.get('category')
+                        }
+"
+with
+"                        resolved_names[item['id']] = item['name']"
+Which does not include category. Please explain.
+
+2. The removed section with "async def get_esi_single_page_with_etag(self, path: str) -> dict[str, Any] | list[Any]:" is very large. Please explain the removal. I want to be careful that we aren't removing more than intended.
+
+-----------------
+
+
+Okay, makes sense. That seems like something we should have caught at a phase 2 post-mortem type review though, no?
+
+
+-----------------
+
+
+1. Do you think missing that was more a failure of testing/test coverage, a failure of review scope, or something else? What could we do to help Cascade prevent or catch that category of issue earlier in the future? What memories, spec / design / guide / pattern file updates might help (if any)? Consider multiple options, as it's a broad problem. There may be more than one effective mitigation to implement. 
+
+2. Specifically consider if any updates to the files (including adding new files) in design\fastapi, design\fastapi\guides, and design\fastapi\patterns are appropriate. As one example (don't limit yourself to this), I see we don't have a fastapi "testing strategies" guide like we do for Angular with design\angular\guides\09-testing-strategies.md.
+
+
+-----------------
+
+
+1. design\fastapi\patterns\01-api-client-service-pattern.md uses a prefix number already in use. The next available one is 04. Please update accordingly.
+
+2. We you did just create the new design\fastapi\guides\09-testing-strategies.md which is great, I want to zoom out and dig deeper into the bigger picture test strategy. Your thought process was fairly focused on the specific httpx.AsyncClient issue, which while important, is narrowly scoped. Why did we have a significant function in our code with no test coverage? Would a test and mock have caught this?
+
+
+-----------------
+
+
+Is that nuance something worth capturing in design\fastapi\guides\09-testing-strategies.md?
+
+
+-----------------
+
+1. We've made some pretty extensive changes to the backend infrastructure. Please review these two relevant post-mortem docs to see if they would benefit from any updates. For any updates you make, ensure you know that we ran into them during the Phase 4 implementation and the significance and implications of that. Think about if we could have foreseen any of these issues and how.
+* design\reviews\post-mortems\phase-reviews\01-backend-core-infrastructure-review.md
+* design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md
+
+2. There was an error you made earlier that seems potentially important to capture in a design guide or pattern. Correct class structures are something we should always get right. What do you think? How can we best help Cascade?
+"The traceback is definitive: TypeError: 'ESIClient' object does not support the asynchronous context manager protocol.
+
+This is a clear and embarrassing mistake on my part. It means that the 
+ESIClient
+ class, as it currently stands, is missing the __aenter__ and __aexit__ methods that are required for it to be used in an async with block.
+
+I was so focused on correcting the logic inside the methods that I failed to ensure the class structure itself was correct. The design pattern I wrote is correct, but the code I wrote does not follow it.
+
+I will now fix this by adding the necessary __aenter__ and __aexit__ methods to the ESIClient class. This will make it a valid asynchronous context manager, which will resolve the TypeError and allow the aggregation service to run correctly."
+
+
+-----------------
+
+
+1. Are there any other memories you should update?
+
+2. Think about the important design decisions we've made since the last branch merge / PR. Append multiple design\meta\design-log.md entries to cover them with a level of detail that's useful to humans and Cascade. Use footer "DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*" to target your update.
+
+
+-----------------
+
+
+Before proceeding with implementation, please do a review of plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md for both:
+1. Accurancy / coherence / up-to-date-ness with recent backend changes.
+2. Current work status. Check off completed items only if you can verify against source of truth that they're done.
+
+
+-----------------
+
+
+The commits are in. Let's move onto the "## 5. Definition of Done (DoD)" and "## 7. Cross-Cutting Concerns Review" reviews.
+
+
+-----------------
+
+
+1. app\frontend\angular\src\app\features\contracts has potentially inconsistent organizatino. some files are direct children, while app\frontend\angular\src\app\features\contracts\contract-browse-page is organized under a subdirectory. Please investigate.
+2. You created a big stylesheet for something earlier but I never looked at it. What was that? How can we check it's not broken?
+3. You appear to have forgotten how to do a cross-cutting concerns review. Review each item in each section carefully, verfiy it (or its N/A status) against sources of truth (wherever possible), and only then check it off.
+
+
+-----------------
+
+
+I just noticed two other issues.
+
+1. Some items have big font titles, like:
+8 run, ME4/TE4
+From:
+Issued: May 28, 2025, 5:11:05 PM
+Status: outstanding
+Price: 800,000,000.00 ISK
+Volume: 0.01 m³
+----
+While others have no title and are missing that big header. See attached image.
+
+From:
+Issued: May 28, 2025, 5:22:08 PM
+Status: outstanding
+Price: 5,000,000,000.00 ISK
+Volume: 3 m³
+----
+
+2. All the "From" fields are still empty. Is that expected? Did we fully implement the ID to name resolver?
+
+
+-----------------
+
+There's another issue where the contracts cards on the first page are wider than the ones on subsequent pages.
+
+
+-----------------
+
+Is the info on https://developers.eveonline.com/docs/guides/id-ranges/ useful to you?
+Intro:
+"ID Ranges
+A lot of entities in EVE have a sequential identifier. These identifiers are grouped into ranges based on the type of entity they represent. This document lists the ranges and the entities they represent.
+
+The ranges are inclusive, meaning that the first and last ID in the range are valid IDs, however (except ID 0), the first ID is generally not used.
+
+Keep in mind it is not possible to tell if an ID is a character, as characters created before 2010-11-03 share ID ranges with other entities (corporations and alliances)."
+
+
+-----------------
+
+Regarding:
+"And yes, the information on EVE Online ID ranges is extremely useful! Thank you for sharing it. Here’s why it’s so valuable:
+
+Data Validation: It allows us to confirm that an ID we receive from the API is valid for the type of entity we expect (e.g., checking if a station_id actually falls within the range for stations).
+Smarter Lookups: When we resolve IDs to names, knowing the entity type beforehand can help make our requests more efficient and our error handling more robust.
+Handling Ambiguity: Your link points out a critical edge case: some old character, corporation, and alliance IDs can overlap. Knowing this helps us write code that doesn't make incorrect assumptions.
+This is a fundamental concept for working with the ESI API, and I've saved this information to my memory to ensure I handle these IDs correctly in all future tasks."
+
+More than a memory, this seems like something it could be useful to have a set of ID validator helper functions for. What do you think? What are the pros and cons?
+
+
+-----------------
+
+Are there any potential downsides of using the fetch API?
+
+
+-----------------
+
+
+Regarding:
+"Error Handling Differences: The fetch API only considers a network failure to be a true error. It does not reject on HTTP error statuses like 404 (Not Found) or 500 (Internal Server Error). You have to manually check the response.ok status to see if the request was successful.
+How Angular Helps: Fortunately, HttpClient abstracts this away for you. It will still emit an error in the RxJS stream for non-successful HTTP statuses, so your catchError blocks will work as expected."
+
+Please explain this in depth. I'm very used to handling HTTP error codes and don't immediately understand what's meant by and involved with "manually check the response.ok status to see if the request was successful". What are the implications of this for Hangar Bay for both existing and future work?
+
+-----------------
+
+
+I'm sold on fetch. /design-log the decision. 
+Should we update any of our design\angular (and subdirectory) docs to reflect this?
+
+
+-----------------
+
+
+Please double check design\angular\00-angular-architecture-overview.md section "## 9. Key Code Review Guidelines (Architectural)". There was a weird edit in there. Do a general review on the section for consistency with project standards.
+
+
+-----------------
+
+
+/git-commit , then return to plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md, asses where you are with the comprehensive item by item cross-cutting review, and proceed from there.
+
+
+-----------------
+
+
+Excellent job, I'm proud of you for working through that. It seems like we're having some real growing pains figuring out how to write tests for this zoneless Angular project. Please summarize ALL the test issues you worked through in this phase, structured in a way conducive to Cascade's learning and future effectiveness. You're going to have to look far back in your context window. There were 24/25 tests here, and we started out with only 2 passing.
+
+
+-----------------
+
+
+The missing explicit expectations item seems like something that should be in design\angular\guides\09-testing-strategies.md if it isn't already. Can you check? Are there other Angular testing "gotchas" like that the document doesn't cover? Read the whole thing, which is now 450 lines.
+
+
+-----------------
+
+Now, back to the thorough item by item cross-cutting review for plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md. You last started looking at the "### 7.3. Testing" section before we went and implemented those tests.
+
+
+-----------------
+
+Good work on the CCC review. The project is better off for your diligence!
+
+1. Update "### Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering" in plans\implementation\00-mvp-implementation-plan-progress.md to reflect the work completed in the phase. Review the entries for the previous phases to understand the structure before crafting the phase 4 section.
+
+2. Then we need to do the phase 4 post-mortem phase review based on the design\reviews\post-mortems\phase-reviews\phase-review-template.md template. To prepare for this review, first read the current state of these files in their entirety:
+* design\reviews\pre-mortems\phase-04-phase-four-frontend-pre-mortem.md
+* plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md
+* design\angular\guides\09-testing-strategies.md (this file is 500 lines long - make sure to read it all)
+
+2.1. Think about any files within the design\angular, design\angular\guides, and design\angular\patterns directories it may also be useful to include in your review prep, and read them in their entriety. Be careful about partial reads. Look for hints like:
+"## AI Analysis Guidance for Cascade"
+
+This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls." but do not rely solely on them.
+
+2.2. Think about any files under app\frontend\angular or its subdirectories it may also be useful to include in your phase 4 post-mortem review prep, and read them in their entriety. Be careful about partial reads.
+
+3. Last step before we write the phase 4 post-mortem. Review the earlier phase reviews for inspiration, with a special focus on the types of information that are most useful for Cascade:
+* design\reviews\post-mortems\phase-reviews\00-foundational-setup-review.md
+* design\reviews\post-mortems\phase-reviews\01-backend-core-infrastructure-review.md
+* design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md
+* design\reviews\post-mortems\phase-reviews\03-frontend-core-infrastructure-review.md
+
+4. Write up the phase 4 post-mortem phase review based on the design\reviews\post-mortems\phase-reviews\phase-review-template.md. You will need to create phase-04-frontend-f001-f002-contract-listing-basic-filtering. 
+
+5. Think about any memories it would be useful for Cascade to update or create about the phase 4 work or otherwise, then do that.
+
+-----------------
+
+In the review, you note:
+"        *   **Actionable Learning & Future Application (Cascade & Team):**
+            *   This RxJS pipeline within a signal-based service is now the **gold standard pattern** for handling state derived from asynchronous operations that are triggered by user input. All future features with similar requirements (e.g., search, filtering) must adopt this pattern. It should be formalized in the Angular design guides."
+*Is* that formalized in the Angular design guides? If not, let's do that while it's fresh.
+
+
+-----------------
+
+Ah, prices reminds me of another feature item. EVE players buying ships commonly reference prices in millions (M) or billions (B) of ISK. This makes prices more readable. We should have a display formatter that converts the full ISK value to M or B ISK (e.g., 350M ISK with one or two significant figures after the decimal.
+
+That worked.
+
+Where should we document the isk formatter pipe? That was done outside a regular task file but it's still important to document the feature work somewhere visible. What do you suggest?
+
+
+-----------------
+
+
+I just noticed something about the Isk pipe app\frontend\angular\src\app\shared\pipes\isk.pipe.ts. This doesn't follow our standard of using the directory for context and omitting the type in the class name. Refer to services and components. Should this apply to pipes as well to align with modern Angular style? isk.ts and class Isk.
+
+
+-----------------
+
+
+TODO: About page with disclaimer:
+EVE Online, the EVE logo, EVE and all associated logos and designs are the intellectual property of CCP hf. All artwork, screenshots, characters, vehicles, storylines, world facts or other recognizable features of the intellectual property relating to these trademarks are likewise the intellectual property of CCP hf. EVE Online and the EVE logo are the registered trademarks of CCP hf. All rights are reserved worldwide. All other trademarks are the property of their respective owners. CCP is in no way responsible for the content on or functioning of this website, nor can it be liable for any damage arising from the use of this website.
+
+
+-----------------
+
+We should update the "Hangar Bay Angular Frontend Directory Structure" in your memory of the same name to reflect the current state.
+Here's the current memory contents:
+
+/src
+|-- /app
+|   |-- /core                 # Singleton services, guards, and truly global logic.
+|   |   `-- /layout           # Components that define the main page structure (e.g., header, footer).
+|   |       |-- /footer
+|   |       |   |-- footer.ts       # Footer component class
+|   |       |   |-- footer.html     # Footer component template
+|   |       |   |-- footer.scss     # Footer component styles
+|   |       |   `-- footer.spec.ts  # Tests for the footer component
+|   |       `-- /header
+|   |           |-- header.ts       # Header component class
+|   |           |-- header.html     # Header component template
+|   |           |-- header.scss     # Header component styles
+|   |           `-- header.spec.ts  # Tests for the header component
+|   |-- /features             # Feature-specific modules. Each feature is self-contained.
+|   |   `-- /contracts        # Example: Contracts Feature
+|   |       |-- contract.api.ts   # Service for this feature's backend communication
+|   |       |-- contract.api.spec.ts # Tests for the API service
+|   |       `-- contract.model.ts # TypeScript interfaces for this feature
+|   |-- /shared               # Reusable, presentation-agnostic code.
+|   |   ├── /components       # Reusable "dumb" UI components (e.g., button, card)
+|   |   ├── /directives       # Reusable custom directives
+|   |   ├── /pipes            # Reusable custom pipes
+|   |   `── /utils            # Reusable helper functions
+|   |-- app.config.ts         # Core application providers (routing, http, zoneless, etc.)
+|   |-- app.config.spec.ts    # Tests for app.config.ts
+|   |-- app.routes.ts         # Top-level application routes
+|   |-- app.ts                # Root application component class
+|   |-- app.html              # Root application component template
+|   |-- app.scss              # Root application component styles
+|   `-- app.spec.ts           # Tests for the root application component
+|-- /environments           # Environment-specific configuration files.
+|   |-- environment.prod.ts   # Production environment configuration
+|   `-- environment.ts        # Development environment configuration
+|-- index.html              # The main HTML page that is served.
+|-- main.ts                 # The main entry point for the application, bootstraps Angular.
+`-- styles.scss             # Global application styles and CSS variable definitions.
+
+
+Please update this to include additions WITHOUT losing any of the existing comments.
+
+
+-----------------
+
+
+It's working. We do have a "Page 1 of 0" issue when there are no search hits though. We should systemically fix that. There are NEVER zero pages. A UI page with zero results is still the "first page".
+
+
+-----------------
+
+
+I think we need to do some layout work. The contract cards are neat but they take up WAY too much UI space given how many contracts there are. We're going to need something that's more like a table to better support information density and filtering options in later feature. I also realized we're only showing the "Issued" date. That's not the main thing useful to a buyer. They mostly care about when a contract *expires* in the form of remaining duration. The detailed view can show the real issued/expiring timestamps. Think carefully about this and let me know your careful thoughts on how you'd address it. Do not modify any files until I've agreed on a plan of action.
+
+
+-----------------
+
+
+Let's generate a new task file for this work based on plans\implementation\00-mvp-implementation-task-template.md. I think labeling it "04.2" under plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering is reasonable. It could also retroactively include the ISK formatter pipe, which is conceptually similar to the proposed time-left.ts pipe (remember, no ".pipe" in modern Angular convention). What do you think?
+
+
+-----------------
+
+We need to add some kind of info message to those errors that indicates they're because of tests that explicitly induce such errors to test how they're handled. We both panic a little every time we see them in the output, so we need to mark that they're expected behavior for those *specific* tests.
+
+
+-----------------
+
+Should we have seen that INFO message once for each time the ERROR occurs? I only see one INFO and four ERRORs.
+
+
+-----------------
+
+
+I forgive you. You don't need to be so apologetic. Programming is hard and we're both working on this together with our own strengths and weaknesses. Our shared goal is to build Hangar Bay to be a great app that follows our core specifications and principles, and learn and have fun along the way.
+
+
+-----------------
+
+... is this why the title search functionality didn't work when I tried it earlier?
+
+Okay, so how did THAT get missed in plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md? It's a title feature. I'm not upset, don't apologize - figure out, systemtically, how it got missed in the Key Implementation Task, Definition of Done, and any other applicable areas that should have had us implementing the actual feature instead of a placeholder function and validation its functionality. Then think VERY hard about how we can prevent that from happening again in future tasks. Compare multiple approaches and consider all of this project's extensive documentation resources available. What would be most effective for Cascade? 
+
+
+-----------------
+
+
+Good plan. Please also create a memory for what you described in "2. Institute a "Pre-Completion Audit" Step" to reinforce the behavior.
+As a first step, let's apply this more rigorous criteria to plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.2-table-layout-and-pipes.md
+
+
+-----------------
+
+plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.3-basic-filtering-ui.md looks VERY light on details. Before implementing more, do a careful review of your project resources and flesh it out to meet our standards for detail and thoroughness.
+
+After you create plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.4-integrating-filters-with-list.md, before implementing more, do a careful review of your project resources and flesh it out to meet our standards for detail and thoroughness. Remember, you just spent ages troubleshooting a test for code that didn't exist because of deficient details and standard in the task file. Safe yourself the trouble and put the real effort in here so implementation is easy.
+
+
+-----------------
+
+
+Something has gone wrong in the process order. No tasks under "## 3. Key Implementation Steps" are checked off, yet all the "## 5. Definition of Done (DoD)" ones are. How can that be?
+
+
+-----------------
+
+
+Understood. Please log the issue *in detail*, including all steps and strategies tried (to avoid repeat wasted effort when a human picks up the tech debt issue later) in design\reviews\post-mortems\phase-reviews\04-frontend-f001-f002-contract-listing-basic-filtering-review.md. Error on the side of being thorough. Do not limit your write-up to only the most recent troubleshooting attempts. Try to capture as much of the long process as you're able to remember. This will greatly benefit others who may try to tackle this challenging issue in the future.
+
+
+-----------------
+
+
+Let's return to plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.2-table-layout-and-pipes.md. Find the first unchecked item and start there. You may have already done it but not checked it off, so start by verifying if the work has already been done with a source of truth.
+
+
+-----------------
+
+
+No, the next step is to conduct a through review of the "## 5. Definition of Done (DoD)" items. Do this carefully and verify everything.
+
+The next step is to do a thorough, line by line "## 7. Cross-Cutting Concerns Review", verifying everything applicable with sources of truth. Once that's complete and I agree, we'll commit our work.
+
+
+-----------------
+
+These import statements have the wrong names. They shouldn't include Pipe. 
+import { IskPipe } from '../../../shared/pipes/isk';
+import { TimeLeftPipe } from '../../../shared/pipes/time-left';
+
+
+-----------------
+
+1. Update design\reviews\post-mortems\phase-reviews\04-frontend-f001-f002-contract-listing-basic-filtering-review.md
+2. Update plans\implementation\00-mvp-implementation-plan-progress.md, section "### Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering", subsection "[04.2 Table Layout and Pipes]".
+3. /git-commit 
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
+X
+
+
+-----------------
+
 
 X
 
@@ -7080,140 +7752,9 @@ X
 
 
 
------------------
 
 
-X
 
 
------------------
 
 
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------

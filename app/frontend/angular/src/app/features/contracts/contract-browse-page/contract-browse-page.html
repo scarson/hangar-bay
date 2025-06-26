@@ -1,0 +1,93 @@
+<div class="contract-browse-container">
+  <h1 i18n="Page title for browsing public contracts">Public Contracts</h1>
+
+  <div class="filter-panel">
+    <input
+      #searchInput
+      type="text"
+      placeholder="Search by title or location..."
+      i18n-placeholder="Placeholder text for the contract search input"
+      [value]="filters().search ?? ''"
+      (input)="onSearch(searchInput.value)"
+      aria-label="Search contracts"
+    />
+    <div class="filter-controls">
+      <label for="contract-type" i18n="Label for the contract type filter">Type:</label>
+      <select id="contract-type" aria-label="Filter by contract type" [value]="filters().type ?? ''" (change)="onTypeChange($event)">
+        <option value="" i18n="Default option for contract type filter">All Types</option>
+        <option value="item_exchange" i18n="Contract type option for item exchange">Item Exchange</option>
+        <option value="auction" i18n="Contract type option for auction">Auction</option>
+        <option value="courier" i18n="Contract type option for courier">Courier</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Loading Indicator -->
+  @if (loading()) {
+    <div class="loading-indicator" i18n="Message displayed while contracts are loading">Loading contracts...</div>
+  }
+
+  <!-- Error Message -->
+  @if (error(); as errorMessage) {
+    <div class="error-message">{{ errorMessage }}</div>
+  }
+
+  <!-- Data View -->
+  @if (data(); as contractData) {
+    <div class="results-container" aria-live="polite">
+      <div class="table-container">
+        <table class="contract-table">
+          <thead>
+            <tr>
+              <th i18n="Table header for contract type">Type</th>
+              <th i18n="Table header for contract issuer">From</th>
+              <th i18n="Table header for contract location">Location</th>
+              <th i18n="Table header for contract price">Price</th>
+              <th i18n="Table header for time left on contract">Time Left</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (contract of contractData.items; track contract.contract_id) {
+              <tr>
+                <td>{{ contract.type }}</td>
+                <td>{{ contract.issuer_name }}</td>
+                <td>{{ contract.start_location_name }}</td>
+                <td>{{ contract.price | isk }}</td>
+                <td>{{ contract.date_expired | timeLeft }}</td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="5" class="empty-state" i18n="Message displayed when no contracts match the search criteria">No contracts found matching your criteria.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination-controls">
+        <button
+          [disabled]="contractData.page <= 1"
+          (click)="changePage(contractData.page - 1)"
+          aria-label="Go to previous page"
+          i18n-aria-label="Accessibility label for the previous page button"
+        >
+          &laquo; <span i18n="Button text for previous page">Previous</span>
+        </button>
+        <span>
+          <span i18n="Pagination status text part 1">Page</span> {{ contractData.page }} <span i18n="Pagination status text part 2">of</span>
+          {{ calculateTotalPages(contractData.total, contractData.size) }}
+        </span>
+        <button
+          [disabled]="contractData.page >= calculateTotalPages(contractData.total, contractData.size)"
+          (click)="changePage(contractData.page + 1)"
+          aria-label="Go to next page"
+          i18n-aria-label="Accessibility label for the next page button"
+        >
+          <span i18n="Button text for next page">Next</span> &raquo;
+        </button>
+      </div>
+    </div>
+  } @else if (!loading() && !error()) {
+    <p class="empty-state" i18n="Message displayed when no data is available initially">No data available. Start a search to see contracts.</p>
+  }
+</div>

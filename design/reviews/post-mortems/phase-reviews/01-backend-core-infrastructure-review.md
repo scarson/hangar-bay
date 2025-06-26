@@ -84,6 +84,12 @@
 *   **Surprising Outcomes or Unexpected Behaviors (Neutral/Negative):**
     *   The initial ease of setting up basic FastAPI can lead to overlooking foundational aspects like explicit logging configuration for modules until a component (cache) failed to show logs.
 
+*   **Later Discovery (Hindsight from Phase 2 & 4 Work):**
+    *   **Challenge:** Latent `PicklingError` in Background Job Architecture.
+        *   **Discovery:** The core infrastructure, while sound, contained a latent architectural challenge that only became apparent when implementing the first background service (`ContractAggregationService`). The combination of using a `processpool` executor in `APScheduler` and dependency-injected services (holding live clients like `httpx` or `redis`) created an inevitable `PicklingError`.
+        *   **Foresight Analysis:** Could this have been foreseen? Yes, with deep prior experience in this specific stack. A more rigorous pre-mortem for Phase 2, specifically focused on the interaction between FastAPI's DI and `APScheduler`'s process model, could have surfaced the question: "How will we guarantee services passed to the scheduler are picklable?" This highlights the need to pre-emptively analyze the boundaries between major libraries.
+        *   **Resolution:** This discovery ultimately led to the creation of the **[Dual-Mode Service Pattern](../design/fastapi/patterns/05-dual-mode-service-pattern.md)**, a critical architectural pattern for the entire backend.
+
 ## 4. Process Learnings & Improvements
 
 *   **Workflow Enhancements/Issues:**

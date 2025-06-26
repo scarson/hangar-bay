@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 from typing import Optional
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, APIRouter
 from redis.asyncio import Redis # For type hinting Redis client
 from .core.config import settings
 from .core.cache import init_cache, close_cache
@@ -82,7 +82,9 @@ async def startup_event():
     if not hasattr(app.state, 'redis') or not app.state.redis:
         raise RuntimeError("Redis client not initialized in app.state before scheduler setup.")
 
-    esi_client = ESIClient(settings=settings) # ESIClient now only needs settings
+    # For the scheduler, we create a picklable ESIClient that will manage
+    # its own clients on-demand within the job's execution context.
+    esi_client = ESIClient(settings=settings)
     
     # Instantiate the service with the session factory (AsyncSessionLocal)
     aggregation_service = ContractAggregationService(
@@ -131,6 +133,8 @@ async def cache_test(rd: Optional[Redis] = Depends(get_cache)):
 
 
 # Include API routers
+# The /api/v1 prefix is handled by the frontend proxy configuration.
+# The router is included here without a prefix to match the incoming requests.
 app.include_router(contracts_router.router)
 
 # Further application setup, routers, middleware, etc., will go here

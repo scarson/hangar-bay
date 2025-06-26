@@ -187,8 +187,29 @@ The MVP development is structured into the following phases. Each task links to 
 *   **Goal:** Develop the UI for displaying contracts and implementing initial filtering capabilities.
 *   **Tasks:**
     *   [04.1 Contract List Component](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.1-contract-list-component.md)
-    *   [04.2 Basic Filtering UI](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.2-basic-filtering-ui.md)
-    *   [04.3 Integrating Basic Filters with Contract List](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.3-integrating-filters-with-list.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   **Component:** `ContractBrowsePage` created to display contract data, loading/error states, and pagination.
+            *   **State Management:** `ContractSearch` service implemented using a reactive, signal-based approach (`Subject` + `signal`) to manage application state, as defined in the `zoneless-state-management-service.md` pattern.
+            *   **Routing:** `ContractFilterResolver` implemented to handle initial data loading via route resolution.
+            *   **Testing:** Comprehensive unit and integration tests written for the service, component, and resolver. Notably, this involved overcoming challenges with `TestScheduler` in a zoneless environment, leading to a robust testing pattern using an RxJS `Subject` instead of `toObservable`.
+            *   **Cross-Cutting Concerns (CCC):** Full CCC review completed and documented in the task file, including accessibility and i18n attributes.
+    *   [04.2 Table Layout and Pipes](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.2-table-layout-and-pipes.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   **UI Refactor:** `ContractBrowsePage` refactored from a card layout to a semantic HTML `<table>` for improved accessibility and data presentation.
+            *   **Pipes:** Created and tested two new standalone, reusable pipes: `Isk` (for compact ISK currency formatting) and `TimeLeft` (for human-readable relative time).
+            *   **Testing:** Addressed a testing gap by implementing a comprehensive integration test suite for `ContractBrowsePage`. The suite validates component rendering, state changes, pipe transformations, and user interactions, ensuring the component is robust and production-ready.
+    *   [04.3 Basic Filtering UI](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.3-basic-filtering-ui.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   **Filter UI:** Added a dropdown (`<select>`) control to the `ContractBrowsePage` to allow users to filter contracts by type (Item Exchange, Auction, etc.).
+            *   **State Management:** Extended the `ContractSearch` service and `ContractSearchFilters` model to handle the new `type` parameter.
+            *   **URL Integration:** The `contractFilterResolver` now reads the `type` from the URL query parameters, allowing filter state to be bookmarkable and shareable.
+            *   **Testing:** Added unit tests for the new logic in the service and resolver to ensure correctness.
+        
+
+*   **Phase 4 Summary:** The first feature slice of the frontend is complete. Users can now view, search, and paginate through public contracts. The implementation successfully applied the project's core architectural patterns for state management and testing in a modern zoneless Angular environment. The key challenge of testing complex RxJS pipelines with `TestScheduler` was resolved, creating a valuable pattern for future development. The project is ready to proceed with more advanced features.
 
 ### Phase 5: Backend - F002: Advanced Search & Filtering Logic
 *   **Goal:** Enhance backend capabilities to support advanced search and filtering as per F002.

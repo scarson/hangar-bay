@@ -38,8 +38,10 @@ async def list_public_contracts(
             (Contract.start_location_name.ilike(search_term))
         )
 
-    # Get total count for pagination
-    count_query = select(func.count()).select_from(query.subquery())
+    # Get total count for pagination. 
+    # We create the count query from the existing query to ensure all filters are applied,
+    # then replace the selected columns with a count function.
+    count_query = query.with_only_columns(func.count(Contract.contract_id)).order_by(None)
     total_count = (await db.execute(count_query)).scalar_one()
 
     # Get paginated results

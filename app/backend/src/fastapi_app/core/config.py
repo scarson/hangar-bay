@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # ESI Configuration
     ESI_BASE_URL: str = "https://esi.evetech.net"
     ESI_USER_AGENT: str = Field(..., description="User-Agent header for ESI requests.")
+    ESI_TIMEOUT: float = Field(
+        default=20.0, description="Default timeout in seconds for ESI requests."
+    )
 
     # Aggregation Service Configuration
     AGGREGATION_SCHEDULER_INTERVAL_SECONDS: int = 3600
@@ -22,7 +25,7 @@ class Settings(BaseSettings):
         description="List of integer region IDs to scan for contracts. Parsed from env var."
     )
     AGGREGATION_DEV_CONTRACT_LIMIT: int | None = Field( # DO NOT REMOVE UNLESS INSTRUCTED BY USER
-        default=200,
+        default=100,
         description="For dev, limit the number of contracts processed. Set to None or 0 to disable."
     )
 
