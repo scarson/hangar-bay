@@ -20,10 +20,13 @@
 }
 
 .filter-panel {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
   margin-bottom: 2rem;
 
   input[type='text'] {
-    width: 100%;
+    flex-grow: 1;
     padding: 0.75rem 1rem;
     font-size: 1rem;
     border-radius: 8px;
@@ -34,6 +37,33 @@
       outline: none;
       border-color: #4a90e2;
       box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
+    }
+  }
+
+  .filter-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    label {
+      font-size: 0.9rem;
+      color: #4a5568;
+      font-weight: 500;
+    }
+
+    select {
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      border-radius: 8px;
+      border: 1px solid #cbd5e0;
+      background-color: #fff;
+      transition: border-color 0.2s, box-shadow 0.2s;
+
+      &:focus {
+        outline: none;
+        border-color: #4a90e2;
+        box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
+      }
     }
   }
 }
@@ -58,40 +88,57 @@
 }
 
 .results-container {
-  .contract-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-  }
-
-  .contract-card {
+  .table-container {
+    overflow-x: auto; // Enable horizontal scrolling on small screens
     background-color: #ffffff;
     border-radius: 8px;
-    padding: 1.5rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    transition: transform 0.2s, box-shadow 0.2s;
-    border-left: 5px solid #4a90e2;
-    width: 100%;      // Ensure card fills its grid column
+  }
 
-    &:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 10px 15px rgba(0, 0, 0, 0.08);
+  .contract-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+
+    th,
+    td {
+      padding: 1rem 1.25rem;
+      text-align: left;
+      border-bottom: 1px solid #e2e8f0;
     }
 
-    h2 {
-      font-size: 1.25rem;
-      color: #2d3748;
-      margin-top: 0;
-      margin-bottom: 1rem;
+    thead {
+      background-color: #f7fafc;
+
+      th {
+        font-weight: 600;
+        color: #4a5568;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 0.85rem;
+      }
     }
 
-    p {
-      margin: 0.5rem 0;
-      color: #4a5568;
+    tbody {
+      tr {
+        transition: background-color 0.2s;
 
-      strong {
-        color: #2d3748;
+        &:last-child {
+          td {
+            border-bottom: none;
+          }
+        }
+
+        &:hover {
+          background-color: #f9fafb;
+        }
+      }
+
+      .empty-state {
+        text-align: center;
+        color: #718096;
+        padding: 4rem 2rem;
+        font-size: 1.2rem;
       }
     }
   }

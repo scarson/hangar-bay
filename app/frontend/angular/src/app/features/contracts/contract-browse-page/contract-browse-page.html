@@ -11,6 +11,15 @@
       (input)="onSearch(searchInput.value)"
       aria-label="Search contracts"
     />
+    <div class="filter-controls">
+      <label for="contract-type" i18n="Label for the contract type filter">Type:</label>
+      <select id="contract-type" aria-label="Filter by contract type" [value]="filters().type ?? ''" (change)="onTypeChange($event)">
+        <option value="" i18n="Default option for contract type filter">All Types</option>
+        <option value="item_exchange" i18n="Contract type option for item exchange">Item Exchange</option>
+        <option value="auction" i18n="Contract type option for auction">Auction</option>
+        <option value="courier" i18n="Contract type option for courier">Courier</option>
+      </select>
+    </div>
   </div>
 
   <!-- Loading Indicator -->
@@ -26,23 +35,33 @@
   <!-- Data View -->
   @if (data(); as contractData) {
     <div class="results-container" aria-live="polite">
-      <div class="contract-list">
-        @for (contract of contractData.items; track contract.contract_id) {
-          <div class="contract-card">
-            <h2>{{ contract.title || ('Contract #' + contract.contract_id) }}</h2>
-            <p><strong i18n="Label for the contract's starting location">From:</strong> {{ contract.start_location_name }}</p>
-            <p><strong i18n="Label for the contract's issue date">Issued:</strong> {{ contract.date_issued | date: 'medium' }}</p>
-            <p><strong i18n="Label for the contract's status">Status:</strong> {{ contract.status }}</p>
-            @if(contract.price) {
-                            <p><strong i18n="Label for the contract's price">Price:</strong> {{ contract.price | isk }} ISK</p>
+      <div class="table-container">
+        <table class="contract-table">
+          <thead>
+            <tr>
+              <th i18n="Table header for contract type">Type</th>
+              <th i18n="Table header for contract issuer">From</th>
+              <th i18n="Table header for contract location">Location</th>
+              <th i18n="Table header for contract price">Price</th>
+              <th i18n="Table header for time left on contract">Time Left</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (contract of contractData.items; track contract.contract_id) {
+              <tr>
+                <td>{{ contract.type }}</td>
+                <td>{{ contract.issuer_name }}</td>
+                <td>{{ contract.start_location_name }}</td>
+                <td>{{ contract.price | isk }}</td>
+                <td>{{ contract.date_expired | timeLeft }}</td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="5" class="empty-state" i18n="Message displayed when no contracts match the search criteria">No contracts found matching your criteria.</td>
+              </tr>
             }
-            @if(contract.volume) {
-              <p><strong i18n="Label for the contract's volume in cubic meters">Volume:</strong> {{ contract.volume | number: '1.0-2' }} m³</p>
-            }
-          </div>
-        } @empty {
-          <p class="empty-state" i18n="Message displayed when no contracts match the search criteria">No contracts found matching your criteria.</p>
-        }
+          </tbody>
+        </table>
       </div>
 
       <div class="pagination-controls">

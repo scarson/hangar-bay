@@ -1,13 +1,14 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Isk } from '../../../shared/pipes/isk';
+import { TimeLeft } from '../../../shared/pipes/time-left';
 
 import { ContractSearch } from '../contract-search';
 
 @Component({
   selector: 'hgb-contract-browse-page',
   standalone: true,
-  imports: [CommonModule, Isk],
+  imports: [CommonModule, Isk, TimeLeft],
   templateUrl: './contract-browse-page.html',
   styleUrl: './contract-browse-page.scss',
 })
@@ -23,6 +24,12 @@ export class ContractBrowsePage {
   onSearch(searchTerm: string): void {
     // Reset to page 1 when starting a new search to avoid confusion.
     this.contractSearch.updateFilters({ search: searchTerm, page: 1 });
+  }
+
+  onTypeChange(event: Event): void {
+    const selectElement = event.target as HTMLSelectElement;
+    // An empty string for the value means 'All Types', so we pass undefined to clear the filter.
+    this.contractSearch.updateFilters({ type: selectElement.value || undefined, page: 1 });
   }
 
   changePage(newPage: number): void {
