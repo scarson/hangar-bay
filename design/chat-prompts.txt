@@ -7466,27 +7466,57 @@ Excellent job, I'm proud of you for working through that. It seems like we're ha
 -----------------
 
 
-X
+The missing explicit expectations item seems like something that should be in design\angular\guides\09-testing-strategies.md if it isn't already. Can you check? Are there other Angular testing "gotchas" like that the document doesn't cover? Read the whole thing, which is now 450 lines.
 
 
 -----------------
 
-X
+Now, back to the thorough item by item cross-cutting review for plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md. You last started looking at the "### 7.3. Testing" section before we went and implemented those tests.
 
 
 -----------------
 
-X
+Good work on the CCC review. The project is better off for your diligence!
+
+1. Update "### Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering" in plans\implementation\00-mvp-implementation-plan-progress.md to reflect the work completed in the phase. Review the entries for the previous phases to understand the structure before crafting the phase 4 section.
+
+2. Then we need to do the phase 4 post-mortem phase review based on the design\reviews\post-mortems\phase-reviews\phase-review-template.md template. To prepare for this review, first read the current state of these files in their entirety:
+* design\reviews\pre-mortems\phase-04-phase-four-frontend-pre-mortem.md
+* plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md
+* design\angular\guides\09-testing-strategies.md (this file is 500 lines long - make sure to read it all)
+
+2.1. Think about any files within the design\angular, design\angular\guides, and design\angular\patterns directories it may also be useful to include in your review prep, and read them in their entriety. Be careful about partial reads. Look for hints like:
+"## AI Analysis Guidance for Cascade"
+
+This file is over 200 lines long. Unless you are only looking for a specific section, you should read the entire file, which may require multiple tool calls." but do not rely solely on them.
+
+2.2. Think about any files under app\frontend\angular or its subdirectories it may also be useful to include in your phase 4 post-mortem review prep, and read them in their entriety. Be careful about partial reads.
+
+3. Last step before we write the phase 4 post-mortem. Review the earlier phase reviews for inspiration, with a special focus on the types of information that are most useful for Cascade:
+* design\reviews\post-mortems\phase-reviews\00-foundational-setup-review.md
+* design\reviews\post-mortems\phase-reviews\01-backend-core-infrastructure-review.md
+* design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md
+* design\reviews\post-mortems\phase-reviews\03-frontend-core-infrastructure-review.md
+
+4. Write up the phase 4 post-mortem phase review based on the design\reviews\post-mortems\phase-reviews\phase-review-template.md. You will need to create phase-04-frontend-f001-f002-contract-listing-basic-filtering. 
+
+5. Think about any memories it would be useful for Cascade to update or create about the phase 4 work or otherwise, then do that.
+
+-----------------
+
+In the review, you note:
+"        *   **Actionable Learning & Future Application (Cascade & Team):**
+            *   This RxJS pipeline within a signal-based service is now the **gold standard pattern** for handling state derived from asynchronous operations that are triggered by user input. All future features with similar requirements (e.g., search, filtering) must adopt this pattern. It should be formalized in the Angular design guides."
+*Is* that formalized in the Angular design guides? If not, let's do that while it's fresh.
 
 
 -----------------
 
-X
+Ah, prices reminds me of another feature item. EVE players buying ships commonly reference prices in millions (M) or billions (B) of ISK. This makes prices more readable. We should have a display formatter that converts the full ISK value to M or B ISK (e.g., 350M ISK with one or two significant figures after the decimal.
 
+That worked.
 
------------------
-
-X
+Where should we document the isk formatter pipe? That was done outside a regular task file but it's still important to document the feature work somewhere visible. What do you suggest?
 
 
 -----------------

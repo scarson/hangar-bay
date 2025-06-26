@@ -1130,4 +1130,18 @@ To ensure consistency and maximize effectiveness for AI-assisted development (pa
 
 ---
 
+## Ad-hoc Frontend Utility: ISK Formatting Pipe (Approx. 2025-06-25 20:02:07-05:00)
+
+*   **Context:** During the development and debugging of the contract browsing UI, a need arose to format large numerical values (e.g., contract prices) into a human-readable ISK format (e.g., "1.23B ISK", "500.00K ISK"). This was implemented outside of a formal task file to address an immediate UI requirement.
+*   **Decision & Implementation:** A reusable Angular pipe, `IskPipe`, was created.
+    *   **Location:** `app/frontend/angular/src/app/shared/pipes/isk.pipe.ts`
+    *   **Architecture:** Implemented as a standalone, pure pipe for optimal performance. It transforms a number into a string with appropriate suffixes (K, M, B, T) and two decimal places.
+*   **Rationale:**
+    *   **Reusability & Consistency:** Creating a shared pipe ensures that ISK values are formatted consistently across the entire application.
+    *   **Maintainability:** Centralizes the formatting logic in one place, making it easy to update or modify in the future.
+    *   **Cleanliness:** Keeps presentation logic out of component class files, adhering to Angular best practices.
+*   **Documentation:** This design log entry serves as the official record for this ad-hoc feature work, ensuring its visibility for future development and team awareness.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line.)* Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
