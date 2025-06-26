@@ -25,7 +25,7 @@ class Settings(BaseSettings):
         description="List of integer region IDs to scan for contracts. Parsed from env var."
     )
     AGGREGATION_DEV_CONTRACT_LIMIT: int | None = Field( # DO NOT REMOVE UNLESS INSTRUCTED BY USER
-        default=200,
+        default=100,
         description="For dev, limit the number of contracts processed. Set to None or 0 to disable."
     )
 

@@ -133,9 +133,8 @@ async def cache_test(rd: Optional[Redis] = Depends(get_cache)):
 
 
 # Include API routers
-api_router = APIRouter(prefix="/api/v1")
-api_router.include_router(contracts_router.router)
-
-app.include_router(api_router)
+# The /api/v1 prefix is handled by the frontend proxy configuration.
+# The router is included here without a prefix to match the incoming requests.
+app.include_router(contracts_router.router)
 
 # Further application setup, routers, middleware, etc., will go here
