@@ -201,6 +201,12 @@ The MVP development is structured into the following phases. Each task links to 
             *   **Pipes:** Created and tested two new standalone, reusable pipes: `Isk` (for compact ISK currency formatting) and `TimeLeft` (for human-readable relative time).
             *   **Testing:** Addressed a testing gap by implementing a comprehensive integration test suite for `ContractBrowsePage`. The suite validates component rendering, state changes, pipe transformations, and user interactions, ensuring the component is robust and production-ready.
     *   [04.3 Basic Filtering UI](./phase-04-frontend-f001-f002-contract-listing-basic-filtering/04.3-basic-filtering-ui.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   **Filter UI:** Added a dropdown (`<select>`) control to the `ContractBrowsePage` to allow users to filter contracts by type (Item Exchange, Auction, etc.).
+            *   **State Management:** Extended the `ContractSearch` service and `ContractSearchFilters` model to handle the new `type` parameter.
+            *   **URL Integration:** The `contractFilterResolver` now reads the `type` from the URL query parameters, allowing filter state to be bookmarkable and shareable.
+            *   **Testing:** Added unit tests for the new logic in the service and resolver to ensure correctness.
         
 
 *   **Phase 4 Summary:** The first feature slice of the frontend is complete. Users can now view, search, and paginate through public contracts. The implementation successfully applied the project's core architectural patterns for state management and testing in a modern zoneless Angular environment. The key challenge of testing complex RxJS pipelines with `TestScheduler` was resolved, creating a valuable pattern for future development. The project is ready to proceed with more advanced features.

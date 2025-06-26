@@ -11,6 +11,10 @@ This project aims to shows how detailed, AI-focused specifications can steer cod
 [1]: "I can see where GPT could be useful for code snippets, but I can't imagine it's able to deliver any sort of comprehensive outcome. If I say, "write me an ecommerce site for selling ships in eve online" theres no way it's going to do that right? It's going to give me some template code about a shopping cart or something and thats it. Right?"
 There's only one way to find out! 
 
+## Screenshot (WIP 2025-06-25)
+
+![Hangar Bay Screenshot](./design/assets/images/progress/frontend-contracts-20250625.png)
+
 ## Project Documentation
 
 For a comprehensive understanding of the Hangar Bay project, please refer to the following documents:

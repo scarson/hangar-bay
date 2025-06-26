@@ -84,6 +84,14 @@
             3.  **Incorrect Assertions:** The most persistent failure (`Expected '1M' to contain '1,000,000.00 ISK'`) was due to a misunderstanding of the `Isk` pipe's behavior. The test expected a full currency format, but the pipe is designed to return a compact format. The fix was to inspect the pipe's source code and correct the test's expectation to match the actual, correct output.
         *   **Actionable Learning & Future Application (Cascade & Team):**
             *   When a test fails unexpectedly, do not assume the implementation is wrong. Always validate that the test's assertions and expectations are correct by reviewing the source code of the unit under test. This prevents time-consuming debugging loops based on false assumptions.
+    *   **Challenge 3:** Extending state management and URL-based filtering.
+        *   **Context:** Task 04.3 required adding a new filter criteria (`type`) to the existing search functionality.
+        *   **Resolution/Workaround:** The existing architecture proved highly extensible. The solution involved:
+            1.  Adding one optional property (`type?`) to the `ContractSearchFilters` interface.
+            2.  Adding a simple `if (filters.type)` block to the service's RxJS pipeline to append the parameter.
+            3.  Adding one line to the route resolver to extract the `type` from the query parameters.
+        *   **Actionable Learning & Future Application (Cascade & Team):**
+            *   The current signal-based service, RxJS pipeline, and route resolver pattern is validated as being clean and highly extensible. Adding new filters is a low-effort, low-risk task. This pattern should be the default for all future list/filter/search views.
 
 ## 4. Process Learnings & Improvements
 
