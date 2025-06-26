@@ -7522,7 +7522,7 @@ Where should we document the isk formatter pipe? That was done outside a regular
 -----------------
 
 
-X
+I just noticed something about the Isk pipe app\frontend\angular\src\app\shared\pipes\isk.pipe.ts. This doesn't follow our standard of using the directory for context and omitting the type in the class name. Refer to services and components. Should this apply to pipes as well to align with modern Angular style? isk.ts and class Isk.
 
 
 -----------------
@@ -7534,92 +7534,144 @@ EVE Online, the EVE logo, EVE and all associated logos and designs are the intel
 
 -----------------
 
+We should update the "Hangar Bay Angular Frontend Directory Structure" in your memory of the same name to reflect the current state.
+Here's the current memory contents:
 
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
+/src
+|-- /app
+|   |-- /core                 # Singleton services, guards, and truly global logic.
+|   |   `-- /layout           # Components that define the main page structure (e.g., header, footer).
+|   |       |-- /footer
+|   |       |   |-- footer.ts       # Footer component class
+|   |       |   |-- footer.html     # Footer component template
+|   |       |   |-- footer.scss     # Footer component styles
+|   |       |   `-- footer.spec.ts  # Tests for the footer component
+|   |       `-- /header
+|   |           |-- header.ts       # Header component class
+|   |           |-- header.html     # Header component template
+|   |           |-- header.scss     # Header component styles
+|   |           `-- header.spec.ts  # Tests for the header component
+|   |-- /features             # Feature-specific modules. Each feature is self-contained.
+|   |   `-- /contracts        # Example: Contracts Feature
+|   |       |-- contract.api.ts   # Service for this feature's backend communication
+|   |       |-- contract.api.spec.ts # Tests for the API service
+|   |       `-- contract.model.ts # TypeScript interfaces for this feature
+|   |-- /shared               # Reusable, presentation-agnostic code.
+|   |   ├── /components       # Reusable "dumb" UI components (e.g., button, card)
+|   |   ├── /directives       # Reusable custom directives
+|   |   ├── /pipes            # Reusable custom pipes
+|   |   `── /utils            # Reusable helper functions
+|   |-- app.config.ts         # Core application providers (routing, http, zoneless, etc.)
+|   |-- app.config.spec.ts    # Tests for app.config.ts
+|   |-- app.routes.ts         # Top-level application routes
+|   |-- app.ts                # Root application component class
+|   |-- app.html              # Root application component template
+|   |-- app.scss              # Root application component styles
+|   `-- app.spec.ts           # Tests for the root application component
+|-- /environments           # Environment-specific configuration files.
+|   |-- environment.prod.ts   # Production environment configuration
+|   `-- environment.ts        # Development environment configuration
+|-- index.html              # The main HTML page that is served.
+|-- main.ts                 # The main entry point for the application, bootstraps Angular.
+`-- styles.scss             # Global application styles and CSS variable definitions.
 
 
-X
+Please update this to include additions WITHOUT losing any of the existing comments.
 
 
 -----------------
 
 
-X
+It's working. We do have a "Page 1 of 0" issue when there are no search hits though. We should systemically fix that. There are NEVER zero pages. A UI page with zero results is still the "first page".
 
 
 -----------------
 
 
-X
+I think we need to do some layout work. The contract cards are neat but they take up WAY too much UI space given how many contracts there are. We're going to need something that's more like a table to better support information density and filtering options in later feature. I also realized we're only showing the "Issued" date. That's not the main thing useful to a buyer. They mostly care about when a contract *expires* in the form of remaining duration. The detailed view can show the real issued/expiring timestamps. Think carefully about this and let me know your careful thoughts on how you'd address it. Do not modify any files until I've agreed on a plan of action.
 
 
 -----------------
 
 
-X
+Let's generate a new task file for this work based on plans\implementation\00-mvp-implementation-task-template.md. I think labeling it "04.2" under plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering is reasonable. It could also retroactively include the ISK formatter pipe, which is conceptually similar to the proposed time-left.ts pipe (remember, no ".pipe" in modern Angular convention). What do you think?
+
+
+-----------------
+
+We need to add some kind of info message to those errors that indicates they're because of tests that explicitly induce such errors to test how they're handled. We both panic a little every time we see them in the output, so we need to mark that they're expected behavior for those *specific* tests.
+
+
+-----------------
+
+Should we have seen that INFO message once for each time the ERROR occurs? I only see one INFO and four ERRORs.
 
 
 -----------------
 
 
-X
+I forgive you. You don't need to be so apologetic. Programming is hard and we're both working on this together with our own strengths and weaknesses. Our shared goal is to build Hangar Bay to be a great app that follows our core specifications and principles, and learn and have fun along the way.
+
+
+-----------------
+
+... is this why the title search functionality didn't work when I tried it earlier?
+
+Okay, so how did THAT get missed in plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.1-contract-list-component.md? It's a title feature. I'm not upset, don't apologize - figure out, systemtically, how it got missed in the Key Implementation Task, Definition of Done, and any other applicable areas that should have had us implementing the actual feature instead of a placeholder function and validation its functionality. Then think VERY hard about how we can prevent that from happening again in future tasks. Compare multiple approaches and consider all of this project's extensive documentation resources available. What would be most effective for Cascade? 
 
 
 -----------------
 
 
-X
+Good plan. Please also create a memory for what you described in "2. Institute a "Pre-Completion Audit" Step" to reinforce the behavior.
+As a first step, let's apply this more rigorous criteria to plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.2-table-layout-and-pipes.md
 
 
 -----------------
 
-X
+plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.3-basic-filtering-ui.md looks VERY light on details. Before implementing more, do a careful review of your project resources and flesh it out to meet our standards for detail and thoroughness.
+
+After you create plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.4-integrating-filters-with-list.md, before implementing more, do a careful review of your project resources and flesh it out to meet our standards for detail and thoroughness. Remember, you just spent ages troubleshooting a test for code that didn't exist because of deficient details and standard in the task file. Safe yourself the trouble and put the real effort in here so implementation is easy.
 
 
 -----------------
 
-X
+
+Something has gone wrong in the process order. No tasks under "## 3. Key Implementation Steps" are checked off, yet all the "## 5. Definition of Done (DoD)" ones are. How can that be?
+
+
+-----------------
+
+
+Understood. Please log the issue *in detail*, including all steps and strategies tried (to avoid repeat wasted effort when a human picks up the tech debt issue later) in design\reviews\post-mortems\phase-reviews\04-frontend-f001-f002-contract-listing-basic-filtering-review.md. Error on the side of being thorough. Do not limit your write-up to only the most recent troubleshooting attempts. Try to capture as much of the long process as you're able to remember. This will greatly benefit others who may try to tackle this challenging issue in the future.
+
+
+-----------------
+
+
+Let's return to plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.2-table-layout-and-pipes.md. Find the first unchecked item and start there. You may have already done it but not checked it off, so start by verifying if the work has already been done with a source of truth.
+
+
+-----------------
+
+
+No, the next step is to conduct a through review of the "## 5. Definition of Done (DoD)" items. Do this carefully and verify everything.
+
+The next step is to do a thorough, line by line "## 7. Cross-Cutting Concerns Review", verifying everything applicable with sources of truth. Once that's complete and I agree, we'll commit our work.
+
+
+-----------------
+
+These import statements have the wrong names. They shouldn't include Pipe. 
+import { IskPipe } from '../../../shared/pipes/isk';
+import { TimeLeftPipe } from '../../../shared/pipes/time-left';
+
+
+-----------------
+
+1. Update design\reviews\post-mortems\phase-reviews\04-frontend-f001-f002-contract-listing-basic-filtering-review.md
+2. Update plans\implementation\00-mvp-implementation-plan-progress.md, section "### Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering", subsection "[04.2 Table Layout and Pipes]".
+3. /git-commit 
 
 
 -----------------

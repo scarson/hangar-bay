@@ -63,8 +63,9 @@ _AI Guidance: List clear, verifiable, and measurable criteria that must be met f
 *   Example: `* Code has been reviewed and approved.`
 *   Example: `* All related items in the 'Cross-Cutting Concerns Review' section (Section 7) are addressed and checked off.`_
 
-*   [ ] Criterion 1.
-*   [ ] Criterion 2.
+*   [ ] **Implementation Complete:** All placeholder and scaffold code (e.g., `// TODO`, `return true;`, empty functions) has been replaced with the final, working logic. Perform the mandatory Pre-Completion Audit as required by our development process. Make NO assumptsion based on other items in the task or plan. Verify everything from a source of truth whenever possible, and exercise extreme caution about making assumptions when it's not possible.
+*   [ ] **Criterion 1:** [Description of a key, verifiable outcome.]
+*   [ ] **Criterion 2:** [Description of another key, verifiable outcome.]
 *   [ ] All new code is committed to the `[feature/task-branch-name]` branch.
 *   [ ] Adherence to architectural guidelines (e.g., files in `design/architecture` like `design/architecture/angular-frontend-architecture.md` if applicable) has been verified.
 
@@ -85,7 +86,8 @@ _AI Guidance: This section MUST be filled out before the task is considered comp
 *   Mark `[x]` for items that have been addressed or are N/A with justification.
 *   Leave `[ ]` for items that are pending or need further action for THIS task.
 *   Use the 'Notes' sub-section under each concern to detail specific actions taken, provide rationale for N/A items, or reference specific code/documentation.
-*   Refer to the linked primary specification documents for detailed guidance on each concern. The paths below are relative to this template's location; adjust if this template is moved or copied to a deeper directory structure._
+*   Refer to the linked primary specification documents for detailed guidance on each concern. The paths below are relative to this template's location; adjust if this template is moved or copied to a deeper directory structure.
+*   If a concern is not applicable to this task, mark it as N/A with a brief explanation. Do NOT remove it from the list. It's important to keep track of which concerns are not applicable to each task and why.
 
 This section documents how the five key cross-cutting concerns were addressed during the completion of this task. Refer to the primary specification documents for detailed guidance:
 *   Security: `/design/specifications/security-spec.md`

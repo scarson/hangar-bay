@@ -53,7 +53,7 @@ Our frontend architecture is built upon the following core principles, which tog
 
 ## 3. Directory and File Structure
 
-The Angular application in `src/app/` is organized by **feature**. This structure promotes scalability and modularity by grouping related files together. The canonical structure is as follows:
+The Angular application in `src/app/` is organized by **feature**. This structure promotes scalability and modularity by grouping related files together. The canonical structure is as follows, and is also maintained as a persistent AI memory for reference.
 
 ```
 /src
@@ -72,13 +72,20 @@ The Angular application in `src/app/` is organized by **feature**. This structur
 |   |           `-- header.spec.ts  # Tests for the header component
 |   |-- /features             # Feature-specific modules. Each feature is self-contained.
 |   |   `-- /contracts        # Example: Contracts Feature
-|   |       |-- contract.api.ts   # Service for this feature's backend communication
-|   |       |-- contract.api.spec.ts # Tests for the API service
-|   |       `-- contract.model.ts # TypeScript interfaces for this feature
+|   |       |-- /contract-browse-page # A "smart" routed component for this feature.
+|   |       |   |-- contract-browse-page.ts
+|   |       |   |-- contract-browse-page.html
+|   |       |   |-- contract-browse-page.scss
+|   |       |   `-- contract-browse-page.spec.ts
+|   |       |-- contract.models.ts # TypeScript interfaces for this feature's data models.
+|   |       |-- contract.state.ts  # State management service for this feature.
+|   |       `-- contract-search.ts # Model for the feature's search/filter parameters.
 |   |-- /shared               # Reusable, presentation-agnostic code.
 |   |   ├── /components       # Reusable "dumb" UI components (e.g., button, card)
 |   |   ├── /directives       # Reusable custom directives
 |   |   ├── /pipes            # Reusable custom pipes
+|   |   |   |-- isk.ts          # Pipe to format numbers as ISK currency.
+|   |   |   `-- isk.spec.ts     # Tests for the ISK pipe.
 |   |   `── /utils            # Reusable helper functions
 |   |-- app.config.ts         # Core application providers (routing, http, zoneless, etc.)
 |   |-- app.config.spec.ts    # Tests for app.config.ts
@@ -96,67 +103,24 @@ The Angular application in `src/app/` is organized by **feature**. This structur
 ```
 
 **File Naming Conventions:**
-- Components: `*.ts`. The class name **must also omit** the `Component` suffix (e.g., `class UserProfile` in `user-profile.ts`). This aligns with the modern CLI and our service naming convention.
-- Services / APIs: `*.api.ts` or `*.service.ts`. The class name should omit the `Service` suffix (e.g., `class Auth` in `auth.service.ts`, not `class AuthService`). The context is provided by the file location and usage.
+- Components: `*.ts`. The class name **must also omit** the `Component` suffix (e.g., `class UserProfile` in `user-profile.ts`).
+- Services / APIs: `*.api.ts` or `*.service.ts`. The class name should omit the `Service` suffix (e.g., `class Auth` in `auth.service.ts`).
+- Pipes: `*.ts`. The class name should omit the `Pipe` suffix (e.g., `class Isk` in `isk.ts`).
 - Models / Interfaces: `*.model.ts`
 - Guards: `*.guard.ts`
-- Pipes: `*.pipe.ts`
 - Directives: `*.directive.ts`
 - Routes: `*.routes.ts`
 
 ## 4. Coding Style and Conventions
 
-All Angular code will adhere to the guidelines specified in [`design/angular/guides/01-coding-style-guide.md`](./guides/01-coding-style-guide.md). This includes naming conventions, DI patterns (preferring the `inject` function), and strong typing.
+All Angular code will adhere to the guidelines specified in [`design/angular/guides/01-coding-style-guide.md`](./guides/01-coding-style-guide.md). Key highlights include:
 
-## 5. Living Document
+*   **Strong Typing:** Avoid the `any` type. Define interfaces or classes for all data structures.
+*   **Readonly Properties:** Mark Angular-initialized properties (like those from `inject()`, `input()`, `viewChild()`) as `readonly` if they are not reassigned.
+*   **Event Handlers:** Name event handlers for their action/intent (e.g., `onSaveContract()` instead of `onClickSave()`).
+*   **Linting & Formatting:** ESLint and Prettier are configured to enforce standards and consistent style.
 
-This architecture document is a living document and will be updated as the project evolves and as new Angular features or best practices emerge. All significant deviations or new patterns must be discussed and documented here.
-        ```
-    *   **Readonly Properties:** Mark Angular-initialized properties (like those from `inject()`, `@Input()`, `@ViewChild()`) as `readonly` if they are not reassigned after initialization.
-    *   **Class/Style Bindings:** Prefer direct class and style bindings (`[class.active]`, `[style.color]`) over `[ngClass]` and `[ngStyle]` for better performance and type checking, unless complex conditional logic makes `ngClass/ngStyle` more readable.
-    *   **Event Handlers:** Name event handlers for their action/intent rather than the event type (e.g., `onSaveContract()` instead of `onClickSave()`).
-    *   **Lifecycle Hooks:** Keep lifecycle hook methods simple and focused. Implement the corresponding lifecycle interfaces (e.g., `OnInit`, `OnDestroy`) for clarity and type safety.
-
-### 8.2. Strong Typing (Avoid `any`)
-*   Use TypeScript's strong typing system to its full potential. Avoid using the `any` type.
-*   Define interfaces or classes for all data structures (e.g., API responses, complex objects).
-*   This improves code readability, enables better static analysis and refactoring by the IDE, and helps catch errors at compile-time rather than runtime.
-
-### 8.3. Linting & Formatting
-*   Use ESLint with Angular-specific plugins (e.g., `@angular-eslint`) to enforce coding standards and catch potential errors.
-*   Use Prettier for automatic code formatting to ensure a consistent visual style across the codebase.
-*   Configure these tools as part of the project setup (as per Task 03.1).
-
-### 8.4. File & Directory Structure
-*   **Feature-Based Structure:** Organize code primarily by feature.
-    ```
-    src/app/
-    ├── core/
-    │   ├── guards/
-    │   ├── interceptors/
-    │   ├── layout/ (header, footer components)
-    │   ├── services/ (singleton services)
-    │   └── core.module.ts
-    ├── features/
-    │   └── [feature-name]/ (e.g., contracts)
-    │       ├── components/ (smart & dumb components for this feature)
-    │       ├── guards/ (route guards specific to this feature)
-    │       ├── models/ (interfaces/classes for this feature's data)
-    │       ├── services/ (services specific to this feature)
-    │       ├── [feature-name]-routing.module.ts
-    │       └── [feature-name].module.ts
-    ├── shared/
-    │   ├── components/ (reusable UI components)
-    │   ├── directives/
-    │   ├── pipes/
-    │   └── shared.module.ts
-    ├── app.component.html|scss|spec|ts
-    ├── app-routing.module.ts
-    └── app.module.ts
-    ```
-*   Keep related files for a component (HTML, SCSS/CSS, TS, Spec) co-located in their own directory.
-
-## 9. Key Code Review Guidelines (Architectural)
+## 5. Key Code Review Guidelines (Architectural)
 
 In addition to general code quality, pay specific attention to these architectural aspects during reviews, ensuring they align with our **zoneless, standalone, and signal-first** architecture.
 
@@ -176,6 +140,10 @@ In addition to general code quality, pay specific attention to these architectur
     *   **RxJS for Complex Async:** Reserve RxJS for orchestrating complex asynchronous events (e.g., websockets, multi-step async flows). Use `toSignal` from `@angular/core/rxjs-interop` to bridge RxJS streams back into the signal ecosystem.
     *   **Lean Subscriptions:** If `subscribe()` is used, the block should be minimal, typically just updating a signal. Avoid nested subscriptions.
     *   **Avoid Exposed Subjects:** Do not expose RxJS Subjects publicly from services. Expose signals or observables instead.
+
+## 6. Living Document
+
+This architecture document is a living document and will be updated as the project evolves and as new Angular features or best practices emerge. All significant deviations or new patterns must be discussed and documented here.
 
 *   **Performance:**
     *   **`@for` with `track`:** Always use `track` with the built-in `@for` block for list rendering to ensure optimal performance. The legacy `*ngFor` with `trackBy` should not be used.
