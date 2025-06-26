@@ -58,4 +58,5 @@ export interface ContractSearchFilters {
   page: number;
   size: number;
   search?: string;
+  type?: string;
 }

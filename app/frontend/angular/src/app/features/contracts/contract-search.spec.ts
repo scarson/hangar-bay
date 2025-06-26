@@ -69,6 +69,7 @@ describe('ContractSearch with TestScheduler', () => {
 
   it('should fetch initial data after debounceTime', () => {
     testScheduler.run(({ flush }) => {
+      // Per testing guide 8.3, service is instantiated inside the run() callback.
       const service = TestBed.inject(ContractSearch);
       flush(); // Let debounceTime pass and trigger the initial API call
 
@@ -83,6 +84,7 @@ describe('ContractSearch with TestScheduler', () => {
 
   it('should manage loading state correctly', () => {
     testScheduler.run(({ flush }) => {
+      // Per testing guide 8.3, service is instantiated inside the run() callback.
       const service = TestBed.inject(ContractSearch);
       expect(service.loading()).toBe(false);
 
@@ -99,8 +101,24 @@ describe('ContractSearch with TestScheduler', () => {
     });
   });
 
+  it('should include the type parameter in the API request when the type filter is set', () => {
+    testScheduler.run(({ flush }) => {
+      const service = TestBed.inject(ContractSearch);
+      flush(); // Initial fetch
+      httpMock.expectOne('/api/v1/contracts/?page=1&size=20').flush(mockInitialData);
+
+      service.updateFilters({ type: 'auction' });
+      flush(); // Trigger filter update
+
+      const req = httpMock.expectOne((r) => r.url.startsWith('/api/v1/contracts/'));
+      expect(req.request.params.get('type')).toBe('auction');
+      req.flush(mockInitialData);
+    });
+  });
+
   it('should debounce filter updates to prevent excessive API calls', () => {
     testScheduler.run(({ flush }) => {
+      // Per testing guide 8.3, service is instantiated inside the run() callback.
       const service = TestBed.inject(ContractSearch);
 
       // Handle initial call from constructor
@@ -123,12 +141,19 @@ describe('ContractSearch with TestScheduler', () => {
 
   it('should handle API errors gracefully', () => {
     testScheduler.run(({ flush }) => {
+      // Spy on console.error before the action to prevent logging to the console.
+      const consoleErrorSpy = spyOn(console, 'error');
+
+      // Per testing guide 8.3, service is instantiated inside the run() callback.
       const service = TestBed.inject(ContractSearch);
 
       flush(); // Let initial call happen
       const initialReq = httpMock.expectOne('/api/v1/contracts/?page=1&size=20');
+
       initialReq.flush('Error', { status: 500, statusText: 'Server Error' });
 
+      // Verify that the error was logged and the state was updated correctly.
+      expect(consoleErrorSpy).toHaveBeenCalled();
       expect(service.error()).not.toBeNull();
       expect(service.data()).toBeNull();
       expect(service.loading()).toBe(false);

@@ -69,6 +69,10 @@ export class ContractSearch {
             params = params.set('search', filters.search);
           }
 
+          if (filters.type) {
+            params = params.set('type', filters.type);
+          }
+
 
 
           return this.http.get<PaginatedContractsResponse>(this.apiUrl, { params }).pipe(

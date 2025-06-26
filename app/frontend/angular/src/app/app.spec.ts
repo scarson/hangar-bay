@@ -3,8 +3,8 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { Router } from '@angular/router';
-import { RouterTestingModule } from '@angular/router/testing';
+import { provideRouter, Router } from '@angular/router';
+
 import { Location } from '@angular/common';
 import { of } from 'rxjs';
 import { App } from './app';
@@ -14,6 +14,7 @@ import { Header } from './core/layout/header/header';
 import { ContractApi } from './features/contracts/contract.api';
 import { ContractSearch } from './features/contracts/contract-search';
 import { ContractBrowsePage } from './features/contracts/contract-browse-page/contract-browse-page';
+import { contractFilterResolver } from './features/contracts/contract-filter-resolver';
 
 // Mock components to isolate AppComponent during testing
 @Component({ selector: 'hgb-header', standalone: true, template: '' })
@@ -21,6 +22,9 @@ class MockHeaderComponent {}
 
 @Component({ selector: 'hgb-footer', standalone: true, template: '' })
 class MockFooterComponent {}
+
+// A generic stub component to use in place of real, complex components in routing tests.
+
 
 describe('App', () => {
   beforeEach(async () => {
@@ -49,21 +53,17 @@ describe('App', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [
-        App,
-        RouterTestingModule.withRoutes(routes),
-        MockHeaderComponent,
-        MockFooterComponent,
-      ],
+      imports: [App, MockHeaderComponent, MockFooterComponent],
       providers: [
         provideZonelessChangeDetection(),
         provideHttpClient(),
         provideHttpClientTesting(),
+        provideRouter(routes),
         { provide: ContractApi, useValue: mockContractApi },
         { provide: ContractSearch, useValue: mockContractSearch },
+        { provide: contractFilterResolver, useValue: () => of(true) },
       ],
-    })
-      .overrideComponent(App, {
+    }).overrideComponent(App, {
         remove: { imports: [Header, Footer] },
         add: { imports: [MockHeaderComponent, MockFooterComponent] },
       })
