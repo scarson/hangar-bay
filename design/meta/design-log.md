@@ -1118,4 +1118,16 @@ To ensure consistency and maximize effectiveness for AI-assisted development (pa
 
 **Implications:** This change has no negative impact on existing application logic. Angular's `HttpClient` provides a powerful abstraction layer that normalizes the behavior of the underlying transport. All existing error handling (e.g., `catchError` for `4xx`/`5xx` statuses) and success callbacks will continue to function identically. The primary benefit is a more stable and predictable development experience.
 
-DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
+---
+
+## Formalizing the "Stateful Service" Pattern for Asynchronous Operations (2025-06-25 19:23:34-05:00)
+
+*   **Context:** The post-mortem review for the Phase 4 contract listing feature identified the `ContractSearch` service as a "gold standard" implementation for managing state derived from asynchronous operations triggered by user input (e.g., search/filtering).
+*   **Problem:** This pattern, which uses a signal-based service with an RxJS pipeline featuring `debounceTime` and `switchMap` to prevent race conditions, was not formally documented in the project's design guides. This created a risk of inconsistent or less robust implementations in future features.
+*   **Decision:** To ensure consistency, promote best practices, and reduce future development risks, this "Stateful Service" pattern will be formalized as the standard approach for such scenarios.
+*   **Action:** The `design/angular/guides/04-state-management-and-rxjs.md` document was updated with a new section (3.3) that explicitly details this pattern. The section outlines the core principles and includes a code sample from the `ContractSearch` service as the canonical example for AI and human developers to follow.
+*   **Rationale:** Formalizing proven, successful patterns in design documentation is crucial for maintaining code quality, ensuring architectural consistency, and providing clear, actionable guidance for the development team (both human and AI). This update codifies a key learning from Phase 4, making the entire project more robust.
+
+---
+
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line.)* Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
