@@ -34,7 +34,7 @@
             <p><strong i18n="Label for the contract's issue date">Issued:</strong> {{ contract.date_issued | date: 'medium' }}</p>
             <p><strong i18n="Label for the contract's status">Status:</strong> {{ contract.status }}</p>
             @if(contract.price) {
-              <p><strong i18n="Label for the contract's price">Price:</strong> {{ contract.price | number: '1.2-2' }} ISK</p>
+                            <p><strong i18n="Label for the contract's price">Price:</strong> {{ contract.price | isk }} ISK</p>
             }
             @if(contract.volume) {
               <p><strong i18n="Label for the contract's volume in cubic meters">Volume:</strong> {{ contract.volume | number: '1.0-2' }} m³</p>

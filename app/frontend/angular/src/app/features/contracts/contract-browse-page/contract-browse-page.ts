@@ -1,12 +1,13 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Isk } from '../../../shared/pipes/isk';
 
 import { ContractSearch } from '../contract-search';
 
 @Component({
   selector: 'hgb-contract-browse-page',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, Isk],
   templateUrl: './contract-browse-page.html',
   styleUrl: './contract-browse-page.scss',
 })
