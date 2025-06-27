@@ -1,0 +1,28 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - test
+      user-agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: http://test/api/v1/contracts/
+  response:
+    body:
+      string: '{"total":0,"page":1,"size":20,"items":[]}'
+    headers:
+      content-length:
+      - '41'
+      content-type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+version: 1
