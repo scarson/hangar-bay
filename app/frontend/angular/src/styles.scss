@@ -8,7 +8,7 @@
 html {
   // The mat.all-component-themes mixin applies the theme to all components
   // and emits the CSS variables (--md-sys-color-primary, etc.).
-  @include mat.all-component-themes(theme.$dark-theme);
+  @include mat.theme(theme.$dark-theme);
 
   // Set the color-scheme to dark to ensure the browser uses the dark theme variables.
   color-scheme: dark;
