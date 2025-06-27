@@ -8831,19 +8831,21 @@ Let's have that discussion about alternatives now. It's extremely clear that not
 -----------------
 
 
-X
+Should we just redo these pages from scratch?
 
 
 -----------------
 
 
-X
+Let me clarify. I'm suggesting we basically restart the entire frontend with our revised architecture/framework in mind so we can build EVERYTHING right from the start. We should obviously keep important tests and such, but all the pages should maybe go.
+
+I was again not clear. ALL the pages, and app\frontend\angular\src\app\app.ts. Restart the entire frontend UI bits.
 
 
 -----------------
 
 
-X
+Keep a backup copy of app\frontend\angular\src\app\app.spec.ts with a different name in case the tests are useful for reference.
 
 
 -----------------

@@ -1229,8 +1229,6 @@ This change was necessary to:
 
 ---
 
-DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
-
 ### 2025-06-27 09:23:28-05:00: Override Default M3 Background
 
 **Decision**: Manually override the default Material Design 3 (M3) surface color to use a dark purple from the primary color palette (`#250059`).
@@ -1248,3 +1246,55 @@ DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended abo
 This approach is minimally invasive and keeps all theme configuration in a single, logical location. It also ensures that any component relying on the `surface` color variable will now correctly use the purple background.
 
 ---
+
+
+---
+
+### 2025-06-27 11:21:27-05:00 - Architectural Pivot: Migrating from Angular Material to PrimeNG
+
+**Decision:** The project will abandon the use of Angular Material and migrate the entire frontend component library to PrimeNG.
+
+**Context & Reasoning:**
+After numerous, repeated attempts to implement the modern Material 3 (M3) theming system, it has become clear that there is a fundamental and persistent gap in Cascade's training data regarding this new paradigm. Despite multiple process guardrails, direct guidance from official documentation, and the creation of a project-specific theming guide, all attempts resulted in build failures or incorrectly themed components. This has caused significant project delays and user frustration.
+
+Continuing with Angular Material presents an unacceptable risk of further failure. A strategic pivot to a different, more stable component library is necessary to unblock development and ensure predictable progress.
+
+**Alternatives Considered:**
+
+1.  **Continue with Angular Material:** **Rejected.** The root cause (insufficient training data for M3) cannot be fixed in the short term, making further attempts unproductive.
+2.  **NG-ZORRO:** A strong alternative based on Ant Design. Considered a viable option but ultimately second to PrimeNG due to PrimeNG's slightly more extensive component set, particularly its data table.
+3.  **NG-Bootstrap / ngx-bootstrap:** Viable, but the Bootstrap design system was deemed less suitable for a data-dense application compared to PrimeNG or NG-ZORRO.
+4.  **Tailwind CSS + Headless UI:** **Rejected.** While offering maximum design flexibility, this approach would require building most components from scratch, significantly increasing development time and effort, which is contrary to the project's goal of rapid feature delivery.
+5.  **No Component Library:** **Rejected.** Building all UI components from the ground up is not feasible for this project's scope and timeline.
+
+**Why PrimeNG was Chosen:**
+PrimeNG was selected as the replacement for three primary reasons:
+*   **Component Richness:** It offers the most comprehensive suite of components among the alternatives, especially its powerful `p-table`, which is critical for the data-centric features of Hangar Bay.
+*   **Theming Stability:** Its theming system is mature, well-documented, and follows a more traditional approach than M3, reducing the risk of encountering similar implementation issues.
+*   **Ecosystem:** It includes `primeflex`, a utility-first CSS library for responsive layouts, providing additional value.
+
+This migration represents a significant architectural shift but is deemed the most pragmatic path forward to ensure the project's success.
+
+---
+
+### 2025-06-27 11:37:55-05:00 - Major Strategic Pivot: Full Frontend Teardown and Rebuild
+
+**Decision:** After multiple failed attempts to de-integrate Angular Material and surgically replace it with PrimeNG, a strategic decision was made to perform a full teardown of the existing Angular frontend UI.
+
+**Rationale:**
+- The piecemeal migration approach proved to be complex, error-prone, and inefficient. It created broken states and required significant effort to clean up residual code and styles.
+- A "rip and replace" strategy guarantees a completely clean slate, free of any legacy Angular Material dependencies or broken configurations.
+- This allows for a ground-up rebuild using the new target component library (PrimeNG) and our established architectural patterns (Signal State Services, etc.) from the very beginning, ensuring a more robust, maintainable, and consistent implementation.
+
+**Scope of Teardown:**
+- All UI-level components were deleted, including all pages (`features/*`), layout components (`core/layout/*`), and the main application shell (`app.ts`, `app.html`, `app.scss`, `app.routes.ts`).
+- Core, UI-agnostic logic was preserved, including services (`contract.api.ts`, `contract-search.ts`), data models (`contract.models.ts`), shared pipes, and their associated unit tests.
+- The `app.spec.ts` file was backed up to `app.spec.ts.bak` for future reference.
+
+**Next Steps:**
+- Recreate a minimal application shell.
+- Begin building the new UI, feature by feature, using PrimeNG components and adhering strictly to the project's design patterns.
+
+---
+
+DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
