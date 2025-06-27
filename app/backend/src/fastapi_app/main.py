@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 from typing import Optional
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, APIRouter
 from redis.asyncio import Redis # For type hinting Redis client
@@ -27,10 +28,41 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(name)s - %(
 
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manages application startup and shutdown events."""
+    # Startup logic
+    await create_db_tables()
+    init_http_client(app)
+    await init_cache(app)
+
+    # Initialize and start the scheduler
+    scheduler = create_scheduler(app, settings)
+    esi_client = ESIClient(settings=settings)
+    aggregation_service = ContractAggregationService(
+        esi_client=esi_client,
+        settings=settings,
+    )
+    add_aggregation_job(scheduler, aggregation_service, settings)
+    scheduler.start()
+    logging.info("Application startup complete with all services initialized.")
+
+    yield  # The application runs here
+
+    # Shutdown logic
+    if hasattr(app.state, "scheduler") and app.state.scheduler.running:
+        app.state.scheduler.shutdown()
+        logging.info("Scheduler has been shut down.")
+    await close_http_client(app)
+    await close_cache(app)
+    logging.info("Application shutdown complete.")
+
+
 app = FastAPI(
     title="Hangar Bay API",
     description="API for the Hangar Bay application, providing access to EVE Online public contract data and related services.",
     version="0.1.0",
+    lifespan=lifespan,
     # Additional OpenAPI metadata can be added here
     # See: https://fastapi.tiangolo.com/tutorial/metadata/
 )
@@ -60,55 +92,7 @@ async def create_db_tables():
     logger.info("Database tables successfully recreated.")
 
 
-# Application lifecycle event handlers
-@app.on_event("startup")
-async def startup_event():
-    """Initializes all necessary services on application startup."""
-    await create_db_tables()
-    init_http_client(app)
-    await init_cache(app)
 
-
-
-    # Initialize and start the scheduler
-    scheduler = create_scheduler(app, settings)
-
-    # Manually create dependencies for the ContractAggregationService for the scheduler
-    # This ensures the scheduler uses the main application's settings instance and a session factory
-
-    # Ensure http_client and redis are available from app.state
-    if not hasattr(app.state, 'http_client') or not app.state.http_client:
-        raise RuntimeError("HTTP client not initialized in app.state before scheduler setup.")
-    if not hasattr(app.state, 'redis') or not app.state.redis:
-        raise RuntimeError("Redis client not initialized in app.state before scheduler setup.")
-
-    # For the scheduler, we create a picklable ESIClient that will manage
-    # its own clients on-demand within the job's execution context.
-    esi_client = ESIClient(settings=settings)
-    
-    # Instantiate the service with the session factory (AsyncSessionLocal)
-    aggregation_service = ContractAggregationService(
-        # cache=app.state.redis, # ContractAggregationService no longer takes cache client directly
-        esi_client=esi_client,
-        settings=settings, # Pass the globally imported settings from main.py
-    )
-    add_aggregation_job(scheduler, aggregation_service, settings)
-    
-    scheduler.start()
-    logging.info("Application startup complete with all services initialized.")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Gracefully shuts down all services on application shutdown."""
-    # Shut down the scheduler first to stop new jobs
-    if hasattr(app.state, "scheduler") and app.state.scheduler.running:
-        app.state.scheduler.shutdown()
-        logging.info("Scheduler has been shut down.")
-
-    await close_http_client(app)
-    await close_cache(app)
-    logging.info("Application shutdown complete.")
 
 
 # CASCADE-PROD-CHECK: Remove or disable this endpoint for production.

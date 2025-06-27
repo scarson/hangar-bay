@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ContractItemSchema(BaseModel):
@@ -16,8 +16,7 @@ class ContractItemSchema(BaseModel):
     category: Optional[str] = None
     market_group_id: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContractSchema(BaseModel):
@@ -43,8 +42,7 @@ class ContractSchema(BaseModel):
     is_ship_contract: bool
     items: List[ContractItemSchema] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaginatedContractResponse(BaseModel):
