@@ -1338,6 +1338,32 @@ This migration represents a significant architectural shift but is deemed the mo
 
 **Outcome:** The testing infrastructure has been fully implemented and validated with a simple health check test. The project is now ready for the development of comprehensive integration and live ESI contract tests.
 
+### 2025-06-27 15:45:00-05:00: Backend Service Layer Architecture Alignment
+
+**Context:** The initial plan for the advanced search feature (Phase 5) proposed creating a new `crud` directory for database interaction logic. This was questioned as it potentially deviated from the established backend architecture.
+
+**Decision:** After a review of the primary architecture document (`design/fastapi/00-fastapi-architecture-overview.md`), the decision was made to adhere strictly to the documented **Service Layer** pattern. A new file, `app/backend/src/fastapi_app/services/contract_service.py`, will be created to house the business logic for contract-related API operations. The `crud` directory concept is abandoned.
+
+**Rationale:** This decision maintains architectural consistency across the application. It prevents pattern duplication (i.e., having both a `services` layer and a `crud` layer with similar responsibilities) and ensures the codebase remains easy to navigate and understand for current and future developers. It reinforces the principle that all business logic, including the construction of database queries, belongs in the service layer.
+
+**Outcome:** The implementation plan for Phase 5 (`05.1-advanced-search-and-api.md`) was updated to reflect this decision. All new query logic will be placed in `services/contract_service.py`.
+
+---
+
+### 2025-06-27 15:40:00-05:00: Deferred Implementation for ME/TE Filtering Due to DB Model Mismatch
+
+**Context:** During the implementation of the advanced search feature, a discrepancy was discovered between the API filter schema (`schemas/contracts.py::ContractFilters`) and the database model (`models/contracts.py::ContractItem`). The filter schema accepts parameters for Material Efficiency (ME) and Time Efficiency (TE) for blueprints, but the `ContractItem` table lacks the corresponding columns to store this data.
+
+**Decision:** Instead of blocking the entire feature on a data model change, the implementation will proceed in two phases:
+1.  **Immediate:** Implement all other supported filters (text search, price, collateral, etc.) to deliver the core functionality of the advanced search endpoint.
+2.  **Deferred:** Create a new technical debt task to add `material_efficiency` and `time_efficiency` columns to the `ContractItem` model, update the background aggregation service to populate this data from ESI, and then enable the corresponding filters in the `contract_service`.
+
+**Rationale:** This is a pragmatic approach that allows for the incremental delivery of value. It unblocks the development of the frontend filtering UI and provides significant user benefit immediately, while isolating the more complex data model and data ingestion changes into a separate, well-defined task.
+
+**Outcome:** The `contract_service.py` will be built to handle all currently possible filters. The ME/TE filters will be gracefully ignored for now, and a follow-up task will be created to complete the feature.
+
+---
+
 ---
 
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
