@@ -1,38 +1,22 @@
 @use '@angular/material' as mat;
-@use './_theme-colors' as theme-colors;
+@use './theme' as theme; // Use the theme file to get the $dark-theme variable
 
-// 1. Include the core styles for all components.
+// Include the core styles for all components.
 @include mat.core();
 
-// 2. Define the theme object from our color palettes.
-// 1. Include the core styles for all components.
-@include mat.core();
-
-// 2. Define the theme from the color palettes using the M3 shorthand.
-//    This single mixin emits all necessary variables and applies component themes.
+// Apply the theme to all Angular Material components and emit CSS variables.
 html {
-  @include mat.theme((
-    color: (
-      theme-type: dark,
-      primary: theme-colors.$primary-palette,
-      secondary: theme-colors.$secondary-palette,
-      tertiary: theme-colors.$tertiary-palette,
-      neutral: theme-colors.$neutral-palette,
-      'neutral-variant': theme-colors.$neutral-variant-palette,
-    ),
-    typography: (
-      plain-family: 'Roboto',
-      brand-family: 'Roboto',
-      bold-weight: 700,
-      medium-weight: 500,
-      regular-weight: 400,
-    ),
-    density: 0,
-  ));
+  // The mat.all-component-themes mixin applies the theme to all components
+  // and emits the CSS variables (--md-sys-color-primary, etc.).
+  @include mat.all-component-themes(theme.$dark-theme);
 
   // Set the color-scheme to dark to ensure the browser uses the dark theme variables.
   color-scheme: dark;
 }
+
+//
+// Global Resets and Base Styles
+//
 
 // Box sizing rules
 *,

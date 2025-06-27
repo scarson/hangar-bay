@@ -1,2 +1,35 @@
-// This file is intentionally left empty.
-// All theming logic is consolidated in `styles.scss`.
+@use 'sass:map';
+@use '@angular/material' as mat;
+@use './_theme-colors' as theme-colors;
+
+// This file is the single source of truth for the theme definition.
+// It defines the theme object but does not emit any CSS.
+
+// 1. Replicate the palette merging logic from the working example.
+// This creates the complex data structure that mat.define-theme expects.
+$_rest: (
+  secondary: theme-colors.$secondary-palette,
+  neutral: theme-colors.$neutral-palette,
+  'neutral-variant': theme-colors.$neutral-variant-palette,
+  error: theme-colors.$error-palette,
+);
+$_primary: map.merge(theme-colors.$primary-palette, $_rest);
+$_tertiary: map.merge(theme-colors.$tertiary-palette, $_rest);
+
+// 2. Define the theme object and export it for other files to use.
+$dark-theme: mat.define-theme((
+  color: (
+    theme-type: dark,
+    primary: $_primary,
+    tertiary: $_tertiary,
+  ),
+  typography: (
+    plain-family: 'Roboto',
+    brand-family: 'Roboto',
+    bold-weight: 700,
+    medium-weight: 500,
+    regular-weight: 400,
+  ),
+  density: (scale: 0),
+));
+
