@@ -1,6 +1,9 @@
 import { Routes } from '@angular/router';
 
+import { ThemeTest } from './features/testing/pages/theme-test/theme-test';
+
 export const routes: Routes = [
+  { path: 'theme-test', component: ThemeTest },
   {
     path: '',
     redirectTo: 'contracts',
