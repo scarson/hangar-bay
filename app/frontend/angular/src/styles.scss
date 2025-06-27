@@ -1,17 +1,14 @@
-
-@use './theme' as theme; // Use the theme file to get the $dark-theme variable
-
-// Include the core styles for all components.
-@include mat.core();
-
-// Apply the theme to all Angular Material components and emit CSS variables.
-html {
-  // The mat.all-component-themes mixin applies the theme to all components
-  // and emits the CSS variables (--md-sys-color-primary, etc.).
-  @include mat.theme(theme.$dark-theme);
-
-  // Set the color-scheme to dark to ensure the browser uses the dark theme variables.
-  color-scheme: dark;
+/* You can add global styles to this file, and also import other style files */
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  // Placeholder background and text colors for the dark theme.
+  background-color: #121212;
+  color: #ffffff;
 }
 
 //
