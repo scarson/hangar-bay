@@ -1,4 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { HarnessLoader } from '@angular/cdk/testing';
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+import { MatPaginatorHarness } from '@angular/material/paginator/testing';
+import { MatSelectHarness } from '@angular/material/select/testing';
+import { MatSortHarness } from '@angular/material/sort/testing';
 import { provideZonelessChangeDetection, signal, WritableSignal } from '@angular/core';
 import { ContractBrowsePage } from './contract-browse-page';
 import { ContractSearch } from '../contract-search';
@@ -20,6 +25,7 @@ describe('ContractBrowsePage', () => {
   let component: ContractBrowsePage;
   let fixture: ComponentFixture<ContractBrowsePage>;
   let mockSearchService: MockContractSearch;
+  let loader: HarnessLoader;
   const baseTime = new Date();
 
   beforeEach(async () => {
@@ -49,6 +55,7 @@ describe('ContractBrowsePage', () => {
 
     fixture = TestBed.createComponent(ContractBrowsePage);
     component = fixture.componentInstance;
+    loader = TestbedHarnessEnvironment.loader(fixture);
   });
 
   afterEach(() => {
@@ -127,58 +134,58 @@ describe('ContractBrowsePage', () => {
     expect(mockSearchService.updateFilters).toHaveBeenCalledWith({ search: 'Vindicator', page: 1 });
   });
 
-  it('should call updateFilters with the correct page number on pagination change', () => {
+  it('should call updateFilters with the correct page number on pagination change', async () => {
     mockSearchService.data.set({ items: [], total: 50, page: 1, size: 20 });
     fixture.detectChanges();
 
-    const nextButton = fixture.nativeElement.querySelector('.pagination-controls button:last-child');
-    nextButton.click();
-    fixture.detectChanges();
+    const paginator = await loader.getHarness(MatPaginatorHarness);
+    await paginator.goToNextPage();
 
-    expect(mockSearchService.updateFilters).toHaveBeenCalledWith({ page: 2 });
+    expect(mockSearchService.updateFilters).toHaveBeenCalledWith({ page: 2, size: 20 });
   });
 
-  it('should call updateFilters with the correct type when the filter dropdown is changed', () => {
-    fixture.detectChanges(); // Initial render
-    const typeSelect = fixture.nativeElement.querySelector('select#contract-type');
-    
-    // Simulate user selecting 'Auction'
-    typeSelect.value = 'auction';
-    typeSelect.dispatchEvent(new Event('change'));
+  it('should call updateFilters with the correct type when the filter dropdown is changed', async () => {
+    // Set data to ensure the select is rendered
+    mockSearchService.data.set({ items: [], total: 1, page: 1, size: 20 });
     fixture.detectChanges();
+
+    const typeSelect = await loader.getHarness(MatSelectHarness.with({ selector: '[aria-label="Filter by contract type"]' }));
+    await typeSelect.open();
+    await typeSelect.clickOptions({ text: 'Auction' });
 
     expect(mockSearchService.updateFilters).toHaveBeenCalledWith({ type: 'auction', page: 1 });
   });
 
-  it('should call updateFilters with correct sort parameters when a sortable header is clicked', () => {
+  it('should call updateFilters with correct sort parameters when a sortable header is clicked', async () => {
     // Set initial data to render the table and headers
     mockSearchService.data.set({ items: [], total: 1, page: 1, size: 20 });
     fixture.detectChanges();
 
-    const sortableHeaders = fixture.nativeElement.querySelectorAll('button.sortable-header');
-    const priceHeaderButton = sortableHeaders[0]; // First one is Price
+    const sort = await loader.getHarness(MatSortHarness);
+    const priceHeaderList = await sort.getSortHeaders({ label: 'Price' });
+    expect(priceHeaderList.length).toBe(1);
+    const priceHeader = priceHeaderList[0];
 
     // First click: sort by price, ascending
-    priceHeaderButton.click();
-    fixture.detectChanges();
+    await priceHeader.click();
 
     expect(mockSearchService.updateFilters).toHaveBeenCalledWith({
-      sort: 'price',
-      order: 'asc',
+      sort_by: 'price',
+      sort_order: 'asc',
       page: 1,
     });
 
     // Simulate the service updating the filter state for the next click
-    mockSearchService.filters.set({ page: 1, size: 20, sort: 'price', order: 'asc' });
+    mockSearchService.filters.set({ page: 1, size: 20, sort_by: 'price', sort_order: 'asc' });
     fixture.detectChanges();
+    await fixture.whenStable();
 
     // Second click: sort by price, descending
-    priceHeaderButton.click();
-    fixture.detectChanges();
+    await priceHeader.click();
 
     expect(mockSearchService.updateFilters).toHaveBeenCalledWith({
-      sort: 'price',
-      order: 'desc',
+      sort_by: 'price',
+      sort_order: 'desc',
       page: 1,
     });
   });

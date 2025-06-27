@@ -58,7 +58,7 @@ export interface ContractSearchFilters {
   page: number;
   size: number;
   search?: string;
-  type?: string;
-  sort?: string;
-  order?: 'asc' | 'desc';
+  type?: 'item_exchange' | 'auction';
+  sort_by?: 'price' | 'date_issued' | 'date_expired';
+  sort_order?: 'asc' | 'desc';
 }

@@ -122,12 +122,12 @@ describe('ContractSearch with TestScheduler', () => {
       flush(); // Initial fetch
       httpMock.expectOne('/api/v1/contracts/?page=1&size=20').flush(mockInitialData);
 
-      service.updateFilters({ sort: 'price', order: 'desc' });
+      service.updateFilters({ sort_by: 'price', sort_order: 'desc' });
       flush(); // Trigger filter update
 
       const req = httpMock.expectOne((r) => r.url.startsWith('/api/v1/contracts/'));
-      expect(req.request.params.get('sort')).toBe('price');
-      expect(req.request.params.get('order')).toBe('desc');
+      expect(req.request.params.get('sort_by')).toBe('price');
+      expect(req.request.params.get('sort_order')).toBe('desc');
       req.flush(mockInitialData);
     });
   });

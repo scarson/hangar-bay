@@ -1,8 +1,16 @@
+// ==========================================================================
+// Hangar Bay Global Styles
+// ==========================================================================
+
+// 1. Import the application's theme file.
+//    This provides all the necessary CSS variables for the Material 3 theme.
+@use './theme';
+
+// 2. Import the modern CSS reset for cross-browser consistency.
 /*
  * Modern CSS Reset
  * https://piccalil.li/blog/a-modern-css-reset/
  */
-
 /* Box sizing rules */
 *,
 *::before,

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -21,9 +21,18 @@ async def list_public_contracts(
     page: int = Query(1, ge=1, description="Page number"),
     size: int = Query(20, ge=1, le=100, description="Page size"),
     search: Optional[str] = Query(None, description="Search by title or location name"),
+    type: Optional[Literal["item_exchange", "auction"]] = Query(
+        None, description="Filter by contract type"
+    ),
+    sort_by: Optional[Literal["price", "date_issued", "date_expired"]] = Query(
+        "date_expired", description="Column to sort by"
+    ),
+    sort_order: Optional[Literal["asc", "desc"]] = Query(
+        "asc", description="Sort order (asc/desc)"
+    ),
 ):
     """
-    Lists public contracts with pagination and optional search.
+    Lists public contracts with pagination, filtering, and sorting.
     """
     offset = (page - 1) * size
 
@@ -34,14 +43,35 @@ async def list_public_contracts(
     if search:
         search_term = f"%{search}%"
         query = query.where(
-            (Contract.title.ilike(search_term)) |
-            (Contract.start_location_name.ilike(search_term))
+            (Contract.title.ilike(search_term))
+            | (Contract.start_location_name.ilike(search_term))
         )
 
-    # Get total count for pagination. 
+    # Type filter
+    if type:
+        query = query.where(Contract.contract_type == type)
+
+    # Sorting logic
+    sort_column_map = {
+        "price": Contract.price,
+        "date_issued": Contract.date_issued,
+        "date_expired": Contract.date_expired,
+    }
+
+    sort_column = sort_column_map.get(sort_by)
+
+    if sort_column is not None:
+        if sort_order == "desc":
+            query = query.order_by(sort_column.desc())
+        else:
+            query = query.order_by(sort_column.asc())
+
+    # Get total count for pagination.
     # We create the count query from the existing query to ensure all filters are applied,
     # then replace the selected columns with a count function.
-    count_query = query.with_only_columns(func.count(Contract.contract_id)).order_by(None)
+    count_query = query.with_only_columns(
+        func.count(Contract.contract_id)
+    ).order_by(None)
     total_count = (await db.execute(count_query)).scalar_one()
 
     # Get paginated results

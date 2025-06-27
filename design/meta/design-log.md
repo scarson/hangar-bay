@@ -1158,4 +1158,49 @@ To ensure consistency and maximize effectiveness for AI-assisted development (pa
 
 ---
 
+### 2025-06-27 05:45:15-05:00 :: Formal Adoption of Angular Material 3 Theming and Dark Theme
+
+**Context:**
+To establish a consistent, modern, and maintainable UI, a formal decision was made to adopt the Angular Material 3 (M3) component library and its theming system as the foundation for the Hangar Bay frontend. The project will exclusively use a dark theme to align with the target user base and application aesthetic.
+
+**Decision & Implementation:**
+1.  **Framework Adoption:** Angular Material was chosen for its comprehensive component library, robust theming capabilities, and strong integration with the Angular ecosystem.
+2.  **Theme Generation:** A custom dark theme was generated using the official Angular Material tools. The entire color palette (primary, secondary, tertiary, etc.) was derived from a single primary color: `#632ebd` (a deep purple).
+3.  **Global Styles:** The generated theme, along with global styles for typography and component overrides, is defined in `src/theme.scss` and `src/styles.scss`. These files serve as the single source of truth for the application's visual identity.
+4.  **Enforcement:** All new and existing components are required to use the M3 CSS variables for styling, as documented in the theming guide and enforced by the decision logged in `8a3457ba-ce40-4170-a782-451b6a2fb1db`.
+
+**Rationale:**
+*   **Consistency:** Ensures a uniform look and feel across all views and components.
+*   **Maintainability:** Centralizing theme definitions makes global style changes simple and predictable.
+*   **Developer Experience:** Provides a clear, documented system for developers to follow, reducing one-off styling and "magic numbers."
+*   **Future-Proofing:** Aligns the project with the latest Angular Material standards, ensuring access to new features and components.
+
+**Impact:**
+*   The frontend now has a robust and extensible theming system.
+*   The visual direction of the application is clearly defined and codified.
+*   The `ContractBrowsePage` refactoring and subsequent test fixes were the first major validation of this theming strategy.
+
+---
+
+### 2025-06-27 05:39:53-05:00 :: Refactor `contract-browse-page.scss` for Full M3 Theming Compliance
+
+**Context:**
+The stylesheet for the contract browse page (`contract-browse-page.scss`) was found to be using numerous hardcoded hex color values and duplicated styles. This violated the project's theming guide (`design/angular/guides/10-theming-guide.md`) and caused a build warning for exceeding its size budget.
+
+**Decision & Implementation:**
+The entire stylesheet was refactored to use the official Material 3 (M3) CSS variables from the global theme (`theme.scss`) for all colors, states (hover, disabled), and backgrounds. Duplicated style blocks were also consolidated into a more efficient structure.
+
+**Rationale:**
+This change was necessary to:
+1.  **Resolve Build Warnings:** By significantly reducing the stylesheet's size, the "component style budget" warning during the Angular build process was eliminated.
+2.  **Enforce Project Standards:** The refactoring brings the component into full compliance with the project's theming guide, eliminating non-compliant, hardcoded styles.
+3.  **Improve Maintainability:** Relying on a single source of truth for theming (the global CSS variables) makes future style updates easier and more consistent.
+4.  **Ensure UI Consistency:** Guarantees that the component's appearance will automatically adapt to any future changes in the global theme, ensuring a consistent look and feel across the application.
+
+**Impact:**
+*   The `contract-browse-page.scss` file is now smaller, more efficient, and fully compliant with M3 theming.
+*   A new persistent AI memory (`8a3457ba-ce40-4170-a782-451b6a2fb1db`) was created to codify the decision that all component stylesheets MUST strictly adhere to the M3 theming guide, using only the provided CSS variables for styling. Any deviation is considered a bug.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line.)* Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*

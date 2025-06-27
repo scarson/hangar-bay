@@ -54,8 +54,8 @@ describe('contractFilterResolver', () => {
       size: 20,
       search: undefined,
       type: undefined,
-      sort: undefined,
-      order: undefined,
+      sort_by: undefined,
+      sort_order: undefined,
     });
   });
 
@@ -77,8 +77,8 @@ describe('contractFilterResolver', () => {
       size: 50,
       search: 'jita',
       type: undefined,
-      sort: undefined,
-      order: undefined,
+      sort_by: undefined,
+      sort_order: undefined,
     });
   });
 
@@ -98,8 +98,8 @@ describe('contractFilterResolver', () => {
       size: 20, // Falls back to default
       search: undefined,
       type: undefined,
-      sort: undefined,
-      order: undefined,
+      sort_by: undefined,
+      sort_order: undefined,
     });
   });
 
@@ -118,16 +118,16 @@ describe('contractFilterResolver', () => {
       size: 20,
       search: undefined,
       type: 'auction',
-      sort: undefined,
-      order: undefined,
+      sort_by: undefined,
+      sort_order: undefined,
     });
   });
 
-  it('should call setInitialFilters with sort and order from query params', () => {
+  it('should call setInitialFilters with sort_by and sort_order from query params', () => {
     const route = {
       queryParamMap: convertToParamMap({
-        sort: 'price',
-        order: 'desc',
+        sort_by: 'price',
+        sort_order: 'desc',
       }),
     } as ActivatedRouteSnapshot;
 
@@ -139,24 +139,25 @@ describe('contractFilterResolver', () => {
       size: 20,
       search: undefined,
       type: undefined,
-      sort: 'price',
-      order: 'desc',
+      sort_by: 'price',
+      sort_order: 'desc',
     });
   });
 
-  it('should handle invalid order query param gracefully', () => {
+  it('should handle invalid sort_order query param gracefully', () => {
     const route = {
       queryParamMap: convertToParamMap({
-        sort: 'price',
-        order: 'invalid',
+        sort_by: 'price',
+        sort_order: 'invalid',
       }),
     } as ActivatedRouteSnapshot;
 
     executeResolver(route);
 
-    expect(mockContractSearch.setInitialFilters).toHaveBeenCalledWith(jasmine.objectContaining({
-      order: undefined,
-    }));
+    expect(mockContractSearch.setInitialFilters).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        sort_order: undefined,
+      })
+    );
   });
-
 });

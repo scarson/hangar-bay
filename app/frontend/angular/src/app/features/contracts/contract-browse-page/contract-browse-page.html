@@ -2,106 +2,109 @@
   <h1 i18n="Page title for browsing public contracts">Public Contracts</h1>
 
   <div class="filter-panel">
-    <input
-      #searchInput
-      type="text"
-      placeholder="Search by title or location..."
-      i18n-placeholder="Placeholder text for the contract search input"
-      [value]="filters().search ?? ''"
-      (input)="onSearch(searchInput.value)"
-      aria-label="Search contracts"
-    />
-    <div class="filter-controls">
-      <label for="contract-type" i18n="Label for the contract type filter">Type:</label>
-      <select id="contract-type" aria-label="Filter by contract type" [value]="filters().type ?? ''" (change)="onTypeChange($event)">
-        <option value="" i18n="Default option for contract type filter">All Types</option>
-        <option value="item_exchange" i18n="Contract type option for item exchange">Item Exchange</option>
-        <option value="auction" i18n="Contract type option for auction">Auction</option>
-        <option value="courier" i18n="Contract type option for courier">Courier</option>
-      </select>
-    </div>
+    <mat-form-field class="search-field">
+      <mat-label i18n="Label for contract search input">Search</mat-label>
+      <input
+        matInput
+        type="text"
+        placeholder="Search by title or location..."
+        i18n-placeholder="Placeholder text for the contract search input"
+        [value]="filters().search ?? ''"
+        (input)="onSearch($event)"
+        aria-label="Search contracts"
+      />
+    </mat-form-field>
+
+    <mat-form-field class="type-field">
+      <mat-label i18n="Label for the contract type filter">Type</mat-label>
+      <mat-select
+        aria-label="Filter by contract type"
+        [value]="filters().type ?? ''"
+        (selectionChange)="onTypeChange($event)"
+      >
+        <mat-option value="" i18n="Default option for contract type filter">All Types</mat-option>
+        <mat-option value="item_exchange" i18n="Contract type option for item exchange">Item Exchange</mat-option>
+        <mat-option value="auction" i18n="Contract type option for auction">Auction</mat-option>
+      </mat-select>
+    </mat-form-field>
   </div>
 
   <!-- Loading Indicator -->
   @if (loading()) {
-    <div class="loading-indicator" i18n="Message displayed while contracts are loading">Loading contracts...</div>
+  <div class="loading-indicator" i18n="Message displayed while contracts are loading">Loading contracts...</div>
   }
 
   <!-- Error Message -->
   @if (error(); as errorMessage) {
-    <div class="error-message">{{ errorMessage }}</div>
+  <div class="error-message">{{ errorMessage }}</div>
   }
 
   <!-- Data View -->
   @if (data(); as contractData) {
-    <div class="results-container" aria-live="polite">
-      <div class="table-container">
-        <table class="contract-table">
-          <thead>
-            <tr>
-              <th scope="col" i18n="Table header for contract type">Type</th>
-              <th scope="col" i18n="Table header for contract issuer">From</th>
-              <th scope="col" i18n="Table header for contract location">Location</th>
-              <th scope="col" [attr.aria-sort]="getAriaSort('price')" i18n="Table header for contract price">
-                <button class="sortable-header" (click)="onSort('price')">
-                  Price
-                  @if (filters().sort === 'price') {
-                    <span class="sort-indicator" [class.asc]="filters().order === 'asc'"></span>
-                  }
-                </button>
-              </th>
-              <th scope="col" [attr.aria-sort]="getAriaSort('date_expired')" i18n="Table header for time left on contract">
-                <button class="sortable-header" (click)="onSort('date_expired')">
-                  Time Left
-                  @if (filters().sort === 'date_expired') {
-                    <span class="sort-indicator" [class.asc]="filters().order === 'asc'"></span>
-                  }
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (contract of contractData.items; track contract.contract_id) {
-              <tr>
-                <td>{{ contract.type }}</td>
-                <td>{{ contract.issuer_name }}</td>
-                <td>{{ contract.start_location_name }}</td>
-                <td>{{ contract.price | isk }}</td>
-                <td>{{ contract.date_expired | timeLeft }}</td>
-              </tr>
-            } @empty {
-              <tr>
-                <td colspan="5" class="empty-state" i18n="Message displayed when no contracts match the search criteria">No contracts found matching your criteria.</td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
+  <div class="results-container" aria-live="polite">
+    <div class="table-container">
+      <table
+        mat-table
+        [dataSource]="data()?.items ?? []"
+        matSort
+        (matSortChange)="handleSortChange($event)"
+        [matSortActive]="filters().sort_by ?? ''"
+        [matSortDirection]="filters().sort_order ?? ''"
+        class="contract-table"
+      >
+        <!-- Type Column -->
+        <ng-container matColumnDef="type">
+          <th mat-header-cell *matHeaderCellDef i18n="Table header for contract type">Type</th>
+          <td mat-cell *matCellDef="let contract">{{ contract.type }}</td>
+        </ng-container>
 
-      <div class="pagination-controls">
-        <button
-          [disabled]="contractData.page <= 1"
-          (click)="changePage(contractData.page - 1)"
-          aria-label="Go to previous page"
-          i18n-aria-label="Accessibility label for the previous page button"
-        >
-          &laquo; <span i18n="Button text for previous page">Previous</span>
-        </button>
-        <span>
-          <span i18n="Pagination status text part 1">Page</span> {{ contractData.page }} <span i18n="Pagination status text part 2">of</span>
-          {{ calculateTotalPages(contractData.total, contractData.size) }}
-        </span>
-        <button
-          [disabled]="contractData.page >= calculateTotalPages(contractData.total, contractData.size)"
-          (click)="changePage(contractData.page + 1)"
-          aria-label="Go to next page"
-          i18n-aria-label="Accessibility label for the next page button"
-        >
-          <span i18n="Button text for next page">Next</span> &raquo;
-        </button>
-      </div>
+        <!-- From Column -->
+        <ng-container matColumnDef="issuer_name">
+          <th mat-header-cell *matHeaderCellDef i18n="Table header for contract issuer">From</th>
+          <td mat-cell *matCellDef="let contract">{{ contract.issuer_name }}</td>
+        </ng-container>
+
+        <!-- Location Column -->
+        <ng-container matColumnDef="start_location_name">
+          <th mat-header-cell *matHeaderCellDef i18n="Table header for contract location">Location</th>
+          <td mat-cell *matCellDef="let contract">{{ contract.start_location_name }}</td>
+        </ng-container>
+
+        <!-- Price Column -->
+        <ng-container matColumnDef="price">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header i18n="Table header for contract price">Price</th>
+          <td mat-cell *matCellDef="let contract">{{ contract.price | isk }}</td>
+        </ng-container>
+
+        <!-- Expires In Column -->
+        <ng-container matColumnDef="date_expired">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header i18n="Table header for time left on contract">Expires In</th>
+          <td mat-cell *matCellDef="let contract">{{ contract.date_expired | timeLeft }}</td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+
+        <!-- Row shown when there is no matching data. -->
+        <tr class="mat-row" *matNoDataRow>
+          <td class="mat-cell" [attr.colspan]="displayedColumns.length">
+            No contracts found matching your criteria.
+          </td>
+        </tr>
+      </table>
     </div>
+
+    <mat-paginator
+      [length]="contractData.total"
+      [pageSize]="contractData.size"
+      [pageIndex]="contractData.page - 1"
+      [pageSizeOptions]="[10, 25, 50]"
+      (page)="handlePageEvent($event)"
+      aria-label="Select page of contracts"
+    >
+    </mat-paginator>
+  </div>
   } @else if (!loading() && !error()) {
-    <p class="empty-state" i18n="Message displayed when no data is available initially">No data available. Start a search to see contracts.</p>
+  <p class="empty-state" i18n="Message displayed when no data is available initially">No data available. Start a search to see contracts.</p>
   }
 </div>

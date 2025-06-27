@@ -73,9 +73,9 @@ export class ContractSearch {
             params = params.set('type', filters.type);
           }
 
-          if (filters.sort && filters.order) {
-            params = params.set('sort', filters.sort);
-            params = params.set('order', filters.order);
+          if (filters.sort_by && filters.sort_order) {
+            params = params.set('sort_by', filters.sort_by);
+            params = params.set('sort_order', filters.sort_order);
           }
 
           return this.http.get<PaginatedContractsResponse>(this.apiUrl, { params }).pipe(

@@ -58,6 +58,7 @@ _AI Guidance: List clear, verifiable, and measurable criteria that must be met f
 *   Example: `* New API endpoint `/feature-x` is implemented, tested, and returns the expected data structure as per the spec.`
 *   Example: `* Unit tests for all new backend logic achieve >85% statement coverage.`
 *   Example: `* Frontend component for Feature X is implemented, displays correctly, and interacts with the backend as expected.`
+*   Example: `* Frontend themes are implemented according to `design/angular/guides/10-theming-guide.md` and all items in section "## 4. Pre-Commit Theming Checklist" are verified against the code.`
 *   Example: `* Relevant documentation (e.g., README, API docs, inline code comments) is updated to reflect changes.`
 *   Example: `* All acceptance criteria listed in the feature specification `../design/features/[relevant-feature-spec].md` are met.`
 *   Example: `* Code has been reviewed and approved.`

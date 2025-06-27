@@ -7681,174 +7681,407 @@ Time to merge dev to main. Write a PR message for all committeed changes since t
 
 -----------------
 
-X
+
+Please continue with the tasks. You were last about to review the implementation of contract-filter-resolver.ts
 
 
 -----------------
 
 
-X
+I can see the Cascade terminal output but you can't for whatever reason. If you thought it was stuck on the "Building step", perhaps there's something wrong with your polling interval (though I don't know exactly how you read/check terminal output. You should report that issue to the Windsurf engineering team. Then proceed with the /git-commit .
 
-
------------------
-
-X
-
+# npm test -- --watch=false --browsers=ChromeHeadless
 
 -----------------
 
-
-X
+The next step is to do a thorough, line by line "## 7. Cross-Cutting Concerns Review" for plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.3-basic-filtering-ui.md verifying everything applicable with sources of truth. Once that's complete and I agree, we'll commit our work. 
 
 
 -----------------
 
 
-X
+The CCC review wasn't filled out quite right. You tried to add this block at the beginning:
+"*   [x] **Security:** Verified that `HttpParams` is used in `contract-search.ts` to safely construct API requests, preventing HTTP parameter injection vulnerabilities. The implementation is secure.
+*   [x] **Accessibility:** Verified that the `<select>` filter in `contract-browse-page.html` has a corresponding `<label>` and a descriptive `aria-label`, ensuring it is accessible to screen readers.
+*   [x] **Testability:** Verified that the filtering functionality is fully tested. A missing test case for the type filter dropdown's `(change)` event was identified and added to `contract-browse-page.spec.ts`. All 46 tests now pass.
+*   [x] **Observability:** Verified that the `catchError` operator in `contract-search.ts` logs the full technical error to the console and provides a user-friendly error message to the UI, meeting project standards.
+*   [x] **Internationalization (i18n):** Verified that all user-facing strings in the filter UI, including the label and dropdown options in `contract-browse-page.html`, are marked with `i18n` attributes for translation."
+
+That doesn't follow the template. Those notes need to go in each section. Each individual existing CCC line item needs to be checked off, and include a description of the review criteria and how they were met, or if N/A, why the item is N/A.
 
 
 -----------------
 
 
-X
+1. That commit succeeded. Now commit design-log.md.
+
+2. Review design\angular\guides\09-testing-strategies.md (this is a 500 line file - ensure you read all of it) and consider if there are any updates we should make to it considering recent work.
+
+3. Next we're going to review the plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering\04.4-advanced-filtering-and-sorting.md task file. Start by fixing the "## 7. Cross-Cutting Concerns Review" section so it includes all CCC items from plans\implementation\00-mvp-implementation-task-template.md. Remember, ALL CCC items must be present in the task file and marked N/A with an explanation of why if they're N/A, not omitted.
+
+4. Do several reviews of the task file. After each review, re-read the entire file to ensure you have the latest contents.
+* A general review, which should consider if there are other relevant specifications that should be added to "## 2. Relevant Specifications"
+* A review focusing on internal consistency with other Phase 3 and Phase 4 tasks. Read the other task files if necessary.
+* A review focusing on alignment with the files referenced in "## 2. Relevant Specifications"
+* A pre-mortem review, in whatever way you think would be useful to Cascade.
+* An "outside-the-box" pre-mortem review, per memory "Sources of Inspiration for "Outside-the-Box" Reviews"
+* A pre-emptive cross-cutting concerns review, which should focus on enhancing the details in the "## 7. Cross-Cutting Concerns Review" section items to make them a more robust verification checklist for our project standards as they relate to the 04.4 tasks.
+* A review focusing specifically on alignment with design\angular\guides\09-testing-strategies.md. Also think about important items from previous review rounds that could be relevant to testing for this task. If you identify specific tests or test cases that are important, add them to "### 3.5. Testing". You should also enhance any existing "### 3.5. Testing" items if you identify areas for improvement.
 
 
 -----------------
 
 
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
+Stop. That was a bad suggestion. Postgres Wasn't running. Why would you suggest we switch the entire database instead of checking the Postgres and Valkey were actually running?
 
 
 -----------------
 
 
-X
+1. You should create a memory about using "pdm" to start the backend service. You repeatedly suggest the direct uvicorn command which fails every time. We'll be more successful if you don't have to keep learning that the hard way.
+
+2. The sort buttons work but don't have the traditional upcarrot/downcarrot directional indicator for whether the current sort is ascending or descending. 
+
+3. The sorts are currently mutually exclusive / overriding. Selecting one replaces the other. There's no "sort within". Think through the implications of that as we add more filters. Come up with several ideas and compare them. Think long term as we add many more features. What would be most effective? We might not need to do anything right now for this task, but we should think through a general strategy for this.
+
+4. There are TONS of expired contracts. We should probably exclude those by default, with a toggle to include them, or show *only* them. Users can't purchased an expired contract, so in most cases they're low value information. By way of analogy, the auction site Ebay does not show expired/completed listings in searches by default, but you can toggle their inclusion in an advanced search filter. Think about how to implement something like this. Come up with several ideas and compare them. Think long term as we add many more features. What would be most effective?
+
+5. The width of the main Public Contracts UI area jumped around when I toggled a sort. I identified this as being due to one page of results having a longer Location column value "Jita V - Moon 17 - Caldari Constructions Production Plant" than the first page, which was all "Jita IV - Moon 4 - Caldari Navy Assembly Plant", a shorter string. The auto-resize of the main UI area on sort was jarring. What are some best practice ways of handling this? Come up with several ideas and compare them. Think long term as we add many more features. What would be most effective?
 
 
 -----------------
 
-X
+1. Multi-Level Sorting: I think we're going to need an advanced sort builder UI, so let's address that from the start. We can keep the options within it simple for the MVP, but it's better to have the framework in place so we can account for this necessary feature from the beginning and avoid potential refactors to accomodate it later.
+
+2. Handling Expired Contracts. Option 2, the three-state filter that you recommend is the clear superior option. Come up with a plan to implement it after addressing other outstanding instructions.
+
+3. The directional arrow only appears when the column is actively sorted. You can't tell what columns are eligible to sort because there's no indicator if they're not active. What's the convention here? I think I've seen both up and down carrots shown together to indicate an inactive sortable column. You might have a better idea though, as I'm not that familiar with UX best practices. 
+
+4. The carrot appears top aligned and flips in place when you select it. A top-aligned downcarrot looks weird. Can we have the upcarrot top aligned and the downcarrot bottom aligned?
 
 
 -----------------
 
+1. The arrows aren't aligned with the top and bottom of the adjacent text, which is what would *look* aligned. They are currently offset upwards. See attached screenshot.
 
-X
-
-
------------------
-
-X
+2. I've decided I want to only have "dark mode" styling. No light/dark toggles. Light mode burns the eyes. Dark mode is more consistent with EVE's general "space" aesthetic as well. Let's plan to address this very soon after current tasks to minimize refactoring. We should discuss together before moving forward with any changes. This will, for example, affect which colors we use to indicate active/inactive sort arrows.
 
 
 -----------------
 
-
-X
-
-
------------------
-
-
-X
+Still off on the filter carrot alignment. Overcorrected the other direction. Let's get this item sorted out before returning to our theme discussion. See screenshot.
 
 
 -----------------
 
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
-
-
------------------
-
-X
+Better. That might be acceptable for now unless you have an idea for improvement. First screenshot attached.
+I did notice something interesting. When I zoomed into the browser to 175%, three dots appeared to the right of the filter arrows on the "Time Left" column label even though the full column was still readable. And in any event, having the "..." to the right of the filter arrows doesn't make sense. See second screenshot, which also shows truncated location names, which do make sense.
 
 
 -----------------
 
 
-X
+Much better, see screenshot. I did notice that the first three columns are ALL CAPS while Price and Time Left are not. On futher reflection, I'm not sure "Time Left" is the best label string for the UI, even if it's what our data variable is called. Think about what would make sense to EVE players using the Hangar Bay. I noticed EVE Market Browser uses "Expires in".
 
 
 -----------------
 
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-X
+One more thought on Expires In. Would it make sense to update our backend variables and data and schema to reflect that name to aid maintainability? What's the name of the relevant field in the ESI API response?
 
 
 -----------------
 
 
-X
+Okay, that makes sense. Alignment of our data schema with the ESI API on the backend is much more important than with frontend labels.
+
+I was just reading about Angular theming and found these resources:
+* https://material.angular.dev/guide/theming (which references Google's Material Design (3) so I read up on that too)
+* https://github.com/angular/components/blob/main/src/material/schematics/ng-generate/theme-color/README.md
+* https://github.com/material-foundation/material-color-utilities
+Material design references:
+* https://m3.material.io/styles/color/system/overview
+* https://m3.material.io/styles/color/system/how-the-system-works
+* https://m3.material.io/styles/color/choosing-a-scheme
+* https://m3.material.io/styles/color/static/baseline
+
+Note that I no longer object to having a dark/light mode toggle, as long as the default is dark mode and we mostly optimize for that since it *seems* (?) like Angular theming and material design *might* make that easy. I'm interested in your thoughts. Light mode may still not make sense, given the general EVE space theme and such.
+
+Please read them all and carefully consider the implications for Hangar Bay UI theming. Think specifically about a long term strategy and what would faciliate smooth development work as we go. What kind of UI theming "foundation" would best support the project? How does Angular theming play into it? Come up with several ideas and compare them. Think long term as we add many more features. What would be most effective?
+
+-----------------
+
+Before we proceed with anything, I want to address a concern that occurred to me. 
+
+1. Something I want you to be exceptionally careful of is remembering that this is an Angular 20 project, since the Angular theming guide says "This guide describes how to set up theming for your application using Sass APIs introduced in Angular Material v19." and various other resources I've seen suggest that theming in Angular 18 and below worked in meaningfully different ways. I want to be very careful not to introduce any errors or bugs from you using Angular theme elements and strategies from earlier Angular versions, since your "default" behavior in other areas suggests much of your training data is focused on Angular 17/18, like wanting to name files *.component.ts and *.service.ts when the current Angular CLI and modern Angular convention omits those. That's not a criticism, it's an observation we should use to work better together. If you need to do external research on earlier Angular version theming patterns to help your awareness of what to look for and consider, you should do so.
+
+2. Do a sort of "pre-mortem" and think about the types of issues that could occur if you "fall into" using theming patterns for Angular versions prior to 19. Do a few rounds of this and try to approach it in different ways each time for better coverage. Once you feel confident you've identified most potential issues, do one more review really trying to think outside the box to see if you can catch anything else.
+
+3. Then, think carefully about what we can do to help Cascade systemically avoid those issues. Consider all the options available to you, which could include files in design\angular, Cascade memories, or anything else helpful. Maximum effectiveness is what's important. I don't expect to prevent every error, but hope that by being proactive and careful, we can avoid predictable and impactful errors. Come up with several ideas and compare them. Think long term as we add many more features. What would be most effective?
 
 
 -----------------
 
 
-X
+I'm skeptical that having a "source of truth for colors" in the theme.scss file will be enough. That can clearly define the current state, but how would it (1) help you maintain awareness of and use v19+ M3 theming best practices, and (2) avoid the specific pitfalls and risks you identified in your pre-mortem "Round 1: Obvious Technical Risks" and "Round 2: Subtle & "Out-of-the-Box" Risks". 
+
+Your bias towards training data is *very* strong. To continue the earlier example, you still default to thinking Angular files "should" have .service.ts, .component.ts, .pipe.ts, etc. naming even though we have multiple design files and memories trying to reinforce the modern Angular v20 conventions. Again, that's not a criticism. It's an insight into Cascade's mechanics. 
+
+Do you think the theme.scss file and memory reference alone can meet the objective of *consistently* doing theming the Angular v19+ M3 way while also consistently avoiding the risks of using patterns from older versions that could cause issues?
 
 
 -----------------
 
 
-X
+Good assessment. I'm much more confident in this multi-layered guardrail approach. 
+
+1. The file name "THEMEING.md" wouldn't align with our naming convention for files in design\angular. Perhaps it makes sense to put it under design\angular\guides given you described it as a "guidebook". Consider. The next file sequence number in the angular guides is 10.
+
+2. For the guidebook, you said:
+"Content: It will contain clear "DO" and "DON'T" sections based on our pre-mortem:
+DO: Always use CSS variables from theme.scss.
+DO: Use semantic color roles (e.g., primary for main actions, surface-container for cards).
+DON'T: Never use hardcoded hex colors (#fff, rgb(0,0,0)).
+DON'T: Never use ::ng-deep for theming Material components.
+DON'T: Never use legacy Sass mixins (mat.define-palette, mat.theme)."
+While I realize this is an example, the "DON'T: Never use..." reads to me as a double negative, which raised a concern about possible misinterpretation. Is there any possibility Cascade could interpret "DON'T: Never use..." as a "DO use"?
+
+3. Proceed with drafting the guidebook file.
+
+4. For "Layer 4: The Process (Self-Correction) - The "Linter", your context window is eventually going to forget about or de-weight that and you'll forget to do it. Just how the model works. The idea for the internal process is good, but we need a better way to make it persistent and potentially link it to "The Enforcer". Come up with several ideas and compare them. Think long term as we add many more features and potentially go a while without working on frontend components involving theming. What would be most effective?
+
+-----------------
+
+1. Good start for design\angular\guides\10-theming-guide.md. It seems a little short, though I know longer isn't always better.
+I'd like you to read https://material.angular.dev/guide/theming again and consider if there's anything from there worth adding to 10-theming-guide.md that would be helpful to Cascade in the ways we've discussed.
+
+2. Note: I added a new example item to plans\implementation\00-mvp-implementation-task-template.md:
+"*   Example: `* Frontend themes are implemented according to `design/angular/guides/10-theming-guide.md` and all items in section "## 4. Pre-Commit Theming Checklist" are verified against the code.`"
+Do you think you'd keep that item for task files that touch Angular theming? Is that helpful as part of the multi-layered guardrail strategy. I'm open to suggestions of what's effective.
+
+3. Do we need to discuss our colors before setting up theme.scss? How will you know what to put in it? Did you plan to start with one of the prebuilt color palettes (https://material.angular.dev/guide/theming#prebuilt-color-palettes)? I'd be interested in seeing the $violet-palette to start.
+
+4. This seems like a significant enough scope of work that we should have a task file for it. I'm not sure what Phase it would fall under though (we're currently working on Phase 4). Thoughts?
 
 
 -----------------
 
 
-X
+1. Wait, you recursed yourself referencing the guide you were supposed to try to enhance as the source of info to enhance the guide. While that's a great example of your memory guardrails to consult the theme guide working properly, that circumvented the attempt to use an external authoritative resource. 
+
+I downloaded the HTML of https://material.angular.dev/guide/theming which you can find here for your review: design\angular\guides\Theming-Angular-Material.html. The file is about 550 lines long. Recall your earlier instruction:
+"Good start for design\angular\guides\10-theming-guide.md. It seems a little short, though I know longer isn't always better.
+I'd like you to read https://material.angular.dev/guide/theming again and consider if there's anything from there worth adding to 10-theming-guide.md that would be helpful to Cascade in the ways we've discussed."
+
+2. Then, we need to set up the task file before doing any work so we can track it. Earlier you said:
+"4. Task File and Project Phase
+This is absolutely a significant scope of work and deserves its own task file. You are right to question where it fits. It's not part of the Phase 4 feature work, but rather foundational UI infrastructure that will support all future features.
+
+I propose we treat this as a new, small "sub-phase": Phase 3.1: UI Foundation & Theming.
+
+This logically places it after the initial app shell setup (Phase 3) and before we begin building specific features (Phase 4). I suggest we create a new task file: plans/implementation/phase-03.1-ui-foundation-theming/03.1.1-setup-angular-material-m3-theming.md."
+
+I worry that will be confusing, because there is already a plans\implementation\phase-03-frontend-core-infrastructure\03.1-angular-core-configuration.md, and this is not a substask of that task file.
+
+Let's make it plans\implementation\phase-03-frontend-core-infrastructure\03.4-setup-angular-material-m3-theming.md instead. Create that file based on the task file template at plans\implementation\00-mvp-implementation-task-template.md. Then think carefully about the theme-related tasks ahead of us, and fill it out. Remember, all Cross-Cutting Review items from the template must be present; if an item is N/A, it must be marked as such with an explanation why, not omitted/removed.
+
+3. Perform a review round with a focus on making the plans\implementation\phase-03-frontend-core-infrastructure\03.4-setup-angular-material-m3-theming.md task file more robust to help ensure a smooth implementation.
+
+4. I want to review the new plans\implementation\phase-03-frontend-core-infrastructure\03.4-setup-angular-material-m3-theming.md task file before proceeding with implementation work.
+
+
+-----------------
+
+You said "After reviewing the provided HTML file, I've extracted the following key concepts that will be valuable additions to our internal 10-theming-guide.md" but don't appear to have made any updates to the guide. Was that intended?
+
+-----------------
+
+We only created very basic/default/template styling for our very simple root Home and Contracts pages so the MVP has a truly minimum viable UI to check if features are working. We should have ZERO attachment to any existing style / scss files (though do remember how we dealt with the sort arrows and span around the header text, because that was in a good state). If there's any risk of getting messed up trying to "fix" what we already have, I'd rather "start fresh" if it makes to do so while we're so early in the frontend implementation.
+
+
+-----------------
+
+You had the --directory=src flag in there before, which is a valid parameter, but you told me to run it without that in the app\frontend\angular directory.
+
+Generate the official Material 3 dark theme. This will create the theme.scss file that will become our single source of truth for all colors, as mandated by the project's design guide. #TODO need to update this memory to reflect that it's more than color. Find Cascade statement that was good.
+"Theming Structure: The guide explains that a theme is a collection of CSS custom properties for color, typography, and shape. This reinforces that our theme should be more than just colors."
+
+
+-----------------
+
+I just checked the color with this site:
+https://www.color-hex.com/color/7c3aed
+And am worried that it's too light, even though you explained the palatte range generation.
+It lists these Shades of #7c3aed, from lighter to darker.
+#7c3aed
+#6f34d5
+#632ebd
+#5628a5
+#4a228e
+#3e1d76
+#31175e
+#251147
+#180b2f
+#0c0517
+#000000
+
+Can we try #6f34d5 or #632ebd instead? Which do you think would be better? I've included a screenshot of the color properties for refrence.
+
+Cascade replied:
+This is an excellent and insightful question. You are absolutely right to be thoughtful about the seed color, as it impacts the entire generated palette. Thank you for doing that research; the shade list is very helpful.
+
+You've identified the core trade-off: picking a color that is dark enough to feel grounded in a dark theme, but not so dark that it fails to generate a versatile and distinct range of tones.
+
+Between your two suggestions, I recommend #632ebd. Here’s my reasoning:
+
+Addresses Your Concern Directly: It is noticeably darker than my original suggestion, which directly addresses your concern about the primary color being too light or "glowy." It has a more subtle, deep-space feel.
+Better Tonal Range for a Dark Theme: While #6f34d5 is a good color, #632ebd provides a better starting point for a dark theme palette. The Material 3 generator will use this darker seed to create a primary-container that is a very dark, muted purple—perfect for subtle backgrounds. It will also generate a primary color for buttons that is still vibrant but feels more integrated into the dark environment.
+Maintains Sufficient Vibrancy: Looking at the color properties, #632ebd still has enough saturation and isn't so dark that it becomes "muddy." The generator will have no problem creating a high-contrast, near-white on-primary color for text, ensuring accessibility is maintained. It strikes the perfect balance between being deep and being vibrant.
+In short, #632ebd is the superior choice. It aligns with your preference for a darker purple and is technically a better seed for generating a rich, functional, and aesthetically pleasing dark theme palette using the Material 3 system.
+
+Please use this HEX code in the generator:
+
+#632ebd
+
+-----------------
+
+
+Good analysis. Based on your understanding of the palatte generation, review the rest of those shade options and consider if any would be better suited than #632ebd.
+
+Cascade replied:
+Of course. That's a great way to ensure we make the best possible choice. I have reviewed the full list of shades based on how the Material 3 palette generator works.
+
+Here is my analysis of the options, moving from darker to lighter:
+
+#5628a5 and darker (#4a228e, #3e1d76, etc.):
+Analysis: These colors are too dark and lack the necessary saturation to be effective seed colors. The generator needs a vibrant source to create a full, distinct tonal range.
+Outcome: If we used one of these, the resulting palette would be "muddy." The main primary color (for buttons) would lack energy, and the primary-container color would be so dark it would blend in with the background, defeating its purpose. We would lose the visual hierarchy that makes a theme effective.
+Verdict: Unsuitable as a primary seed color.
+#632ebd (My current recommendation):
+Analysis: This remains the sweet spot. It is dark enough to feel sophisticated and integrated into a dark UI, but it retains enough saturation and brightness to allow the generator to create a beautiful and functional palette.
+Outcome: It will produce a primary color that is vibrant and stands out for key actions, and a primary-container that is a noticeably darker, more subtle purple—perfect for secondary elements. This creates clear visual distinction.
+Verdict: The optimal choice. It balances your aesthetic preference with the technical requirements of the theming system.
+#6f34d5:
+Analysis: This is also a very strong candidate and is very close to #632ebd. It's slightly brighter.
+Outcome: It would produce a slightly more energetic and less subtle theme than #632ebd. The difference would be minor, but noticeable.
+Verdict: A good alternative, but #632ebd better captures the "deep" and "dark" feeling you're looking for while still providing excellent results.
+After this detailed review, my final recommendation remains #632ebd. It is the best choice on the list to create a theme that is rich, futuristic, and technically sound.
+
+Please proceed with that HEX code when you are ready.
+
+-----------------
+
+For reference, here is the same color-hex site info about #632ebd:
+https://www.color-hex.com/color/632ebd
+I've also attached a screenshot with the color detail output from that site.
+
+I entered #632ebd. Now the setup command is asking me:
+"What HEX color should be used represent the secondary color palette? (Leave blank to use generated colors from Material)"
+
+Cascade replied:
+Excellent, we're at the next step. Thank you for the reference image.
+
+For this question, I have a very strong recommendation: leave it blank.
+
+Here's why:
+
+The Material 3 theming engine is specifically designed to create a beautiful, cohesive, and accessible color system from a single seed color (our primary purple). When you leave the secondary and tertiary colors blank, it doesn't mean you won't get secondary colors. Instead, it intelligently generates a complementary secondary palette that is mathematically harmonious with the primary palette you just defined.
+
+This is the recommended approach for most applications because:
+
+Guaranteed Harmony: It ensures all your colors work together perfectly, creating a sophisticated and professional look.
+Simplicity & Power: It leverages the full power of the M3 system without requiring you to be a color theory expert.
+Cohesive Aesthetic: For the "futuristic" theme we're building, a strong, unified color identity based on our purple will be more impactful than introducing a competing secondary color.
+Manually choosing a secondary color is an advanced option, typically used only if a brand guide strictly requires two distinct, unrelated colors. For our purposes, letting the system generate the palette is the best path forward.
+
+Please leave the input blank and press Enter.
+
+The generator will likely ask you about the tertiary color next. The same logic applies there: leave it blank as well.
+
+-----------------
+
+
+I left it blank for secondary and tertiary. Now it's asking:
+"What HEX color should be used represent the neutral color palette? (Leave blank to use generated colors from Material)"
+Blank as well?
+
+Cascade replied:
+Yes, absolutely leave this blank as well. This is the final and most important step for ensuring a cohesive theme.
+
+Here's why:
+
+When you leave the neutral palette blank, the Material 3 generator performs its most impressive trick. It doesn't just create a standard set of greys. Instead, it creates a harmonized neutral palette that is subtly tinted with our primary purple (#632ebd).
+
+This means our app's background, card surfaces, and text colors won't be a sterile, generic grey. They will have a very faint, cool, purplish undertone that perfectly complements all the primary purple elements. This is the key to a professional and polished design where every color feels like it belongs.
+
+If we were to provide a separate color, our purple accents would feel disconnected from the main UI. By leaving it blank, we ensure the entire application feels like a single, unified system.
+
+Please leave the input blank and press Enter.
+
+After this, the generator should finish its process and create the theme files. Let me know once it's complete
+
+
+-----------------
+
+It asked these two questions next, which I left blank based on your earlier replies. Can you explain what each is about though?
+1. What HEX color should be used represent the neutral variant palette? (Leave blank to use generated colors from Material)
+2. What HEX color should be used represent the error palette? (Leave blank to use generated colors from Material)
+
+Now it's asking for a y/N answer to:
+"Do you want to generate high contrast value override mixins for your themes?. Providing a high contrast version of your theme when a user specifies helps increase the accesibility of your application. (y/N)"
+
+Cascade replied:
+Of course. It's smart to understand what these options do. You made the right choice leaving them blank.
+
+Explanations
+Neutral Variant Palette: Think of this as the "in-between" palette. It's used for elements that need to stand out more than the main background, but less than a primary button. A perfect example is the outline of an un-focused text field or a standard card border. By leaving it blank, you let the generator create a harmonized version that's subtly tinted with our primary purple, ensuring everything looks cohesive.
+Error Palette: This defines the colors for error states, like the red text under a form field that says "This field is required." By leaving it blank, you're telling the generator to use the standard, built-in Material Design red. This is best practice, as red is universally understood to mean "error," and the default color is designed to be accessible.
+High Contrast Mixins
+Now, for the current question: "Do you want to generate high contrast value override mixins for your themes?"
+
+My recommendation is to answer N (No).
+
+What this option does: This is an advanced accessibility feature. It generates extra code that would allow you to create a separate, ultra-high-contrast version of the theme for users with specific visual impairments. Implementing this would require adding a settings toggle in the UI for users to switch between the standard and high-contrast themes.
+
+Why you should say "No" for now:
+
+The standard Material 3 dark theme we are generating is already designed to meet modern accessibility contrast standards (WCAG AA).
+Building a theme-switching mechanism is outside our current scope.
+We can always regenerate the theme with this option later if we decide to add that feature.
+For our goal of creating a single, beautiful, and accessible dark theme, this option adds unnecessary complexity right now.
+
+Please enter N and press Enter. This should be the final question.
+
+-----------------
+
+
+1. It asked:
+"? Do you want to generated file to be a scss file? This is the recommended way of setting up theming in your application. If not, a CSS file will be generated with all the system variables defined. (Leave blank to generate a scss file) (Y/n)"
+I said yes, as we've been using scss files and that's the default.
+
+It created app\frontend\angular\theme-colors.scss. Is that a good file name? (We renamed it theme.scss).
+
+2. You need to fix the Cross-Cutting Review section of plans\implementation\phase-03-frontend-core-infrastructure\03.4-material-theming-setup.md (I moved the file under the existing Phase 03 folder like I'd originally intended) to ensure it contains all CCC items from plans\implementation\00-mvp-implementation-task-template.md. Remember, all Cross-Cutting Review items from the template must be present; if an item is N/A, it must be marked as such with an explanation why, not omitted/removed.
+
+
+-----------------
+
+
+Small question. I see styles.scss is plural and theme.scss is singular. Why is that? Is there only one "theme" rather than themes.scss?
+
+
+-----------------
+
+
+Generate the official Material 3 dark theme. This will create the theme.scss file that will become our single source of truth for all colors, as mandated by the project's design guide. #TODO need to update this memory to reflect that it's more than color. Find Cascade statement that was good.
+"Theming Structure: The guide explains that a theme is a collection of CSS custom properties for color, typography, and shape. This reinforces that our theme should be more than just colors."
+
+
+
+-----------------
+
+
+Is this an example of an ingrained pattern from earlier Angular versions sneaking in?
+Should we update design\angular\guides\10-theming-guide.md with this modern @use rule pattern and include a Forbidden statement for the deprecated old @import rule pattern?
 
 
 -----------------
