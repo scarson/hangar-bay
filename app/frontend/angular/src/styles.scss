@@ -4,18 +4,21 @@
 // 1. Include the core styles for all components.
 @include mat.core();
 
-// 2. Define the theme from the color palettes. This will be a dark theme.
-//    This emits all the necessary CSS variables.
+// 2. Define the theme object from our color palettes.
+// 1. Include the core styles for all components.
+@include mat.core();
+
+// 2. Define the theme from the color palettes using the M3 shorthand.
+//    This single mixin emits all necessary variables and applies component themes.
 html {
   @include mat.theme((
     color: (
+      theme-type: dark,
       primary: theme-colors.$primary-palette,
       secondary: theme-colors.$secondary-palette,
       tertiary: theme-colors.$tertiary-palette,
       neutral: theme-colors.$neutral-palette,
       'neutral-variant': theme-colors.$neutral-variant-palette,
-      error: theme-colors.$error-palette,
-      theme-type: dark,
     ),
     typography: (
       plain-family: 'Roboto',
@@ -30,9 +33,6 @@ html {
   // Set the color-scheme to dark to ensure the browser uses the dark theme variables.
   color-scheme: dark;
 }
-
-// 3. Apply global styles, including the Modern CSS Reset.
-//    https://piccalil.li/blog/a-modern-css-reset/
 
 // Box sizing rules
 *,
