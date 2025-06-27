@@ -18,6 +18,9 @@ export const contractFilterResolver: ResolveFn<boolean> = (
   const size = parseInt(route.queryParamMap.get('size') ?? '20', 10);
   const search = route.queryParamMap.get('search') ?? undefined;
   const type = route.queryParamMap.get('type') ?? undefined;
+  const sort = route.queryParamMap.get('sort') ?? undefined;
+  const orderParam = route.queryParamMap.get('order');
+  const order = orderParam === 'asc' || orderParam === 'desc' ? orderParam : undefined;
 
   const filters: ContractSearchFilters = {
     page: !isNaN(page) && page > 0 ? page : 1,
@@ -25,6 +28,8 @@ export const contractFilterResolver: ResolveFn<boolean> = (
     // Ensure empty string from query params becomes undefined
     search: search || undefined,
     type: type || undefined,
+    sort: sort || undefined,
+    order: order,
   };
 
   contractSearch.setInitialFilters(filters);

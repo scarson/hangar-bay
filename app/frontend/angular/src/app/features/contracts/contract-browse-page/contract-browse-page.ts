@@ -43,4 +43,23 @@ export class ContractBrowsePage {
     // Use Math.max to ensure the page count is never less than 1.
     return Math.max(1, Math.ceil(total / size));
   }
+
+  onSort(sortKey: string): void {
+    const currentFilters = this.filters();
+    const newOrder = currentFilters.sort === sortKey && currentFilters.order === 'asc' ? 'desc' : 'asc';
+
+    this.contractSearch.updateFilters({
+      sort: sortKey,
+      order: newOrder,
+      page: 1, // Reset to first page on sort
+    });
+  }
+
+  getAriaSort(sortKey: string): 'ascending' | 'descending' | 'none' {
+    const currentFilters = this.filters();
+    if (currentFilters.sort !== sortKey) {
+      return 'none';
+    }
+    return currentFilters.order === 'asc' ? 'ascending' : 'descending';
+  }
 }

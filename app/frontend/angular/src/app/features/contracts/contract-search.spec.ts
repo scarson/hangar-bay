@@ -116,6 +116,22 @@ describe('ContractSearch with TestScheduler', () => {
     });
   });
 
+  it('should include sort and order parameters in the API request when the sort filter is set', () => {
+    testScheduler.run(({ flush }) => {
+      const service = TestBed.inject(ContractSearch);
+      flush(); // Initial fetch
+      httpMock.expectOne('/api/v1/contracts/?page=1&size=20').flush(mockInitialData);
+
+      service.updateFilters({ sort: 'price', order: 'desc' });
+      flush(); // Trigger filter update
+
+      const req = httpMock.expectOne((r) => r.url.startsWith('/api/v1/contracts/'));
+      expect(req.request.params.get('sort')).toBe('price');
+      expect(req.request.params.get('order')).toBe('desc');
+      req.flush(mockInitialData);
+    });
+  });
+
   it('should debounce filter updates to prevent excessive API calls', () => {
     testScheduler.run(({ flush }) => {
       // Per testing guide 8.3, service is instantiated inside the run() callback.

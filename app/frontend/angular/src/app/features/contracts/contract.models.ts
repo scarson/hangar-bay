@@ -59,4 +59,6 @@ export interface ContractSearchFilters {
   size: number;
   search?: string;
   type?: string;
+  sort?: string;
+  order?: 'asc' | 'desc';
 }

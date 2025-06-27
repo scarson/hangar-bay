@@ -54,6 +54,8 @@ describe('contractFilterResolver', () => {
       size: 20,
       search: undefined,
       type: undefined,
+      sort: undefined,
+      order: undefined,
     });
   });
 
@@ -75,6 +77,8 @@ describe('contractFilterResolver', () => {
       size: 50,
       search: 'jita',
       type: undefined,
+      sort: undefined,
+      order: undefined,
     });
   });
 
@@ -94,6 +98,8 @@ describe('contractFilterResolver', () => {
       size: 20, // Falls back to default
       search: undefined,
       type: undefined,
+      sort: undefined,
+      order: undefined,
     });
   });
 
@@ -112,6 +118,45 @@ describe('contractFilterResolver', () => {
       size: 20,
       search: undefined,
       type: 'auction',
+      sort: undefined,
+      order: undefined,
     });
   });
+
+  it('should call setInitialFilters with sort and order from query params', () => {
+    const route = {
+      queryParamMap: convertToParamMap({
+        sort: 'price',
+        order: 'desc',
+      }),
+    } as ActivatedRouteSnapshot;
+
+    const result = executeResolver(route);
+
+    expect(result).toBe(true);
+    expect(mockContractSearch.setInitialFilters).toHaveBeenCalledWith({
+      page: 1,
+      size: 20,
+      search: undefined,
+      type: undefined,
+      sort: 'price',
+      order: 'desc',
+    });
+  });
+
+  it('should handle invalid order query param gracefully', () => {
+    const route = {
+      queryParamMap: convertToParamMap({
+        sort: 'price',
+        order: 'invalid',
+      }),
+    } as ActivatedRouteSnapshot;
+
+    executeResolver(route);
+
+    expect(mockContractSearch.setInitialFilters).toHaveBeenCalledWith(jasmine.objectContaining({
+      order: undefined,
+    }));
+  });
+
 });

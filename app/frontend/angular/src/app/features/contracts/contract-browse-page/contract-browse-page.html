@@ -39,11 +39,25 @@
         <table class="contract-table">
           <thead>
             <tr>
-              <th i18n="Table header for contract type">Type</th>
-              <th i18n="Table header for contract issuer">From</th>
-              <th i18n="Table header for contract location">Location</th>
-              <th i18n="Table header for contract price">Price</th>
-              <th i18n="Table header for time left on contract">Time Left</th>
+              <th scope="col" i18n="Table header for contract type">Type</th>
+              <th scope="col" i18n="Table header for contract issuer">From</th>
+              <th scope="col" i18n="Table header for contract location">Location</th>
+              <th scope="col" [attr.aria-sort]="getAriaSort('price')" i18n="Table header for contract price">
+                <button class="sortable-header" (click)="onSort('price')">
+                  Price
+                  @if (filters().sort === 'price') {
+                    <span class="sort-indicator" [class.asc]="filters().order === 'asc'"></span>
+                  }
+                </button>
+              </th>
+              <th scope="col" [attr.aria-sort]="getAriaSort('date_expired')" i18n="Table header for time left on contract">
+                <button class="sortable-header" (click)="onSort('date_expired')">
+                  Time Left
+                  @if (filters().sort === 'date_expired') {
+                    <span class="sort-indicator" [class.asc]="filters().order === 'asc'"></span>
+                  }
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody>

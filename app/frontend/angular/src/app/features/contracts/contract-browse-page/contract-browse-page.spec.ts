@@ -137,4 +137,37 @@ describe('ContractBrowsePage', () => {
 
     expect(mockSearchService.updateFilters).toHaveBeenCalledWith({ page: 2 });
   });
+
+  it('should call updateFilters with correct sort parameters when a sortable header is clicked', () => {
+    // Set initial data to render the table and headers
+    mockSearchService.data.set({ items: [], total: 1, page: 1, size: 20 });
+    fixture.detectChanges();
+
+    const sortableHeaders = fixture.nativeElement.querySelectorAll('button.sortable-header');
+    const priceHeaderButton = sortableHeaders[0]; // First one is Price
+
+    // First click: sort by price, ascending
+    priceHeaderButton.click();
+    fixture.detectChanges();
+
+    expect(mockSearchService.updateFilters).toHaveBeenCalledWith({
+      sort: 'price',
+      order: 'asc',
+      page: 1,
+    });
+
+    // Simulate the service updating the filter state for the next click
+    mockSearchService.filters.set({ page: 1, size: 20, sort: 'price', order: 'asc' });
+    fixture.detectChanges();
+
+    // Second click: sort by price, descending
+    priceHeaderButton.click();
+    fixture.detectChanges();
+
+    expect(mockSearchService.updateFilters).toHaveBeenCalledWith({
+      sort: 'price',
+      order: 'desc',
+      page: 1,
+    });
+  });
 });
