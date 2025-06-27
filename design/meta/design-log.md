@@ -1230,3 +1230,21 @@ This change was necessary to:
 ---
 
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
+
+### 2025-06-27 09:23:28-05:00: Override Default M3 Background
+
+**Decision**: Manually override the default Material Design 3 (M3) surface color to use a dark purple from the primary color palette (`#250059`).
+
+**Rationale**: The default M3 theme uses a neutral, near-black color for the main application background (`--md-sys-color-surface`). While this follows M3 guidelines for maximizing contrast, the project requires a more branded, immersive feel. The dark purple background aligns better with the Hangar Bay aesthetic.
+
+**Implementation**: The override was applied in `theme.scss` using the `$overrides` map in the `mat.theme` mixin:
+```scss
+@include mat.theme((
+  // ... color, typography, density maps
+), $overrides: (
+  surface: #250059,
+));
+```
+This approach is minimally invasive and keeps all theme configuration in a single, logical location. It also ensures that any component relying on the `surface` color variable will now correctly use the purple background.
+
+---
