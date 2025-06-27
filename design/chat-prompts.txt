@@ -8851,49 +8851,71 @@ Keep a backup copy of app\frontend\angular\src\app\app.spec.ts with a different 
 -----------------
 
 
-X
+https://blog.angular.dev/announcing-angular-v20-b5c9c06cf301
+https://github.com/angular/examples
+https://angular.dev/ai
 
 
 -----------------
 
 
-X
+Before you do that, I want you to review:
+* EVERYTHING in design\fastapi and its subdirectories. List them out, then read the full contents of every file. Some are long, so always request 400 lines.
+* design\reviews\post-mortems\phase-reviews\01-backend-core-infrastructure-review.md
+* design\reviews\post-mortems\phase-reviews\02-backend-f001-public-contract-aggregation.md
+* plans\implementation\00-mvp-implementation-plan-progress.md
+About work on the backend already done.
+
+I missed this pre-mortem too:
+* design\reviews\pre-mortems\phase-02-backend-f001-pre-mortem.md
+
+-----------------
+
+
+Regarding "The schema is named ContractSchema in fastapi_app/schemas/contracts.py, but the API router is trying to import it as Contract."
+Should it have "Schema" in the name or not?
+
+Also you forgot that we just completely wiped out the frontend UI and paused development while we 
 
 
 -----------------
 
 
-X
+Do you still need these in pyproject.toml given design\fastapi\guides\09-testing-strategies.md?
+    "pytest>=8.4.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.1",
 
 
 -----------------
 
 
-X
+1.We should install those as our next step with the pdm command. 
 
+2. Research CURRENT (2023 or later) best practices on using those python testing tools and think about how those could apply to Hangar Bay. Use internet searches to aid your research.
 
------------------
+3. Then think through a strategy for how to actually use them, with a focus on repeatable, consistent, actionable guidance to Cascade. Think of several options from different perspectives and compare them against each other. Be throrough and critical in this discussion. Which do you think would be most effective for our objectives? Justify your response.
 
+4. Then update design\fastapi\guides\09-testing-strategies.md to capture everything that would be useful to Cascade in consistently and effectively carrying out that test strategy. 
 
-X
-
-
------------------
-
-
-X
 
 
 -----------------
 
 
-X
+The ESI API integration is absolutely core to Hangar Bay. Without it, we have nothing. During implementation, we caught a huge number of issues due to the ESI API not responding exactly as we anticipated (sending no value instead of null for a required field so we had to add a default, etc. etc. etc. Many different things). I'm extremely worried that if we mock all the ESI API calls, we'll miss how they work in the real world, which isn't 100% consistent from our experience.
 
 
 -----------------
 
 
-X
+Sounds great. Make the updates. Make sure to do them in a way that's most helpful to Cascade.
+
+
+-----------------
+
+
+User question: Can we renamed live_esi to esi_live? That makes more sense to me. Then you can also have esi_mock if needed. $thing_$type makes more sense I think.
 
 
 -----------------

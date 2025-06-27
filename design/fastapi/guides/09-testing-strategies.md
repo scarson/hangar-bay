@@ -4,125 +4,290 @@ description: Outlines standard strategies and best practices for testing the Fas
 
 # Guide: FastAPI Testing Strategies
 
-## 1. Philosophy
+## 1. Core Philosophy: The Pragmatic Hybrid
 
-Our testing strategy aims for a balance between confidence and speed. We want to be confident that our application works as expected, but we don't want tests to be so slow or brittle that they hinder development. We use a combination of unit tests and integration tests to achieve this.
+Our testing strategy is a **Pragmatic Hybrid**, balancing the confidence of integration tests with the speed and isolation of unit tests.
 
-- **Unit Tests:** Fast, isolated tests that check a single piece of logic (e.g., a single function or method) in isolation from its dependencies (like databases or external APIs).
-- **Integration Tests:** Slower, more comprehensive tests that check how multiple components work together. These may involve a real (test) database or mocked external services.
+-   **Primary Method: Integration Tests.** We test our application from the "outside-in." Tests interact with API endpoints using a real, but temporary, test database. This ensures all layers (API, services, database models) work together correctly. **All external network calls (e.g., to the ESI API) are mocked.**
+-   **Secondary Method: Unit Tests.** Used for pure, isolated business logic, helper functions, Pydantic validators, or complex algorithms that have **no I/O dependencies** (no database, no network).
+-   **Mandatory Method: Structural Tests.** Simple, fast tests that verify our classes correctly implement critical Python protocols (e.g., `AsyncContextManager`), preventing architectural bugs.
 
-## 2. Tools
+## 2. Core Tooling
 
-- **`pytest`**: Our primary test runner. We use it for its powerful features like fixtures, parametrization, and plugins.
-- **`pytest-asyncio`**: A pytest plugin for testing `asyncio` code.
-- **`httpx.TestClient`**: FastAPI's recommended way to test API endpoints. It allows you to make requests to your application without needing to run a live server.
-- **`unittest.mock`**: Python's built-in library for creating mock objects, which are essential for isolating code in unit tests.
+-   **`pytest`**: The test runner.
+-   **`pytest-asyncio`**: For testing `async` code.
+-   **`httpx` & `TestClient`**: For making requests to our app in tests.
+-   **`pytest-httpx`**: Crucial for mocking external HTTP requests made by our `ESIClient`.
+-   **`pytest-vcr`**: Used for our specialized "Live ESI Contract Tests" to record and replay real API interactions.
 
-## 3. Testing API Endpoints
+## 3. The Test Environment: `conftest.py`
 
-Use `TestClient` to write integration tests for your API endpoints. These tests ensure that your endpoints behave correctly, handle authentication, and return the expected responses.
+To ensure consistency, we use a root `conftest.py` file to define shared fixtures. This is the foundation of our test suite.
 
-```python
-# app/backend/src/fastapi_app/tests/api/test_contracts.py
-
-from fastapi.testclient import TestClient
-from fastapi_app.main import app
-
-client = TestClient(app)
-
-def test_get_public_contracts():
-    response = client.get("/api/v1/contracts/")
-    assert response.status_code == 200
-    # Further assertions on the response body
-    assert isinstance(response.json(), list)
-```
-
-## 4. Testing Service Classes
-
-Service classes often contain business logic and interact with external dependencies. They should have both unit and integration tests.
-
-### Unit Testing Services
-
-For unit tests, mock all external dependencies (like the database or an API client) to test the service's logic in isolation.
+**File Location:** `app/backend/src/fastapi_app/tests/conftest.py`
 
 ```python
-# app/backend/src/fastapi_app/tests/services/test_aggregation_service.py
+# app/backend/src/fastapi_app/tests/conftest.py
+import asyncio
+from typing import AsyncGenerator, Generator
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+import pytest_asyncio
+from fastapi import FastAPI
+from httpx import AsyncClient, ASGITransport
+from pytest_httpx import HTTPXMock
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
-from fastapi_app.services.background_aggregation import ContractAggregationService
+from fastapi_app.main import app as real_app
+from fastapi_app.core.config import get_settings
+from fastapi_app.db import get_db
+from fastapi_app.models.base import Base
 
-@pytest.mark.asyncio
-asnyc def test_aggregation_logic_with_mock_esi():
-    # Arrange
-    mock_esi_client = AsyncMock()
-    mock_esi_client.get_public_contracts.return_value = [{'contract_id': 1, 'issuer_id': 100}]
-    mock_esi_client.resolve_ids_to_names.return_value = {100: 'Test Issuer'}
+# Get settings and construct a separate test database URL
+settings = get_settings()
+TEST_DATABASE_URL = settings.DATABASE_URL.replace(".db", "_test.db")
 
-    mock_settings = MagicMock()
-    # ... configure settings ...
+# Create a synchronous engine for initial setup
+engine = create_async_engine(TEST_DATABASE_URL, echo=True)
+TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    service = ContractAggregationService(esi_client=mock_esi_client, settings=mock_settings)
+# --- Database Fixtures ---
 
-    # Act
-    # ... call the method to be tested ...
+@pytest.fixture(scope="session")
+def event_loop() -> Generator:
+    """Creates an instance of the default event loop for the session."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
 
-    # Assert
-    # ... assert that the correct calls were made to the mocks ...
-    mock_esi_client.resolve_ids_to_names.assert_called_once()
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def setup_database():
+    """
+    Session-scoped fixture to create and tear down the test database.
+    `autouse=True` ensures it runs automatically for the session.
+    """
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+@pytest_asyncio.fixture(scope="function")
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Function-scoped fixture to provide a clean database session for each test.
+    This is the fixture tests will request to interact with the database.
+    """
+    async with TestingSessionLocal() as session:
+        yield session
+        await session.rollback() # Ensure tests are isolated
+
+# --- Application and Client Fixtures ---
+
+@pytest.fixture(scope="function")
+def test_app(db_session: AsyncSession) -> FastAPI:
+    """
+    Function-scoped fixture to create a new app instance for each test,
+    with the database dependency overridden to use the test session.
+    """
+    # Override the get_db dependency to use our test database session
+    real_app.dependency_overrides[get_db] = lambda: db_session
+    return real_app
+
+@pytest_asyncio.fixture(scope="function")
+async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
+    """
+    Function-scoped fixture to get an HTTPX client for making API requests.
+    """
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+# --- Mocking Fixtures ---
+
+@pytest.fixture(scope="function")
+def httpx_mock(mocker) -> HTTPXMock:
+    """
+    Function-scoped fixture to mock external HTTP requests.
+    This is essential for testing services that call external APIs like ESI.
+    """
+    # We use mocker.patch here if our client is instantiated globally.
+    # If it's created within a dependency, we'd override that dependency.
+    # For now, let's assume a simple case.
+    # This fixture is provided by pytest-httpx automatically if installed.
+    # This explicit definition is for clarity.
+    from pytest_httpx import httpx_mock as mock
+    return mock
 ```
 
-### Integration Testing Services
+## 4. Writing an Integration Test: A Practical Example
 
-For integration tests, you might use a real test database to verify that data is being written correctly. You would still typically mock external APIs to avoid making real network calls.
-
-## 5. Mocking Dependencies
-
-FastAPI's dependency injection system makes it easy to override dependencies during testing. This is the preferred way to provide mocks to your application.
+This example demonstrates how to use our fixtures to write a clean, effective integration test for an API endpoint.
 
 ```python
-# In your test file
+# app/backend/src/fastapi_app/tests/api/test_contracts_api.py
+import pytest
+from httpx import AsyncClient
+from pytest_httpx import HTTPXMock
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from fastapi_app.main import app
-from fastapi_app.core.dependencies import get_esi_client
+from fastapi_app.models.contracts import Contract # Import your model for setup
 
-async def override_get_esi_client():
-    # Return a mock client instead of the real one
-    return AsyncMock()
+# Mark all tests in this file as asyncio tests
+pytestmark = pytest.mark.asyncio
 
-app.dependency_overrides[get_esi_client] = override_get_esi_client
+async def test_list_public_contracts_empty(client: AsyncClient):
+    """
+    Test Case: No contracts exist in the database.
+    Expected: API returns 200 OK with an empty list.
+    """
+    # Act: Make a request to the endpoint
+    response = await client.get("/contracts/")
+
+    # Assert: Check the response
+    assert response.status_code == 200
+    data = response.json()
+    assert data["items"] == []
+    assert data["total"] == 0
+
+async def test_list_public_contracts_with_data(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    httpx_mock: HTTPXMock # Request this fixture when you need to mock ESI
+):
+    """
+    Test Case: Contracts exist in the database.
+    Expected: API returns 200 OK with the contract data.
+    """
+    # Arrange:
+    # 1. Mock any external calls this endpoint might trigger (if any).
+    #    For a simple list endpoint, this might not be needed.
+    #    If it triggered an ESI call, you would do:
+    #    httpx_mock.add_response(url="https://esi.evetech.net/...", json={"name": "Test"})
+
+    # 2. Create test data directly in the test database.
+    test_contract = Contract(
+        contract_id=123,
+        issuer_id=456,
+        issuer_corporation_id=789,
+        start_location_id=101112,
+        type="item_exchange",
+        status="outstanding",
+        # ... fill in other required fields ...
+    )
+    db_session.add(test_contract)
+    await db_session.commit()
+
+    # Act
+    response = await client.get("/contracts/")
+
+    # Assert
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0]["contract_id"] == 123
 ```
 
-## 6. The Limits of Testing: Patterns and Reviews
+## 5. Special Case: Live ESI Contract Testing
 
-It is critical to understand that testing, especially unit testing, is not a silver bullet. Its primary strength is in verifying **functional correctness**—that a piece of code produces the correct output for a given input.
+**Problem:** Our standard integration tests mock the ESI API for speed and reliability. However, as we've experienced, the live ESI API can have quirks and inconsistencies (e.g., missing fields instead of `null`). Mocking can give us a false sense of security that our parsing logic is robust enough for the real world.
 
-However, testing is often a weak defense against **architectural or non-functional errors**, such as:
+**Solution:** We will maintain a small, separate suite of **Live ESI Contract Tests**. Their sole purpose is to validate that our `ESIClient` and Pydantic schemas can correctly handle responses from the *actual, live ESI API*.
 
-- **Performance issues:** A unit test that mocks network calls will not detect that the code is inefficiently creating a new HTTP client for every call.
-- **Security vulnerabilities:** A test might confirm a function works, but not that it properly sanitizes input.
-- **Maintainability problems:** Tests do not typically measure code clarity or adherence to project conventions.
+### How It Works: Record & Replay with `pytest-vcr`
 
-This is why our quality strategy relies on multiple layers of defense:
+We use the `pytest-vcr` library to implement a "record-and-replay" strategy.
 
-1.  **Testing:** Our first line of defense for catching functional bugs and regressions.
-2.  **Documented Patterns:** Our primary tool for ensuring architectural consistency, performance, and maintainability. Adhering to patterns (like the [API Client Service Pattern](./../patterns/04-api-client-service-pattern.md)) prevents entire classes of non-functional bugs.
-3.  **Code Review:** The human element that verifies both functional correctness and adherence to patterns. A good review asks not just "Does it work?" but "Does it work *correctly within our architecture*?"
+1.  **Recording:** The first time a test is run, `pytest-vcr` makes a **real network call** to the ESI API and saves the exact HTTP request and response to a YAML file called a "cassette" (e.g., `tests/cassettes/test_esi_client/test_get_real_contract.yaml`).
+2.  **Replaying:** On all subsequent runs, `pytest-vcr` intercepts the network call. Instead of hitting the live API, it finds the matching request in the cassette and returns the saved response. This makes the test run instantly and without network access, but it's validating against a *real, historical* API response.
+3.  **Re-recording:** To re-validate against the live API (e.g., before a release or when a bug is suspected), we can instruct `pytest-vcr` to re-record the cassettes.
 
-## 7. Mandatory: Testing Structural Contracts & Protocols
+### Implementation for Cascade
 
-While unit tests are excellent for verifying business logic, they can miss structural implementation errors. A common failure mode is designing a class to follow a specific pattern or protocol (like a context manager) but failing to implement the required methods (`__aenter__`, `__exit__`, etc.). This leads to `TypeError` exceptions at runtime, as seen with the `ESIClient` implementation.
+#### A. Mark the Tests
 
-To prevent this entire class of bugs, the following practice is **mandatory**:
+These tests **must** be marked with a custom `esi_live` marker. This allows us to run them separately from the main test suite. They should also be marked with `vcr`.
 
-**If a class is designed to implement a specific Python protocol, a dedicated, simple unit test must exist to verify its structural contract.**
+#### B. Write the Test
 
-This is not about testing the *logic* inside the methods, but simply that the methods *exist* and have the correct signature, making the class compliant with the protocol.
+These tests should be focused *only* on the client-to-API interaction, not our own database or internal endpoints.
 
-### Example: Testing an Async Context Manager
+```python
+# app/backend/src/fastapi_app/tests/services/test_esi_client_live.py
+import pytest
+from fastapi_app.core.esi_client import ESIClient
+from fastapi_app.core.config import get_settings
 
-This test would have caught the `ESIClient` implementation bug before it was ever committed.
+# Mark all tests in this file for VCR and our custom marker
+pytestmark = [
+    pytest.mark.vcr,
+    pytest.mark.esi_live
+]
+
+@pytest.mark.asyncio
+async def test_get_real_public_contracts():
+    """
+    Tests that the ESIClient can fetch and parse real public contracts
+    from the live ESI API. This test will be recorded and replayed by VCR.
+    """
+    # Arrange
+    settings = get_settings()
+    client = ESIClient(settings=settings)
+
+    # Act
+    # This will make a real HTTP request the first time it's run.
+    # On subsequent runs, it will use the 'cassette'.
+    async with client as esi:
+        # Using a known region with public contracts, like The Forge
+        contracts = await esi.get_public_contracts(region_id=10000002)
+
+    # Assert
+    # We don't know the exact data, but we can check the structure.
+    assert isinstance(contracts, list)
+    if contracts:
+        # If any contracts were returned, check the first one's structure
+        contract = contracts[0]
+        assert "contract_id" in contract
+        assert "issuer_id" in contract
+        assert "type" in contract
+        # This validates that our Pydantic model (or dict parsing)
+        # can handle the real-world data structure.
+```
+
+#### C. Running the Tests
+
+-   **Run all tests *except* live ESI tests (default for CI/dev):**
+    ```bash
+    pdm run pytest -m "not esi_live"
+    ```
+-   **Run *only* the live ESI tests (using cassettes):**
+    ```bash
+    pdm run pytest -m esi_live
+    ```
+-   **Re-record the cassettes from the live API:**
+    ```bash
+    pdm run pytest -m esi_live --vcr-record=all
+    ```
+
+This layered approach gives us fast, reliable day-to-day tests while providing a powerful, controlled safety net to ensure our application can handle the realities of the ESI API.
+
+## 6. The Limits of Testing & Structural Contracts
+
+*(This section remains critical and is preserved from the previous version.)*
+
+Testing is not a silver bullet. It is weak against architectural or non-functional errors (performance, security). Our quality strategy relies on multiple layers:
+1.  **Testing:** For functional correctness.
+2.  **Documented Patterns:** For architectural consistency.
+3.  **Code Review:** For human verification of both.
+
+### Mandatory: Testing Structural Contracts
+
+If a class is designed to implement a specific Python protocol (e.g., `AsyncContextManager`), a dedicated unit test **must** exist to verify its structural contract. This prevents runtime `TypeError` exceptions.
+
+#### Example: Testing an Async Context Manager
+
+This test would have caught the `ESIClient` implementation bug.
 
 ```python
 # In a relevant test file, e.g., tests/core/test_esi_client_class.py
@@ -130,27 +295,20 @@ import pytest
 from collections.abc import AsyncContextManager
 
 from fastapi_app.core.esi_client_class import ESIClient
-from fastapi_app.core.config import get_settings # or a mock
+from fastapi_app.core.config import get_settings
 
 @pytest.mark.asyncio
-asnyc def test_esi_client_is_valid_async_context_manager():
+async def test_esi_client_is_valid_async_context_manager():
     """
     Verifies that ESIClient correctly implements the async context manager protocol.
-    This is a structural test, not a functional one.
     """
-    settings = get_settings() # Get real settings for instantiation
+    settings = get_settings()
     client = ESIClient(settings=settings)
 
-    # 1. Static check: Does it claim to be an AsyncContextManager?
     assert isinstance(client, AsyncContextManager)
-
-    # 2. Dynamic check: Can it be used in an `async with` block without error?
     try:
         async with client as client_instance:
             assert client_instance is client
     except Exception as e:
         pytest.fail(f"ESIClient failed to function as an async context manager. Error: {e}")
-
 ```
-
-This simple, fast-running test provides a powerful guarantee that our architectural patterns are being correctly implemented.

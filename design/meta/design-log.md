@@ -1297,4 +1297,47 @@ This migration represents a significant architectural shift but is deemed the mo
 
 ---
 
+### 2025-06-27 11:51:41-05:00 - Blocker: PrimeNG v20 Compatibility
+
+**Decision:** Frontend UI development is paused until a version of the PrimeNG component library compatible with Angular v20 is released.
+
+**Rationale:**
+- An attempt to install PrimeNG revealed that the latest available version (`v19.1.3`) is incompatible with our project's Angular v20 framework.
+- The user has confirmed that the PrimeNG v20 release is expected within a week.
+- Waiting for the official release is preferable to downgrading the entire Angular application, as it avoids technical debt and ensures we are building on the latest, most secure foundations.
+
+**Impact:**
+- All tasks related to building the frontend UI are blocked.
+- Development focus will shift to non-UI tasks (e.g., backend development, test coverage, documentation) in the interim.
+
+---
+
+### 2025-06-27 12:47:00-05:00: Backend Testing Strategy and Infrastructure
+
+**Context:** The backend required a formal testing strategy and the necessary infrastructure to support it, with a specific need to handle the inconsistencies of the live EVE ESI API.
+
+**Decision:**
+1.  **Adopted a Pragmatic Hybrid Testing Strategy:**
+    *   **Primary:** Fast integration tests using a real, in-memory test database (`aiosqlite`) but with external HTTP calls (like ESI) mocked by default. This provides a balance of speed and confidence for core application logic.
+    *   **Live ESI Contract Testing:** A special test layer was introduced using `pytest-vcr`. These tests record real interactions with the ESI API into "cassettes" and replay them on subsequent runs. This validates our application against real-world ESI behavior without the flakiness of live calls in every test run.
+    *   These live tests are marked with a custom `esi_live` pytest marker, allowing them to be run separately from the main test suite (e.g., `pdm run pytest -m esi_live`).
+
+2.  **Established Core Testing Infrastructure:**
+    *   Created a `tests` directory within `src/fastapi_app`.
+    *   Implemented a root `conftest.py` providing reusable fixtures for:
+        *   An async test database engine (session-scoped).
+        *   A clean database session for each test function.
+        *   A FastAPI `app` instance with dependencies overridden to use the test database.
+        *   An `httpx.AsyncClient` for making requests to the test app.
+    *   Configured `pyproject.toml` to support the testing setup:
+        *   Added `pythonpath = ["src"]` to resolve module import errors during test collection.
+        *   Added `testpaths = ["src/fastapi_app/tests"]` to enable automatic test discovery.
+        *   Registered the custom `esi_live` marker.
+
+**Rationale:** This hybrid approach provides the best of both worlds: fast, reliable tests for routine development and CI, and a robust mechanism to ensure our ESI integration doesn't break due to unexpected changes in the live API. The configuration in `pyproject.toml` and the fixture setup in `conftest.py` create a scalable and easy-to-use foundation for all future backend tests.
+
+**Outcome:** The testing infrastructure has been fully implemented and validated with a simple health check test. The project is now ready for the development of comprehensive integration and live ESI contract tests.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
