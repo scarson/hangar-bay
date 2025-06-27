@@ -44,6 +44,11 @@ ol[role='list'] {
 }
 
 /* Set core root defaults */
+html,
+body {
+  height: 100%;
+}
+
 html:focus-within {
   scroll-behavior: smooth;
 }
@@ -53,6 +58,11 @@ body {
   min-height: 100vh;
   text-rendering: optimizeSpeed;
   line-height: 1.5;
+
+  // Apply the M3 theme's surface color as the page background
+  // and the 'on-surface' color for text.
+  background-color: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
 }
 
 /* A elements that don't have a class get default styles */

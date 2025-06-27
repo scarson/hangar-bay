@@ -1,4 +1,10 @@
 :host {
+  // Use a flexbox column layout to structure the application shell (header, main, footer).
+  // This ensures the main content area can expand to fill available space.
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
   font-family:
     'Inter',
     -apple-system,
@@ -43,11 +49,12 @@ p {
 }
 
 main {
+  // The main content area should grow to fill the space between the header and footer.
+  flex: 1;
   width: 100%;
-  min-height: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+
+
+
   padding: 1rem;
   box-sizing: inherit;
   position: relative;

@@ -126,12 +126,18 @@ $_palettes: (
   ),
 );
 
-$_rest: (
-  secondary: map.get($_palettes, secondary),
-  neutral: map.get($_palettes, neutral),
-  neutral-variant: map.get($_palettes,  neutral-variant),
-  error: map.get($_palettes, error),
-);
-
-$primary-palette: map.merge(map.get($_palettes, primary), $_rest);
-$tertiary-palette: map.merge(map.get($_palettes, tertiary), $_rest);
+// Define and apply the dark theme using the modern M3 mat.theme mixin.
+// This generates all the required CSS custom properties.
+.theme-dark {
+  @include mat.theme((
+    color: (
+      primary: map.get($_palettes, primary),
+      secondary: map.get($_palettes, secondary),
+      tertiary: map.get($_palettes, tertiary),
+      neutral: map.get($_palettes, neutral),
+      neutral-variant: map.get($_palettes, neutral-variant),
+      error: map.get($_palettes, error),
+      theme-type: dark
+    )
+  ));
+}
