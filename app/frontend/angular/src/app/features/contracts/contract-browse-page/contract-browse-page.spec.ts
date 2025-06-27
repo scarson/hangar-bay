@@ -138,6 +138,18 @@ describe('ContractBrowsePage', () => {
     expect(mockSearchService.updateFilters).toHaveBeenCalledWith({ page: 2 });
   });
 
+  it('should call updateFilters with the correct type when the filter dropdown is changed', () => {
+    fixture.detectChanges(); // Initial render
+    const typeSelect = fixture.nativeElement.querySelector('select#contract-type');
+    
+    // Simulate user selecting 'Auction'
+    typeSelect.value = 'auction';
+    typeSelect.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(mockSearchService.updateFilters).toHaveBeenCalledWith({ type: 'auction', page: 1 });
+  });
+
   it('should call updateFilters with correct sort parameters when a sortable header is clicked', () => {
     // Set initial data to render the table and headers
     mockSearchService.data.set({ items: [], total: 1, page: 1, size: 20 });
