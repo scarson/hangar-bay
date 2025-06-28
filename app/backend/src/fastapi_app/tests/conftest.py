@@ -1,55 +1,73 @@
 import asyncio
 from typing import AsyncGenerator, Generator
 
+
+
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
 
 from fastapi_app.main import app as real_app
 from fastapi_app.db import get_db
 from fastapi_app.db import Base
+from fastapi_app.config import settings
 
-# Use a predictable, in-memory SQLite database for testing
-# This is faster and avoids creating files on disk.
-TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
+# Use a separate, real Postgres database for testing to match production.
+# This ensures that tests run against the same database engine as the live application.
+# The URL is loaded from the DATABASE_URL_TESTS environment variable.
+if not settings.DATABASE_URL_TESTS:
+    raise ValueError("DATABASE_URL_TESTS environment variable must be set for testing")
 
+TEST_DATABASE_URL = str(settings.DATABASE_URL_TESTS)
 
-# Create an async engine for the test database
-engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # --- Database Fixtures ---
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator:
-    """Creates an instance of the default event loop for the session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
-async def setup_database():
+@pytest_asyncio.fixture(scope="function")
+async def engine() -> AsyncGenerator[AsyncEngine, None]:
     """
-    Session-scoped fixture to create and tear down the test database.
-    `autouse=True` ensures it runs automatically for the session.
+    Function-scoped engine fixture.
+    Creates a new SQLAlchemy engine for each test function and disposes of it properly.
     """
+    db_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+    yield db_engine
+    await db_engine.dispose()
+
+
+@pytest.fixture(scope="function")
+def TestingSessionLocal(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """Creates a sessionmaker bound to the test engine for each function."""
+    return async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+
+
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def setup_database(engine: AsyncEngine):
+    # This fixture ensures that the database is clean before each test.
+    # It connects, drops all tables, and recreates them.
+    # DDL operations are run inside a transaction to ensure atomicity.
     async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
 @pytest_asyncio.fixture(scope="function")
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
+async def db_session(
+    TestingSessionLocal: async_sessionmaker[AsyncSession],
+) -> AsyncGenerator[AsyncSession, None]:
     """
     Function-scoped fixture to provide a clean database session for each test.
     This is the fixture tests will request to interact with the database.
     """
     async with TestingSessionLocal() as session:
         yield session
-        await session.rollback() # Ensure tests are isolated
+        await session.rollback()  # Ensure tests are isolated
 
 # --- Application and Client Fixtures ---
 

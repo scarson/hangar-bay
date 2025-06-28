@@ -1,4 +1,5 @@
-from typing import List
+from typing import List, Optional
+from pydantic.networks import PostgresDsn, AnyUrl
 
 from pydantic import Field, field_validator, version
 from typing import Any # Import Any for type hinting in validator
@@ -82,6 +83,9 @@ class Settings(BaseSettings):
         raise ValueError(
             f"AGGREGATION_REGION_IDS must be a comma-separated string of integers, a JSON string representing a list of integers, or a list of integers. Got: {type(value)}"
         )
+
+    DATABASE_URL_TESTS: Optional[PostgresDsn] = None # For test environment
+    CACHE_URL_TESTS: Optional[AnyUrl] = None # For test environment
 
     model_config = SettingsConfigDict(env_file="src/.env", env_file_encoding='utf-8')
 
