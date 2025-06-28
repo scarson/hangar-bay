@@ -2793,7 +2793,6 @@ Would it be helpful to Cascade to have a persistent record of the results of the
 
 Let's think more about where they should go. Consider how the pre-mortem review relate to the phase reviews in plans\implementation\phase-reviews that have temlate plans\implementation\phase-reviews\phase-review-template.md. Does it make sense to "put them together" in some way? Would that, a dedicated directory, or something else be most helpful for Cascade? Consider options, tell me what you think is best, and justify why you think it would be effective or not. How could Cascade effectively combine lessons from both phase reviews of completed work and pre-mortems to increase task and phase implementation quality. You may also consider other relevant performance metrics in your assessment.
 
-
 -----------------
 
 
@@ -8920,110 +8919,181 @@ User question: Can we renamed live_esi to esi_live? That makes more sense to me.
 
 -----------------
 
+Stop. We paused frontend work while waiting for PrimeNG 20 to release to be compatible with our Angular 20 project. 
 
-X
+The next backend phase is here:
+plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic
 
+You said "During the tests, I noticed several deprecation warnings related to Pydantic and FastAPI's event handlers. While they don't block our progress, it's important to address them later to keep the codebase healthy. I've created a memory to track this technical debt."
 
------------------
-
-
-X
-
-
------------------
-
-
-X
+I'd rather address them now if possible. Why wait? They're at minimum cluttering the test output.
 
 
 -----------------
 
 
-X
+1. Yes.
+2. Then, we have significant review work to do on Phase 5 tasks before starting implementation. The files can be longer, so retrieve #L1-400 to be safe.
+* You will begin by reviewing the two phase 5 task files within plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic in their entirety. They likely need significant ehancement work, so keep that in mind.
+* Read the entirety of all four files within plans\implementation\phase-02-backend-f001-public-contract-aggregation
+* Read the entirety of all four files within plans\implementation\phase-04-frontend-f001-f002-contract-listing-basic-filtering. However, note that we are going to be redoing the frontend from scratch. Use the frontend parts of these are guidance on intent, not a source of truth, because much of it may have been deleted.
+* Read plans\implementation\00-mvp-implementation-plan-progress.md for a summary of work done, remembering that some of the frontend UI work was deleted.
+* Read all the pre-mortems in design\reviews\pre-mortems. The files can be longer, so retrieve #L1-400 to be safe.
+* Read all the post-mortems in design\reviews\post-mortems\phase-reviews. The files can be longer, so retrieve #L1-400 to be safe.
+* Review plans\implementation\00-mvp-implementation-task-template.md, then bring plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.1-advanced-filtering-logic.md and plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.2-api-endpoints-f002-update.md into alignment with it and up to its quality and detail standards. Remember, all items in the template entire Cross-Cutting Review section MUST be present in the task files; if an item is N/A, it must be indicated as N/A with an explanation why, not removed or omitted from the task file.
 
 
 -----------------
 
 
-X
+Remember, all items in the template plans\implementation\00-mvp-implementation-task-template.md entire Cross-Cutting Review section MUST be present in the task files; if an item is N/A, it must be indicated as N/A with an explanation why, not removed or omitted from the task file.
+
+You have all the right Cross-Cutting Concerns items in the plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.1-advanced-search-and-api.md file now, but you need to go back and do a through review to fill out their definitions or mark N/A with an explanation if N/A. Do not check any items except N/A ones so we know we still need to review them later.
 
 
 -----------------
 
 
-X
+I know what crud means, but is that really the standard name for such a directory in a fastapi project? Is this the right structure to scale as we add many more backend features?
 
 
 -----------------
 
 
-X
+We already have app\backend\src\fastapi_app\services. Let's be very careful not do duplicate things. Please read design\fastapi\00-fastapi-architecture-overview.md and reassess your idea. Present your findings to me before taking any implementation actions.
 
 
 -----------------
 
 
-X
+Yes. Before doing any work, review plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.1-advanced-search-and-api.md, update it as appropriate to reflect the new plan, and then work off the updated task file.
 
 
 -----------------
 
 
-X
+First, read contracts.py with #L1-120 and check if it's as you expect.
+Next, create a memory to NEVER make a view_file tool call with the #L1 parameter, as it is never correct and fails every single time. You must retrieve a RANGE of content with that tool, like L#1-200.
+Then run test.
 
 
 -----------------
 
 
-X
+This was all the output I can capture. We seem to keep failing the same tests, so I want you to step back and think strategically about how to approach this so we don't get into a "tactical doom loop".
 
 
 -----------------
 
 
-X
+Oh hold up. Thiw was your Thought Process:
+"Analyzing Test Isolation
+
+I'm wrestling with those database integrity errors; they're a real pain! My focus is sharpening on test isolation as the culprit. After a quick look at the conftest.py, I can see the setup is the key. I'm now focused on figuring out how those fixtures are interacting and causing these issues.
+
+Evaluating Fixture Interaction
+
+I'm deep-diving into the interaction of those fixtures, especially setup_database. The session scope and autouse are screaming out as red flags for the database integrity issues I'm seeing. It seems that the tests are definitely stepping on each other's toes in the shared database space, which is what I initially suspected. I am looking more carefully now at how each test cleans up after itself.
+
+Investigating Database State
+
+I've pinpointed the core issue: the file-based SQLite database isn't fully isolated between tests, leading to data contamination. The session.rollback() is failing to clean up committed transactions, and the autouse=True setup is causing each test to interact with the same data store. The session-scoped setup_database with Base.metadata.create_all exacerbates this, meaning I have to either create a new database per test or delete all data from all tables after each function-scoped test.
+
+Devising Isolation Strategy
+
+I'm now solidifying the isolation strategy. The plan is to surgically enhance db_session to clear down the database between tests. Specifically, I plan to iterate the Base.metadata, and truncate each table after each test function, rather than relying solely on session.rollback(). That will guarantee test isolation and squash those database integrity errors for good. I am currently checking out the best approaches to achieve the table truncation efficiently within conftest.py.
+
+Implementing Table Cleanup
+
+I'm currently implementing the table cleanup mechanism within the db_session fixture in conftest.py. I've incorporated the Base.metadata.sorted_tables approach for efficiently identifying and deleting all data from each table after every test function. Now I am looking at the integration tests and examining the effects of these changes.
+
+Comparing Isolation Strategies
+
+I'm evaluating the trade-offs between truncating tables and dropping/recreating them after each test. The speed benefit of table truncation in the db_session seems compelling. Conversely, function-scoping setup_database offers robust isolation, even if a little slower. I am leaning towards truncating tables, which is the most efficient way, and reviewing how the data is deleted and committed from the session.
+
+Revising Isolation Strategy
+
+After reviewing the fixtures and the core problem of data contamination, I've decided to change the scope of setup_database to function-scoped. The code change is minimal and provides robust database isolation. The next step is to run the tests to ensure those pesky database integrity errors are gone for good, which I will be doing next.
+
+Refactoring Test Fixtures
+
+I've made the change to the setup_database fixture scope from session to function. This should guarantee that the database is recreated before each test, eradicating the database integrity errors. Now I am going to run the tests to verify if this change has resolved the issues."
+
+Early on in the project, we abandoned using SQLite because it was causing all sorts of Alchemy errors and we already had a Postgres container running, so there was no benefit to using SQLite in Dev. You referenced SQLite there. Why? I don't think we should be using it.
 
 
 -----------------
 
 
-X
+You appear to have just copied plaintext credentials out of .env. Use the variables indstead: DATABASE_URL_TESTS and CACHE_URL_TESTSLines 15-16.
 
 
 -----------------
 
 
-X
+Why are these different?
+    DATABASE_URL: Optional[Union[PostgresDsn, AnyUrl]] = None # Will be loaded from .env if present
+    DATABASE_URL_TESTS: Optional[str] = None # For test environment
+
+-----------------
+
+
+Let me help you with an instruction. I want to be careful we don't get into a loop of regressions from narrowly focused tactical troubleshooting while losing the bigger picture. Before you make any more changes, I want you to "step back" and:
+1. Review ALL troubleshooting steps and changes and relevant files (in full - use the view_file tool with #L1-200 to get the full contents), including ideally your prior changes from diffs
+2. Review design\fastapi\guides\09-testing-strategies.md for guidance, but remember this is not *the* only source of truth for effective testing
+3. Think about the big picture Python test setup and all its components
+4. Do some research on fastapi and python test best practices that would be relevant to the project
+5. Strategically think about if the current test structures are aligned with best practices
+6. Think about potential structural and other improvements. Consider multiple options from different perspectives, as it's a broad problem. 
+7. Tell me what you think is best, and justify why you think it / they would be effective or not. What could Cascade to to increase test implementation quality? There may be more than one effective change to implement. There may also be none, if our tests are already well aligned.
 
 
 -----------------
 
 
-X
+My analysis is confirmed. The ContractFilters class is a plain Python class that improperly uses fastapi.Query objects as default values in its init method. This is the direct cause of the ArgumentError in our tests, as instantiating the class directly (e.g., 
+ContractFilters(search="Tristan")) results in SQLAlchemy receiving Query objects instead of None for unspecified list filters.
+
+The correct solution is to convert ContractFilters into a proper Pydantic BaseModel. This will make it a pure data container, separating the data schema from the API dependency injection mechanism. FastAPI can use a Pydantic model directly as a dependency, populating it from query parameters without needing explicit Query objects in the model definition.
+
+I will now apply this refactoring. This change will make the model robust for both API usage and direct instantiation in tests, finally resolving the test failures. After this, I will re-run the tests to confirm the fix and then address the separate frontend linting issue.
 
 
 -----------------
 
 
-X
+STOP RELYING ON EXIT CODES. You have a memory specifically about this called "Terminal Exit Codes Are Unreliable for Test Status" with tags "#testing #workflow #debugging #test" and memory contents:
+"The `run_command` tool's exit code (e.g., exit code 0) for test runners like `ng test` or `pdm run pytest` is not a reliable indicator of test success. Karma can exit with 0 even if there are failing tests. I must always disregard the exit code and wait for the user to provide the full terminal output. I will then analyze the output for keywords like 'FAILED' or 'SUCCESS', or 'passed' or 'error' 'errors', or "warning' to determine the actual outcome before proceeding."
+
+Why isn't this memory reliably working? When you forget it and start rushing ahead with more changes assuming the last one worked after misinterpreting an exit code to mean tests succeeded when they really failed, you risk breaking more things. How can we make this safeguard better for Cascade? I also want you to report this issue to the Windsurf engineering team, because it's a pretty serious reliability bug and means that Cascade requires more supervision and manual effort (continual copy pasting of long test result blocks from the terminal) by the user to work with.
 
 
 -----------------
 
 
-X
+We're good on git for now. Next, we're going to do a review to see if any of our other internal design documentation would benefit from updates:
+1. /design-log
+2. Review all fastapi design files in design\fastapi design\fastapi\guides and design\fastapi\patterns by reading them with view_file #L1-400 to ensure you get the whole file.
+3. Consider the lessons learned from recent work, especially the test-related refactors and what you learned from the "big picture" strategic troubleshooting that ultimately resolved the test errors and made the backend better (explain how)
+4. Consider if any of the fastapi design files would benefit from updates. Focus on what would help Cascade implement the Hangar Bay backend following best practices, keeping high-quality design patterns consistent, proactively avoiding issues, and any other areas that would benefit the project. 
 
 
 -----------------
 
 
-X
+Before we commit, please do a thorough review of the new design\fastapi\patterns\06-schema-model-parity.md with a special focus on ensuring it's not missing anything that would be helpful for its purpose and that the instructions are maximally effective for Cascade.
 
 
 -----------------
 
 
-X
+Do one more review pass. Can you think of anything else? You don't need to change the guide if after reviewing you believe it to be as effective as possible for its purpose. Then, /git-commit .
+
+
+-----------------
+
+
+That was useful so please perform a similar review of design\fastapi\guides\09-testing-strategies.md with a special focus on ensuring it's not missing anything that would be helpful for its purpose and that the instructions are maximally effective for Cascade. Then re-read the entire file with view_file #L1-400 to ensure you have the current contents and do a second review pass, trying to think from a different perspective to identify anything you might have missed the first time. You don't need to change the guide if after reviewing you believe it to be as effective as possible for its purpose. Then, /git-commit 
 
 
 -----------------
