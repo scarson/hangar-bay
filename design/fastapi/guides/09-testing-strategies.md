@@ -22,7 +22,7 @@ Our testing strategy is a **Pragmatic Hybrid**, balancing the confidence of inte
 
 ## 3. The Test Environment: `conftest.py`
 
-To ensure consistency, we use a root `conftest.py` file to define shared fixtures. This is the foundation of our test suite.
+To ensure consistency, testability, and isolation, we use a root `conftest.py` file to define shared fixtures. This is the foundation of our test suite. **Crucially, this file avoids global state.** Resources like the database engine and settings are managed by fixtures, not global variables.
 
 **File Location:** `app/backend/src/fastapi_app/tests/conftest.py`
 
@@ -36,35 +36,50 @@ import pytest_asyncio
 from fastapi import FastAPI
 from httpx import AsyncClient, ASGITransport
 from pytest_httpx import HTTPXMock
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
 
 from fastapi_app.main import app as real_app
-from fastapi_app.core.config import get_settings
+from fastapi_app.core.config import get_settings, Settings
 from fastapi_app.db import get_db
 from fastapi_app.models.base import Base
 
-# Get settings and construct a separate test database URL
-settings = get_settings()
-TEST_DATABASE_URL = settings.DATABASE_URL.replace(".db", "_test.db")
-
-# Create a synchronous engine for initial setup
-engine = create_async_engine(TEST_DATABASE_URL, echo=True)
-TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# --- Database Fixtures ---
+# --- Core Fixtures (No Global State) ---
 
 @pytest.fixture(scope="session")
-def event_loop() -> Generator:
+def settings() -> Settings:
+    """
+    Session-scoped settings fixture. Can be overridden in specific test modules
+    to test behavior with different configuration values (see guide).
+    """
+    return get_settings()
+
+@pytest.fixture(scope="session")
+def engine(settings: Settings) -> Generator[AsyncEngine, None, None]:
+    """
+    Session-scoped database engine. Depends on the `settings` fixture.
+    """
+    TEST_DATABASE_URL = settings.DATABASE_URL.replace(".db", "_test.db")
+    _engine = create_async_engine(TEST_DATABASE_URL)
+    yield _engine
+    _engine.dispose()
+
+@pytest.fixture(scope="session")
+def db_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """Session-scoped session factory. Depends on the `engine` fixture."""
+    return async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+@pytest.fixture(scope="session")
+def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Creates an instance of the default event loop for the session."""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
-async def setup_database():
+async def setup_database(engine: AsyncEngine):
     """
-    Session-scoped fixture to create and tear down the test database.
-    `autouse=True` ensures it runs automatically for the session.
+    Creates and tears down the test database schema for the session.
+    Depends on the `engine` fixture.
     """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -72,32 +87,35 @@ async def setup_database():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
+#### **Rationale: Atomic DDL Operations**
+
+The use of `async with engine.begin() as conn:` is a **critical, non-negotiable pattern**. It ensures that all Data Definition Language (DDL) operations (like `create_all` and `drop_all`) are wrapped in a single, atomic transaction. This prevents race conditions and `asyncpg.InterfaceError` errors that can occur during concurrent test setup or teardown.
+
 @pytest_asyncio.fixture(scope="function")
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
+async def db_session(db_session_factory: async_sessionmaker[AsyncSession]) -> AsyncGenerator[AsyncSession, None]:
     """
-    Function-scoped fixture to provide a clean database session for each test.
-    This is the fixture tests will request to interact with the database.
+    Function-scoped fixture providing a clean, transaction-isolated database session.
+    Depends on the `db_session_factory` fixture.
     """
-    async with TestingSessionLocal() as session:
+    async with db_session_factory() as session:
         yield session
-        await session.rollback() # Ensure tests are isolated
+        await session.rollback() # Ensures tests are isolated
 
 # --- Application and Client Fixtures ---
 
 @pytest.fixture(scope="function")
 def test_app(db_session: AsyncSession) -> FastAPI:
     """
-    Function-scoped fixture to create a new app instance for each test,
-    with the database dependency overridden to use the test session.
+    Creates a new app instance for each test, with the database dependency
+    overridden to use the isolated test session.
     """
-    # Override the get_db dependency to use our test database session
     real_app.dependency_overrides[get_db] = lambda: db_session
     return real_app
 
 @pytest_asyncio.fixture(scope="function")
 async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     """
-    Function-scoped fixture to get an HTTPX client for making API requests.
+    Provides an HTTPX client for making API requests to the test app.
     """
     transport = ASGITransport(app=test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -106,19 +124,49 @@ async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 # --- Mocking Fixtures ---
 
 @pytest.fixture(scope="function")
-def httpx_mock(mocker) -> HTTPXMock:
+def httpx_mock() -> HTTPXMock:
     """
-    Function-scoped fixture to mock external HTTP requests.
-    This is essential for testing services that call external APIs like ESI.
+    Provided by pytest-httpx automatically. This explicit definition is for clarity.
     """
-    # We use mocker.patch here if our client is instantiated globally.
-    # If it's created within a dependency, we'd override that dependency.
-    # For now, let's assume a simple case.
-    # This fixture is provided by pytest-httpx automatically if installed.
-    # This explicit definition is for clarity.
     from pytest_httpx import httpx_mock as mock
     return mock
 ```
+
+### 3.1. Overriding Settings in Tests
+
+A key advantage of the fixture-based setup is the ability to easily override configuration for specific tests. This is invaluable for testing feature flags, different API keys, or any behavior that depends on environment settings.
+
+**Example: Testing a feature flag**
+
+Imagine a feature is controlled by `settings.ENABLE_SPECIAL_FEATURE`.
+
+```python
+# in tests/api/test_special_feature.py
+
+import pytest
+from fastapi_app.core.config import Settings, get_settings
+
+# By defining a fixture with the same name ('settings') in this module,
+# pytest will use this local version instead of the one in conftest.py.
+@pytest.fixture(scope="module")
+def settings() -> Settings:
+    """
+    Overrides the default settings to enable our special feature for this module.
+    """
+    # Start with default settings and modify them
+    default_settings = get_settings()
+    # Assume Settings model has this attribute for the example
+    # default_settings.ENABLE_SPECIAL_FEATURE = True
+    return default_settings
+
+# Now, any test in this file that uses a fixture depending on 'settings'
+# (like 'client' or 'db_session') will run with this modified configuration.
+async def test_special_feature_is_active(client: AsyncClient):
+    # This test would check an endpoint affected by the feature flag
+    pass
+```
+
+This pattern provides powerful control and isolation for configuration-dependent tests.
 
 ## 4. Writing an Integration Test: A Practical Example
 

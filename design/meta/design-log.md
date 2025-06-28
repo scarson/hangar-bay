@@ -1338,6 +1338,8 @@ This migration represents a significant architectural shift but is deemed the mo
 
 **Outcome:** The testing infrastructure has been fully implemented and validated with a simple health check test. The project is now ready for the development of comprehensive integration and live ESI contract tests.
 
+---
+
 ### 2025-06-27 15:45:00-05:00: Backend Service Layer Architecture Alignment
 
 **Context:** The initial plan for the advanced search feature (Phase 5) proposed creating a new `crud` directory for database interaction logic. This was questioned as it potentially deviated from the established backend architecture.
@@ -1363,6 +1365,35 @@ This migration represents a significant architectural shift but is deemed the mo
 **Outcome:** The `contract_service.py` will be built to handle all currently possible filters. The ME/TE filters will be gracefully ignored for now, and a follow-up task will be created to complete the feature.
 
 ---
+
+### 2025-06-28 14:50:00-05:00: Refined Backend Testing Patterns for Async DB Operations
+
+**Context:** While fixing a series of backend test failures, several critical infrastructure-level issues were discovered and resolved, leading to a more robust and reliable testing strategy.
+
+**Decisions & Lessons Learned:**
+
+1.  **Fixtures Over Globals for DB Connections:** Initial test failures were traced to using global variables for the database `engine` and `sessionmaker` in `conftest.py`. This anti-pattern caused state leakage and unpredictable behavior. The correct pattern, now enforced, is to define these as scoped `pytest` fixtures. This guarantees that each test function or session receives a clean, isolated database connection, preventing side effects.
+
+2.  **Atomic DDL with `engine.begin()`:** Subsequent `asyncpg.InterfaceError` failures during test setup/teardown revealed that async DDL operations (like creating/dropping tables) were not being executed in a transaction. The solution is to wrap all DDL blocks in an `async with engine.begin():` context manager. This ensures all schema modifications are performed as a single, atomic transaction, eliminating race conditions and ensuring the test database is in a consistent state.
+
+**Outcome:** These patterns have been integrated into the `conftest.py` setup. The `design/fastapi/guides/09-testing-strategies.md` document will be updated to explicitly describe these critical patterns to prevent future implementation errors.
+
+---
+
+### 2025-06-28 14:50:00-05:00: Enforcing Schema-Model Parity in Pydantic and SQLAlchemy
+
+**Context:** A significant portion of the debugging effort for the contract search feature involved fixing `ValidationError` and `AttributeError` exceptions at the boundary between the API and the database.
+
+**Decision & Root Cause Analysis:** The root cause was a persistent drift between the Pydantic schemas (e.g., `ContractSchema`) and the SQLAlchemy ORM models (e.g., `Contract`). Specific issues included:
+    *   A field named `type` in the API schema mapped to `contract_type` in the database model.
+    *   A field named `is_blueprint_copy` existed in the model but was missing from the corresponding item schema.
+
+**Lesson Learned:** Meticulous alignment between Pydantic schemas and SQLAlchemy models is non-negotiable. A small divergence can lead to subtle runtime errors that are hard to trace. The following best practices are now a development mandate:
+    *   When a field name differs, use Pydantic's `validation_alias` to explicitly declare the mapping.
+    *   When adding a field to an ORM model that should be exposed via the API, it *must* also be added to the corresponding Pydantic schema immediately.
+    *   Code reviews must include a specific check for schema-model parity.
+
+**Outcome:** The immediate bugs were fixed using `validation_alias` and by adding the missing field. The long-term outcome is a stricter development process to prevent these issues from recurring.
 
 ---
 
