@@ -30,7 +30,7 @@ pythonpath = ["src"]
 markers = [
     "esi_live: marks tests that hit the live ESI API (to be used with VCR)",
 ]
-asyncio_mode = "auto"
+asyncio_mode = "strict"
 
 [tool.pdm.scripts]
 lint = "flake8 ."

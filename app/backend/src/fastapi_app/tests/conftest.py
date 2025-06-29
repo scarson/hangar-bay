@@ -36,62 +36,49 @@ TEST_DATABASE_URL = str(settings.DATABASE_URL_TESTS)
 # --- Database Fixtures ---
 
 
-# --- Database Fixtures (Scalable Version) ---
-# The following fixtures are designed for performance and scalability.
-# The database schema is created only ONCE per test session.
-# Between each test, transactional data is rapidly cleared via TRUNCATE
-# without the overhead of dropping and recreating tables.
-
-# The custom event_loop fixture has been removed to restore the default pytest-asyncio
-# behavior. Pytest-asyncio provides a new, isolated event loop for each test
-# function, which is the correct pattern for ensuring test isolation and preventing
-# the 'Task attached to a different loop' runtime error.
-
-
-@pytest_asyncio.fixture(scope="session")
-async def engine() -> AsyncGenerator[AsyncEngine, None]:
-    """
-    Session-scoped fixture to create and dispose of the test database engine.
-    The schema is created once at the beginning of the session and dropped at the end.
-    """
-    db_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-    async with db_engine.begin() as conn:
-        # Using run_sync for DDL operations is a robust pattern
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield db_engine
-
-    async with db_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await db_engine.dispose()
-
+# --- Database Fixtures (Authoritative Pattern) ---
+# The following fixture implements the authoritative pattern for SQLAlchemy 2.0
+# and pytest-asyncio in strict mode. It ensures maximum test isolation at the
+# cost of performance, as the engine and tables are created and destroyed
+# for each test function.
 
 @pytest_asyncio.fixture(scope="function")
-async def db_session(engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """
-    Provides a transactional session for each test function using a robust
-    rollback strategy for test isolation.
+    Provides a clean, transactional database session for each test function.
 
-    This fixture lets the session itself manage the connection and transaction
-    state, which is a more robust pattern than manual connection handling.
-    It creates a single transaction that is rolled back after the test completes.
-    Nested transactions (SAVEPOINTs) are created implicitly by operations like
-    `session.flush()`.
+    This fixture implements the recommended pattern for testing with SQLAlchemy 2.0
+    and pytest-asyncio in strict mode. It ensures complete test isolation by:
+    1.  Creating a new engine and tables for each test function, bound to the
+        test's specific event loop.
+    2.  Wrapping the entire test in a single transaction that is rolled back
+        at the end.
     """
-    # Create a sessionmaker bound to the engine, not a specific connection.
+    # Create a new engine for each test function, ensuring it's bound to the
+    # correct event loop.
+    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+
+    # Drop all tables to ensure a clean state, in case a previous test failed
+    # during teardown.
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+    # Create all tables fresh for the test.
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    # Use the "begin once" pattern for the session. A single transaction is
+    # started and rolled back for the entire test.
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
-    async with session_maker() as session:
-        # Begin a transaction. The session will acquire a connection from the
-        # engine's pool and start a transaction on it.
-        await session.begin()
+    async with session_maker.begin() as session:
+        yield session
 
-        try:
-            yield session
-        finally:
-            # Rollback the whole transaction.
-            await session.rollback()
-            # The `async with` block automatically closes the session and returns
-            # the connection to the pool.
+    # Drop all tables after the test is done.
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+    # Dispose of the engine to release connections.
+    await engine.dispose()
 
 
 # --- Application and Client Fixtures ---
