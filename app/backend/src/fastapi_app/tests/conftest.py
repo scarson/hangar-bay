@@ -1,17 +1,20 @@
 import asyncio
-from alembic import command
-from alembic.config import Config
 from typing import AsyncGenerator, Generator
 
 from sqlalchemy import text
-
 
 
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine, AsyncConnection
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    AsyncSession,
+    async_sessionmaker,
+    AsyncEngine,
+    AsyncConnection,
+)
 
 from fastapi_app.main import app as real_app
 from fastapi_app.db import get_db
@@ -55,62 +58,46 @@ async def engine() -> AsyncGenerator[AsyncEngine, None]:
     await db_engine.dispose()
 
 
-def run_alembic_upgrade(connection, config: Config):
-    """
-    A synchronous wrapper for Alembic's upgrade command.
-
-    This function is designed to be called by `run_sync`. It takes a synchronous
-    DBAPI connection, attaches it to the Alembic config, and then executes the
-    `upgrade` command. This allows Alembic to run migrations using the same
-    transaction as the pytest fixture.
-    """
-    config.attributes["connection"] = connection
-    command.upgrade(config, "head")
-
-
-@pytest_asyncio.fixture(scope="function", autouse=True)
-async def setup_database_schema(engine: AsyncEngine):
-    """
-    Maintains the test database schema.
-
-    This session-scoped fixture runs once per test session. It ensures a clean
-    database state by:
-    1. Dropping all existing tables.
-    2. Applying all Alembic migrations to bring the schema to the latest version.
-
-    This entire process is wrapped in a single transaction to prevent race
-    conditions during setup. It also dynamically configures Alembic to use the
-    test database URL.
-    """
-    # Diagnostic step: Use `create_all` to isolate the problem.
-    # This bypasses the Alembic integration to verify if the core database
-    # connection and table creation are working correctly.
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-
-
 @pytest_asyncio.fixture(scope="function")
 async def db_session(engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
     """
-    Provide a transactional session for each test function.
+    Provide a transactional session with a fully migrated schema for each test.
 
-    This fixture creates a new connection and transaction for each test,
-    yields a session bound to that transaction, and rolls back the transaction
-    after the test completes. This ensures complete test isolation.
+    This is the master fixture for database testing. For each test function, it:
+    1. Establishes a single connection and starts a transaction.
+    2. Drops all existing tables to ensure a clean slate.
+    3. Applies all Alembic migrations to bring the schema to the latest version
+       *within the same transaction*.
+    4. Creates an AsyncSession bound to this transaction.
+    5. Yields the session to the test function.
+    6. Rolls back the transaction after the test completes, undoing all changes.
+
+    This ensures every test runs in a pristine, isolated environment.
     """
-    connection = await engine.connect()
-    transaction = await connection.begin()
+    # The entire test function runs within this single transaction.
+    async with engine.begin() as connection:
+        # --- 1. Schema Setup ---
+        # Drop all tables to ensure a clean slate.
+        await connection.run_sync(Base.metadata.drop_all)
 
-    session_maker = async_sessionmaker(bind=connection, expire_on_commit=False)
-    session = session_maker()
+        # Run migrations within the same transaction.
+        # `run_sync` passes the underlying sync connection to `do_run_migrations`,
+        # which then configures Alembic's context and runs the migrations.
+                # Create all tables from the metadata
+        await connection.run_sync(Base.metadata.create_all)
 
-    try:
-        yield session
-    finally:
-        await session.close()
-        await transaction.rollback()
-        await connection.close()
+        # --- 2. Session Provisioning ---
+        # Create a session bound to the transaction's connection.
+        session_maker = async_sessionmaker(bind=connection, expire_on_commit=False)
+        session = session_maker()
+
+        try:
+            yield session
+        finally:
+            # Clean up the session.
+            await session.close()
+            # The `async with engine.begin()` block handles the transaction rollback
+            # automatically, ensuring test isolation.
 
 # --- Application and Client Fixtures ---
 

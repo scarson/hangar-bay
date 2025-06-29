@@ -1397,4 +1397,16 @@ This migration represents a significant architectural shift but is deemed the mo
 
 ---
 
-DESIGN_LOG_FOOTER_MARKER_V1 :: *(End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))*
+### 2025-06-28 23:48:00-05:00: Replacing Programmatic Alembic Migrations with `metadata.create_all` for Test Database Setup
+
+**Context:** The asynchronous backend test suite was persistently failing with `NameError` exceptions originating from Alembic's `EnvironmentContext`. This occurred during the `db_session` fixture setup when attempting to run database migrations programmatically.
+
+**Decision & Root Cause Analysis:** The root cause was the inherent complexity and fragility of importing and running Alembic's `env.py` script as a module from within the `pytest` runner. The `env.py` script is designed to be executed by the Alembic CLI, which establishes a specific runtime context. Our attempts to replicate this context programmatically failed because top-level code in `env.py` executed on import, before the necessary connection and configuration were available. This led to a frustrating and time-consuming debugging loop.
+
+**Lesson Learned:** While using real migrations in tests offers the highest fidelity, the complexity can outweigh the benefits if it makes the test environment unstable. For unit and integration testing of application logic, a simpler and more robust approach is superior.
+
+**Outcome:** The decision was made to abandon programmatic migration runs for test setup. The `conftest.py` `db_session` fixture was refactored to use `Base.metadata.create_all(connection)` instead. This standard SQLAlchemy pattern directly creates the test database schema from the ORM models, which is simpler, faster, more reliable, and completely resolves the context-related errors. This is now the standard for our test suite.
+
+---
+
+DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))

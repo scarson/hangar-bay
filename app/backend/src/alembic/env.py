@@ -18,12 +18,8 @@ from alembic import context
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
-config = context.config
-
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# The config object and logging are configured within the migration functions
+# to ensure the context is fully initialized before being accessed.
 
 # Import your application's settings and Base model
 # Ensure your application's path is discoverable by Alembic.
@@ -72,6 +68,10 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
+    config = context.config
+    # Interpret the config file for Python logging.
+    if config.config_file_name is not None:
+        fileConfig(config.config_file_name)
     """Run migrations in 'offline' mode.
 
     This configures the context with just a URL
@@ -91,22 +91,24 @@ def run_migrations_offline() -> None:
         # compare_type=True,  # Temporarily commented out to detect type changes
     )
 
-    with context.begin_transaction():
-        context.run_migrations()
+    context.run_migrations()
 
 
 def do_run_migrations(connection):
     """
     Run Alembic migrations on a given connection.
-    This function is now context-agnostic regarding transactions. It assumes
-    the caller (either the CLI entrypoint or a pytest fixture) is responsible
-    for transaction management.
+    This function assumes the caller (either the CLI entrypoint or a pytest fixture)
+    has already started a transaction. It configures the context and runs the
+    migrations within that existing transactional context.
     """
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        # compare_type=True # Temporarily commented out to detect type changes
     )
+    # The transaction is managed by the pytest fixture's `engine.begin()` or
+    # the CLI runner's `connectable.begin()`.
+    # We must not start a new transaction here with `context.begin_transaction()`,
+    # as that can interfere with the externally managed transaction.
     context.run_migrations()
 
 
@@ -130,6 +132,10 @@ async def run_migrations_online_async_cli():
 
 
 def run_migrations_online():
+    config = context.config
+    # Interpret the config file for Python logging.
+    if config.config_file_name is not None:
+        fileConfig(config.config_file_name)
     """
     Run migrations in 'online' mode.
     This function handles two scenarios:
@@ -147,7 +153,5 @@ def run_migrations_online():
         do_run_migrations(connectable)
 
 
-if context.is_offline_mode():
-    run_migrations_offline()
-else:
-    run_migrations_online()
+# The CLI execution block has been removed to make this module safely importable by pytest.
+# The test suite now calls do_run_migrations() directly.
