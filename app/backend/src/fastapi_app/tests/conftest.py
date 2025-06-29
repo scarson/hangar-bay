@@ -48,56 +48,51 @@ TEST_DATABASE_URL = str(settings.DATABASE_URL_TESTS)
 # the 'Task attached to a different loop' runtime error.
 
 
-@pytest_asyncio.fixture(scope="function")
+@pytest_asyncio.fixture(scope="session")
 async def engine() -> AsyncGenerator[AsyncEngine, None]:
-    # Engine is now created once per function. This is necessary because the engine
-    # is bound to the event loop it's created on. Since we now have a new event
-    # loop per function, we also need a new engine per function.
+    """
+    Session-scoped fixture to create and dispose of the test database engine.
+    The schema is created once at the beginning of the session and dropped at the end.
+    """
     db_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+    async with db_engine.begin() as conn:
+        # Using run_sync for DDL operations is a robust pattern
+        await conn.run_sync(Base.metadata.create_all)
+
     yield db_engine
+
+    async with db_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
     await db_engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session(engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
     """
-    Provide a transactional session with a fully migrated schema for each test.
+    Provides a transactional session for each test function using a robust
+    rollback strategy for test isolation.
 
-    This is the master fixture for database testing. For each test function, it:
-    1. Establishes a single connection and starts a transaction.
-    2. Drops all existing tables to ensure a clean slate.
-    3. Applies all Alembic migrations to bring the schema to the latest version
-       *within the same transaction*.
-    4. Creates an AsyncSession bound to this transaction.
-    5. Yields the session to the test function.
-    6. Rolls back the transaction after the test completes, undoing all changes.
-
-    This ensures every test runs in a pristine, isolated environment.
+    This fixture lets the session itself manage the connection and transaction
+    state, which is a more robust pattern than manual connection handling.
+    It creates a single transaction that is rolled back after the test completes.
+    Nested transactions (SAVEPOINTs) are created implicitly by operations like
+    `session.flush()`.
     """
-    # The entire test function runs within this single transaction.
-    async with engine.begin() as connection:
-        # --- 1. Schema Setup ---
-        # Drop all tables to ensure a clean slate.
-        await connection.run_sync(Base.metadata.drop_all)
-
-        # Run migrations within the same transaction.
-        # `run_sync` passes the underlying sync connection to `do_run_migrations`,
-        # which then configures Alembic's context and runs the migrations.
-                # Create all tables from the metadata
-        await connection.run_sync(Base.metadata.create_all)
-
-        # --- 2. Session Provisioning ---
-        # Create a session bound to the transaction's connection.
-        session_maker = async_sessionmaker(bind=connection, expire_on_commit=False)
-        session = session_maker()
+    # Create a sessionmaker bound to the engine, not a specific connection.
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_maker() as session:
+        # Begin a transaction. The session will acquire a connection from the
+        # engine's pool and start a transaction on it.
+        await session.begin()
 
         try:
             yield session
         finally:
-            # Clean up the session.
-            await session.close()
-            # The `async with engine.begin()` block handles the transaction rollback
-            # automatically, ensuring test isolation.
+            # Rollback the whole transaction.
+            await session.rollback()
+            # The `async with` block automatically closes the session and returns
+            # the connection to the pool.
+
 
 # --- Application and Client Fixtures ---
 

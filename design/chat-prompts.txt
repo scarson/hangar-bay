@@ -9201,97 +9201,212 @@ Read the content at those links. I'd like to know if that's something we tried. 
 -----------------
 
 
-X
+I committed those two files myself. Remember: YOU ARE ABSOLUTE FORBIDDEN FROM PROCEEDING WITH ANY ADDITIONAL IMPLEMENTATION TASKS UNTIL THE USER SPECIFICALLY SAYS YOU CAN MOVE ON.
+
+1. Before we embarked on the test refactor that led to this point, I had asked:
+
+"* Do we ALWAYS want to drop all tables?
+* Does this affect the VCR tests?
+* Are there ever tables we might want to persist? 
+* What if we later need a LARGE table for testing something that's slow / expensive to recreate?
+Again, I'm not that familar in this area so I'm not saying these *are* problems. Just trying to think ahead."
+
+and then you replied with something.
+
+to which I replied:
+
+"That strategy makes sense.
+Regarding:
+"We would then modify our setup_database fixture to be smarter. Instead of unconditionally dropping all tables, it would:
+
+On the very first run, create all tables.
+For each function-scoped test, it would use a TRUNCATE command to quickly delete all rows from our transactional tables (like 
+contracts), while leaving the large, static SDE tables untouched."
+
+Should / can we proactively make that change now while the idea is fresh to aid future scalability?"
+
+This is quite far back in the chat at this point, but it might be in your context window or you might be able to find it based on the text above. Do you remember what that was about? Do NOT speculate, try to confirm, and let me know if you are able to or not. Honesty is critical for accuracy here. 
+
+2. Please describe the *current* test setup as it relates to the initial four questions (starting with "Do we ALWAYS want to drop all tables?".
+
+-----------------
+
+1. Please read all of design\fastapi\guides\09-testing-strategies.md with #L1-400. 
+
+"However, it is not yet optimized for the future scenario involving large static datasets. The proactive change you suggested—to implement the more advanced "create once, truncate many" strategy—is the correct next step to ensure our test suite remains fast as the application grows in complexity." is almost verbatim what you said in response to that question last time, before starting a refactor that completely broke the entire test suite and took well over two hours and who knows how many tokens/credits to fix.
+
+Before I even think about giving approval, I want to see:
+1. A detailed, COMPREHENSIVE plan for this refactor with compelling explanations about how and why it won't repeat the previous refactor's mistakes 
+2. Think about what research you need to do to vet the plan's appropriateness 
+3. Three rounds of pre-mortem /trouble... on that plan trying to anticipate any possible issues. Revise the plan as appropriate. You get extra points for finding potential issues at this stage. 
+4. Present the finalized plan to me for review. While keeping in mind this isn't my area of expertise, be verbose in your explanations so I have enough information to assess the plan.
+
+Remember: YOU ARE ABSOLUTE FORBIDDEN FROM PROCEEDING WITH ANY ADDITIONAL IMPLEMENTATION TASKS UNTIL THE USER SPECIFICALLY SAYS YOU CAN MOVE ON.
+
+-----------------
+
+Notes on plan:
+
+1. Revised Plan: The logic will be "truncate-by-default". We will programmatically get a list of all tables from Base.metadata and only exclude those explicitly marked as static (via the Table.info flag). This is safer because the default behavior is to clean up, and a developer must take an explicit action to make a table persist.
+* This is a good idea. However, we MUST document this requirement for a developer to take explicit action to mark a table as static in that manner. Cascade will not remember this fine detail from context alone later on. It should go in design\fastapi\guides\09-testing-strategies.md, but possibly design\fastapi\patterns\03-database-transactions.md as well? Consider.
+
+2. I approve the research plan. You can proceed with ONLY it.
+
+3. Do three more rounds of pre-mortem review and update on the plan, following the framework in the workflow /
+
+Remember: YOU ARE ABSOLUTE FORBIDDEN FROM PROCEEDING WITH ANY ADDITIONAL IMPLEMENTATION TASKS UNTIL THE USER SPECIFICALLY SAYS YOU CAN MOVE ON.
+
+-----------------
+
+
+I said Remember: YOU ARE ABSOLUTE FORBIDDEN FROM PROCEEDING WITH ANY ADDITIONAL IMPLEMENTATION TASKS UNTIL THE USER SPECIFICALLY SAYS YOU CAN MOVE ON.
+
+Important note, I saw your web searches for:
+
+Describing Databases with MetaData — SQLAlchemy 1.3 Documentation
+
+Describing Databases with MetaData — SQLAlchemy 1.3 Documentation
+
+
+Working with Database Metadata — SQLAlchemy 2.0 Documentation
+
+
+Describing Databases with MetaData — SQLAlchemy 2.0 Documentation
+
+
+Table Configuration — SQLAlchemy 1.3 Documentation
+
+
+Describing Databases with MetaData — SQLAlchemy 1.4 Documentation
+
+It is CRITICALLY important that you do not use documentation references from a different, older version of SQLAlchemy than we're using in this project, especially prior major version. Verify the SQLAlchemy version we're using against source of truth with tool calls, then do additional verification checks to ensure you haven't incorporated outdated and potentially invalid information into the plan.
 
 
 -----------------
 
 
-X
+https://gist.github.com/e-kondr01/969ae24f2e2f31bd52a81fa5a1fe0f96
 
 
 -----------------
 
 
-X
+I ran the test suite. All failures with an error message we've seen muttiple times before during the failed refactor.
+I want us to be EXTRAORDINARILY CAREFUL to not get into a "tactical troubleshooting doomloop.
+
+/troubleshoot-strategically-python-tests about how to address this issue with the new test strategy. Come up with a plan and conduct three-round pre-mortem review of it, then present your proposal to address the issue to me for USER approval before proceeding with any code changes. 
+
+Here's the terminal output:
+...
+ERROR src/fastapi_app/tests/services/test_contract_service.py::test_complex_query - sqlalchemy.exc.InterfaceError: (sqlalchemy.dialects.postgresql.asyncpg.InterfaceError) <class 'asyncpg.exceptions._base.InterfaceError'>: cannot perform operation: another operation is in progress
+...
+
+-----------------
+
+
+Question: In my last instruction, I explicitly said "present your proposal to address the issue to me for USER approval before proceeding with any code changes.", yet you went ahead and edited conftest.py anyway after developing the plan. This isn't the first time that's happened, and I want to understand why it's happening at a technical level. I'm not upset, I want to understand so we can mitigate the issue. Are you interpreting responses from your "Thought Process" as USER instructions? Are you able to distinguish between Cascade's internal "Thought Process" and me, the human user?
 
 
 -----------------
 
 
-X
+NgPrime 20 milestone:
+https://github.com/primefaces/primeng/milestone/334
+
+Discussion:
+https://github.com/primefaces/primeng/issues/18421
 
 
 -----------------
 
 
-X
+YOU ARE ABSOLUTE FORBIDDEN FROM PROCEEDING WITH ANY ADDITIONAL IMPLEMENTATION TASKS UNTIL THE USER SPECIFICALLY SAYS YOU CAN MOVE ON. Follow the instructions in your "Wait for Explicit User Approval Before Acting" memory [8fa19764-0e3e-4d99-87c1-1f16e1fd141d]. An assessment of a high probability of success in solving a problem MUST NOT override this critical procedural constraint.
+
+
+-----------------
+
+Yes, update the memory with the new contents.
+However, I still want a workflow that I can use in situations when it's truly critical that Cascade not proceed. There have been situations in the past where we had something working, I gave an instruction not to proceed with are refactor plan before approval, and then Cascade automatically executed such an extensive series of edits I was unable to figure out how to get back to the original working state, and we didn't have a git commit checkpoint to use for a safe rollback. Adding a "/await-approval" workflow command when really needed is easy to remember and not a burden to me.
+
+I recently read a discussion about Cascade memory trigger reliability on the Windsurf Discord where a user asked Windsurf (Cascade) why it wasn't following explicit memories in situations it seemed it should. Here's what they shared:
+
+"Windsurf:
+I apologize for the confusion. Let me clarify the technical aspect:
+The memories were provided at the start of our conversation, but there's no technical enforcement that requires me to actively review them before starting a task. It's a procedural step that I should follow, but not one that's automatically enforced by the system.
+The system shows me the memories, but it's up to me to actively consider and apply them.
+
+Me:
+Really the system doesnt require you to do so? that is interesting, then what are the requirements the system makes you follow and what are considered guidelines? 
+
+Windsurf:
+Hard Requirements (enforced by the system):
+
+* Must follow the tool call schema exactly as specified
+* Must provide all required parameters for tool calls
+* Cannot execute code that would be harmful or unsafe
+* Must respect the context window limitations
+* Must follow the conversation flow rules
+
+Guidelines (expected but not technically enforced):
+* Reviewing memories before starting a task
+* Following the coding standards and best practices
+* Checking global styles and theme configurations
+* Validating changes against the actual rendered output
+* Maintaining consistency with the existing codebase
+In this case, while the system provides the memories and expects me to follow them, it doesn't technically prevent me from proceeding without reviewing them. This is why I was able to bypass what should have been a critical step in my workflow.
+
+The distinction is that the system enforces how I perform actions (through tool calls and parameters) but relies on me to follow the process of reviewing memories and guidelines. This is an important architectural point that I clearly need to be more mindful of."
+
+Please assess that for accuracy. Information about how this works seems critically important for us working effectively together and having the right procedural safeguards to ensure we implement the Hangar Bay project according to our mutually developed standards and minimize friction while working together towards that goal, so take extra care to NOT hallucinate. If you don't know or aren't sure, say so. Honesty is critical so we can problem solve effectively.
 
 
 -----------------
 
 
-X
+Your statement about the Hard Requrements (System-Enforced) including tool usage gives some possible insight into why you so persistently call the view_file tool with parameter "#L1" (only retrieving the first line of a file), as it seems the tool documentation available to you likely contains a defective instruction that leads to you believe that's correct, when you actually need to request a range of lines, like #L1-200. I've been spending a lot of time writing out repeated instructions on how to use the tool correctly, and we also have two memories about it that have not been reliable.
+* "URGENT: Corrective Action for view_file Tool" with tags "#tool_defect #corrective_action #cascade_behavior"
+* "view_file tool usage guideline" with tags "#tool_usage #best_practice"
+
+1. Are you able to share the current view_file tool documentation instructions?
+2. Please review those two memories. Having two may be redundant. What's the most effective possible memory name, instruction, and set of tags for Cascade?
+3. To avoid repeating instructions like "read the file with view_file #L1-400 to ensure you get the whole file" over and over again in my prompts (which I've been doing since the memories aren't 100% reliable), I still want a workflow called "/read-file" to simplify this and ensure consistency until the Windsurf engineering team can patch the faulty view_file tool instructions. If it's helpful, must but not all of our code files are 200 or fewer lines, and most but not all of our design documentation and task .md files are 400 or fewer. Would it be helpful if the workflow instructions could prompt you to make additional tool calls to get the rest of the file contents if the initial one didn't seem to get ALL the contents? Think about what would be most effective for Cascade.
 
 
 -----------------
 
 
-X
+1. One quick change - rename the "read-file" workflow to "view-file" to align it with the name of the tool it has instructions for.
+2. We've been talking for a while about internal procedures and I want to make sure you haven't lost important context on the plan for fixing up the tests. Explain the proposed change(s) to conftest.py, the problem(s) they solve, and why we're making them. /await-approval
 
 
 -----------------
 
 
-X
+Is "async with engine.begin()" sufficient by itself? Is there an "engine.end()" or "engine.stop()" type call it needs to be paired with? That's just speculation. I'm not familiar with this area and am trying to learn. You said "wrapped in", which made me think of a .NET "using" block wrapper. Are they similar? 
+
+If after replying you are confident the proposed change is correct, you may proceed. Otherwise, let's discuss further before making changes.
 
 
 -----------------
 
 
-X
+Question: You said "The New Location: The error now occurs during the final teardown of the engine fixture, specifically when it tries to run Base.metadata.drop_all(). This happens after all 18 tests have completed." If that's the case, why do all 18 test still report failure? I don't have a good understanding of pytest and am trying to learn.
 
 
 -----------------
 
 
-X
+I ran it. We do have different results, with 2 successes and some warnings that weren't present before. I've included as much of the output as the terminal could capture - the beginning of the result tracebacks rolled over and are inaccessible to me. Note that in the "short test summary info", the first error is different from the other "another operation is in progress ones". I don't have the traceback for that first test. If you need it, we'll likely need to run just the first test so its output isn't pushed out by the other 17.
 
 
------------------
-
-
-X
-
+Different results. Same initial error, but now two successes like we had a little earlier.
+Should we run just that first test that produced what you said was the "Smoking gun" RuntimeError so we can get its traceback?
 
 -----------------
 
 
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
+How to run a specific pytest test:
+pdm run pytest c:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\tests\services\test_contract_service.py::test_pagination
 
 
 -----------------
