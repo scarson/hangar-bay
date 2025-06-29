@@ -49,22 +49,15 @@ class ContractSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class PaginatedContractResponse(BaseModel):
-    """Schema for a paginated response of contracts."""
+class SortableContractFields(str, Enum):
+    """Fields that can be used for sorting contracts."""
 
-    total: int = Field(..., description="Total number of contracts matching the query.")
-    page: int = Field(..., description="The current page number.")
-    size: int = Field(..., description="The number of items per page.")
-    items: List[ContractSchema] = Field(
-        ..., description="The list of contracts for the current page."
-    )
-
-
-class ContractSortBy(str, Enum):
     date_issued = "date_issued"
     date_expired = "date_expired"
     price = "price"
     collateral = "collateral"
+    ship_name = "ship_name"
+    volume = "volume"
 
 
 class SortDirection(str, Enum):
@@ -134,8 +127,8 @@ class ContractFilters(BaseModel):
     page: int = Field(default=1, ge=1, description="Page number.")
     size: int = Field(default=50, ge=1, le=100, description="Number of items per page.")
     # Sorting
-    sort_by: ContractSortBy = Field(
-        default=ContractSortBy.date_issued, description="Field to sort by."
+    sort_by: SortableContractFields = Field(
+        default=SortableContractFields.date_issued, description="Field to sort by."
     )
     sort_direction: SortDirection = Field(
         default=SortDirection.desc, description="Sort direction."

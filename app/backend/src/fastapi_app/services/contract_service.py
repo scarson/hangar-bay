@@ -5,17 +5,31 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from ..models.contracts import Contract, ContractItem
+from ..models.contracts import Contract, ContractItem
+from ..schemas.common import PaginatedResponse
 from ..schemas.contracts import (
     ContractFilters,
-    PaginatedContractResponse,
     SortDirection,
     ContractSchema,
+    SortableContractFields,
 )
+
+# This SORT_MAP is a critical security feature. It prevents arbitrary column sorting
+# by mapping API-facing sort keys to the actual, safe SQLAlchemy model columns.
+SORT_MAP = {
+    SortableContractFields.date_issued: Contract.date_issued,
+    SortableContractFields.date_expired: Contract.date_expired,
+    SortableContractFields.price: Contract.price,
+    SortableContractFields.collateral: Contract.collateral,
+    SortableContractFields.volume: Contract.volume,
+    # Note: Sorting by ship_name joins the items table.
+    SortableContractFields.ship_name: ContractItem.type_name,
+}
 
 
 async def get_contracts(
     db: AsyncSession, filters: ContractFilters
-) -> PaginatedContractResponse:
+) -> PaginatedResponse[ContractSchema]:
     """
     Retrieves a paginated list of contracts based on specified filters.
 
@@ -28,13 +42,21 @@ async def get_contracts(
     query = select(Contract)
 
     # Determine if a JOIN on the ContractItem table is necessary. A join is
-    # required if we need to filter on item attributes (name, type_id, bpc status).
+    # required if we need to filter or sort on item attributes.
     needs_item_join = (
-        filters.search or filters.type_ids or filters.is_bpc is not None
+        filters.search
+        or filters.type_ids
+        or filters.is_bpc is not None
+        or filters.min_runs is not None
+        or filters.max_runs is not None
+        # Add sorting by ship name to the condition
+        or filters.sort_by == SortableContractFields.ship_name
     )
 
     if needs_item_join:
-        query = query.join(ContractItem)
+        # Use an outer join to ensure contracts without items are not excluded
+        # unless specifically filtered out.
+        query = query.outerjoin(ContractItem)
 
     # --- Apply Filters ---
     # Each filter is applied to the query object, narrowing the results.
@@ -73,6 +95,11 @@ async def get_contracts(
         query = query.filter(ContractItem.type_id.in_(filters.type_ids))
     if filters.is_bpc is not None:
         query = query.filter(ContractItem.is_blueprint_copy == filters.is_bpc)
+    # BPC Run filters (Note: ME/TE not implemented as data is not in model)
+    if filters.min_runs is not None:
+        query = query.filter(ContractItem.raw_quantity >= filters.min_runs)
+    if filters.max_runs is not None:
+        query = query.filter(ContractItem.raw_quantity <= filters.max_runs)
 
     # --- Count Query ---
     # To get an accurate total count of matching *contracts* (not items),
@@ -85,14 +112,21 @@ async def get_contracts(
     total = total_result.scalar_one()
 
     if total == 0:
-        return PaginatedContractResponse(total=0, page=filters.page, size=filters.size, items=[])
+        return PaginatedResponse(total=0, page=filters.page, size=filters.size, items=[])
 
     # --- Data Query ---
     # Now, apply sorting and pagination to the filtered query to get the
     # specific page of results.
-    sort_column = getattr(Contract, filters.sort_by.value)
+    sort_column = SORT_MAP.get(filters.sort_by)
+    if sort_column is None:
+        # Fallback to default or raise an error for an unsupported sort key
+        sort_column = Contract.date_issued
+
     if filters.sort_direction == SortDirection.desc:
         sort_column = sort_column.desc()
+    else:
+        sort_column = sort_column.asc()
+
 
     data_query = (
         query
@@ -104,9 +138,10 @@ async def get_contracts(
     )
 
     result = await db.execute(data_query)
-    contracts = result.scalars().all()
+    # .unique() is needed here because of the join, to ensure we get unique Contract objects
+    contracts = result.scalars().unique().all()
 
-    return PaginatedContractResponse(
+    return PaginatedResponse(
         total=total,
         page=filters.page,
         size=filters.size,

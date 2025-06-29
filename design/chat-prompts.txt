@@ -9099,43 +9099,63 @@ That was useful so please perform a similar review of design\fastapi\guides\09-t
 -----------------
 
 
-X
+Would it be useful to you to map out the entire current backend project structure under app\backend and update design\fastapi\00-fastapi-architecture-overview.md with that like we did for the frontend in design\angular\00-angular-architecture-overview.md section "## 3. Directory and File Structure"? 
+
+If so, proceed with the work. You MUST NOT make ANY assumptions about the structure. Trace every path and verify every file with tool calls. If you need to read a file to understand its contents to make a comment, use the view_file tool with #L1-400 to ensure you read the full contents.
 
 
 -----------------
 
 
-X
+Yes. Here's how I want you to approach it. First, we will take a fresh look at the task file before performing any implementation tasks. For all files I instruct you to read, use the view_file tool with #L1-400 to ensure you read the full contents.
+1. Read plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.1-advanced-search-and-api.md
+2. Review all fastapi design files in design\fastapi design\fastapi\guides and design\fastapi\patterns by reading them with view_file #L1-400 to ensure you get the whole file.
+3. Consider if plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.1-advanced-search-and-api.md would benefit from updates. Focus on what would help Cascade implement the Hangar Bay backend following best practices, keeping high-quality design patterns consistent, proactively avoiding issues, and any other areas that would benefit the task implementation. Consider all 7 sections of the task file. Then do a second review pass, trying to think from a different perspective to identify anything you might have missed the first time.
 
 
 -----------------
 
 
-X
+Hold that thought. I have some concerns about using two separate "data sources" for our tests, especially if the in-memory DB would be SQLite which we explicitly switched away from because of Alchemy issues where it differed from Postgres behavior. Is that really necessary? Could we create "static" tables in our Postgres test database instead? I'm not that familiar with this area and am open to ideas, including your current idea being the right way to proceed. Focus on what would help Cascade implement the Hangar Bay backend following best practices, having a scalable test strategy, keeping high-quality design patterns consistent, proactively avoiding issues, and any other areas that would benefit the task and project implementation.
 
 
 -----------------
 
 
-X
+Does whatever you just implemented handle creating the necessary Postgres tables, then populating them with the static test fixture data, including purging and repopulating as necessary?
 
 
 -----------------
 
 
-X
+* Do we ALWAYS want to drop all tables?
+* Does this affect the VCR tests?
+* Are there ever tables we might want to persist? 
+* What if we later need a LARGE table for testing something that's slow / expensive to recreate?
+Again, I'm not that familar in this area so I'm not saying these *are* problems. Just trying to think ahead.
 
 
 -----------------
 
 
-X
+That strategy makes sense.
+Regarding:
+"We would then modify our 
+setup_database
+ fixture to be smarter. Instead of unconditionally dropping all tables, it would:
+
+On the very first run, create all tables.
+For each function-scoped test, it would use a TRUNCATE command to quickly delete all rows from our transactional tables (like 
+contracts
+), while leaving the large, static SDE tables untouched."
+
+Should / can we proactively make that change now while the idea is fresh to aid future scalability? 
 
 
 -----------------
 
 
-X
+Use #L1-200 with the tool to read the full alembic.ini file.
 
 
 -----------------

@@ -72,6 +72,11 @@ class Contract(Base):
         Index('ix_contracts_start_location_name', 'start_location_name'),
         Index('ix_contracts_title', 'title'),
         Index('ix_contracts_is_ship_contract', 'is_ship_contract'),
+        # Indexes for sorting and filtering performance
+        Index('ix_contracts_price', 'price'),
+        Index('ix_contracts_date_issued', 'date_issued'),
+        Index('ix_contracts_collateral', 'collateral'),
+        Index('ix_contracts_volume', 'volume'),
     )
 
     def __repr__(self):
@@ -100,6 +105,9 @@ class ContractItem(Base):
     __table_args__ = (
         Index('ix_contract_items_contract_id', 'contract_id'),
         Index('ix_contract_items_type_id', 'type_id'),
+        # Indexes for BPC filtering
+        Index('ix_contract_items_is_blueprint_copy', 'is_blueprint_copy'),
+        Index('ix_contract_items_raw_quantity', 'raw_quantity'),
     )
 
     def __repr__(self):

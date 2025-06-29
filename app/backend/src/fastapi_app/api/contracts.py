@@ -5,10 +5,10 @@ from sqlalchemy.orm import selectinload
 
 from ..db import get_db
 from ..models.contracts import Contract
+from ..schemas.common import PaginatedResponse
 from ..schemas.contracts import (
     ContractFilters,
     ContractSchema,
-    PaginatedContractResponse,
 )
 from ..services.contract_service import get_contracts
 
@@ -40,7 +40,7 @@ async def get_contract(
     return contract
 
 
-@router.get("/", response_model=PaginatedContractResponse)
+@router.get("/", response_model=PaginatedResponse[ContractSchema])
 async def list_public_contracts(
     db: AsyncSession = Depends(get_db),
     filters: ContractFilters = Depends(ContractFilters),

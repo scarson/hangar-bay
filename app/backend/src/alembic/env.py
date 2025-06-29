@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import os
 
@@ -95,41 +96,55 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):
-    context.configure(
-        connection=connection, target_metadata=target_metadata, 
-        # compare_type=True  # Temporarily commented out to detect type changes
-    )
-
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-async def run_migrations_online_async() -> None:
-    """Run migrations in 'online' mode for an async engine.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
     """
-    # Option 1: Create a new engine specifically for Alembic
+    Run Alembic migrations on a given connection.
+    This function is now context-agnostic regarding transactions. It assumes
+    the caller (either the CLI entrypoint or a pytest fixture) is responsible
+    for transaction management.
+    """
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        # compare_type=True # Temporarily commented out to detect type changes
+    )
+    context.run_migrations()
+
+
+async def run_migrations_online_async_cli():
+    """
+    Run migrations in 'online' mode for an async engine.
+    This is the path used when running `alembic` from the command line.
+    It creates an engine, starts a transaction with `begin()`, and then
+    runs the migrations within that transaction.
+    """
     connectable = create_async_engine(
         str(settings.DATABASE_URL),
-        poolclass=pool.NullPool,  # Recommended for Alembic with async
+        poolclass=pool.NullPool,
         future=True,
     )
 
-    # Option 2: Use the application's shared engine (if appropriate for your setup)
-    # connectable = app_async_engine
-
-    async with connectable.connect() as connection:
+    async with connectable.begin() as connection:
         await connection.run_sync(do_run_migrations)
 
-    await connectable.dispose()  # Important for async engines
+    await connectable.dispose()
 
 
-def run_migrations_online() -> None:
-    """Entry point for 'online' mode."""
-    asyncio.run(run_migrations_online_async())
+def run_migrations_online():
+    """
+    Run migrations in 'online' mode.
+    This function handles two scenarios:
+    1. Running from the `alembic` CLI: It creates a new async engine.
+    2. Running from pytest: It uses the existing synchronous connection
+       provided by the test fixture via `context.config.attributes`.
+    """
+    connectable = context.config.attributes.get("connection", None)
+
+    if connectable is None:
+        # We're running from the CLI, create a new engine.
+        asyncio.run(run_migrations_online_async_cli())
+    else:
+        # We're running from pytest, use the existing connection.
+        do_run_migrations(connectable)
 
 
 if context.is_offline_mode():

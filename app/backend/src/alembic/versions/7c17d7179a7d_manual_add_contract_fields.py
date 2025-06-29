@@ -21,7 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     op.add_column('contracts', sa.Column('item_processing_status', sa.VARCHAR(), nullable=False, server_default='PENDING_ITEMS'))
-    op.add_column('contracts', sa.Column('items_last_fetched_at', sa.DATETIME(), nullable=True))
+    op.add_column('contracts', sa.Column('items_last_fetched_at', sa.DateTime(timezone=True), nullable=True))
     op.add_column('contracts', sa.Column('contract_esi_etag', sa.VARCHAR(), nullable=True))
 
 
