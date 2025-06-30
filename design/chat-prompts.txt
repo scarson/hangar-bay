@@ -9778,7 +9778,7 @@ Help me understand. /await-approval
 -----------------
 
 
-X
+Is the same block appropriate to add to app\backend\src\fastapi_app\tests\services\test_contract_service.py? Is all the content there still applicable? I'm not opposed to having a consistent helper comment block but want to make sure we don't put something with instructions that could throw Cascade off in the wrong place.
 
 
 -----------------

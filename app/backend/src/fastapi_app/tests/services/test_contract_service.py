@@ -1,3 +1,26 @@
+# --- Service-Level Test Setup ---
+#
+# The tests in this file focus on the business logic within the service layer.
+# They follow patterns from `design/fastapi/guides/09-testing-strategies.md`.
+#
+# Key Fixture:
+#
+# - `db_session: AsyncSession`: Provided by `conftest.py`, this fixture gives
+#   each test function a clean, isolated, in-memory SQLite database session.
+#   It handles the creation and teardown of the database schema, ensuring
+#   tests do not interfere with each other and can run in parallel safely.
+#
+# Testing Approach:
+# These tests call the service functions (e.g., `get_contracts`) directly,
+# passing the `db_session` fixture to them. This allows for focused testing
+# of data manipulation and business logic without the overhead of the HTTP
+# request/response cycle.
+#
+# Data Persistence in Tests:
+# To save data to the database within a test, use `await db_session.flush()`.
+# Do NOT use `await db_session.commit()`, as the fixture manages the
+# transaction lifecycle.
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
