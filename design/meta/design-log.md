@@ -1459,4 +1459,46 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 ---
 
+### 2025-06-29 21:45:00-05:00 - Key Learnings from Backend Test Debugging
+
+**Context:** A series of cascading failures occurred in the backend contracts API test suite (`test_contracts.py`). Resolving these issues revealed several critical patterns and best practices for our testing strategy, database interaction, and developer workflow.
+
+**Decisions & Rationale:**
+
+1.  **Test Data Must Mirror Schema Reality:**
+    *   **Problem:** Tests were failing with a Pydantic `ValidationError` because the `Contract` objects created in tests were missing the `start_location_id` field, which is non-nullable in the database schema.
+    *   **Decision:** All test data instantiations must strictly adhere to the underlying SQLAlchemy model and database schema constraints. Tests are not just for logic; they are a primary mechanism for enforcing the data contract between the application and the database.
+    *   **Rationale:** This prevents runtime validation errors and ensures that tests accurately reflect real-world data conditions. It follows the principle that tests should codify the correct, desired behavior of the system.
+
+2.  **Transaction Management in Pytest Fixtures:**
+    *   **Problem:** Early test failures were caused by `InvalidRequestError: This transaction is closed`. This was happening because tests were calling `await db_session.commit()` manually.
+    *   **Decision:** The `db_session` fixture, as defined in `conftest.py`, is the *sole manager* of the test transaction lifecycle. It wraps the entire test function in a `session.begin()` block, which automatically handles commit on success and rollback on failure. Individual tests **must not** call `commit()` or `rollback()` on this fixture.
+    *   **Rationale:** Centralizing transaction management in the fixture ensures consistency, prevents premature transaction closure, and simplifies test code. This pattern is crucial for working with `pytest-asyncio` and SQLAlchemy's async features.
+
+3.  **SQLAlchemy `distinct()` vs. ORM `.unique()`:**
+    *   **Problem:** A query to sort contracts by `ship_name` (a joined column) failed with a PostgreSQL `InvalidColumnReferenceError`. This was because the query used `SELECT DISTINCT` and the `ORDER BY` column was not in the `SELECT` list.
+    *   **Decision:** The SQL-level `.distinct()` call was removed from the query builder. The correct approach for de-duplicating ORM objects after a join is to use the `.unique()` method on the `result.scalars()` object *after* the query has been executed.
+    *   **Rationale:** `.unique()` operates in Python on the fetched results, correctly filtering out duplicate parent objects (e.g., `Contract`) that may appear multiple times due to the one-to-many join, without imposing restrictive constraints on the SQL query itself. This allows for flexible sorting on joined columns.
+
+4.  **`pytest-vcr` Workflow for Evolving Tests:**
+    *   **Problem:** Developers encountered `CannotOverwriteExistingCassetteException` when modifying tests, forcing manual deletion of cassette files.
+    *   **Decision:** For local development where tests and their underlying HTTP requests are expected to change, developers should use the `--vcr-record=all` command-line flag with `pytest`.
+    *   **Rationale:** This flag provides a clean, explicit mechanism to regenerate cassettes without modifying test code or manually deleting files, streamlining the development workflow. The default `once` mode remains the safe default for CI/CD environments.
+
+---
+
+### 2025-06-29 22:12:00-05:00 - Clarification on Authoritative `db_session` Fixture Pattern
+
+**Context:** A question was raised about the subtle but critical differences between the "old" `db_session` fixture pattern and the "new" one implemented to fix `pytest-asyncio` event loop errors.
+
+**Analysis & Rationale:**
+
+-   **The "Old" Way (The Anti-Pattern):** The previous fixture signature was `async def db_session(db_session_factory: ...):`. This pattern relied on separate, `session`-scoped fixtures to create the database engine and a session factory. This was flawed because `pytest-asyncio` (in strict mode) creates a new event loop for every test function. The engine was created in the session's event loop, while the test ran in its own, different loop. This mismatch caused a `RuntimeError: Task ... got Future ... attached to a different loop`.
+
+-   **The "New" Way (The Correct, Authoritative Pattern):** The current fixture signature is `async def db_session():`. This fixture is now completely self-contained. It creates the `AsyncEngine`, the schema, the `async_sessionmaker`, and the `AsyncSession` all within the same `function`-scoped fixture.
+
+-   **Decision & Mandate:** By creating all database resources within the same async context as the test function itself, we guarantee they share the same event loop. This completely eliminates the `RuntimeError` and is the **only** approved pattern for database testing in this project. The more verbose docstring in the new fixture is intentional, serving as a critical piece of documentation to explain *why* this all-in-one pattern is mandatory.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))

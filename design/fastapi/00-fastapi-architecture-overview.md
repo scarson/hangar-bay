@@ -102,7 +102,7 @@ This section provides a detailed breakdown of the backend project structure. The
 │   │
 │   └── tests/
 │       ├── __init__.py
-│       ├── conftest.py         # Core pytest configuration. Defines fixtures for the test database, app instance, and HTTP client.
+│       ├── conftest.py         # Core pytest configuration. Defines the **mandatory, concurrency-safe** fixtures for the test database, app instance, and HTTP client. See the [Testing Guide](./guides/09-testing-strategies.md) for details.
 │       │
 │       ├── api/
 │       │   ├── __init__.py

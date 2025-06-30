@@ -9551,37 +9551,99 @@ That also seems like an important detail to capture somewhere.
 -----------------
 
 
-X
+pdm run pytest src/fastapi_app/tests/api/test_contracts.py --vcr-record=all
 
 
 -----------------
 
 
-X
+I have a question regarding:
+"Assessment: Critically Flawed. While the explanation of the db_session fixture is excellent and correct, the main code example directly contradicts it.
+The Error: Lines 233-234 of the example test show db_session.add(test_contract) followed by await db_session.commit(). This is the exact anti-pattern that caused our InvalidRequestError. It encourages developers to write incorrect tests.
+Proposed Fix: I will replace await db_session.commit() with await db_session.flush(). I will also add an explicit note explaining that flush() should be used to persist data to the database within the test's transaction, making it visible to the API call without prematurely closing the transaction managed by the fixture."
+
+That's an design documentation update we made to commit lessons right after spending hours troubleshooting getting the tests to a working state with the database interactions, as committed in commit ID 6a3784081156fa78bb71c7188a03cb8d8eb98bbe. Did we miss something last time? Did the earlier tests simply not make calls that dealt with the .flush()  issue? You were very certain what you wrote earlier, including that code example would help us prevent issues in the future, but now you're telling me the example shows an anti-pattern. Maybe your current assessment is correct but I want to be really, really careful here. xercise EXTREME caution against falling back into writing out old, outdated patterns from your training data. The objective is to ensure the latest, modern patterns for the versions of SQLAlchemy, pytest, pytest-asyncio, etc. are captured in our design docs. Perform internet research relevant to the versions we're using if necessary to verify any ideas. Report back.
 
 
 -----------------
 
 
-X
+Okay, that explanation about the simple single call vs more complex multi-call tests makes sense.
+
+1. In design\fastapi\guides\09-testing-strategies.md, why did you remove "**Crucially, this file avoids global state.** Resources like the database engine and settings are managed by fixtures, not global variables." from the comment on line 25: "To ensure consistency, testability, and isolation, we use a root `conftest.py` file to define shared fixtures. This is the foundation of our test suite. The patterns defined here are **mandatory** to prevent subtle and difficult-to-debug concurrency errors."
+
+2. You removed:
+"#### **Rationale: Atomic DDL Operations**
+
+The use of `async with engine.begin() as conn:` is a **critical, non-negotiable pattern**. It ensures that all Data Definition Language (DDL) operations (like `create_all` and `drop_all`) are wrapped in a single, atomic transaction. This prevents race conditions and `asyncpg.InterfaceError` errors that can occur during concurrent test setup or teardown."
+
+Why? *If* that's accurate, is it captured with the same level of emphasis to Cascade (e.g., "is a **critical, non-negotiable pattern**") elsewhere in the document?
+
+3. How can we capture the information you provided in "Analysis of the Situation" and "Technical Deep Dive: commit() vs. flush() in a Test Fixture" in a way that's maximally effective and useful to Cascade?
+
+Note: Cascade created "Test Fixture DB Pattern: Use flush(), not commit()" memory.
+
+-----------------
+
+
+1. I see you removed:
+"@pytest_asyncio.fixture(scope="function")
+async def db_session(db_session_factory: async_sessionmaker[AsyncSession]) -> AsyncGenerator[AsyncSession, None]:
+    """
+    Function-scoped fixture providing a clean, transaction-isolated database session.
+    Depends on the `db_session_factory` fixture.
+    """
+    async with db_session_factory() as session:
+        yield session
+        await session.rollback() # Ensures tests are isolated"
+		
+When you added "#### **Rationale: Why Function-Scoped Engines are Mandatory**
+
+-   **The Problem:** `pytest-asyncio` in `strict` mode creates a **new event loop for every single test function**. A SQLAlchemy `AsyncEngine` and its underlying connection pool are bound to the event loop in which they are created.
+-   **The Anti-Pattern (What We Fixed):** A `session`-scoped engine is created once on a single event loop at the start of the test session. When an individual test runs on its *own, different* event loop and tries to get a connection, it results in a `RuntimeError: Task <Task ...> got Future <Future ...> attached to a different loop`.
+-   **The Solution:** By creating the engine *inside* the `function`-scoped fixture, we guarantee the engine, its connections, and the test itself all share the exact same event loop, eliminating the error."
+Was that intended?
+
+2. Should we have example code under "#### **Rationale: Atomic DDL Operations**" or is that covered elsewhere? If you add an example, be exceptionally careful to ensure it's correct to avoid the issue of having a correct explanation with anti-pattern example code under it we just dealt with.
 
 
 -----------------
 
 
-X
+There appear to be subtle differences between the new function "@pytest_asyncio.fixture(scope="function")" on line 55 and the removed function you replace with "This pattern is implemented in the `db_session` fixture shown above, where the `conn.run_sync(Base.metadata.drop_all)` and `conn.run_sync(Base.metadata.create_all)` calls are wrapped within their own `async with engine.begin() as conn:` blocks.".
 
+Specifically I noticed:
+Old: async def db_session(db_session_factory: async_sessionmaker[AsyncSession]) -> AsyncGenerator[AsyncSession, None]:
+New: async def db_session() -> AsyncGenerator[AsyncSession, None]:
+
+Old comment:
+"    """
+    Function-scoped fixture providing a clean, transaction-isolated database session.
+    Depends on the `db_session_factory` fixture.
+    """"
+New comment:
+    """
+    Authoritative, function-scoped fixture for creating a clean, isolated database session for each test.
+
+    This is the **only** approved pattern for database testing. It ensures that:
+    1. The Engine and its connection pool are created within the same async context
+       (event loop) as the test function, preventing `RuntimeError`.
+    2. The entire database schema is dropped and recreated for each test, guaranteeing
+       test isolation and preventing `IntegrityError` from dirty state.
+    3. The session is yielded within a transaction that is rolled back, further
+       ensuring isolation.
+    """
+	
+Is that correct? Help me understand.
 
 -----------------
 
 
-X
-
-
------------------
-
-
-X
+1. That was a really good explanation and I'd like to be able to refer back to it. Please /design-log that specifically.
+2. You said "You have an exceptionally sharp eye."
+2.1. Why do you think so?
+2.2. What is the purpose of Cascade complimenting me like this? I've noticed you do it regularly and while I'm flattered, I'm curious why.
+3. /git-commit
 
 
 -----------------

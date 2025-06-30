@@ -22,7 +22,7 @@ Our testing strategy is a **Pragmatic Hybrid**, balancing the confidence of inte
 
 ## 3. The Test Environment: `conftest.py`
 
-To ensure consistency, testability, and isolation, we use a root `conftest.py` file to define shared fixtures. This is the foundation of our test suite. The patterns defined here are **mandatory** to prevent subtle and difficult-to-debug concurrency errors.
+To ensure consistency, testability, and isolation, we use a root `conftest.py` file to define shared fixtures. **Crucially, this file avoids global state.** Resources like the database engine and settings are managed by fixtures, not global variables. This is the foundation of our test suite. The patterns defined here are **mandatory** to prevent subtle and difficult-to-debug concurrency errors.
 
 **File Location:** `app/backend/src/fastapi_app/tests/conftest.py`
 
@@ -47,25 +47,10 @@ from fastapi_app.models.base import Base
 
 ### 3.1. The Authoritative Database Fixture (`db_session`)
 
-The following `db_session` fixture is the **single, mandatory pattern** for all tests requiring database access. It solves critical concurrency issues by aligning the database engine's lifecycle with the test function's event loop.
+The following `db_session` fixture is the **single, mandatory pattern** for all tests requiring database access. It solves critical concurrency issues by creating the database engine and the test session within the same function-scoped async context.
 
 ```python
-# app/backend/src/fastapi_app/tests/conftest.py
-import asyncio
-from typing import AsyncGenerator
-
-import pytest
-import pytest_asyncio
-from fastapi import FastAPI
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-
-from fastapi_app.core.config import get_settings
-from fastapi_app.db.session import get_db
-from fastapi_app.models.base import Base
-
-# This is the DATABASE_URL for the test database
-TEST_DATABASE_URL = get_settings().DATABASE_URL_TESTS
+# In app/backend/src/fastapi_app/tests/conftest.py
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -82,10 +67,9 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     # The engine must be created within the fixture's async context to ensure it's
     # bound to the same event loop as the test.
-    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+    engine = create_async_engine(get_settings().DATABASE_URL_TESTS, echo=False)
 
-    # Drop all tables to ensure a clean state, in case a previous test failed
-    # during teardown.
+    # Drop all tables to ensure a clean state.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
@@ -101,6 +85,12 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     # Teardown: dispose of the engine to close all connections.
     await engine.dispose()
 ```
+
+#### **Rationale: Atomic DDL Operations**
+
+The use of `async with engine.begin() as conn:` is a **critical, non-negotiable pattern**. It ensures that all Data Definition Language (DDL) operations (like `create_all` and `drop_all`) are wrapped in a single, atomic transaction. This prevents race conditions and `asyncpg.InterfaceError` errors that can occur during concurrent test setup or teardown.
+
+This pattern is implemented in the `db_session` fixture shown above, where the `conn.run_sync(Base.metadata.drop_all)` and `conn.run_sync(Base.metadata.create_all)` calls are wrapped within their own `async with engine.begin() as conn:` blocks.
 
 #### **Rationale: Why Function-Scoped Engines are Mandatory**
 
@@ -231,7 +221,10 @@ async def test_list_public_contracts_with_data(
         # ... fill in other required fields ...
     )
     db_session.add(test_contract)
-    await db_session.commit()
+    # Use flush() to send the data to the database within the fixture's
+    # transaction. Do NOT use commit() here, as the fixture manages the
+    # transaction lifecycle and will handle the final commit/rollback.
+    await db_session.flush()
 
     # Act
     response = await client.get("/contracts/")
