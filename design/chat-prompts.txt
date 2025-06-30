@@ -9649,49 +9649,130 @@ Is that correct? Help me understand.
 -----------------
 
 
-X
+You earlier said "The old signature async def db_session(db_session_factory: ...) implies a separation of concerns that, while common in synchronous testing, is fatal in our async environment."
+
+I understand the concepts of sync / async generally as they relate to general programming. But I don't understand the different between sync and async *testing*, and that seems extremely important to grasping our test setup. I worry that if I don't have a fundamental understanding of those concepts as they relate to our project, I won't be able to give high quality guidance and catch related issues. A long time ago you said something about how our application code was sync, but our tests were async. It seems sync testing is a thing, so why are we using async testing? Is there any relation between sync code and sync tests, and async code with async tests? I don't know if I'm asking all the right questions, so please think about my intent and help identify if I've missed something (because I don't know what I don't know) before responding.
+
+-----------------
+
+
+I noticed something interesting. When running 'pdm run pytest', we get this (I'm providing only the short summary):
+===================================================================================================================== short test summary info ====================================================================================================================== 
+FAILED src/fastapi_app/tests/api/test_contract_filters.py::test_sort_by_price_asc - assert 404 == 200
+FAILED src/fastapi_app/tests/api/test_contract_filters.py::test_filter_by_is_bpc - assert 404 == 200
+FAILED src/fastapi_app/tests/api/test_contract_filters.py::test_filter_by_bpc_runs - assert 404 == 200
+FAILED src/fastapi_app/tests/api/test_contract_filters.py::test_complex_filter_api - assert 404 == 200
+
+But when I run "pdm run pytest --vcr-record=all", we have more failed tests with some interesting VCR info messages report 422 errors about http://test/api/v1/contracts/ships endpoints, which seem potentially relevent to the "new note clarifying that the backend API does NOT use the /api/v1 prefix internally; this is handled by the frontend proxy. Tests must use /contracts/ as the base path."
+
+pdm run pytest --vcr-record=all
 
 
 -----------------
 
 
-X
+Rule idea for Cascade not reading terminal output well:
+- You MUST wait for the complete terminal output (including success, failure, or timeout status) before you proceed to take action or respond. 
+
+- If the output is large or delayed, you are REQUIRED to wait and then summarize only when fully complete. You MUST NOT assume the result based on partial output.
 
 
 -----------------
 
 
-X
+
+Some of this output seems like it might be different. Be very careful in your review so we don't get into a tactical troubleshooting failure loop and start doing refactors that aren't aligned with the intended backend design.
+
+pdm run pytest --vcr-record=all
 
 
 -----------------
 
 
-X
+1. You said:
+"The most direct and correct solution is to fix the application's setup in main.py. However, a more robust long-term solution for testing is to create a dedicated test application that is independent of the main production app. This prevents issues where a change in main.py could break the entire test suite.
+I will refactor the test_app fixture in conftest.pyc:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\src\fastapi_app\tests\conftest.py to create a clean, isolated FastAPI instance for each test. This new fixture will explicitly include the contracts_router, which will solve the 404 errors, and also include the main_endpoints_router to ensure those tests continue to pass. This makes the test setup more resilient and self-contained."
+
+My immediate thought is if this introduces risks of configuration drift between the test app and real app. I don't expect Cascade to reliably remember tasks related to that (if they'd be necessary), even with memories. Is this a risk? Does "self-contained" come with risk of meaningful divergence? 
+
+What types of changes in main.py could break the test suite? And is it a bad thing if they do? Could that be a useful signal?
+
+I don't have a good understanding of the setup here, so I'm open to suggestions. I want to make sure we aren't making a change that ultimately makes the project *less* maintainable.
+
+2. Here's truncated test output. I didn't include all the tracebacks because they all failed in the same place:
+
+-----------------
+
+
+Beautiful, well done!
+
+pdm run pytest --vcr-record=all
+======================================================================================================================= test session starts ========================================================================================================================
+platform win32 -- Python 3.11.9, pytest-8.4.1, pluggy-1.6.0
+rootdir: C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend
+configfile: pyproject.toml
+testpaths: src/fastapi_app/tests
+plugins: anyio-4.9.0, asyncio-1.0.0, httpx-0.35.0, vcr-1.0.2
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 21 items                                                                                                                                                                                                                                                  
+
+src\fastapi_app\tests\api\test_contract_filters.py ....                                                                                                                                                                                                       [ 19%]
+src\fastapi_app\tests\api\test_contracts.py .....                                                                                                                                                                                                             [ 42%]
+src\fastapi_app\tests\api\test_main_endpoints.py .                                                                                                                                                                                                            [ 47%]
+src\fastapi_app\tests\services\test_contract_service.py ...........                                                                                                                                                                                           [100%]
+
+======================================================================================================================== 21 passed in 2.94s
+
+0. /git-commit
+1. /design-log
+2. Review the following fastapi design docs with a focus on identifying (a) any inaccurate or outdated information that could have misled us here, and (b) what updates might be helpful and appropriate. Not all docs may be relevant. Exercise EXTREME caution against falling back into writing out old, outdated patterns from your training data. The objective is to ensure the latest, modern patterns for the versions of SQLAlchemy, pytest, pytest-asyncio, etc. are captured in our design docs.
+* design\fastapi\00-fastapi-architecture-overview.md
+* design\fastapi\patterns\03-database-transactions.md
+* design\fastapi\patterns\06-schema-model-parity.md
+* design\fastapi\guides\09-testing-strategies.md
+3. /await-approval
 
 
 -----------------
 
 
-X
+I want to reconcile something. When you'd only reviewed the first 200 lines of design\fastapi\guides\09-testing-strategies.md, you said:
+"09-testing-strategies.md: This is the most critical document and has the most significant discrepancy.
+The Problem: The guide's example test_app fixture shows how to override dependencies (real_app.dependency_overrides[get_db] = ...). This is the exact pattern we removed to fix the 404 errors. Our solution was to test against the real, unmodified app instance to prevent configuration drift.
+The Fix: The guide must be updated to reflect this crucial decision. The authoritative pattern is to use the real app and a test-specific database configured via environment variables, not by overriding dependencies at runtime. This ensures the test environment is as close to production as possible. The rationale sections are excellent and should be preserved."
+
+Those test_app references are right under "# --- Application and Client Fixtures ---".
+"@pytest.fixture(scope="function")
+def test_app(db_session: AsyncSession) -> FastAPI:
+    """
+    Creates a new app instance for each test, with the database dependency
+    overridden to use the isolated test session.
+    """
+    real_app.dependency_overrides[get_db] = lambda: db_session
+    return real_app
+
+@pytest_asyncio.fixture(scope="function")
+async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
+    """
+    Provides an HTTPX client for making API requests to the test app.
+    """
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+"
+
+Then in your "Revised Document Analysis", you said:
+"Assessment: This document is correct and up-to-date. My initial analysis was wrong. The guide correctly documents the authoritative pattern: importing the real_app from main.py and using dependency_overrides to inject an isolated database session for each test. This is the best practice as it tests the actual application object while ensuring test data isolation, preventing the exact kind of configuration drift that caused our 404 errors.
+Conclusion: No changes are needed. The guide correctly reflects our best practices."
+
+Help me understand. /await-approval
 
 
 -----------------
 
 
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
+1. /git-commit 
+2. While we have these details in the design docs, are there any comments it would be helpful for Cascade to have in the test_*.py files themselves? Their comments are currently fairly light. /await-approval 
 
 
 -----------------

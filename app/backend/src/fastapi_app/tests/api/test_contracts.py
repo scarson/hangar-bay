@@ -16,11 +16,11 @@ pytestmark = [
 
 async def test_get_contracts_live(client: AsyncClient):
     """
-    Tests the /api/v1/contracts/ships endpoint against a recorded live ESI response.
+    Tests the /contracts/ endpoint against a recorded live ESI response.
     This test will fail if the ESI API changes its contract data structure in a
     way that breaks our models.
     """
-    response = await client.get("/api/v1/contracts/ships")
+    response = await client.get("/contracts/")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
@@ -51,14 +51,14 @@ async def test_filter_contracts_by_search(client: AsyncClient, db_session: Async
     await db_session.flush()  # Use flush to persist data within the ongoing transaction
 
     # Act: Search by contract title
-    response = await client.get("/api/v1/contracts/ships", params={"search": "Special"})
+    response = await client.get("/contracts/", params={"search": "Special"})
     data = response.json()
     assert response.status_code == 200
     assert data["total"] == 1
     assert data["items"][0]["contract_id"] == 1
 
     # Act: Search by item name
-    response = await client.get("/api/v1/contracts/ships", params={"search": "Beta"})
+    response = await client.get("/contracts/", params={"search": "Beta"})
     data = response.json()
     assert response.status_code == 200
     assert data["total"] == 1
@@ -79,21 +79,21 @@ async def test_filter_contracts_by_price(client: AsyncClient, db_session: AsyncS
     await db_session.flush()  # Use flush to persist data within the ongoing transaction
 
     # Act: Test min_price
-    response = await client.get("/api/v1/contracts/ships", params={"min_price": 99.0})
+    response = await client.get("/contracts/", params={"min_price": 99.0})
     data = response.json()
     assert response.status_code == 200
     assert data["total"] == 2
     assert {c["contract_id"] for c in data["items"]} == {2, 3}
 
     # Act: Test max_price
-    response = await client.get("/api/v1/contracts/ships", params={"max_price": 101.0})
+    response = await client.get("/contracts/", params={"max_price": 101.0})
     data = response.json()
     assert response.status_code == 200
     assert data["total"] == 2
     assert {c["contract_id"] for c in data["items"]} == {1, 2}
 
     # Act: Test both min and max price
-    response = await client.get("/api/v1/contracts/ships", params={"min_price": 75.0, "max_price": 125.0})
+    response = await client.get("/contracts/", params={"min_price": 75.0, "max_price": 125.0})
     data = response.json()
     assert response.status_code == 200
     assert data["total"] == 1
@@ -114,13 +114,13 @@ async def test_sort_contracts(client: AsyncClient, db_session: AsyncSession):
     await db_session.flush()  # Use flush to persist data within the ongoing transaction
 
     # Act: Sort by price ascending
-    response = await client.get("/api/v1/contracts/ships", params={"sort_by": "price", "sort_direction": "asc"})
+    response = await client.get("/contracts/", params={"sort_by": "price", "sort_direction": "asc"})
     data = response.json()
     assert response.status_code == 200
     assert [c["contract_id"] for c in data["items"]] == [2, 1]
 
     # Act: Sort by ship_name descending
-    response = await client.get("/api/v1/contracts/ships", params={"sort_by": "ship_name", "sort_direction": "desc"})
+    response = await client.get("/contracts/", params={"sort_by": "ship_name", "sort_direction": "desc"})
     data = response.json()
     assert response.status_code == 200
     assert [c["contract_id"] for c in data["items"]] == [1, 2]
@@ -136,7 +136,7 @@ async def test_paginate_contracts(client: AsyncClient, db_session: AsyncSession)
     await db_session.flush()  # Use flush to persist data within the ongoing transaction
 
     # Act: Get page 2 with a size of 3
-    response = await client.get("/api/v1/contracts/ships", params={"page": 2, "size": 3, "sort_by": "price", "sort_direction": "asc"})
+    response = await client.get("/contracts/", params={"page": 2, "size": 3, "sort_by": "price", "sort_direction": "asc"})
     data = response.json()
 
     # Assert

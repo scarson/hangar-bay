@@ -9,7 +9,7 @@ async def test_sort_by_price_asc(
     client: AsyncClient, setup_contracts
 ):
     """Test sorting contracts by price in ascending order at the API level."""
-    response = await client.get("/api/v1/contracts/?sort_by=price&sort_direction=asc")
+    response = await client.get("/contracts/?sort_by=price&sort_direction=asc")
 
     assert response.status_code == 200
     data = response.json()
@@ -21,7 +21,7 @@ async def test_sort_by_price_asc(
 
 async def test_filter_by_is_bpc(client: AsyncClient, setup_contracts):
     """Test filtering for contracts that are blueprint copies."""
-    response = await client.get("/api/v1/contracts/?is_bpc=true")
+    response = await client.get("/contracts/?is_bpc=true")
 
     assert response.status_code == 200
     data = response.json()
@@ -35,7 +35,7 @@ async def test_filter_by_is_bpc(client: AsyncClient, setup_contracts):
 async def test_filter_by_bpc_runs(client: AsyncClient, setup_contracts):
     """Test filtering BPCs by the number of runs."""
     # There is a BPC with 10 runs in the test data.
-    response = await client.get("/api/v1/contracts/?is_bpc=true&min_runs=10&max_runs=10")
+    response = await client.get("/contracts/?is_bpc=true&min_runs=10&max_runs=10")
 
     assert response.status_code == 200
     data = response.json()
@@ -53,7 +53,7 @@ async def test_complex_filter_api(client: AsyncClient, setup_contracts):
         "sort_by": "price",
         "sort_direction": "asc",
     }
-    response = await client.get("/api/v1/contracts/", params=params)
+    response = await client.get("/contracts/", params=params)
 
     assert response.status_code == 200
     data = response.json()

@@ -35,7 +35,7 @@ This document provides a high-level overview of the Hangar Bay FastAPI backend a
 -   **Purpose**: Manages all interactions with the database.
 -   **Components**:
     -   **SQLAlchemy Models** (`/models`): Define the database schema as Python classes.
-    -   **Database Session Management** (`/db/session.py`): Provides a dependency (`get_db`) to manage the lifecycle of database sessions for API requests.
+    -   **Database Session Management** (`/db.py`): Provides a dependency (`get_db`) to manage the lifecycle of database sessions for API requests.
 
 ## 3. Key Patterns & Solutions
 
@@ -106,6 +106,7 @@ This section provides a detailed breakdown of the backend project structure. The
 │       │
 │       ├── api/
 │       │   ├── __init__.py
+│       │   ├── test_contract_filters.py # Integration tests for the contract filters API endpoints.
 │       │   ├── test_contracts.py # Integration tests for the contracts API endpoints.
 │       │   ├── test_main_endpoints.py # Tests for basic endpoints like `/` and `/health`.
 │       │   └── cassettes/        # Stores VCRpy cassettes for mocking live ESI API calls.

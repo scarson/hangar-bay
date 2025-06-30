@@ -22,7 +22,7 @@ router = APIRouter(
 # FastAPI matches routes in order, so a request to /ships would otherwise
 # be incorrectly captured by the /{contract_id} route, leading to a
 # validation error trying to parse "ships" as an integer.
-@router.get("/ships", response_model=PaginatedResponse[ContractSchema])
+@router.get("/", response_model=PaginatedResponse[ContractSchema])
 async def list_public_contracts(
     db: AsyncSession = Depends(get_db),
     filters: ContractFilters = Depends(ContractFilters),

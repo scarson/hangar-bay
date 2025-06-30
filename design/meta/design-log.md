@@ -1501,4 +1501,17 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 ---
 
+### 2025-06-29: Backend Test Failures and Routing Correction
+
+**Context:** All backend API tests for the contracts endpoints were failing with `404 Not Found` errors, despite URLs appearing correct in the test files.
+
+**Investigation & Resolution:**
+
+1.  Initial hypotheses (incorrect test URLs, stale VCR cassettes) were ruled out.
+2.  An attempt to create an isolated `test_app` in `conftest.py` was reverted due to the high risk of configuration drift between the test and production app setups.
+3.  The root cause was identified in `main.py`: the contracts router was included with an erroneous `/api/v1` prefix, while the router itself in `api/contracts.py` already contained the `/contracts` prefix. This created an effective route of `/api/v1/contracts`, which did not match the tests.
+4.  The fix involved removing the extraneous prefix from `main.py`, aligning the application's routing with the documented design and fixing all tests.
+
+**Decision:** Re-affirmed the principle of testing against the real application instance to use the test suite as a sensitive detector for configuration issues. The risk of configuration drift from a separate test app was deemed too high.
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))
