@@ -9449,8 +9449,17 @@ Before doing ANYTHING else, /git-commit with a very descriptive commit message.
 -----------------
 
 
-X
+I commited those two files myself. Before proceeding, it's extremely important that we update our design docs with our important lessons learned here.
 
+1. Think about the troubleshooting process we just went through. Where did Cascade's strategy go wrong (e.g., deeply engrained outdated patterns in training data causing regression to invalid patterns for SQLAlchemy 2.0 etc.)? Look back as far as you can in your context window because we spent a long time on this. Be extremely thorough. Documenting what approaches failed and why is just as if not more important as documenting what worked.
+2. Think about how to structure instructions about the correct, modern, working pattern in a way that's most effective for Cascade. Think about multiple options and compare them. Assess which one or ones or combination would work best. Justify and explain your findings.
+3. Review the following fastapi design docs with a focus on identifying (a) any inaccurate or outdated information that could have misled us here, and (b) what updates might be helpful and appropriate. Not all docs may be relevant. Exercise EXTREME caution against falling back into writing out old, outdated patterns from your training data. The objective is to ensure the latest, modern patterns for the versions of SQLAlchemy, pytest, pytest-asyncio, etc. are captured in our design docs.
+* design\fastapi\00-fastapi-architecture-overview.md
+* design\fastapi\patterns\03-database-transactions.md
+* design\fastapi\patterns\06-schema-model-parity.md
+* design\fastapi\guides\09-testing-strategies.md
+
+4. /design-log
 
 -----------------
 
