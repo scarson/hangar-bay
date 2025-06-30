@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import (
     AsyncConnection,
 )
 
+
 from fastapi_app.main import app as real_app
 from fastapi_app.db import get_db
 from fastapi_app.db import Base

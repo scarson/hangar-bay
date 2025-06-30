@@ -13,7 +13,7 @@ interactions:
       user-agent:
       - python-httpx/0.28.1
     method: GET
-    uri: http://test/api/v1/contracts/ships?min_price=99.0
+    uri: http://test/contracts/?min_price=99.0
   response:
     body:
       string: '{"total":2,"page":1,"size":50,"items":[{"contract_id":2,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C2","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":100.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":2,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]},{"contract_id":3,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C3","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":150.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":3,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]}]}'
@@ -39,7 +39,7 @@ interactions:
       user-agent:
       - python-httpx/0.28.1
     method: GET
-    uri: http://test/api/v1/contracts/ships?max_price=101.0
+    uri: http://test/contracts/?max_price=101.0
   response:
     body:
       string: '{"total":2,"page":1,"size":50,"items":[{"contract_id":1,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C1","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":50.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":1,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]},{"contract_id":2,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C2","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":100.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":2,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]}]}'
@@ -65,85 +65,7 @@ interactions:
       user-agent:
       - python-httpx/0.28.1
     method: GET
-    uri: http://test/api/v1/contracts/ships?min_price=75.0&max_price=125.0
-  response:
-    body:
-      string: '{"total":1,"page":1,"size":50,"items":[{"contract_id":2,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C2","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":100.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":2,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]}]}'
-    headers:
-      content-length:
-      - '668'
-      content-type:
-      - application/json
-    status:
-      code: 200
-      message: OK
-- request:
-    body: ''
-    headers:
-      accept:
-      - '*/*'
-      accept-encoding:
-      - gzip, deflate
-      connection:
-      - keep-alive
-      host:
-      - test
-      user-agent:
-      - python-httpx/0.28.1
-    method: GET
-    uri: http://test/api/v1/contracts/ships?min_price=99.0
-  response:
-    body:
-      string: '{"total":2,"page":1,"size":50,"items":[{"contract_id":2,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C2","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":100.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":2,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]},{"contract_id":3,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C3","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":150.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":3,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]}]}'
-    headers:
-      content-length:
-      - '1296'
-      content-type:
-      - application/json
-    status:
-      code: 200
-      message: OK
-- request:
-    body: ''
-    headers:
-      accept:
-      - '*/*'
-      accept-encoding:
-      - gzip, deflate
-      connection:
-      - keep-alive
-      host:
-      - test
-      user-agent:
-      - python-httpx/0.28.1
-    method: GET
-    uri: http://test/api/v1/contracts/ships?max_price=101.0
-  response:
-    body:
-      string: '{"total":2,"page":1,"size":50,"items":[{"contract_id":1,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C1","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":50.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":1,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]},{"contract_id":2,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C2","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":100.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":2,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]}]}'
-    headers:
-      content-length:
-      - '1295'
-      content-type:
-      - application/json
-    status:
-      code: 200
-      message: OK
-- request:
-    body: ''
-    headers:
-      accept:
-      - '*/*'
-      accept-encoding:
-      - gzip, deflate
-      connection:
-      - keep-alive
-      host:
-      - test
-      user-agent:
-      - python-httpx/0.28.1
-    method: GET
-    uri: http://test/api/v1/contracts/ships?min_price=75.0&max_price=125.0
+    uri: http://test/contracts/?min_price=75.0&max_price=125.0
   response:
     body:
       string: '{"total":1,"page":1,"size":50,"items":[{"contract_id":2,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C2","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":100.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":2,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]}]}'
