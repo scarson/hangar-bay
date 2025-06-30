@@ -9645,14 +9645,6 @@ Is that correct? Help me understand.
 2.2. What is the purpose of Cascade complimenting me like this? I've noticed you do it regularly and while I'm flattered, I'm curious why.
 3. /git-commit
 
-
------------------
-
-
-You earlier said "The old signature async def db_session(db_session_factory: ...) implies a separation of concerns that, while common in synchronous testing, is fatal in our async environment."
-
-I understand the concepts of sync / async generally as they relate to general programming. But I don't understand the different between sync and async *testing*, and that seems extremely important to grasping our test setup. I worry that if I don't have a fundamental understanding of those concepts as they relate to our project, I won't be able to give high quality guidance and catch related issues. A long time ago you said something about how our application code was sync, but our tests were async. It seems sync testing is a thing, so why are we using async testing? Is there any relation between sync code and sync tests, and async code with async tests? I don't know if I'm asking all the right questions, so please think about my intent and help identify if I've missed something (because I don't know what I don't know) before responding.
-
 -----------------
 
 
@@ -9784,31 +9776,41 @@ Is the same block appropriate to add to app\backend\src\fastapi_app\tests\servic
 -----------------
 
 
-X
+A while back during a design\fastapi\guides\09-testing-strategies.md design doc review, you said "The old signature async def db_session(db_session_factory: ...) implies a separation of concerns that, while common in synchronous testing, is fatal in our async environment."
+
+I understand the concepts of sync / async generally as they relate to general programming. But I don't understand the different between sync and async *testing*, and that seems extremely important to grasping our test setup. I worry that if I don't have a fundamental understanding of those concepts as they relate to our project, I won't be able to give high quality guidance and catch related issues. A long time ago you said something about how our application code was sync, but our tests were async. It seems sync testing is a thing, so why are we using async testing? Is there any relation between sync code and sync tests, and async code with async tests? I don't know if I'm asking all the right questions, so please think about my intent and help identify if I've missed something (because I don't know what I don't know) before responding.
+
+
+-----------------
+
+Great explanation.
+
+1. /design-log , and be more verbose than usual to capture those details so I can go back and review later.
+2. Follow-up question. In the main application is there always only one event loop (the "conductor")? What process "owns" the event loops? What if the main event loop calls a different application service that runs its own event loop (if that's a valid thing). The async design pattern seems very performant in general, but if the main event loop is single threaded, what happens if it gets saturated? Is multi-threading possible and if so does it implicitly mean there are multiple "main" event loop conductors that somehow need to coordinate certain operations (thread safe vs non-thread safe?).
+3. When an event loop await "yields control of a task", what specifically happens there? Does the IO operation spawn another thread the event loop registers a listener for?
+
+As before, I don't know if I'm asking all the right questions, so please think about my intent and help identify if I've missed something before responding.
+
 
 
 -----------------
 
 
-X
+I have another question on the topic. You explained multi-processing. "uvicorn main:app --workers 4 This command starts four completely separate Python processes. ... A master process (run by Uvicorn) acts as a load balancer, distributing incoming requests among the four worker processes."
+
+How does that load balancing happen? I'm very familiar with network load balancers and the various algorithms they can employ like round robin, least-connections, lowest CPU %, etc.
 
 
 -----------------
 
 
-X
+That's neat! My next question is about scaling. We've established we can specify how many workers we want ourselves with a command like "uvicorn main:app --workers 4". If there's a Uvicorn master process, is it able to "auto-scale" the workers and spin more up and down if needed? If so, what scaling triggers or criteria are available?
 
 
 -----------------
 
 
-X
-
-
------------------
-
-
-X
+You thought process mentions Gunicorn but your response didn't specifically mentioned it. I recall that long ago we discussed potentially using Gunicorn for production. Can you explain what specifically Gunicorn does and how it fits into this scaling model?
 
 
 -----------------

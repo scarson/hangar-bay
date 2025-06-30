@@ -1514,4 +1514,90 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 **Decision:** Re-affirmed the principle of testing against the real application instance to use the test suite as a sensitive detector for configuration issues. The risk of configuration drift from a separate test app was deemed too high.
 
+---
+
+### 2025-06-29 23:36:45-05:00: Clarification on Asynchronous Testing Rationale
+
+**Context:**
+A deep-dive discussion was held to clarify the fundamental reasons for using an asynchronous testing strategy for the FastAPI backend. This was prompted by confusion over why certain test fixture patterns were considered "fatal" while others were mandatory.
+
+**Core Principle: Test How You Run**
+The decision to use asynchronous testing is not an arbitrary choice; it is a direct consequence of the application's architecture. The stack is async from top to bottom:
+- **FastAPI:** An asynchronous web framework.
+- **SQLAlchemy + `asyncpg`:** An asynchronous database driver stack.
+- **HTTPX:** The test client used is its `AsyncClient`.
+
+To properly test code that uses `async` and `await`, the tests themselves must be `async` and run by a tool that understands how to manage them, in our case `pytest-asyncio`.
+
+**The Critical Role of the Event Loop**
+The central concept governing our async code is the **event loop**. It acts as a conductor, managing and switching between various tasks. The most critical rule for our test suite is:
+
+> `pytest-asyncio` in its default `strict` mode creates a **new, isolated event loop for every single test function.**
+
+This is the key to test isolation but also the source of potential errors.
+
+**The "Fatal" Anti-Pattern vs. The Correct Pattern**
+- **The Anti-Pattern (Fatal):** Creating a SQLAlchemy `AsyncEngine` at the `session` scope. The engine is created once on a main event loop. When an individual test runs on its *own, different* event loop, it tries to use the engine from the main loop, causing a `RuntimeError: Task attached to a different loop`.
+- **The Correct Pattern (Mandatory):** Creating the `AsyncEngine` *inside* the `function`-scoped `db_session` fixture. This guarantees that the engine, its connections, and the test function itself all share the exact same event loop, eliminating the conflict and ensuring test stability.
+
+**Decision:**
+This architectural pattern is non-negotiable for ensuring reliable and correct backend tests. All current and future tests involving database interaction must adhere to the function-scoped fixture pattern as defined in `conftest.py` and documented in `09-testing-strategies.md`.
+
+---
+
+### 2025-06-29 23:43:54-05:00: Deep Dive into Async Architecture and Performance
+
+**Context:**
+Following the clarification on async testing, a deeper discussion was held to explore the architectural and performance implications of the `asyncio` model in a production context. The goal was to understand how the application scales and handles load.
+
+**Key Architectural Concepts Discussed:**
+
+1.  **The Single Event Loop per Process:**
+    -   **Principle:** A standard `asyncio` application running in a single Python process has **one and only one** main event loop. This loop is the central coordinator for all async tasks within that process.
+    -   **Ownership:** The process itself (e.g., a Uvicorn worker) owns and manages the lifecycle of its event loop.
+    -   **Nested Loops:** Attempting to start a new event loop from within a task running on an existing loop is a critical anti-pattern. It is not supported and leads to undefined behavior or errors. All async operations within a process must be scheduled as tasks on the single, shared event loop.
+
+2.  **Scaling Strategy: Multi-Processing, Not Multi-Threading:**
+    -   **The Challenge (Blocking the Loop):** The event loop is single-threaded. While extremely efficient for I/O-bound work (database calls, API requests), it is completely blocked by long-running, CPU-bound work (heavy computation). A single CPU-bound task can halt the entire process, preventing it from handling any other requests.
+    -   **The Python Limitation (GIL):** Python's Global Interpreter Lock (GIL) prevents multiple threads from executing Python bytecode simultaneously within the same process, making multi-threading ineffective for scaling CPU-bound tasks.
+    -   **The Solution (Multi-Processing):** The correct way to scale a Python async application and leverage multi-core CPUs is to run multiple, independent worker processes (e.g., `uvicorn main:app --workers 4`). Each process has its own memory, its own GIL, and its own event loop. A master process load-balances incoming requests across these workers, achieving true parallelism.
+
+3.  **The Mechanics of `await` (Cooperative Multitasking):**
+    -   **Misconception:** `await` does **not** create a new thread for the I/O operation.
+    -   **The Actual Mechanism:** When an `await` expression is encountered for an I/O operation (e.g., a network request), the following happens:
+        1.  The async function hands the I/O request off to the operating system, which is highly optimized for managing thousands of such operations concurrently.
+        2.  The function immediately yields control back to the event loop.
+        3.  The event loop marks the original task as "waiting" and finds other, ready-to-run tasks to execute. The Python thread is never idle.
+        4.  When the OS completes the I/O operation, it notifies the event loop.
+        5.  The event loop wakes up the original task and resumes its execution from where it left off, now with the result of the I/O operation.
+
+**Decision:**
+This model of cooperative multitasking via a single event loop, scaled horizontally via multiple processes, is the fundamental architecture for our backend. All performance tuning, debugging, and future development must respect these principles, particularly the critical importance of not blocking the event loop with synchronous, CPU-bound code.
+
+---
+
+### 2025-06-30 00:09:57-05:00: Production Deployment and Scaling Model Clarified
+
+**Context:**
+To complete the understanding of the application lifecycle, the discussion shifted to the production deployment model, focusing on process management, load balancing within a single instance, and horizontal auto-scaling.
+
+**Key Concepts and Decisions:**
+
+1.  **Uvicorn Worker Load Balancing:**
+    -   **Mechanism:** When running Uvicorn with multiple workers (e.g., `uvicorn main:app --workers 4`), it uses a "shared socket" model. The master process binds to the port, and then forks multiple worker processes that all inherit the file descriptor for that socket.
+    -   **Load Balancer:** The load balancing is not performed by Uvicorn itself in an algorithmic way (like round-robin). Instead, it is delegated to the **Operating System's kernel**. The kernel decides which of the waiting worker processes to wake up and hand a new incoming connection to, ensuring fairness and preventing the "thundering herd" problem.
+
+2.  **Scaling: Uvicorn vs. Orchestrators:**
+    -   **Uvicorn's Role (Vertical Scaling):** Uvicorn scales an application *vertically* on a single machine by running a fixed number of worker processes to leverage multiple CPU cores.
+    -   **Orchestrator's Role (Horizontal Scaling):** Uvicorn does **not** auto-scale its own workers. Dynamic, load-based scaling is the responsibility of a higher-level orchestration platform like Kubernetes or AWS ECS. These platforms monitor metrics (CPU, memory, request count) and scale the application *horizontally* by adding or removing entire container instances.
+
+3.  **The Production Standard: Gunicorn + Uvicorn:**
+    -   **Roles:** For production, the best practice is to use Gunicorn and Uvicorn together.
+        -   **Gunicorn:** Acts as the robust, battle-tested **process manager**. It handles starting/stopping workers, health monitoring, and graceful reloads.
+        -   **Uvicorn:** Acts as the high-performance **ASGI worker class** that Gunicorn manages.
+    -   **Implementation:** This is achieved with a command like `gunicorn src.fastapi_app.main:app -w 4 -k uvicorn.workers.UvicornWorker`. This command tells the Gunicorn process manager to launch 4 Uvicorn workers.
+    -   **Decision:** This hybrid model is the standard for deploying this project. It combines Gunicorn's reliability with Uvicorn's async performance and fits perfectly within a containerized, orchestrator-managed scaling strategy.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))
