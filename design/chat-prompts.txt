@@ -9816,25 +9816,28 @@ You thought process mentions Gunicorn but your response didn't specifically ment
 -----------------
 
 
-X
+I committed them myself since the command hung. One more question regarding containerization. When we eventually package up Hangar Bay, which has both frontend (Angular) and backend (Python/FastAPI) components, would we run those in separate containers? Why or why not?
 
 
 -----------------
 
 
-X
+1. What web server is used when we've run "ng serve" to start up the frontend service?
+2. /design-log and as before be more verbose than usual to capture those details so I can go back and review later.
 
 
 -----------------
 
 
-X
+Regarding "Built-in Proxy: It includes a proxying feature (which we use) to forward API requests from the frontend (e.g., /api/v1/...) to our separate backend server, solving CORS issues during development."
+Does that mean the any Angular proxy rules will need to be re-created with the web server's (Nginx, Apache, Caddy, etc.) own proxying features for production?
 
 
 -----------------
 
 
-X
+1. Update the design log entry "### 2025-06-30 00:15:31-05:00: Containerization Strategy: Separate Frontend and Backend" starting on line 1603 to incorporate that information.
+2. /git-commit
 
 
 -----------------

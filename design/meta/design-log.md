@@ -1600,4 +1600,40 @@ To complete the understanding of the application lifecycle, the discussion shift
 
 ---
 
+### 2025-06-30 00:15:31-05:00: Containerization Strategy: Separate Frontend and Backend
+
+**Context:**
+A discussion was held to define the containerization strategy for the Hangar Bay application, specifically addressing how the Angular frontend and FastAPI backend should be packaged and deployed.
+
+**Decision: Separate Containers are Mandatory**
+It was unequivocally decided that the frontend and backend must be built and deployed in separate containers. Combining them into a single container is a significant anti-pattern that would compromise scalability, maintainability, and deployment velocity.
+
+**Rationale:**
+
+1.  **Separation of Concerns / Single Responsibility:**
+    -   The frontend and backend are two distinct applications with different responsibilities. The frontend's role is to be built into static assets (HTML, CSS, JS) and served by a web server like Nginx. The backend's role is to run a dynamic Python application server to execute business logic.
+    -   A container should manage a single concern. A container trying to do both would be overly complex and violate this core principle.
+
+2.  **Independent Scaling:**
+    -   This is the primary operational driver. The load profiles and scaling requirements for the frontend and backend are fundamentally different.
+    -   The backend may need to scale to many instances to handle API load, while the frontend (often cached by a CDN) may require far fewer instances.
+    -   Separate containers allow each component to be scaled independently based on its specific metrics (e.g., CPU for the backend, request count for the frontend), which is far more efficient and cost-effective.
+
+3.  **Different Technology Stacks & Lifecycles:**
+    -   **Base Images:** The two components require completely different runtime environments. The backend needs a Python image, while the frontend needs an Nginx image. Combining them would create a bloated, inefficient "franken-image."
+    -   **Deployment Cycles:** The frontend UI may be updated and deployed multiple times a day, while the backend may have a slower, more deliberate release cadence. Separating them enables independent CI/CD pipelines, allowing one to be deployed without affecting or restarting the other.
+
+4.  **Simplified Configuration and Security:**
+    -   **Dockerfiles:** Maintaining two simple, standard Dockerfiles (one for Python/Gunicorn, one for Nginx) is far easier and less error-prone than managing one complex, multi-process Dockerfile.
+    -   **Security Boundaries:** Separation allows for clearer network policies in an orchestrated environment. The frontend containers can be exposed to the public internet (or a CDN), while the backend containers can be placed in a more protected network, only accepting traffic from the frontend or an API gateway.
+
+5.  **Unified Entrypoint via Reverse Proxy:**
+    -   **Development vs. Production:** The Angular CLI's development proxy (`proxy.conf.json`) is a development-only convenience. In production, this responsibility is transferred to a dedicated reverse proxy (e.g., Nginx).
+    -   **Production Pattern:** The reverse proxy becomes the single public entry point for the application. It is configured to serve the static frontend files for root requests and to forward any requests matching an API path (e.g., `/api/v1/...`) to the backend service. From the browser's perspective, all requests go to a single domain, which elegantly solves CORS issues without requiring CORS headers on the backend.
+
+**Conclusion:**
+The application will be treated as two distinct microservices: a frontend "static file serving" service and a backend "API" service. This is the foundational model for all future deployment and infrastructure work.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))
