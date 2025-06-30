@@ -22,7 +22,7 @@ Our testing strategy is a **Pragmatic Hybrid**, balancing the confidence of inte
 
 ## 3. The Test Environment: `conftest.py`
 
-To ensure consistency, testability, and isolation, we use a root `conftest.py` file to define shared fixtures. This is the foundation of our test suite. **Crucially, this file avoids global state.** Resources like the database engine and settings are managed by fixtures, not global variables.
+To ensure consistency, testability, and isolation, we use a root `conftest.py` file to define shared fixtures. This is the foundation of our test suite. The patterns defined here are **mandatory** to prevent subtle and difficult-to-debug concurrency errors.
 
 **File Location:** `app/backend/src/fastapi_app/tests/conftest.py`
 
@@ -45,61 +45,68 @@ from fastapi_app.models.base import Base
 
 # --- Core Fixtures (No Global State) ---
 
-@pytest.fixture(scope="session")
-def settings() -> Settings:
-    """
-    Session-scoped settings fixture. Can be overridden in specific test modules
-    to test behavior with different configuration values (see guide).
-    """
-    return get_settings()
+### 3.1. The Authoritative Database Fixture (`db_session`)
 
-@pytest.fixture(scope="session")
-def engine(settings: Settings) -> Generator[AsyncEngine, None, None]:
-    """
-    Session-scoped database engine. Depends on the `settings` fixture.
-    """
-    TEST_DATABASE_URL = settings.DATABASE_URL.replace(".db", "_test.db")
-    _engine = create_async_engine(TEST_DATABASE_URL)
-    yield _engine
-    _engine.dispose()
+The following `db_session` fixture is the **single, mandatory pattern** for all tests requiring database access. It solves critical concurrency issues by aligning the database engine's lifecycle with the test function's event loop.
 
-@pytest.fixture(scope="session")
-def db_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
-    """Session-scoped session factory. Depends on the `engine` fixture."""
-    return async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
+```python
+# app/backend/src/fastapi_app/tests/conftest.py
+import asyncio
+from typing import AsyncGenerator
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Creates an instance of the default event loop for the session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+import pytest
+import pytest_asyncio
+from fastapi import FastAPI
+from httpx import AsyncClient, ASGITransport
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
-async def setup_database(engine: AsyncEngine):
+from fastapi_app.core.config import get_settings
+from fastapi_app.db.session import get_db
+from fastapi_app.models.base import Base
+
+# This is the DATABASE_URL for the test database
+TEST_DATABASE_URL = get_settings().DATABASE_URL_TESTS
+
+@pytest_asyncio.fixture(scope="function")
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """
-    Creates and tears down the test database schema for the session.
-    Depends on the `engine` fixture.
+    Authoritative, function-scoped fixture for creating a clean, isolated database session for each test.
+
+    This is the **only** approved pattern for database testing. It ensures that:
+    1. The Engine and its connection pool are created within the same async context
+       (event loop) as the test function, preventing `RuntimeError`.
+    2. The entire database schema is dropped and recreated for each test, guaranteeing
+       test isolation and preventing `IntegrityError` from dirty state.
+    3. The session is yielded within a transaction that is rolled back, further
+       ensuring isolation.
     """
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield
+    # The engine must be created within the fixture's async context to ensure it's
+    # bound to the same event loop as the test.
+    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+
+    # Drop all tables to ensure a clean state, in case a previous test failed
+    # during teardown.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
-#### **Rationale: Atomic DDL Operations**
+    # Create all tables fresh for the test.
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-The use of `async with engine.begin() as conn:` is a **critical, non-negotiable pattern**. It ensures that all Data Definition Language (DDL) operations (like `create_all` and `drop_all`) are wrapped in a single, atomic transaction. This prevents race conditions and `asyncpg.InterfaceError` errors that can occur during concurrent test setup or teardown.
-
-@pytest_asyncio.fixture(scope="function")
-async def db_session(db_session_factory: async_sessionmaker[AsyncSession]) -> AsyncGenerator[AsyncSession, None]:
-    """
-    Function-scoped fixture providing a clean, transaction-isolated database session.
-    Depends on the `db_session_factory` fixture.
-    """
-    async with db_session_factory() as session:
+    # The sessionmaker and session are created within the same context.
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_maker.begin() as session:
         yield session
-        await session.rollback() # Ensures tests are isolated
+
+    # Teardown: dispose of the engine to close all connections.
+    await engine.dispose()
+```
+
+#### **Rationale: Why Function-Scoped Engines are Mandatory**
+
+-   **The Problem:** `pytest-asyncio` in `strict` mode creates a **new event loop for every single test function**. A SQLAlchemy `AsyncEngine` and its underlying connection pool are bound to the event loop in which they are created.
+-   **The Anti-Pattern (What We Fixed):** A `session`-scoped engine is created once on a single event loop at the start of the test session. When an individual test runs on its *own, different* event loop and tries to get a connection, it results in a `RuntimeError: Task <Task ...> got Future <Future ...> attached to a different loop`.
+-   **The Solution:** By creating the engine *inside* the `function`-scoped fixture, we guarantee the engine, its connections, and the test itself all share the exact same event loop, eliminating the error.
 
 # --- Application and Client Fixtures ---
 

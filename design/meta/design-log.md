@@ -1409,4 +1409,54 @@ This migration represents a significant architectural shift but is deemed the mo
 
 ---
 
+### 2025-06-29 20:50:00-05:00: Resolving Async Test Fixture Event Loop Conflicts
+
+**Related Guide:** [Guide: FastAPI Testing Strategies](../fastapi/guides/09-testing-strategies.md)
+
+#### 1. Summary
+
+This entry documents the resolution of persistent `RuntimeError: ... got Future attached to a different loop` and `asyncpg.InterfaceError` race conditions in the backend test suite. The issue was traced to an incorrect, session-scoped database fixture pattern that is incompatible with `pytest-asyncio` in strict mode. The solution establishes a new, mandatory, function-scoped fixture pattern as the authoritative standard for all database tests.
+
+#### 2. The Problem & Root Cause
+
+Tests were failing with two primary errors:
+1.  **`RuntimeError`**: A test function, running in its own event loop (per `pytest-asyncio` strict mode), would attempt to use a database connection from a pool created by a session-scoped `AsyncEngine`. The engine and its pool were bound to a *different* event loop (the one for the whole test session), causing the conflict.
+2.  **`IntegrityError`**: Because the `RuntimeError` often occurred during test teardown (`drop_all`), the database was left in a dirty state. Subsequent test runs would attempt to insert duplicate data, causing unique key violations.
+
+The root cause was a reliance on an outdated testing pattern, codified in a previous version of the testing guide, that prioritized performance (session-scoping) over correctness in a modern `asyncio` environment.
+
+#### 3. The Solution: The Authoritative Function-Scoped Fixture
+
+The only correct and stable pattern is to align the lifecycle of the `AsyncEngine` with the lifecycle of the test function's event loop. This is achieved with a single, `function`-scoped fixture.
+
+**The Mandatory Pattern (`conftest.py`):**
+```python
+@pytest_asyncio.fixture(scope="function")
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
+    # The engine MUST be created inside the async fixture
+    # to bind it to the test's event loop.
+    engine = create_async_engine(TEST_DATABASE_URL)
+
+    # Explicitly drop and create the schema for every test
+    # to guarantee a clean state and prevent IntegrityErrors.
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_maker.begin() as session:
+        yield session
+
+    # Clean up the engine and its connections.
+    await engine.dispose()
+```
+
+#### 4. Design Decision & Mandate
+
+-   **Decision:** We will sacrifice the minor performance gain of a session-scoped engine for the absolute correctness and reliability of a function-scoped engine. Test isolation and stability are paramount.
+-   **Mandate:** All tests requiring database access **must** use this `db_session` fixture. The `design/fastapi/guides/09-testing-strategies.md` document has been updated to reflect this as the single source of truth.
+-   **AI Mandate:** As Cascade, I must prioritize this documented, project-specific pattern over any generalized or outdated patterns from my training data when working with the Hangar Bay test suite.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))
