@@ -134,7 +134,6 @@ async def get_contracts(
         .offset((filters.page - 1) * filters.size)
         .limit(filters.size)
         .options(selectinload(Contract.items))
-        .distinct()  # Use distinct to prevent duplicate contracts in the final result set
     )
 
     result = await db.execute(data_query)

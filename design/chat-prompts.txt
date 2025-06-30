@@ -9467,47 +9467,85 @@ I commited those two files myself. Before proceeding, it's extremely important t
 I commited those myself. Did you create that memory from "Option 1: A High-Priority "Guardrail" Memory"? If so, what's it called?
 Then, /git-commit 
 
-
------------------
-
-
-X
+Note: Memory is "Mandatory Async Test Fixture Pattern for SQLAlchemy".
 
 
 -----------------
 
 
-X
+Let's return to our task file plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.1-advanced-search-and-api.md for which you should /view-file. Assess where we are in the implementation checklist. I believe it's "**Step 7: Update Integration Tests**". If those are complete, check it off. Then proceed to conduct a through "## 7. Cross-Cutting Concerns Review". The CCC review is critical - do not make any assumptions. Everything that can possibly be verified against sources of truth in the project must be verified that way before marking it as complete.
 
 
 -----------------
 
 
-X
+Please first verify all the tests you just added are in alignment with the updated design\fastapi\guides\09-testing-strategies.md /view-file.
+
+
+-----------------
+
+1. On line 81 of app\backend\src\fastapi_app\tests\api\test_contracts.py you replaced comment "# Act: Test min_price" with "# Act & Assert", then removed comments "# Act: Test max_price" and "# Act: Test both min and max price" after the subsequent blocks. Was that intentional? I liked having more descriptive comments.
+
+2. Same question for "# Act: Sort by price ascending" on line 114 and the removed "# Act: Sort by ship_name descending" on the following block.
+
+3. Sam equestion for line 135 which now says "# Act" instead of "# Act: Get page 2 with a size of 3". 
+
+4. Line 23 says "response = await client.get("/api/v1/contracts/ships")". Didn't you just say that that's an invalid endpoint with "422 Unprocessable Entity on live test: The test_get_contracts_live test is failing with a 422 error. The error message unable to parse string as an integer","input":"ships" indicates that the endpoint /api/v1/contracts/ships is being incorrectly routed to a path that expects an integer ID (e.g., /api/v1/contracts/{contract_id})." It's possible I misinterpreted what you said. Why do we have a /api/v1/contracts/ships API endpoint or think we have one? What's its functional purpose?
+
+5. Test results:
+
+-----------------
+
+
+I am EXTREMELY worried about those SQLAlchemy database errors. We just spent hours troubleshooting getting that to a working state, as committed in commit ID 6a3784081156fa78bb71c7188a03cb8d8eb98bbe. That something as fundamental as transaction state is now broken for almost all the tests is extremely worrying. Did you make a structural change or something to the database state management in the tests? We CANNOT have a regression here. Read design\fastapi\guides\09-testing-strategies.md with vf and ...
+
+Regarding your earlier response in troubleshooting:
+"After analyzing the test failures and the fixture configuration in conftest.py, I've identified the two root causes of the errors.
+
+InvalidRequestError: The tests are failing because they explicitly call await db_session.commit(). The db_session fixture in conftest.py is designed to manage the transaction for the entire test within a session_maker.begin() block. Committing inside the test closes this transaction prematurely, so when the application code tries to access the database, it fails. The fix is to remove all await db_session.commit() calls from the test functions in test_contracts.py. The fixture will handle the transaction correctly.
+
+422 Unprocessable Entity: The test_get_contracts_live failure is due to a stale vcr cassette. The test is replaying a previously recorded failed API call. Even though the underlying routing issue in the code has been fixed, the test continues to fail because of this old recording. The solution is to delete the cassette file, which will force vcr to re-record the interaction on the next test run.
+I will first update the plan to reflect this new strategy. Then, I will edit test_contracts.py to remove the incorrect commit calls."
+
+
+-----------------
+
+Cascade:
+"You've run into a classic pytest-vcr workflow issue. You are absolutely right that manually deleting cassettes is not a sustainable solution.
+
+Here’s what’s happening and a better way to handle it:
+
+The Cause: The error CannotOverwriteExistingCassetteException occurs because pytest-vcr's default "record mode" is once. This mode is a safety feature: if a cassette file already exists, it will play back recorded responses but will refuse to record any new network requests. In test_sort_contracts, the first API call (sorting by price) was recorded, but the second call (sorting by ship_name) was new. Since the cassette already existed, VCR threw an error instead of overwriting it.
+A Better Workflow: For local development, when you expect tests and their corresponding HTTP requests to change, you can temporarily change the record mode. The best way to do this without changing any code is to use a command-line flag:
+--vcr-record=all: This tells VCR to re-record all HTTP interactions for the test, completely overwriting the old cassette. This is perfect for when you've changed the test logic and need a fresh recording.
+--vcr-record=new_episodes: This is also very useful. It will play back existing requests from the cassette but record any new ones that it hasn't seen before.
+I will now re-run the test using the --vcr-record=all flag. This will regenerate the cassette for test_sort_contracts to include both API calls, which should finally resolve all test failures."
 
 
 -----------------
 
 
-X
 
+1.  /git-commit
 
------------------
+2. /design-log 
 
+3.  Earlier while troubleshooting you said: "InvalidRequestError: The tests are failing because they explicitly call await db_session.commit(). The db_session fixture in conftest.py is designed to manage the transaction for the entire test within a session_maker.begin() block. Committing inside the test closes this transaction prematurely, so when the application code tries to access the database, it fails. The fix is to remove all await db_session.commit() calls from the test functions in test_contracts.py. The fixture will handle the transaction correctly." 
+That point about alignment with the actual database schema seems critically important Do you agree?
+You also said You said:
+"'Correct the Tests: I will first rewrite the integration tests in test_contracts.py to align with the actual database schema, using the Contract and ContractItem models. This is the test-driven development approach: we write tests that codify the correct, desired behavior.
+Correct the Implementation: After rewriting the tests, I will run them. I expect them to fail, because the service layer is likely incorrect. These failing tests will then precisely guide the necessary fixes in contract_service.py."
+That also seems like an important detail to capture somewhere. 
 
-X
+4. Review the following fastapi design docs with a focus on identifying (a) any inaccurate or outdated information that could have misled us here, and (b) what updates might be helpful and appropriate. Not all docs may be relevant. Exercise EXTREME caution against falling back into writing out old, outdated patterns from your training data. The objective is to ensure the latest, modern patterns for the versions of SQLAlchemy, pytest, pytest-asyncio, etc. are captured in our design docs.
+* design\fastapi\00-fastapi-architecture-overview.md
+* design\fastapi\patterns\03-database-transactions.md
+* design\fastapi\patterns\06-schema-model-parity.md
+* design\fastapi\guides\09-testing-strategies.md
 
+5. /git-commit again.
 
------------------
-
-
-X
-
-
------------------
-
-
-X
+6. /await-approval 
 
 
 -----------------

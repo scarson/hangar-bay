@@ -18,6 +18,24 @@ router = APIRouter(
 )
 
 
+# This route must be defined BEFORE the /{contract_id} route.
+# FastAPI matches routes in order, so a request to /ships would otherwise
+# be incorrectly captured by the /{contract_id} route, leading to a
+# validation error trying to parse "ships" as an integer.
+@router.get("/ships", response_model=PaginatedResponse[ContractSchema])
+async def list_public_contracts(
+    db: AsyncSession = Depends(get_db),
+    filters: ContractFilters = Depends(ContractFilters),
+):
+    """
+    Retrieves a paginated list of contracts based on specified filters.
+
+    This endpoint uses a service layer to apply advanced filtering, sorting,
+    and pagination to public contracts.
+    """
+    return await get_contracts(db=db, filters=filters)
+
+
 @router.get("/{contract_id}", response_model=ContractSchema)
 async def get_contract(
     contract_id: int,
@@ -38,17 +56,3 @@ async def get_contract(
         raise HTTPException(status_code=404, detail="Contract not found")
 
     return contract
-
-
-@router.get("/", response_model=PaginatedResponse[ContractSchema])
-async def list_public_contracts(
-    db: AsyncSession = Depends(get_db),
-    filters: ContractFilters = Depends(ContractFilters),
-):
-    """
-    Retrieves a paginated list of contracts based on specified filters.
-
-    This endpoint uses a service layer to apply advanced filtering, sorting,
-    and pagination to public contracts.
-    """
-    return await get_contracts(db=db, filters=filters)
