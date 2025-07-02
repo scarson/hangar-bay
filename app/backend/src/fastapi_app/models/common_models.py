@@ -41,11 +41,11 @@ class EsiTypeCache(Base):
     __tablename__ = "esi_type_cache"
 
     type_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
-    name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, nullable=False)
-    category_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
-    group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
-    market_group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    category_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    market_group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     
     # Ship/item physical properties
     mass: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
