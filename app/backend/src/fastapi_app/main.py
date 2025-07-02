@@ -26,6 +26,8 @@ from .core.esi_client_class import ESIClient # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService # For manual service creation
 from .api import contracts as contracts_router
 from .models import contracts # This import is crucial for Base.metadata to find the tables.
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 # Configure basic logging for early startup messages
 # This will be enhanced with structured logging in the lifespan function
@@ -74,6 +76,25 @@ app = FastAPI(
     # Additional OpenAPI metadata can be added here
     # See: https://fastapi.tiangolo.com/tutorial/metadata/
 )
+
+# Add global exception handler FIRST, before middleware
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler to catch any unhandled exceptions and return a
+    standardized 500 error response.
+    """
+    # Use structlog to log the exception with context
+    logger = structlog.get_logger("uvicorn.error")
+    logger.error(
+        "unhandled_exception",
+        exc_info=exc,
+        error_message=str(exc),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected server error occurred."},
+    )
 
 # Add RequestID middleware for structured logging correlation
 app.add_middleware(RequestIDMiddleware)
