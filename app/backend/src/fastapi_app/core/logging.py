@@ -130,7 +130,7 @@ def log_key_event(
         **kwargs: Additional context-specific fields
     """
     log_data: Dict[str, Any] = {
-        "event": event,
+        "event_name": event,  # Renamed to avoid conflict with structlog's event parameter
         "success": success,
         "duration_ms": duration_ms,
         **kwargs

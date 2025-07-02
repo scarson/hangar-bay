@@ -62,17 +62,17 @@ async def test_get_contracts_live(client: AsyncClient):
         assert "contract_id" in first_contract
         assert "issuer_id" in first_contract
         assert "status" in first_contract
-        assert "contract_type" in first_contract
+        assert "type" in first_contract
 
 
 @pytest.mark.asyncio
 async def test_filter_contracts_by_search(client: AsyncClient, db_session: AsyncSession):
     """Tests text search against contract title and item name."""
     # Arrange
-    contract1 = Contract(contract_id=1, title="My Special Contract", price=100, collateral=0.0, is_ship_contract=True, contract_type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
+    contract1 = Contract(contract_id=1, title="My Special Contract", price=100, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
     item1 = ContractItem(contract_id=1, type_id=101, type_name="Test Ship Alpha", quantity=1, is_included=True, is_singleton=True)
     
-    contract2 = Contract(contract_id=2, title="Another Deal", price=200, collateral=0.0, is_ship_contract=True, contract_type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
+    contract2 = Contract(contract_id=2, title="Another Deal", price=200, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
     item2 = ContractItem(contract_id=2, type_id=102, type_name="Test Ship Beta", quantity=1, is_included=True, is_singleton=True)
     
     db_session.add_all([contract1, item1, contract2, item2])
@@ -98,9 +98,9 @@ async def test_filter_contracts_by_price(client: AsyncClient, db_session: AsyncS
     """Tests filtering by min_price and max_price."""
     # Arrange
     contracts = [
-        Contract(contract_id=1, title="C1", price=50.0, collateral=0.0, is_ship_contract=True, contract_type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760),
-        Contract(contract_id=2, title="C2", price=100.0, collateral=0.0, is_ship_contract=True, contract_type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760),
-        Contract(contract_id=3, title="C3", price=150.0, collateral=0.0, is_ship_contract=True, contract_type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760),
+        Contract(contract_id=1, title="C1", price=50.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760),
+        Contract(contract_id=2, title="C2", price=100.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760),
+        Contract(contract_id=3, title="C3", price=150.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760),
     ]
     items = [ContractItem(contract_id=c.contract_id, type_id=101, type_name="Ship", quantity=1, is_included=True, is_singleton=True) for c in contracts]
     db_session.add_all(contracts + items)
@@ -132,10 +132,10 @@ async def test_filter_contracts_by_price(client: AsyncClient, db_session: AsyncS
 async def test_sort_contracts(client: AsyncClient, db_session: AsyncSession):
     """Tests sorting by different fields and directions."""
     # Arrange
-    contract1 = Contract(contract_id=1, title="Z-Contract", price=2000.0, collateral=0.0, is_ship_contract=True, contract_type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
+    contract1 = Contract(contract_id=1, title="Z-Contract", price=2000.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
     item1 = ContractItem(contract_id=1, type_id=102, type_name="Zephyr Frigate", quantity=1, is_included=True, is_singleton=True)
 
-    contract2 = Contract(contract_id=2, title="A-Contract", price=1000.0, collateral=0.0, is_ship_contract=True, contract_type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
+    contract2 = Contract(contract_id=2, title="A-Contract", price=1000.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
     item2 = ContractItem(contract_id=2, type_id=101, type_name="Abyssal Cruiser", quantity=1, is_included=True, is_singleton=True)
     
     db_session.add_all([contract1, item1, contract2, item2])
@@ -158,7 +158,7 @@ async def test_sort_contracts(client: AsyncClient, db_session: AsyncSession):
 async def test_paginate_contracts(client: AsyncClient, db_session: AsyncSession):
     """Tests pagination logic."""
     # Arrange
-    contracts = [Contract(contract_id=i, title=f"C{i}", price=i*10, collateral=0.0, is_ship_contract=True, contract_type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760) for i in range(1, 11)]
+    contracts = [Contract(contract_id=i, title=f"C{i}", price=i*10, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760) for i in range(1, 11)]
     items = [ContractItem(contract_id=c.contract_id, type_id=101, type_name="Ship", quantity=1, is_included=True, is_singleton=True) for c in contracts]
     db_session.add_all(contracts + items)
     await db_session.flush()  # Use flush to persist data within the ongoing transaction

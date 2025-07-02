@@ -117,7 +117,7 @@ async def setup_contracts(db_session: AsyncSession):
     contracts_data = [
         # Contract 1: Standard ship sale (Tristan)
         Contract(
-            contract_id=101, title="Tristan for Sale", price=1_000_000, collateral=0, status="outstanding", contract_type="item_exchange",
+            contract_id=101, title="Tristan for Sale", price=1_000_000, collateral=0, status="outstanding", type="item_exchange",
             issuer_id=1, issuer_corporation_id=101, start_location_id=60003760, start_location_system_id=30000142, start_location_region_id=10000002,
             for_corporation=False, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=7),
             items=[
@@ -126,7 +126,7 @@ async def setup_contracts(db_session: AsyncSession):
         ),
         # Contract 2: BPC auction (Caracal) with specific runs for testing
         Contract(
-            contract_id=102, title="Caracal BPC Auction", price=5_000_000, collateral=1_000_000, status="outstanding", contract_type="auction",
+            contract_id=102, title="Caracal BPC Auction", price=5_000_000, collateral=1_000_000, status="outstanding", type="auction",
             issuer_id=2, issuer_corporation_id=102, start_location_id=60003760, start_location_system_id=30000142, start_location_region_id=10000002,
             for_corporation=True, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=3),
             items=[
@@ -135,7 +135,7 @@ async def setup_contracts(db_session: AsyncSession):
         ),
         # Contract 3: Multi-item contract in a different region (Venture, Tristan)
         Contract(
-            contract_id=103, title="Mining Starter Pack", price=2_500_000, collateral=500_000, status="outstanding", contract_type="item_exchange",
+            contract_id=103, title="Mining Starter Pack", price=2_500_000, collateral=500_000, status="outstanding", type="item_exchange",
             issuer_id=3, issuer_corporation_id=103, start_location_id=60008494, start_location_system_id=30002187, start_location_region_id=10000020,
             for_corporation=False, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=14),
             items=[
@@ -145,7 +145,7 @@ async def setup_contracts(db_session: AsyncSession):
         ),
         # Contract 4: High-price, high-collateral contract (Rokh)
         Contract(
-            contract_id=104, title="Battleship Rokh", price=200_000_000, collateral=100_000_000, status="outstanding", contract_type="item_exchange",
+            contract_id=104, title="Battleship Rokh", price=200_000_000, collateral=100_000_000, status="outstanding", type="item_exchange",
             issuer_id=4, issuer_corporation_id=104, start_location_id=60003760, start_location_system_id=30000142, start_location_region_id=10000002,
             for_corporation=False, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=7),
             items=[

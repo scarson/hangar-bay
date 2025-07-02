@@ -219,7 +219,7 @@ class ContractAggregationService:
                 "issuer_corporation_id": c["issuer_corporation_id"],
                 "start_location_id": c.get("start_location_id"),
                 "end_location_id": c.get("end_location_id"),
-                "type": c["type"],
+                "type": c["type"],  # Direct mapping - field names now match
                 "status": c.get("status", "unknown"),
                 "title": c.get("title"),
                 "for_corporation": c.get("for_corporation", False),
@@ -227,6 +227,7 @@ class ContractAggregationService:
                 "date_expired": _parse_datetime(c["date_expired"]),
                 "date_completed": _parse_datetime(c.get("date_completed")),
                 "price": c.get("price"),
+                "collateral": c.get("collateral", 0.0),  # Default to 0.0 if null
                 "reward": c.get("reward"),
                 "volume": c.get("volume"),
                 # Denormalized data for search performance

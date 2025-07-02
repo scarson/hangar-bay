@@ -42,7 +42,7 @@ class Contract(Base):
     price: Mapped[float] = mapped_column(Numeric, nullable=False)
     collateral: Mapped[float] = mapped_column(Numeric, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
-    contract_type: Mapped[str] = mapped_column(String, nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False)
     issuer_id: Mapped[int] = mapped_column(Integer, nullable=False)
     issuer_corporation_id: Mapped[int] = mapped_column(Integer, nullable=False)
     start_location_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
@@ -68,7 +68,7 @@ class Contract(Base):
     items: Mapped[List["ContractItem"]] = relationship(back_populates="contract", cascade="all, delete-orphan")
 
     __table_args__ = (
-        Index('ix_contracts_type_status', 'contract_type', 'status'),
+        Index('ix_contracts_type_status', 'type', 'status'),
         Index('ix_contracts_start_location_name', 'start_location_name'),
         Index('ix_contracts_title', 'title'),
         Index('ix_contracts_is_ship_contract', 'is_ship_contract'),

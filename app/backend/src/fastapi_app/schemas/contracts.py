@@ -30,7 +30,7 @@ class ContractSchema(BaseModel):
     issuer_corporation_id: int
     start_location_id: int
     end_location_id: Optional[int] = None
-    type: str = Field(validation_alias='contract_type')
+    type: str
     status: str
     title: Optional[str] = None
     for_corporation: bool
