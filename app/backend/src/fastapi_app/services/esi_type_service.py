@@ -14,7 +14,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.dialects.postgresql import insert
 
 from ..models.common_models import EsiTypeCache
-from ..clients.esi_client import ESIClient
+from ..core.esi_client_class import ESIClient
 
 logger = logging.getLogger(__name__)
 

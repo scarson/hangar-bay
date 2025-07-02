@@ -57,7 +57,7 @@ class TestContractsDetailedAPI:
                 quantity=1,
                 is_singleton=True,
                 is_included=True,
-                item_id=None,
+                type_id=12345,
                 raw_quantity=None
             ),
             ContractItem(
@@ -68,7 +68,7 @@ class TestContractsDetailedAPI:
                 quantity=1000,
                 is_singleton=False,
                 is_included=True,
-                item_id=None,
+                type_id=12345,
                 raw_quantity=None
             )
         ]
@@ -421,7 +421,7 @@ class TestContractsDetailedAPI:
                 quantity=100 + i,
                 is_singleton=False,
                 is_included=True,
-                item_id=None,
+                type_id=12345,
                 raw_quantity=None
             )
             items.append(item)

@@ -87,7 +87,7 @@ class TestContractDetailsService:
                 quantity=1,
                 is_singleton=True,
                 is_included=True,
-                item_id=None,
+                type_id=12345,
                 raw_quantity=None
             ),
             ContractItem(
@@ -98,7 +98,7 @@ class TestContractDetailsService:
                 quantity=1000,
                 is_singleton=False,
                 is_included=True,
-                item_id=None,
+                type_id=12345,
                 raw_quantity=None
             )
         ]
