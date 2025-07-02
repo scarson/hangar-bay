@@ -214,3 +214,40 @@ class ESIClient:
                 continue
 
         return resolved_names
+    
+    async def get_type_info(self, type_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch comprehensive type information from ESI.
+        
+        Args:
+            type_id: The EVE type ID to fetch information for
+            
+        Returns:
+            Dictionary containing type information, or None if not found
+        """
+        try:
+            path = f"/v3/universe/types/{type_id}/"
+            
+            # Use the generic method but for single item (not paginated)
+            response = await self.http_client.get(path)
+            
+            if response.status_code == 404:
+                logger.warning(f"Type {type_id} not found in ESI")
+                return None
+                
+            response.raise_for_status()
+            
+            # Parse the response
+            if not response.content:
+                logger.warning(f"Empty response for type {type_id}")
+                return None
+                
+            type_data = response.json()
+            logger.debug(f"Successfully fetched type info for type_id={type_id}")
+            return type_data
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error fetching type {type_id}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error fetching type {type_id}: {e}")
+            return None
