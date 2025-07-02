@@ -321,3 +321,94 @@ class ContractDetailsService:
         """Check if a type is a ship based on category/group."""
         # Ship category ID is 6 in EVE Online
         return type_data.category_id == 6 if type_data.category_id else False
+    
+    async def _process_ship_details(
+        self, 
+        contract_items: List, 
+        attribute_detail_level: str = "key_attributes"
+    ) -> Optional[ShipDetailsSchema]:
+        """Process ship details for ship contracts.
+        
+        Orchestrates the entire ship details generation process:
+        1. Find the ship among contract items
+        2. Get ship attributes from ESI 
+        3. Generate image URLs
+        4. Build final response
+        
+        Args:
+            contract_items: List of contract items
+            attribute_detail_level: Level of detail for attributes
+            
+        Returns:
+            ShipDetailsSchema or None if no ship found
+        """
+        # Find the ship item
+        ship_item = await self._find_ship_in_items(contract_items)
+        if not ship_item:
+            return None
+            
+        # Get ship type info from cache/ESI
+        ship_type_info = await self.esi_type_service.get_type_info(ship_item.type_id)
+        if not ship_type_info:
+            return None
+            
+        # Get ship attributes based on detail level
+        ship_attributes = await self.esi_type_service._process_ship_attributes(
+            ship_item.type_id, 
+            attribute_detail_level
+        )
+        
+        # Generate image URLs
+        image_urls = await self.esi_type_service._generate_image_urls(ship_item.type_id)
+        
+        # Build final ship details
+        return await self._build_ship_details(ship_item, ship_type_info, ship_attributes, image_urls)
+    
+    async def _find_ship_in_items(self, contract_items: List) -> Optional[Any]:
+        """Find the ship item among contract items.
+        
+        Ships are identified by category_id = 6 in EVE Online.
+        
+        Args:
+            contract_items: List of ContractItem objects
+            
+        Returns:
+            ContractItem that represents a ship, or None if no ship found
+        """
+        for item in contract_items:
+            # Check if this item is a ship using ESI type service
+            is_ship = await self.esi_type_service.is_ship_type(item.type_id)
+            if is_ship:
+                return item
+        return None
+    
+    async def _build_ship_details(
+        self, 
+        ship_item: Any, 
+        ship_type_info: Any, 
+        ship_attributes: Dict[str, Any], 
+        image_urls: Dict[str, str]
+    ) -> ShipDetailsSchema:
+        """Build final ShipDetailsSchema from all ship data.
+        
+        Args:
+            ship_item: ContractItem representing the ship
+            ship_type_info: EsiTypeCache object with ship type info
+            ship_attributes: Processed ship attributes
+            image_urls: Generated image URLs
+            
+        Returns:
+            Complete ShipDetailsSchema object
+        """
+        return ShipDetailsSchema(
+            type_id=ship_item.type_id,
+            type_name=ship_type_info.name,
+            description=ship_type_info.description,
+            attributes=ship_attributes,
+            icon_url=image_urls.get('icon'),
+            image_url=image_urls.get('image'),
+            render_url=image_urls.get('render'),
+            mass=ship_type_info.mass,
+            volume=ship_type_info.volume,
+            capacity=ship_type_info.capacity
+        )

@@ -289,3 +289,88 @@ class ESITypeService:
         })
         
         return attributes
+    
+    async def _process_ship_attributes(
+        self, 
+        type_id: int, 
+        detail_level: str = "key_attributes"
+    ) -> Dict[str, Any]:
+        """Process ship attributes based on detail level.
+        
+        Fetches ship attributes from ESI and formats them according
+        to the requested detail level.
+        
+        Args:
+            type_id: Ship type ID
+            detail_level: "basic", "key_attributes", or "all_attributes"
+            
+        Returns:
+            Dictionary of processed ship attributes
+        """
+        # Get type info with attributes
+        type_info = await self.get_type_info(type_id)
+        if not type_info:
+            return {}
+            
+        # Return based on detail level
+        if detail_level == "basic":
+            return self._extract_basic_ship_attributes(type_info)
+        elif detail_level == "key_attributes":
+            return await self.get_ship_attributes(type_id)  # Use existing method
+        else:  # all_attributes
+            return self._extract_all_ship_attributes(type_info)
+    
+    def _extract_basic_ship_attributes(self, type_info: Any) -> Dict[str, Any]:
+        """Extract basic ship attributes for minimal display."""
+        return {
+            'mass': type_info.mass,
+            'volume': type_info.volume,
+            'capacity': type_info.capacity,
+            'name': type_info.name,
+            'description': type_info.description
+        }
+    
+    def _extract_all_ship_attributes(self, type_info: Any) -> Dict[str, Any]:
+        """Extract all available ship attributes."""
+        attributes = {
+            'mass': type_info.mass,
+            'volume': type_info.volume,
+            'capacity': type_info.capacity,
+            'name': type_info.name,
+            'description': type_info.description,
+            'category_id': type_info.category_id,
+            'group_id': type_info.group_id,
+            'market_group_id': type_info.market_group_id
+        }
+        
+        # Add all dogma attributes if available
+        if type_info.dogma_attributes:
+            attributes['dogma_attributes'] = type_info.dogma_attributes
+            
+        # Add all dogma effects if available
+        if type_info.dogma_effects:
+            attributes['dogma_effects'] = type_info.dogma_effects
+            
+        return attributes
+    
+    async def _generate_image_urls(self, type_id: int) -> Dict[str, str]:
+        """Generate standardized image URLs for ship visualization.
+        
+        Args:
+            type_id: Ship type ID
+            
+        Returns:
+            Dictionary containing various image URL types
+        """
+        base_url = "https://images.evetech.net/types"
+        
+        return {
+            'icon': f"{base_url}/{type_id}/icon?size=64",
+            'image': f"{base_url}/{type_id}/render?size=256", 
+            'render': f"{base_url}/{type_id}/render?size=512",
+            'portrait': f"{base_url}/{type_id}/portrait?size=256",
+            'icon_small': f"{base_url}/{type_id}/icon?size=32",
+            'icon_large': f"{base_url}/{type_id}/icon?size=128",
+            'render_small': f"{base_url}/{type_id}/render?size=128",
+            'render_large': f"{base_url}/{type_id}/render?size=1024"
+        }
