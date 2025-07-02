@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -133,3 +133,95 @@ class ContractFilters(BaseModel):
     sort_direction: SortDirection = Field(
         default=SortDirection.desc, description="Sort direction."
     )
+
+
+class DetailedContractItemSchema(BaseModel):
+    """Enhanced schema for contract items with comprehensive ESI data."""
+    
+    record_id: int
+    type_id: int
+    type_name: Optional[str] = None
+    category: Optional[str] = None
+    quantity: int
+    is_included: bool
+    is_singleton: bool
+    is_blueprint_copy: Optional[bool] = None
+    raw_quantity: Optional[int] = None
+    market_group_id: Optional[int] = None
+    
+    # ESI-enhanced fields
+    description: Optional[str] = None
+    mass: Optional[float] = None
+    volume: Optional[float] = None
+    capacity: Optional[float] = None
+    icon_url: Optional[str] = None
+    image_url: Optional[str] = None
+    
+    # Ship-specific attributes (present if item is a ship)
+    ship_attributes: Optional[Dict[str, Any]] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShipDetailsSchema(BaseModel):
+    """Detailed ship information for ship contracts."""
+    
+    type_id: int
+    type_name: str
+    description: Optional[str] = None
+    
+    # Ship attributes (power, slots, resistances, etc.)
+    attributes: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Visual representation URLs
+    icon_url: Optional[str] = None
+    image_url: Optional[str] = None
+    render_url: Optional[str] = None
+    
+    # Physical properties
+    mass: Optional[float] = None
+    volume: Optional[float] = None
+    capacity: Optional[float] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DetailedContractSchema(BaseModel):
+    """Comprehensive schema for detailed contract view."""
+    
+    contract_id: int
+    title: Optional[str] = None
+    type: str
+    status: str
+    price: float = 0.0
+    collateral: float = 0.0
+    reward: Optional[float] = None
+    volume: Optional[float] = None
+    
+    # Dates
+    date_issued: Optional[str] = None  # ISO format string
+    date_expired: Optional[str] = None  # ISO format string
+    date_completed: Optional[str] = None  # ISO format string
+    
+    # Issuer information
+    issuer_id: int
+    issuer_name: Optional[str] = None
+    issuer_corporation_id: int
+    issuer_corporation_name: Optional[str] = None
+    
+    # Location information
+    start_location_id: Optional[int] = None
+    start_location_name: Optional[str] = None
+    start_location_system_id: Optional[int] = None
+    start_location_region_id: Optional[int] = None
+    end_location_id: Optional[int] = None
+    
+    # Contract flags
+    for_corporation: bool
+    is_ship_contract: bool
+    
+    # Enhanced data
+    items: List[DetailedContractItemSchema] = Field(default_factory=list)
+    ship_details: Optional[ShipDetailsSchema] = None
+    
+    model_config = ConfigDict(from_attributes=True)

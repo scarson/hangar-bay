@@ -9,8 +9,11 @@ from ..schemas.common import PaginatedResponse
 from ..schemas.contracts import (
     ContractFilters,
     ContractSchema,
+    DetailedContractSchema,
 )
-from ..services.contract_service import get_contracts
+from ..services.contract_service import get_contracts, get_contract_details
+from ..services.esi_type_service import ESITypeService
+from ..core.dependencies import get_esi_type_service
 
 router = APIRouter(
     prefix="/contracts",
@@ -43,6 +46,9 @@ async def get_contract(
 ):
     """
     Retrieves a single contract by its ID, including its items.
+    
+    This is the original, lightweight endpoint for basic contract information.
+    For comprehensive details with ship attributes and images, use /details/{contract_id}.
     """
     query = (
         select(Contract)
@@ -56,3 +62,31 @@ async def get_contract(
         raise HTTPException(status_code=404, detail="Contract not found")
 
     return contract
+
+
+@router.get("/details/{contract_id}", response_model=DetailedContractSchema)
+async def get_contract_details_endpoint(
+    contract_id: int,
+    db: AsyncSession = Depends(get_db),
+    esi_type_service: ESITypeService = Depends(get_esi_type_service),
+):
+    """
+    Retrieves comprehensive details for a single contract including ship attributes,
+    images, and comprehensive ESI data.
+    
+    This endpoint provides enhanced contract information with:
+    - Complete item details with ESI type information
+    - Ship attributes for ship contracts
+    - Image URLs for visual representation
+    - Comprehensive ship statistics and properties
+    """
+    contract_details = await get_contract_details(
+        db=db, 
+        contract_id=contract_id, 
+        esi_type_service=esi_type_service
+    )
+    
+    if not contract_details:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    
+    return contract_details
