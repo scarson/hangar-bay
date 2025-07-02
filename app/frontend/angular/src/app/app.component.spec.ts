@@ -9,11 +9,11 @@ import { Location } from '@angular/common';
 import { of } from 'rxjs';
 import { AppComponent } from './app.component';
 import { routes } from './app.routes';
-import { Footer } from './shared/layout/footer/footer.component';
-import { Header } from './shared/layout/header/header.component';
-import { ContractApi } from './features/contracts/services/contract.api';
-import { ContractSearch } from './features/contracts/services/contract-search.service';
-import { contractFilterResolver } from './features/contracts/resolvers/contract-filter.resolver';
+//import { Footer } from './shared/layout/footer/footer.component';
+//import { Header } from './shared/layout/header/header.component';
+//import { ContractApi } from './features/contracts/services/contract.api';
+//import { ContractSearch } from './features/contracts/services/contract-search.service';
+//import { contractFilterResolver } from './features/contracts/resolvers/contract-filter.resolver';
 
 // Mock components to isolate AppComponent during testing
 @Component({ selector: 'hgb-header', standalone: true, template: '' })
@@ -52,13 +52,13 @@ describe('AppComponent', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter(routes),
-        { provide: ContractApi, useValue: mockContractApi },
-        { provide: ContractSearch, useValue: mockContractSearch },
-        { provide: contractFilterResolver, useValue: () => of(true) },
+        // { provide: ContractApi, useValue: mockContractApi },
+        // { provide: ContractSearch, useValue: mockContractSearch },
+        // { provide: contractFilterResolver, useValue: () => of(true) },
       ],
     }).overrideComponent(AppComponent, {
-        remove: { imports: [Header, Footer] },
-        add: { imports: [MockHeaderComponent, MockFooterComponent] },
+        //remove: { imports: [Header, Footer] },
+        //add: { imports: [MockHeaderComponent, MockFooterComponent] },
       })
       .compileComponents();
   });
