@@ -11,7 +11,7 @@ This document provides a high-level overview of the Hangar Bay FastAPI backend a
 
 ## 2. Architectural Layers
 
-### 2.1. Controller Layer (`/routers`)
+### 2.1. Controller Layer (`/api`)
 
 -   **Purpose**: Defines the API endpoints, handles HTTP request/response logic, and performs data validation using Pydantic models.
 -   **Responsibilities**:
@@ -19,7 +19,7 @@ This document provides a high-level overview of the Hangar Bay FastAPI backend a
     -   Inject services using `Depends()`.
     -   Delegate business logic to the appropriate service.
     -   Return Pydantic models as JSON responses.
--   **Example**: `app/backend/src/fastapi_app/routers/contracts.py`
+-   **Example**: `app/backend/src/fastapi_app/api/contracts.py`
 
 ### 2.2. Service Layer (`/services`)
 
@@ -82,6 +82,7 @@ This section provides a detailed breakdown of the backend project structure. The
 │   │   ├── esi_client_class.py # Defines the `ESIClient` class, a dedicated client for interacting with the EVE Online ESI API.
 │   │   ├── exceptions.py     # Custom application-specific exceptions (e.g., `ESINotModifiedError`).
 │   │   ├── http_client.py    # Manages the global `httpx.AsyncClient` instance for the application.
+│   │   ├── logging.py        # Configures the `structlog` structured logging for the application.
 │   │   └── scheduler.py      # Sets up the `APScheduler` for running background tasks, including job definitions.
 │   │
 │   ├── models/
