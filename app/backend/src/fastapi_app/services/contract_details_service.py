@@ -14,8 +14,8 @@ from sqlalchemy import select
 from ..models.contracts import Contract, ContractItem
 from ..models.common_models import EsiTypeCache
 from ..schemas.contracts import (
-    DetailedContractSchema, 
-    DetailedContractItemSchema,
+    ContractDetailsSchema, 
+    ContractDetailsItemSchema,
     ShipDetailsSchema,
     ShipAttributeSchema,
     ShipAttributeGroupSchema,
@@ -27,8 +27,8 @@ from .esi_type_service import ESITypeService
 logger = logging.getLogger(__name__)
 
 
-class DetailedContractService:
-    """Service for retrieving detailed contract information with ESI data joins.
+class ContractDetailsService:
+    """Service for retrieving contract details with ESI data joins.
     
     Follows the service construction pattern with dependency injection for
     database session and ESI type service.
@@ -43,7 +43,7 @@ class DetailedContractService:
         contract_id: int,
         include_ship_attributes: bool = True,
         attribute_detail_level: str = "key_attributes"
-    ) -> Optional[DetailedContractSchema]:
+    ) -> Optional[ContractDetailsSchema]:
         """
         Retrieve comprehensive contract details with ESI data enhancement.
         
@@ -53,7 +53,7 @@ class DetailedContractService:
             attribute_detail_level: "key_attributes" or "all_attributes"
             
         Returns:
-            DetailedContractSchema with enhanced data or None if not found
+            ContractDetailsSchema with enhanced data or None if not found
         """
         logger.info(
             "Retrieving detailed contract",
@@ -89,8 +89,8 @@ class DetailedContractService:
                     attribute_detail_level
                 )
             
-            # Build detailed contract response
-            detailed_contract = DetailedContractSchema(
+            # Build contract details response
+            contract_details = ContractDetailsSchema(
                 contract_id=contract.contract_id,
                 title=contract.title,
                 type=contract.type,
@@ -125,7 +125,7 @@ class DetailedContractService:
                 }
             )
             
-            return detailed_contract
+            return contract_details
             
         except Exception as e:
             logger.error(
@@ -152,7 +152,7 @@ class DetailedContractService:
     async def _enhance_contract_items(
         self, 
         items: List[ContractItem]
-    ) -> List[DetailedContractItemSchema]:
+    ) -> List[ContractDetailsItemSchema]:
         """Enhance contract items with ESI type data."""
         if not items:
             return []
@@ -168,7 +168,7 @@ class DetailedContractService:
             type_data = type_data_map.get(item.type_id)
             
             # Create enhanced item schema
-            enhanced_item = DetailedContractItemSchema(
+            enhanced_item = ContractDetailsItemSchema(
                 record_id=item.record_id,
                 type_id=item.type_id,
                 type_name=item.type_name or (type_data.name if type_data else None),

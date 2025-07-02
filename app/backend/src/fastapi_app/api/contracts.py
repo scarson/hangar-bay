@@ -9,9 +9,10 @@ from ..schemas.common import PaginatedResponse
 from ..schemas.contracts import (
     ContractFilters,
     ContractSchema,
-    DetailedContractSchema,
+    ContractDetailsSchema,
 )
-from ..services.contract_service import get_contracts, get_contract_details
+from ..services.contract_service import get_contracts
+from ..services.contract_details_service import ContractDetailsService
 from ..services.esi_type_service import ESITypeService
 from ..core.dependencies import get_esi_type_service
 
@@ -64,7 +65,7 @@ async def get_contract(
     return contract
 
 
-@router.get("/details/{contract_id}", response_model=DetailedContractSchema)
+@router.get("/details/{contract_id}", response_model=ContractDetailsSchema)
 async def get_contract_details_endpoint(
     contract_id: int,
     attribute_detail: str = "key_attributes",
@@ -85,10 +86,15 @@ async def get_contract_details_endpoint(
         contract_id: The contract ID to retrieve
         attribute_detail: Level of ship attribute detail ("key_attributes" or "all_attributes")
     """
-    contract_details = await get_contract_details(
-        db=db, 
-        contract_id=contract_id, 
-        esi_type_service=esi_type_service,
+    # Create contract details service instance
+    contract_details_service = ContractDetailsService(
+        db_session=db,
+        esi_type_service=esi_type_service
+    )
+    
+    contract_details = await contract_details_service.get_contract_details(
+        contract_id=contract_id,
+        include_ship_attributes=True,
         attribute_detail_level=attribute_detail
     )
     

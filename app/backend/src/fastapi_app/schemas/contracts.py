@@ -255,7 +255,7 @@ class ContractFilters(BaseModel):
     )
 
 
-class DetailedContractItemSchema(BaseModel):
+class ContractDetailsItemSchema(BaseModel):
     """Enhanced schema for contract items with comprehensive ESI data."""
     
     record_id: int
@@ -306,7 +306,7 @@ class ShipDetailsSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class DetailedContractSchema(BaseModel):
+class ContractDetailsSchema(BaseModel):
     """Comprehensive schema for detailed contract view."""
     
     contract_id: int
@@ -341,7 +341,7 @@ class DetailedContractSchema(BaseModel):
     is_ship_contract: bool
     
     # Enhanced data
-    items: List[DetailedContractItemSchema] = Field(default_factory=list)
+    items: List[ContractDetailsItemSchema] = Field(default_factory=list)
     ship_details: Optional[ShipDetailsSchema] = None
     
     model_config = ConfigDict(from_attributes=True)
