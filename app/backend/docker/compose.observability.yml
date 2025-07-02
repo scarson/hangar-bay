@@ -1,0 +1,45 @@
+# Hangar Bay - Observability Stack
+#
+# This file manages auxiliary services for local development, specifically for
+# observability: Prometheus for metrics collection and Grafana for visualization.
+#
+# --- NETWORK CONNECTIONS ---
+# In line with the Zero Trust principle of Microsegmentation, these services
+# are isolated on their own private network, `hb-monitoring-net`.
+#
+# - prometheus: Connects ONLY to `hb-monitoring-net`.
+# - grafana: Connects ONLY to `hb-monitoring-net`.
+#
+# They can only communicate with each other and with the backend FastAPI app
+# (which is also on this network), allowing Prometheus to scrape metrics and
+# Grafana to query Prometheus. They have no direct network path to the data tier.
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.4.2
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - hb-monitoring-net
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+    networks:
+      - hb-monitoring-net
+
+volumes:
+  prometheus_data: {}
+  grafana_data: {}

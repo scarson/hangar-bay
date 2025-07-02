@@ -1636,4 +1636,56 @@ The application will be treated as two distinct microservices: a frontend "stati
 
 ---
 
+### 2025-06-30 02:52:26-05:00
+
+**Context:**
+During the final review before implementing the observability stack for the FastAPI backend (Task 05.2), a decision was needed on where to place the `structlog` configuration logic.
+
+**Decision:**
+- A new, dedicated file will be created at `app/backend/src/fastapi_app/core/logging.py`.
+- This file will contain the `setup_logging` function and all related configuration for structured logging.
+- The `main.py` file will import and call this setup function during application startup.
+
+**Rationale:**
+1.  **Separation of Concerns:** This decision keeps the `main.py` file clean and focused on its primary role of application assembly and wiring.
+2.  **Architectural Alignment:** It aligns with the established project architecture, where the `core/` directory is used for cross-cutting concerns (like `config.py`, `cache.py`, etc.).
+3.  **Maintainability:** Centralizing the logging configuration in its own module makes it easier to find, manage, and modify in the future.
+
+**Alternatives Considered:**
+- **Placing logic in `main.py`:** Rejected as it would clutter the main entry point with detailed setup code, violating the single-responsibility principle.
+- **Placing logic in `core/config.py`:** Rejected as logging is a distinct concern from application settings management.
+
+---
+
+### 2025-06-30 03:24:26-05:00 | Docker Network Architecture Refactored for Zero Trust Microsegmentation
+
+**Status:** Implemented
+
+**Context:**
+The initial Docker Compose setup utilized a single, shared network (`hangar-bay-net`) for all services, including the database, cache, and observability stack (Prometheus, Grafana). A security review prompted by the user highlighted that this flat network architecture was overly permissive and violated the core security principles established in `design/specifications/security-spec.md`.
+
+**Decision:**
+The Docker network architecture has been completely refactored to align with a **Zero Trust Architecture (ZTA)**, specifically implementing the principle of **Microsegmentation** (security-spec.md, line 17). The single shared network has been replaced with three distinct, isolated networks to enforce least-privilege access for all services.
+
+**New Architecture:**
+
+1.  **`hb-public-net`**: Connects the frontend (`angular_app`) and backend (`fastapi_app`). This is the only network the frontend container will join, preventing it from having any direct network path to the data or monitoring tiers.
+2.  **`hb-data-tier-net`**: A private network exclusively for the `fastapi_app`, `postgres_db`, and `valkey_cache`. This isolates the application's stateful data stores from the rest of the system, significantly reducing the attack surface.
+3.  **`hb-monitoring-net`**: A private network for the `fastapi_app`, `prometheus`, and `grafana`. This allows the observability stack to function without granting it access to the sensitive data tier.
+
+The `fastapi_app` container is the only component that will be attached to all three networks, acting as a secure, controlled bridge and policy enforcement point between the segments.
+
+**Rationale & Alignment with Security Spec:**
+*   **Zero Trust / Least Privilege:** No service has network access beyond what is strictly required for its function. A compromise in the monitoring stack, for example, cannot be leveraged to directly attack the database.
+*   **Microsegmentation:** The architecture is now divided into smaller, isolated segments (public, data, monitoring), which limits the blast radius of any potential security incident.
+*   **Defense in Depth:** This network-level isolation adds a critical layer of defense. An attacker who bypasses one control (e.g., compromises a Grafana vulnerability) is still faced with a network barrier preventing lateral movement to more sensitive parts of the application.
+
+**Implementation Details:**
+*   `app/backend/docker/compose.yml` was refactored to be the main orchestrator, defining the three networks.
+*   `app/backend/docker/compose.dependencies.yml` was updated to place the database and cache exclusively on `hb-data-tier-net`.
+*   `app/backend/docker/compose.observability.yml` was updated to place Prometheus and Grafana exclusively on `hb-monitoring-net`.
+*   All files were updated with detailed comments explaining the new architecture.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))
