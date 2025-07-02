@@ -1,0 +1,28 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - test
+      user-agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: http://test/contracts/?page=2&size=3&sort_by=price&sort_direction=asc
+  response:
+    body:
+      string: '{"total":10,"page":2,"size":3,"items":[{"contract_id":4,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C4","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":40.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":4,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]},{"contract_id":5,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C5","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":50.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":5,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]},{"contract_id":6,"issuer_id":1,"issuer_corporation_id":1,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"C6","for_corporation":false,"date_issued":"2025-01-01T00:00:00Z","date_expired":"2025-01-02T00:00:00Z","date_completed":null,"price":60.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":true,"items":[{"record_id":6,"type_id":101,"quantity":1,"is_included":true,"is_singleton":true,"is_blueprint_copy":null,"raw_quantity":null,"type_name":"Ship","category":null,"market_group_id":null}]}]}'
+    headers:
+      content-length:
+      - '1921'
+      content-type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+version: 1

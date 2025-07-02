@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import os
 
@@ -17,12 +18,8 @@ from alembic import context
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
-config = context.config
-
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# The config object and logging are configured within the migration functions
+# to ensure the context is fully initialized before being accessed.
 
 # Import your application's settings and Base model
 # Ensure your application's path is discoverable by Alembic.
@@ -71,6 +68,10 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
+    config = context.config
+    # Interpret the config file for Python logging.
+    if config.config_file_name is not None:
+        fileConfig(config.config_file_name)
     """Run migrations in 'offline' mode.
 
     This configures the context with just a URL
@@ -90,49 +91,67 @@ def run_migrations_offline() -> None:
         # compare_type=True,  # Temporarily commented out to detect type changes
     )
 
-    with context.begin_transaction():
-        context.run_migrations()
+    context.run_migrations()
 
 
 def do_run_migrations(connection):
-    context.configure(
-        connection=connection, target_metadata=target_metadata, 
-        # compare_type=True  # Temporarily commented out to detect type changes
-    )
-
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-async def run_migrations_online_async() -> None:
-    """Run migrations in 'online' mode for an async engine.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
     """
-    # Option 1: Create a new engine specifically for Alembic
+    Run Alembic migrations on a given connection.
+    This function assumes the caller (either the CLI entrypoint or a pytest fixture)
+    has already started a transaction. It configures the context and runs the
+    migrations within that existing transactional context.
+    """
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+    )
+    # The transaction is managed by the pytest fixture's `engine.begin()` or
+    # the CLI runner's `connectable.begin()`.
+    # We must not start a new transaction here with `context.begin_transaction()`,
+    # as that can interfere with the externally managed transaction.
+    context.run_migrations()
+
+
+async def run_migrations_online_async_cli():
+    """
+    Run migrations in 'online' mode for an async engine.
+    This is the path used when running `alembic` from the command line.
+    It creates an engine, starts a transaction with `begin()`, and then
+    runs the migrations within that transaction.
+    """
     connectable = create_async_engine(
         str(settings.DATABASE_URL),
-        poolclass=pool.NullPool,  # Recommended for Alembic with async
+        poolclass=pool.NullPool,
         future=True,
     )
 
-    # Option 2: Use the application's shared engine (if appropriate for your setup)
-    # connectable = app_async_engine
-
-    async with connectable.connect() as connection:
+    async with connectable.begin() as connection:
         await connection.run_sync(do_run_migrations)
 
-    await connectable.dispose()  # Important for async engines
+    await connectable.dispose()
 
 
-def run_migrations_online() -> None:
-    """Entry point for 'online' mode."""
-    asyncio.run(run_migrations_online_async())
+def run_migrations_online():
+    config = context.config
+    # Interpret the config file for Python logging.
+    if config.config_file_name is not None:
+        fileConfig(config.config_file_name)
+    """
+    Run migrations in 'online' mode.
+    This function handles two scenarios:
+    1. Running from the `alembic` CLI: It creates a new async engine.
+    2. Running from pytest: It uses the existing synchronous connection
+       provided by the test fixture via `context.config.attributes`.
+    """
+    connectable = context.config.attributes.get("connection", None)
+
+    if connectable is None:
+        # We're running from the CLI, create a new engine.
+        asyncio.run(run_migrations_online_async_cli())
+    else:
+        # We're running from pytest, use the existing connection.
+        do_run_migrations(connectable)
 
 
-if context.is_offline_mode():
-    run_migrations_offline()
-else:
-    run_migrations_online()
+# The CLI execution block has been removed to make this module safely importable by pytest.
+# The test suite now calls do_run_migrations() directly.

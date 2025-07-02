@@ -71,6 +71,8 @@ class Settings(BaseSettings):
         raise ValueError(f"Invalid type for AGGREGATION_REGION_IDS: {type(v)}. Expected string or list of (convertible) integers.")
 
     DATABASE_URL: Optional[Union[PostgresDsn, AnyUrl]] = None # Will be loaded from .env if present
+    DATABASE_URL_TESTS: Optional[PostgresDsn] = None # For test environment
+    CACHE_URL_TESTS: Optional[AnyUrl] = None # For test environment
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parent.parent / ".env", env_file_encoding="utf-8", extra="ignore"

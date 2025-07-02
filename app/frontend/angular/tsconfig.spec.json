@@ -10,5 +10,5 @@
   },
   "include": [
     "src/**/*.ts"
-  ]
+, "src/app/features/contracts/contract-filter-resolver.ts.bak", "src/app/features/contracts/contract-filter-resolver.spec.ts.bak", "src/app/features/contracts/contract-search.spec.ts.bak"  ]
 }

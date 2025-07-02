@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     Index,
+    Numeric,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy import JSON
@@ -37,20 +38,21 @@ class Contract(Base):
     __tablename__ = 'contracts'
 
     contract_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    price: Mapped[float] = mapped_column(Numeric, nullable=False)
+    collateral: Mapped[float] = mapped_column(Numeric, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False)
     issuer_id: Mapped[int] = mapped_column(Integer, nullable=False)
     issuer_corporation_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    start_location_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    start_location_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    start_location_system_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    start_location_region_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     end_location_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True) # Optional for courier contracts
-
-    type: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[str] = mapped_column(String, nullable=False)
-    title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     for_corporation: Mapped[bool] = mapped_column(Boolean, nullable=False)
     date_issued: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     date_expired: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     date_completed: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     reward: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     volume: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
@@ -70,6 +72,11 @@ class Contract(Base):
         Index('ix_contracts_start_location_name', 'start_location_name'),
         Index('ix_contracts_title', 'title'),
         Index('ix_contracts_is_ship_contract', 'is_ship_contract'),
+        # Indexes for sorting and filtering performance
+        Index('ix_contracts_price', 'price'),
+        Index('ix_contracts_date_issued', 'date_issued'),
+        Index('ix_contracts_collateral', 'collateral'),
+        Index('ix_contracts_volume', 'volume'),
     )
 
     def __repr__(self):
@@ -85,6 +92,7 @@ class ContractItem(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     is_included: Mapped[bool] = mapped_column(Boolean, nullable=False)
     is_singleton: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_blueprint_copy: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     raw_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Denormalized data from other sources
@@ -97,6 +105,9 @@ class ContractItem(Base):
     __table_args__ = (
         Index('ix_contract_items_contract_id', 'contract_id'),
         Index('ix_contract_items_type_id', 'type_id'),
+        # Indexes for BPC filtering
+        Index('ix_contract_items_is_blueprint_copy', 'is_blueprint_copy'),
+        Index('ix_contract_items_raw_quantity', 'raw_quantity'),
     )
 
     def __repr__(self):

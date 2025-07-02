@@ -1,13 +1,16 @@
-from typing import Optional
-
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..db import get_db
 from ..models.contracts import Contract
-from ..schemas.contracts import PaginatedContractResponse
+from ..schemas.common import PaginatedResponse
+from ..schemas.contracts import (
+    ContractFilters,
+    ContractSchema,
+)
+from ..services.contract_service import get_contracts
 
 router = APIRouter(
     prefix="/contracts",
@@ -15,42 +18,41 @@ router = APIRouter(
 )
 
 
-@router.get("/", response_model=PaginatedContractResponse)
+# This route must be defined BEFORE the /{contract_id} route.
+# FastAPI matches routes in order, so a request to /ships would otherwise
+# be incorrectly captured by the /{contract_id} route, leading to a
+# validation error trying to parse "ships" as an integer.
+@router.get("/", response_model=PaginatedResponse[ContractSchema])
 async def list_public_contracts(
     db: AsyncSession = Depends(get_db),
-    page: int = Query(1, ge=1, description="Page number"),
-    size: int = Query(20, ge=1, le=100, description="Page size"),
-    search: Optional[str] = Query(None, description="Search by title or location name"),
+    filters: ContractFilters = Depends(ContractFilters),
 ):
     """
-    Lists public contracts with pagination and optional search.
+    Retrieves a paginated list of contracts based on specified filters.
+
+    This endpoint uses a service layer to apply advanced filtering, sorting,
+    and pagination to public contracts.
     """
-    offset = (page - 1) * size
+    return await get_contracts(db=db, filters=filters)
 
-    # Base query for contracts, loading related items efficiently
-    query = select(Contract).options(selectinload(Contract.items))
 
-    # Search filter
-    if search:
-        search_term = f"%{search}%"
-        query = query.where(
-            (Contract.title.ilike(search_term)) |
-            (Contract.start_location_name.ilike(search_term))
-        )
+@router.get("/{contract_id}", response_model=ContractSchema)
+async def get_contract(
+    contract_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retrieves a single contract by its ID, including its items.
+    """
+    query = (
+        select(Contract)
+        .where(Contract.contract_id == contract_id)
+        .options(selectinload(Contract.items))
+    )
+    result = await db.execute(query)
+    contract = result.scalar_one_or_none()
 
-    # Get total count for pagination. 
-    # We create the count query from the existing query to ensure all filters are applied,
-    # then replace the selected columns with a count function.
-    count_query = query.with_only_columns(func.count(Contract.contract_id)).order_by(None)
-    total_count = (await db.execute(count_query)).scalar_one()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
 
-    # Get paginated results
-    results_query = query.offset(offset).limit(size)
-    contracts = (await db.execute(results_query)).scalars().all()
-
-    return {
-        "total": total_count,
-        "page": page,
-        "size": size,
-        "items": contracts,
-    }
+    return contract

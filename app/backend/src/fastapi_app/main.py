@@ -1,5 +1,9 @@
 import logging
 import pydantic
+import structlog
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 # Print Pydantic version right at the start for immediate visibility
 print(f"PYDANTIC_VERSION_CHECK_PRINT: {pydantic.__version__}", flush=True)
@@ -7,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 from typing import Optional
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, APIRouter
 from redis.asyncio import Redis # For type hinting Redis client
@@ -15,25 +20,97 @@ from .core.cache import init_cache, close_cache
 from .core.http_client import init_http_client, close_http_client
 from .core.scheduler import add_aggregation_job, create_scheduler
 from .core.dependencies import get_cache
-from .db import AsyncSessionLocal # For manual session creation
+from .core.logging import setup_logging, RequestIDMiddleware
+from .db import AsyncSessionLocal, async_engine, Base
 from .core.esi_client_class import ESIClient # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService # For manual service creation
 from .api import contracts as contracts_router
-from .db import async_engine, Base
 from .models import contracts # This import is crucial for Base.metadata to find the tables.
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
-# Configure basic logging to ensure messages are surfaced
+# Configure basic logging for early startup messages
+# This will be enhanced with structured logging in the lifespan function
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(name)s - %(message)s')
 
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manages application startup and shutdown events."""
+    # Startup logic
+    # Setup structured logging first
+    setup_logging(settings)
+    
+    await create_db_tables()
+    init_http_client(app)
+    await init_cache(app)
+
+    # Initialize and start the scheduler
+    scheduler = create_scheduler(app, settings)
+    esi_client = ESIClient(settings=settings)
+    aggregation_service = ContractAggregationService(
+        esi_client=esi_client,
+        settings=settings,
+    )
+    add_aggregation_job(scheduler, aggregation_service, settings)
+    scheduler.start()
+    logging.info("Application startup complete with all services initialized.")
+
+    yield  # The application runs here
+
+    # Shutdown logic
+    if hasattr(app.state, "scheduler") and app.state.scheduler.running:
+        app.state.scheduler.shutdown()
+        logging.info("Scheduler has been shut down.")
+    await close_http_client(app)
+    await close_cache(app)
+    logging.info("Application shutdown complete.")
 
 
 app = FastAPI(
     title="Hangar Bay API",
     description="API for the Hangar Bay application, providing access to EVE Online public contract data and related services.",
     version="0.1.0",
+    lifespan=lifespan,
     # Additional OpenAPI metadata can be added here
     # See: https://fastapi.tiangolo.com/tutorial/metadata/
 )
+
+# Add global exception handler FIRST, before middleware
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler to catch any unhandled exceptions and return a
+    standardized 500 error response.
+    """
+    # Use structlog to log the exception with context
+    logger = structlog.get_logger("uvicorn.error")
+    logger.error(
+        "unhandled_exception",
+        exc_info=exc,
+        error_message=str(exc),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected server error occurred."},
+    )
+
+# Add RequestID middleware for structured logging correlation
+app.add_middleware(RequestIDMiddleware)
+
+# Setup Prometheus metrics instrumentation
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    should_respect_env_var=False,  # Always enable metrics
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=[],  # Don't exclude metrics endpoint
+    inprogress_name="hangar_bay_requests_inprogress",
+    inprogress_labels=True,
+)
+instrumentator.instrument(app)
+instrumentator.expose(app, endpoint="/metrics")
 
 
 @app.get("/")
@@ -60,55 +137,7 @@ async def create_db_tables():
     logger.info("Database tables successfully recreated.")
 
 
-# Application lifecycle event handlers
-@app.on_event("startup")
-async def startup_event():
-    """Initializes all necessary services on application startup."""
-    await create_db_tables()
-    init_http_client(app)
-    await init_cache(app)
 
-
-
-    # Initialize and start the scheduler
-    scheduler = create_scheduler(app, settings)
-
-    # Manually create dependencies for the ContractAggregationService for the scheduler
-    # This ensures the scheduler uses the main application's settings instance and a session factory
-
-    # Ensure http_client and redis are available from app.state
-    if not hasattr(app.state, 'http_client') or not app.state.http_client:
-        raise RuntimeError("HTTP client not initialized in app.state before scheduler setup.")
-    if not hasattr(app.state, 'redis') or not app.state.redis:
-        raise RuntimeError("Redis client not initialized in app.state before scheduler setup.")
-
-    # For the scheduler, we create a picklable ESIClient that will manage
-    # its own clients on-demand within the job's execution context.
-    esi_client = ESIClient(settings=settings)
-    
-    # Instantiate the service with the session factory (AsyncSessionLocal)
-    aggregation_service = ContractAggregationService(
-        # cache=app.state.redis, # ContractAggregationService no longer takes cache client directly
-        esi_client=esi_client,
-        settings=settings, # Pass the globally imported settings from main.py
-    )
-    add_aggregation_job(scheduler, aggregation_service, settings)
-    
-    scheduler.start()
-    logging.info("Application startup complete with all services initialized.")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Gracefully shuts down all services on application shutdown."""
-    # Shut down the scheduler first to stop new jobs
-    if hasattr(app.state, "scheduler") and app.state.scheduler.running:
-        app.state.scheduler.shutdown()
-        logging.info("Scheduler has been shut down.")
-
-    await close_http_client(app)
-    await close_cache(app)
-    logging.info("Application shutdown complete.")
 
 
 # CASCADE-PROD-CHECK: Remove or disable this endpoint for production.

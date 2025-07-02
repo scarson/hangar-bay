@@ -11,7 +11,7 @@ This document provides a high-level overview of the Hangar Bay FastAPI backend a
 
 ## 2. Architectural Layers
 
-### 2.1. Controller Layer (`/routers`)
+### 2.1. Controller Layer (`/api`)
 
 -   **Purpose**: Defines the API endpoints, handles HTTP request/response logic, and performs data validation using Pydantic models.
 -   **Responsibilities**:
@@ -19,7 +19,7 @@ This document provides a high-level overview of the Hangar Bay FastAPI backend a
     -   Inject services using `Depends()`.
     -   Delegate business logic to the appropriate service.
     -   Return Pydantic models as JSON responses.
--   **Example**: `app/backend/src/fastapi_app/routers/contracts.py`
+-   **Example**: `app/backend/src/fastapi_app/api/contracts.py`
 
 ### 2.2. Service Layer (`/services`)
 
@@ -35,7 +35,7 @@ This document provides a high-level overview of the Hangar Bay FastAPI backend a
 -   **Purpose**: Manages all interactions with the database.
 -   **Components**:
     -   **SQLAlchemy Models** (`/models`): Define the database schema as Python classes.
-    -   **Database Session Management** (`/db/session.py`): Provides a dependency (`get_db`) to manage the lifecycle of database sessions for API requests.
+    -   **Database Session Management** (`/db.py`): Provides a dependency (`get_db`) to manage the lifecycle of database sessions for API requests.
 
 ## 3. Key Patterns & Solutions
 
@@ -54,3 +54,68 @@ For a detailed explanation and implementation guide, see the full pattern docume
 -   **Mechanism**: A single [Settings](cci:2://file:///c:/Users/Sam/OneDrive/Documents/Code/hangar-bay/app/backend/src/fastapi_app/core/config.py:7:0-85:85) class inherits from `pydantic_settings.BaseSettings`. It defines all required configuration variables with types and optional default values.
 -   **Loading**: Settings are automatically loaded from environment variables or a `.env` file.
 -   **Requirement**: Any new configuration needed by a service (e.g., `ESI_TIMEOUT`) **must** be added to this central [Settings](cci:2://file:///c:/Users/Sam/OneDrive/Documents/Code/hangar-bay/app/backend/src/fastapi_app/core/config.py:7:0-85:85) class to ensure it's available throughout the application.
+
+## 4. Directory and File Structure
+
+This section provides a detailed breakdown of the backend project structure. The layout is designed to be modular and scalable, following standard FastAPI best practices.
+
+```
+/app/backend/src/
+│
+├── fastapi_app/
+│   │
+│   ├── __init__.py
+│   │
+│   ├── main.py             # Main application entry point. Initializes the FastAPI app, sets up lifespan events (startup/shutdown), includes routers, and defines root/health endpoints.
+│   │
+│   ├── db.py               # Configures the SQLAlchemy database connection, including the async engine, session factory (`AsyncSessionLocal`), and the `get_db` dependency for sessions.
+│   │
+│   ├── api/
+│   │   ├── __init__.py
+│   │   └── contracts.py      # API router for contract-related endpoints (`/contracts`). Handles HTTP logic and delegates to the service layer.
+│   │
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── config.py         # Defines the Pydantic `Settings` class for type-safe configuration management from environment variables.
+│   │   ├── cache.py          # Functions for initializing and managing the Redis cache connection (`init_cache`, `close_cache`).
+│   │   ├── dependencies.py   # Contains common FastAPI dependencies, like `get_cache`, `get_esi_client`, and `get_settings`.
+│   │   ├── esi_client_class.py # Defines the `ESIClient` class, a dedicated client for interacting with the EVE Online ESI API.
+│   │   ├── exceptions.py     # Custom application-specific exceptions (e.g., `ESINotModifiedError`).
+│   │   ├── http_client.py    # Manages the global `httpx.AsyncClient` instance for the application.
+│   │   ├── logging.py        # Configures the `structlog` structured logging for the application.
+│   │   └── scheduler.py      # Sets up the `APScheduler` for running background tasks, including job definitions.
+│   │
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── contracts.py      # SQLAlchemy ORM models for `Contract` and `ContractItem`, defining the database table schemas.
+│   │   └── common_models.py  # Shared/common models, like `EsiMarketGroupCache`.
+│   │
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   └── contracts.py      # Pydantic schemas for API data validation and serialization (`ContractSchema`, `ContractItemSchema`, `ContractFilters`).
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── contract_service.py # Business logic for querying contracts, including advanced filtering, sorting, and pagination.
+│   │   ├── background_aggregation.py # The core service for fetching contract data from ESI in the background.
+│   │   ├── db_upsert.py      # A utility function (`bulk_upsert`) for performing efficient bulk insert/update operations.
+│   │   └── scheduled_jobs.py # Contains the functions that are directly executed by the scheduler (e.g., `run_aggregation_job`).
+│   │
+│   └── tests/
+│       ├── __init__.py
+│       ├── conftest.py         # Core pytest configuration. Defines the **mandatory, concurrency-safe** fixtures for the test database, app instance, and HTTP client. See the [Testing Guide](./guides/09-testing-strategies.md) for details.
+│       │
+│       ├── api/
+│       │   ├── __init__.py
+│       │   ├── test_contract_filters.py # Integration tests for the contract filters API endpoints.
+│       │   ├── test_contracts.py # Integration tests for the contracts API endpoints.
+│       │   ├── test_main_endpoints.py # Tests for basic endpoints like `/` and `/health`.
+│       │   └── cassettes/        # Stores VCRpy cassettes for mocking live ESI API calls.
+│       │       └── test_get_contracts_live.yaml
+│       │
+│       └── services/
+│           ├── __init__.py
+│           └── test_contract_service.py # Unit/integration tests for the `ContractService`.
+│
+└── .env                    # Local environment variables for development (e.g., database URLs, API keys). Ignored by Git.
+```

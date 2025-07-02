@@ -1,27 +1,30 @@
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ContractItemSchema(BaseModel):
     """Schema for an item within a contract."""
+
     record_id: int
     type_id: int
     quantity: int
     is_included: bool
     is_singleton: bool
+    is_blueprint_copy: Optional[bool] = None
     raw_quantity: Optional[int] = None
     type_name: Optional[str] = None
     category: Optional[str] = None
     market_group_id: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContractSchema(BaseModel):
     """Schema for a public contract."""
+
     contract_id: int
     issuer_id: int
     issuer_corporation_id: int
@@ -43,13 +46,90 @@ class ContractSchema(BaseModel):
     is_ship_contract: bool
     items: List[ContractItemSchema] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
-class PaginatedContractResponse(BaseModel):
-    """Schema for a paginated response of contracts."""
-    total: int = Field(..., description="Total number of contracts matching the query.")
-    page: int = Field(..., description="The current page number.")
-    size: int = Field(..., description="The number of items per page.")
-    items: List[ContractSchema] = Field(..., description="The list of contracts for the current page.")
+class SortableContractFields(str, Enum):
+    """Fields that can be used for sorting contracts."""
+
+    date_issued = "date_issued"
+    date_expired = "date_expired"
+    price = "price"
+    collateral = "collateral"
+    ship_name = "ship_name"
+    volume = "volume"
+
+
+class SortDirection(str, Enum):
+    asc = "asc"
+    desc = "desc"
+
+
+class ContractFilters(BaseModel):
+    """
+    Represents the available filters for the contracts endpoint.
+
+    This Pydantic model serves as a pure data container for filter parameters.
+    FastAPI uses it for dependency injection, automatically populating it from
+    query parameters. This approach decouples the data schema from the API layer,
+    allowing it to be safely instantiated in tests and other services.
+    """
+
+    # Text search
+    search: Optional[str] = Field(
+        default=None,
+        min_length=3,
+        description="Case-insensitive search across contract title and ship name.",
+    )
+    # Numeric ranges
+    min_price: Optional[float] = Field(default=None, ge=0, description="Minimum price.")
+    max_price: Optional[float] = Field(default=None, ge=0, description="Maximum price.")
+    min_collateral: Optional[float] = Field(
+        default=None, ge=0, description="Minimum collateral."
+    )
+    max_collateral: Optional[float] = Field(
+        default=None, ge=0, description="Maximum collateral."
+    )
+    min_runs: Optional[int] = Field(
+        default=None, ge=-1, description="Minimum runs for BPCs (-1 for original)."
+    )
+    max_runs: Optional[int] = Field(default=None, ge=-1, description="Maximum runs for BPCs.")
+    min_me: Optional[int] = Field(
+        default=None, ge=0, description="Minimum Material Efficiency for BPCs."
+    )
+    max_me: Optional[int] = Field(
+        default=None, ge=0, description="Maximum Material Efficiency for BPCs."
+    )
+    min_te: Optional[int] = Field(
+        default=None, ge=0, description="Minimum Time Efficiency for BPCs."
+    )
+    max_te: Optional[int] = Field(
+        default=None, ge=0, description="Maximum Time Efficiency for BPCs."
+    )
+    # ID lists - FastAPI handles string-to-list conversion for query params
+    region_ids: Optional[List[int]] = Field(
+        default=None, description="List of region IDs to filter by."
+    )
+    system_ids: Optional[List[int]] = Field(
+        default=None, description="List of solar system IDs to filter by."
+    )
+    station_ids: Optional[List[int]] = Field(
+        default=None, description="List of station IDs to filter by."
+    )
+    type_ids: Optional[List[int]] = Field(
+        default=None, description="List of ship type IDs to filter by."
+    )
+    # Boolean
+    is_bpc: Optional[bool] = Field(
+        default=None, description="Filter for contracts containing blueprints (BPCs)."
+    )
+    # Pagination
+    page: int = Field(default=1, ge=1, description="Page number.")
+    size: int = Field(default=50, ge=1, le=100, description="Number of items per page.")
+    # Sorting
+    sort_by: SortableContractFields = Field(
+        default=SortableContractFields.date_issued, description="Field to sort by."
+    )
+    sort_direction: SortDirection = Field(
+        default=SortDirection.desc, description="Sort direction."
+    )

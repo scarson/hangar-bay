@@ -259,10 +259,24 @@ describe('UserProfileComponent', () => {
 -   **Child Components:** For shallow component tests (testing only the component itself, not its children), you can use `NO_ERRORS_SCHEMA` (discouraged as it hides template errors) or provide stub/mock components.
     - For standalone components, if a child is also standalone, you can import a mock version of it.
 
-### 5.4. Interacting with the DOM
+### 5.4. Interacting with the DOM & Component State
 
--   `fixture.debugElement.query(By.css('.my-class'))` or `By.directive(MyDirective)`.
--   `nativeElement.click()`, `nativeElement.value = 'test'`, `nativeElement.dispatchEvent(new Event('input'))`.
+-   **Querying Elements:** Use `fixture.debugElement.query(By.css('.my-class'))` or `By.directive(MyDirective)`.
+-   **Triggering Events:**
+    -   For simple clicks: `element.nativeElement.click()`.
+    -   For text inputs: `inputEl.nativeElement.value = 'test'; inputEl.nativeElement.dispatchEvent(new Event('input'));`.
+    -   For `<select>` dropdowns:
+        ```typescript
+        const selectEl = fixture.debugElement.query(By.css('select')).nativeElement;
+        selectEl.value = 'option-value'; // Set the value of the <option>
+        selectEl.dispatchEvent(new Event('change'));
+        fixture.detectChanges();
+        ```
+-   **Asserting Component State (CSS Classes):** Check for the presence of CSS classes to verify state-driven styling.
+    ```typescript
+    const element = fixture.debugElement.query(By.css('.my-element'));
+    expect(element.classes['my-active-class']).toBeTrue();
+    ```
 
 ### 5.5. Testing with Signals
 
@@ -327,6 +341,57 @@ describe('App Routing', () => {
     // The redirection has already happened in beforeEach after `whenStable()`
     expect(location.path()).toBe('/home');
   });
+});
+```
+
+### 6.2. Testing Route Resolvers
+
+Resolvers pre-fetch data before a route is activated. Testing them involves mocking their dependencies (like services) and verifying they return the correct data or perform the correct actions.
+
+**Key Tools:**
+-   `ActivatedRouteSnapshot`: A mock `ActivatedRouteSnapshot` can be created to provide query parameters or route parameters to the resolver.
+-   `TestBed`: Used to provide the resolver and its mocked dependencies.
+
+**Example (`contract-filter-resolver.spec.ts`):**
+
+This test verifies that the resolver correctly calls a service method with parameters from the route's query params.
+
+```typescript
+import { TestBed } from '@angular/core/testing';
+import { ActivatedRouteSnapshot } from '@angular/router';
+import { ContractSearch } from '../services/contract-search';
+import { contractFilterResolver } from './contract-filter-resolver';
+
+describe('contractFilterResolver', () => {
+  let contractSearchSpy: jasmine.SpyObj<ContractSearch>;
+
+  beforeEach(() => {
+    const spy = jasmine.createSpyObj('ContractSearch', ['setInitialFilters']);
+
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: ContractSearch, useValue: spy }
+      ]
+    });
+    contractSearchSpy = TestBed.inject(ContractSearch) as jasmine.SpyObj<ContractSearch>;
+  });
+
+  it('should parse query params and call setInitialFilters', () => {
+    const route = new ActivatedRouteSnapshot();
+    route.queryParams = { page: '2', type: 'auction' };
+
+    // Execute the resolver function
+    TestBed.runInInjectionContext(() => contractFilterResolver(route, {} as any));
+
+    expect(contractSearchSpy.setInitialFilters).toHaveBeenCalledWith({
+      page: 2,
+      size: 50, // default
+      search: '', // default
+      type: 'auction'
+    });
+  });
+});
+```
 });
 ```
 

@@ -47,7 +47,7 @@ _AI Guidance: Provide specific instructions, preferences, or constraints for Cas
 *   Coding style reminders (e.g., "Adhere to PEP 8 for Python code").
 *   Specific patterns to follow or avoid (e.g., "Avoid using global variables; prefer dependency injection").
 *   Key considerations for AI-generated code or commands (e.g., "Ensure all generated shell commands are POSIX-compliant").
-*   Example: "When generating FastAPI routes, ensure all paths are prefixed with `/api/v1` and include appropriate OpenAPI documentation (summary, description, tags). Responses should use Pydantic models."_
+*   Example: "When generating FastAPI routes, ensure all paths are prefixed with `/` and include appropriate OpenAPI documentation (summary, description, tags). Responses should use Pydantic models."_
 
 *   Guidance point 1.
 *   Guidance point 2.
@@ -58,12 +58,14 @@ _AI Guidance: List clear, verifiable, and measurable criteria that must be met f
 *   Example: `* New API endpoint `/feature-x` is implemented, tested, and returns the expected data structure as per the spec.`
 *   Example: `* Unit tests for all new backend logic achieve >85% statement coverage.`
 *   Example: `* Frontend component for Feature X is implemented, displays correctly, and interacts with the backend as expected.`
+*   Example: `* Frontend themes are implemented according to `design/angular/guides/10-theming-guide.md` and all items in section "## 4. Pre-Commit Theming Checklist" are verified against the code.`
 *   Example: `* Relevant documentation (e.g., README, API docs, inline code comments) is updated to reflect changes.`
 *   Example: `* All acceptance criteria listed in the feature specification `../design/features/[relevant-feature-spec].md` are met.`
 *   Example: `* Code has been reviewed and approved.`
 *   Example: `* All related items in the 'Cross-Cutting Concerns Review' section (Section 7) are addressed and checked off.`_
 
-*   [ ] **Implementation Complete:** All placeholder and scaffold code (e.g., `// TODO`, `return true;`, empty functions) has been replaced with the final, working logic. Perform the mandatory Pre-Completion Audit as required by our development process. Make NO assumptsion based on other items in the task or plan. Verify everything from a source of truth whenever possible, and exercise extreme caution about making assumptions when it's not possible.
+_AI Guidance: The **Implementation Verified & Complete** item must be be copied exactly as-is to any task file based on this template. Failure to do so is a process violation._
+*   [ ] **Implementation Verified & Complete:** All placeholder and scaffold code has been replaced with final logic. Each criterion below has been rigorously verified against a definitive source of truth (e.g., the current codebase, an executed test suite, a design specification). **Marking any DoD item as complete without direct, evidence-based verification is a process violation.**
 *   [ ] **Criterion 1:** [Description of a key, verifiable outcome.]
 *   [ ] **Criterion 2:** [Description of another key, verifiable outcome.]
 *   [ ] All new code is committed to the `[feature/task-branch-name]` branch.
@@ -87,7 +89,7 @@ _AI Guidance: This section MUST be filled out before the task is considered comp
 *   Leave `[ ]` for items that are pending or need further action for THIS task.
 *   Use the 'Notes' sub-section under each concern to detail specific actions taken, provide rationale for N/A items, or reference specific code/documentation.
 *   Refer to the linked primary specification documents for detailed guidance on each concern. The paths below are relative to this template's location; adjust if this template is moved or copied to a deeper directory structure.
-*   If a concern is not applicable to this task, mark it as N/A with a brief explanation. Do NOT remove it from the list. It's important to keep track of which concerns are not applicable to each task and why.
+*   Mandatory: If a concern is not applicable to this task, mark it as N/A with a brief explanation. Do NOT remove it from the list. It's important to keep track of which concerns are not applicable to each task and why.
 
 This section documents how the five key cross-cutting concerns were addressed during the completion of this task. Refer to the primary specification documents for detailed guidance:
 *   Security: `/design/specifications/security-spec.md`

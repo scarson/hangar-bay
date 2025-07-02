@@ -6,12 +6,13 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test",
+    "test": "ng test --no-watch --browsers=ChromeHeadless",
     "lint": "ng lint",
     "format": "prettier --write \"src/**/*.ts\" \"src/**/*.html\""
   },
   "private": true,
   "dependencies": {
+    "@angular/cdk": "^20.0.4",
     "@angular/common": "^20.0.0",
     "@angular/compiler": "^20.0.0",
     "@angular/core": "^20.0.0",

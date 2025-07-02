@@ -73,7 +73,10 @@ export class ContractSearch {
             params = params.set('type', filters.type);
           }
 
-
+          if (filters.sort_by && filters.sort_order) {
+            params = params.set('sort_by', filters.sort_by);
+            params = params.set('sort_order', filters.sort_order);
+          }
 
           return this.http.get<PaginatedContractsResponse>(this.apiUrl, { params }).pipe(
             catchError((error) => {

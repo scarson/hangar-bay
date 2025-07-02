@@ -110,6 +110,14 @@ async def aggregate_and_store_contract(
 
 ## 6. When to Apply
 
+## 7. Important Distinction: Transactions in Tests
+
+The pattern described above applies to the application's **service layer** and **background jobs**. It **does not** apply to the test suite.
+
+-   **The Rule:** In tests, the `db_session` fixture manages the entire transaction lifecycle. Tests **must not** call `await db.commit()` or `await db.rollback()` on the session provided by this fixture. Doing so will prematurely close the transaction and cause subsequent database operations to fail with an `InvalidRequestError`.
+-   **The Correct Test Pattern:** To persist data to the database within a test (to make it available for an API call), use `await db_session.flush()`. This sends the data to the database without committing the transaction.
+-   **Authoritative Guide:** For the complete, mandatory testing pattern, refer to the [FastAPI Testing Strategies guide](../guides/09-testing-strategies.md).
+
 *   **Mandatory** for operations involving multiple external API calls whose collective data must be stored together.
 *   **Mandatory** for any multi-step business logic where partial completion would lead to an invalid or inconsistent application state.
 *   **Recommended** even for single external API calls if the subsequent processing and validation are complex and could fail.
