@@ -58,7 +58,7 @@
 <!-- AI_NOTE_TO_HUMAN: For AI processing, please try to include a structured comment block like the example below for each significant data model. -->
 *   Describe any new or significantly modified data structures, database tables, or object models relevant to this feature.
 *   Include field names, data types, and brief descriptions.
-*   **AI Assistant Guidance:** If any model fields store user-facing text that might require translation (e.g., descriptions, names not from a fixed external source like ESI), ensure they are designed with internationalization in mind. Consult `../i18n-spec.md` for strategies. For F003, this applies to frontend state holding the detailed contract view and any UI-specific labels/section titles.
+*   **AI Assistant Guidance:** If any model fields store user-facing text that might require translation (e.g., descriptions, names not from a fixed external source like ESI), ensure they are designed with internationalization in mind. Consult `design/specifications/i18n-spec.md` for strategies. For F003, this applies to frontend state holding the detailed contract view and any UI-specific labels/section titles.
 *   Primarily consumes data models defined in F001 (`contracts`, `contract_items`, `esi_type_cache`).
 *   Frontend state (e.g., in an Angular service or component) to manage the currently viewed contract's comprehensive data, including resolved ship attributes and descriptions.
 

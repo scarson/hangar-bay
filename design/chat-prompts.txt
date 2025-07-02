@@ -10477,39 +10477,126 @@ Proceed implementing the tests per the task file.
 
 -----------------
 
-X
+We should verify the test suite runs successfully. I already ran "pdm run pytest app\backend\src\fastapi_app\tests\services\test_contract_details_service.py" myself and immediately got an import error, so there are definitely some issues. Come up with a strategic approach to "testing the tests"
 
 -----------------
 
-X
+====================================================================================== FAILURES ====================================================================================== 
+___________________________________________________________ TestContractDetailsService.test_get_contract_details_not_found ___________________________________________________________ 
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+________________________________________________________ TestContractDetailsService.test_get_contract_details_database_error 
+============================================================================== short test summary info =============================================================================== 
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_not_found - Failed: async def functions are not natively supported.
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_database_error - Failed: async def functions are not natively supported.
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_enhance_contract_items_empty_list - Failed: async def functions are not natively supported.
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_build_ship_details_missing_type_data - Failed: async def functions are not natively supported.
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_find_ship_in_items_empty_list - Failed: async def functions are not natively supported.
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_success - TypeError: 'item_id' is an invalid keyword argument for ContractItem
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_without_ship_attributes - TypeError: 'item_id' is an invalid keyword argument for ContractItem
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_esi_failure - TypeError: 'item_id' is an invalid keyword argument for ContractItem
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_enhance_contract_items_success - TypeError: 'item_id' is an invalid keyword argument for ContractItem
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_build_ship_details_success - TypeError: 'portion_size' is an invalid keyword argument for EsiTypeCache
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_find_ship_in_items_no_ship - TypeError: 'item_id' is an invalid keyword argument for ContractItem
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_partial_esi_data - TypeError: 'item_id' is an invalid keyword argument for ContractItem
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_invalid_attribute_level - TypeError: 'item_id' is an invalid keyword argument for ContractItem       
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_contract_details_logging - TypeError: 'item_id' is an invalid keyword argument for ContractItem
+============================================================================ 5 failed, 10 errors in 0.74
 
 -----------------
 
-X
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+no tests collected, 1 error in 0.23s
+
+The tests in app\backend\src\fastapi_app\tests\services\test_contract_service.py work. Maybe you can use that as a reference for the test setup, if it's applicable.
 
 -----------------
 
-X
+That worked. I want to fix these errors from app\backend\src\fastapi_app\tests\services\test_contract_service.py first though. I think these were working before so it's likely a change we made in Phase 07 broke them. Think about what that could be.
 
 -----------------
 
-X
+============================================================================================================== short test summary info =============================================================================================================== 
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_not_found - AttributeError: 'coroutine' object has no attribute 'items'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_without_ship_attributes - AttributeError: 'coroutine' object has no attribute 'items'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_esi_failure - AttributeError: 'coroutine' object has no attribute 'items'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_database_error - Exception: Database error
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_build_ship_details_missing_type_data - AttributeError: 'ContractDetailsService' object has no attribute '_build_ship_details'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_find_ship_in_items_success - AttributeError: 'ContractDetailsService' object has no attribute '_find_ship_in_items'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_find_ship_in_items_no_ship - AttributeError: 'ContractDetailsService' object has no attribute '_find_ship_in_items'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_find_ship_in_items_empty_list - AttributeError: 'ContractDetailsService' object has no attribute '_find_ship_in_items'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_partial_esi_data - NameError: name 'sample_ship_type_cache' is not defined
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_invalid_attribute_level - AttributeError: 'coroutine' object has no attribute 'items'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_contract_details_logging - AttributeError: 'coroutine' object has no attribute 'items'
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_success - TypeError: 'created_at' is an invalid keyword argument for EsiTypeCache
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_enhance_contract_items_success - TypeError: 'created_at' is an invalid keyword argument for EsiTypeCache
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_build_ship_details_success - TypeError: 'created_at' is an invalid keyword argument for EsiTypeCache
+======================================================================================================= 11 failed, 1 passed, 3 errors in 0.49s ======================================================================================================= 
+C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv\Lib\site-packages\_pytest\unraisableexception.py:33: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+  gc.collect()
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+sys:1: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
 
 -----------------
 
-X
+Regarding: "Perfect! I can see the EsiTypeCache model does not have created_at and updated_at fields. Let me fix the test fixture by removing these invalid fields:"
+* Should the EsiTypeCache model have those field?
+
+Regarding: "Perfect! I can see the actual methods. Now let me check which methods the tests are trying to use that don't exist:
+
+_find_ship_in_items
+ - This method does NOT exist
+_build_ship_details
+ - This method does NOT exist"
+ 
+* Should those methods exist?
+
+
+Also to discuss:
+"test_get_contract_details_esi_failure
+ - Exception: ESI Error (expected)
+test_get_contract_details_database_error
+ - Exception: Database error (expected)
+Analyzed test_contract_details_service.py#L247-265
+I can see the ESI failure test expects the service to handle the exception and return a result, but it's actually raising the exception. Looking at line 264, the test expects result to be returned, not an exception raised. The service should probably catch and handle ESI errors gracefully.
+
+Let me check what the test expects:
+
+Analyzed
+test_contract_details_service.py#L265-275
+Ah! The tests expect the service to handle errors gracefully and return None, not raise exceptions. This means the service needs to catch exceptions and return None. But the service is currently raising them.
+
+Looking at the service code, this is expected behavior. These tests expect the error handling to be improved. For now, let me fix these tests to match the actual service behavior by expecting the exceptions to be raised:
 
 -----------------
 
-X
+Rate limit error. Try again, and try to keep your requests smaller if possible without losing effectiveness.
 
 -----------------
 
-X
+Yes. Here's the short test summary from a fresh run:
+
+============================================================================================================== short test summary info =============================================================================================================== 
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_without_ship_attributes - AttributeError: Mock object has no attribute '_process_ship_attributes'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_esi_failure - Exception: ESI Error
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_database_error - Exception: Database error
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_build_ship_details_success - AttributeError: 'ContractDetailsService' object has no attribute '_build_ship_details'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_partial_esi_data - NameError: name 'sample_ship_type_cache' is not defined
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_invalid_attribute_level - AttributeError: 'coroutine' object has no attribute 'items'
+FAILED src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_contract_details_logging - AttributeError: 'coroutine' object has no attribute 'items'
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_get_contract_details_success - TypeError: 'portion_size' is an invalid keyword argument for EsiTypeCache
+ERROR src/fastapi_app/tests/services/test_contract_details_service.py::TestContractDetailsService::test_enhance_contract_items_success - TypeError: 'portion_size' is an invalid keyword argument for EsiTypeCache
+======================================================================================================= 7 failed, 2 passed, 2 errors in 0.45s 
 
 -----------------
 
-X
+
 
 -----------------
 

@@ -166,7 +166,7 @@ async def test_special_feature_is_active(client: AsyncClient):
 
 This pattern provides powerful control and isolation for configuration-dependent tests.
 
-## 3.4. Observability Testing: A Mandatory Category
+## 3.2. Observability Testing: A Mandatory Category
 
 Observability testing ensures our structured logging, metrics instrumentation, and error handling work correctly. This is a **mandatory** testing category that complements integration and unit tests by verifying that our application generates the correct telemetry data.
 
