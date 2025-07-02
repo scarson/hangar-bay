@@ -10465,7 +10465,15 @@ Using "ContractDetailsService" does align with my instincts.
 
 -----------------
 
+app\backend\src\fastapi_app\services\contract_details_service.py had this:
+detailed_contract = DetailedContractSchema(
+replaced with:
+detailed_contract = ContractDetailsSchema(
 
+Shouldn't "detailed_contract" get updated to "contract_details" too? Where else is that used we would need to update?
+
+---
+Proceed implementing the tests per the task file.
 
 -----------------
 

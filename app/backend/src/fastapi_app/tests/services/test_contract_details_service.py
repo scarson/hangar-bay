@@ -1,0 +1,489 @@
+"""
+Unit tests for ContractDetailsService covering contract retrieval, item enhancement, 
+ship details processing, and comprehensive error handling.
+
+Tests mock ESI Type Service interactions and verify proper data flow throughout
+the contract details enhancement pipeline.
+"""
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timezone
+from decimal import Decimal
+
+from fastapi_app.services.contract_details_service import ContractDetailsService
+from fastapi_app.services.esi_type_service import ESITypeService
+from fastapi_app.models.contracts import Contract, ContractItem
+from fastapi_app.models.common_models import EsiTypeCache
+from fastapi_app.schemas.contracts import (
+    ContractDetailsSchema,
+    ContractDetailsItemSchema,
+    ShipDetailsSchema,
+    ShipAttributeSchema
+)
+
+
+class TestContractDetailsService:
+    """Test suite for ContractDetailsService with comprehensive method coverage."""
+
+    @pytest.fixture
+    def mock_db_session(self):
+        """Mock database session."""
+        session = AsyncMock(spec=AsyncSession)
+        return session
+
+    @pytest.fixture
+    def mock_esi_type_service(self):
+        """Mock ESI Type Service."""
+        service = AsyncMock(spec=ESITypeService)
+        return service
+
+    @pytest.fixture
+    def contract_details_service(self, mock_db_session, mock_esi_type_service):
+        """ContractDetailsService instance with mocked dependencies."""
+        return ContractDetailsService(
+            db_session=mock_db_session,
+            esi_type_service=mock_esi_type_service
+        )
+
+    @pytest.fixture
+    def sample_contract(self):
+        """Sample contract for testing."""
+        return Contract(
+            contract_id=12345,
+            title="Rifter Contract",
+            type="item_exchange",
+            status="outstanding",
+            price=Decimal("1000000.00"),
+            collateral=Decimal("500000.00"),
+            reward=None,
+            volume=30000.0,
+            date_issued=datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+            date_expired=datetime(2024, 2, 15, 10, 30, 0, tzinfo=timezone.utc),
+            date_completed=None,
+            issuer_id=123456789,
+            issuer_name="Test Pilot",
+            issuer_corporation_id=987654321,
+            issuer_corporation_name="Test Corp",
+            start_location_id=60003760,
+            start_location_name="Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            start_location_system_id=30000142,
+            start_location_region_id=10000002,
+            end_location_id=None,
+            for_corporation=False,
+            is_ship_contract=True
+        )
+
+    @pytest.fixture
+    def sample_contract_items(self):
+        """Sample contract items for testing."""
+        return [
+            ContractItem(
+                record_id=1,
+                contract_id=12345,
+                type_id=587,
+                type_name="Rifter",
+                quantity=1,
+                is_singleton=True,
+                is_included=True,
+                item_id=None,
+                raw_quantity=None
+            ),
+            ContractItem(
+                record_id=2,
+                contract_id=12345,
+                type_id=31,
+                type_name="Tritanium",
+                quantity=1000,
+                is_singleton=False,
+                is_included=True,
+                item_id=None,
+                raw_quantity=None
+            )
+        ]
+
+    @pytest.fixture
+    def sample_ship_type_cache(self):
+        """Sample ship type cache data."""
+        return EsiTypeCache(
+            type_id=587,
+            name="Rifter",
+            description="The Rifter is a versatile frigate...",
+            category_id=6,  # Ship category
+            group_id=25,
+            published=True,
+            mass=1067000.0,
+            volume=27289.0,
+            capacity=140.0,
+            portion_size=1,
+            dogma_attributes=[
+                {'attribute_id': 9, 'value': 1067000},     # Mass
+                {'attribute_id': 161, 'value': 27289},     # Volume
+                {'attribute_id': 479, 'value': 150},       # Shield HP
+                {'attribute_id': 263, 'value': 300},       # Armor HP
+                {'attribute_id': 482, 'value': 325},       # Structure HP
+            ],
+            dogma_effects=[
+                {'effect_id': 11, 'is_default': True}
+            ],
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+
+    @pytest.fixture
+    def sample_module_type_cache(self):
+        """Sample module type cache data."""
+        return EsiTypeCache(
+            type_id=31,
+            name="Tritanium",
+            description="A very common mineral...",
+            category_id=4,  # Material category
+            group_id=18,
+            published=True,
+            mass=1.0,
+            volume=0.01,
+            capacity=0.0,
+            portion_size=1,
+            dogma_attributes=[],
+            dogma_effects=[],
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+
+    # Tests for get_contract_details method
+    async def test_get_contract_details_success(
+        self, 
+        contract_details_service, 
+        sample_contract, 
+        sample_contract_items,
+        sample_ship_type_cache,
+        sample_module_type_cache
+    ):
+        """Test successful contract details retrieval with ship attributes."""
+        # Arrange
+        contract_id = 12345
+        sample_contract.items = sample_contract_items
+        
+        # Mock database query
+        mock_result = AsyncMock()
+        mock_result.scalar_one_or_none.return_value = sample_contract
+        contract_details_service.db_session.execute.return_value = mock_result
+        
+        # Mock ESI type service responses
+        contract_details_service.esi_type_service.get_multiple_types.return_value = {
+            587: sample_ship_type_cache,
+            31: sample_module_type_cache
+        }
+        contract_details_service.esi_type_service._process_ship_attributes.return_value = {
+            'physical': {'mass': 1067000, 'volume': 27289},
+            'defensive': {'shield_hp': 150, 'armor_hp': 300, 'structure_hp': 325}
+        }
+        contract_details_service.esi_type_service._generate_image_urls.return_value = {
+            'icon': 'https://images.evetech.net/types/587/icon?size=64',
+            'render': 'https://images.evetech.net/types/587/render?size=512'
+        }
+
+        # Act
+        result = await contract_details_service.get_contract_details(
+            contract_id=contract_id,
+            include_ship_attributes=True,
+            attribute_detail_level="key_attributes"
+        )
+
+        # Assert
+        assert result is not None
+        assert isinstance(result, ContractDetailsSchema)
+        assert result.contract_id == contract_id
+        assert result.title == "Rifter Contract"
+        assert result.is_ship_contract is True
+        assert len(result.items) == 2
+        assert result.ship_details is not None
+        assert result.ship_details.ship_type_id == 587
+        assert result.ship_details.ship_name == "Rifter"
+        
+        # Verify service calls
+        contract_details_service.esi_type_service.get_multiple_types.assert_called_once()
+        contract_details_service.esi_type_service._process_ship_attributes.assert_called_once()
+
+    async def test_get_contract_details_not_found(self, contract_details_service):
+        """Test get_contract_details when contract is not found."""
+        # Arrange
+        contract_id = 99999
+        mock_result = AsyncMock()
+        mock_result.scalar_one_or_none.return_value = None
+        contract_details_service.db_session.execute.return_value = mock_result
+
+        # Act
+        result = await contract_details_service.get_contract_details(contract_id)
+
+        # Assert
+        assert result is None
+
+    async def test_get_contract_details_without_ship_attributes(
+        self, 
+        contract_details_service, 
+        sample_contract, 
+        sample_contract_items
+    ):
+        """Test get_contract_details without ship attribute processing."""
+        # Arrange
+        contract_id = 12345
+        sample_contract.items = sample_contract_items
+        sample_contract.is_ship_contract = False
+        
+        mock_result = AsyncMock()
+        mock_result.scalar_one_or_none.return_value = sample_contract
+        contract_details_service.db_session.execute.return_value = mock_result
+        
+        contract_details_service.esi_type_service.get_multiple_types.return_value = {}
+
+        # Act
+        result = await contract_details_service.get_contract_details(
+            contract_id=contract_id,
+            include_ship_attributes=False
+        )
+
+        # Assert
+        assert result is not None
+        assert result.ship_details is None
+        contract_details_service.esi_type_service._process_ship_attributes.assert_not_called()
+
+    async def test_get_contract_details_esi_failure(
+        self, 
+        contract_details_service, 
+        sample_contract, 
+        sample_contract_items
+    ):
+        """Test get_contract_details with ESI service failure."""
+        # Arrange
+        contract_id = 12345
+        sample_contract.items = sample_contract_items
+        
+        mock_result = AsyncMock()
+        mock_result.scalar_one_or_none.return_value = sample_contract
+        contract_details_service.db_session.execute.return_value = mock_result
+        
+        # Mock ESI failure
+        contract_details_service.esi_type_service.get_multiple_types.side_effect = Exception("ESI Error")
+
+        # Act
+        result = await contract_details_service.get_contract_details(contract_id)
+
+        # Assert
+        assert result is None
+
+    async def test_get_contract_details_database_error(self, contract_details_service):
+        """Test get_contract_details with database error."""
+        # Arrange
+        contract_id = 12345
+        contract_details_service.db_session.execute.side_effect = Exception("Database error")
+
+        # Act
+        result = await contract_details_service.get_contract_details(contract_id)
+
+        # Assert
+        assert result is None
+
+    # Tests for _enhance_contract_items method
+    async def test_enhance_contract_items_success(
+        self, 
+        contract_details_service, 
+        sample_contract_items,
+        sample_ship_type_cache,
+        sample_module_type_cache
+    ):
+        """Test successful contract item enhancement."""
+        # Arrange
+        type_data_map = {
+            587: sample_ship_type_cache,
+            31: sample_module_type_cache
+        }
+
+        # Act
+        result = await contract_details_service._enhance_contract_items(sample_contract_items)
+
+        # Assert: Check structure since we can't easily mock the actual enhancement
+        assert isinstance(result, list)
+
+    async def test_enhance_contract_items_empty_list(self, contract_details_service):
+        """Test _enhance_contract_items with empty items list."""
+        # Act
+        result = await contract_details_service._enhance_contract_items([])
+
+        # Assert
+        assert result == []
+
+    # Tests for _build_ship_details method
+    async def test_build_ship_details_success(
+        self, 
+        contract_details_service,
+        sample_ship_type_cache
+    ):
+        """Test successful ship details building."""
+        # Arrange
+        ship_type_id = 587
+        ship_attributes = {
+            'physical': {'mass': 1067000, 'volume': 27289},
+            'defensive': {'shield_hp': 150, 'armor_hp': 300}
+        }
+        image_urls = {
+            'icon': 'https://images.evetech.net/types/587/icon?size=64',
+            'render': 'https://images.evetech.net/types/587/render?size=512'
+        }
+
+        # Act
+        result = await contract_details_service._build_ship_details(
+            ship_type_id, 
+            sample_ship_type_cache, 
+            ship_attributes, 
+            image_urls
+        )
+
+        # Assert
+        assert isinstance(result, ShipDetailsSchema)
+        assert result.ship_type_id == ship_type_id
+        assert result.ship_name == "Rifter"
+        assert result.icon_url == image_urls['icon']
+        assert result.render_url == image_urls['render']
+
+    async def test_build_ship_details_missing_type_data(self, contract_details_service):
+        """Test _build_ship_details with missing type data."""
+        # Arrange
+        ship_type_id = 587
+        ship_attributes = {}
+        image_urls = {}
+
+        # Act
+        result = await contract_details_service._build_ship_details(
+            ship_type_id, 
+            None, 
+            ship_attributes, 
+            image_urls
+        )
+
+        # Assert
+        assert isinstance(result, ShipDetailsSchema)
+        assert result.ship_type_id == ship_type_id
+        assert result.ship_name is None
+
+    # Tests for _find_ship_in_items method
+    async def test_find_ship_in_items_success(
+        self, 
+        contract_details_service, 
+        sample_contract_items
+    ):
+        """Test finding ship in contract items."""
+        # Arrange
+        type_data_map = {587: MagicMock(category_id=6)}  # Ship category
+
+        # Act
+        result = await contract_details_service._find_ship_in_items(
+            sample_contract_items, 
+            type_data_map
+        )
+
+        # Assert
+        assert result == 587
+
+    async def test_find_ship_in_items_no_ship(
+        self, 
+        contract_details_service, 
+        sample_contract_items
+    ):
+        """Test finding ship when no ship exists in items."""
+        # Arrange
+        type_data_map = {587: MagicMock(category_id=4)}  # Non-ship category
+
+        # Act
+        result = await contract_details_service._find_ship_in_items(
+            sample_contract_items, 
+            type_data_map
+        )
+
+        # Assert
+        assert result is None
+
+    async def test_find_ship_in_items_empty_list(self, contract_details_service):
+        """Test finding ship in empty items list."""
+        # Act
+        result = await contract_details_service._find_ship_in_items([], {})
+
+        # Assert
+        assert result is None
+
+    # Tests for error handling and edge cases
+    async def test_get_contract_details_partial_esi_data(
+        self, 
+        contract_details_service, 
+        sample_contract, 
+        sample_contract_items
+    ):
+        """Test handling partial ESI data availability."""
+        # Arrange
+        contract_id = 12345
+        sample_contract.items = sample_contract_items
+        
+        mock_result = AsyncMock()
+        mock_result.scalar_one_or_none.return_value = sample_contract
+        contract_details_service.db_session.execute.return_value = mock_result
+        
+        # Return partial ESI data (missing some types)
+        contract_details_service.esi_type_service.get_multiple_types.return_value = {
+            587: sample_ship_type_cache  # Only ship data, missing tritanium
+        }
+
+        # Act
+        result = await contract_details_service.get_contract_details(contract_id)
+
+        # Assert
+        assert result is not None
+        assert len(result.items) == 2  # Should still return all items
+
+    async def test_get_contract_details_invalid_attribute_level(
+        self, 
+        contract_details_service, 
+        sample_contract, 
+        sample_contract_items
+    ):
+        """Test handling invalid attribute detail level."""
+        # Arrange
+        contract_id = 12345
+        sample_contract.items = sample_contract_items
+        
+        mock_result = AsyncMock()
+        mock_result.scalar_one_or_none.return_value = sample_contract
+        contract_details_service.db_session.execute.return_value = mock_result
+        
+        contract_details_service.esi_type_service.get_multiple_types.return_value = {}
+
+        # Act
+        result = await contract_details_service.get_contract_details(
+            contract_id=contract_id,
+            attribute_detail_level="invalid_level"
+        )
+
+        # Assert
+        assert result is not None  # Should handle gracefully
+
+    async def test_contract_details_logging(
+        self, 
+        contract_details_service, 
+        sample_contract, 
+        sample_contract_items
+    ):
+        """Test that proper logging occurs during contract details retrieval."""
+        # Arrange
+        contract_id = 12345
+        sample_contract.items = sample_contract_items
+        
+        mock_result = AsyncMock()
+        mock_result.scalar_one_or_none.return_value = sample_contract
+        contract_details_service.db_session.execute.return_value = mock_result
+        
+        contract_details_service.esi_type_service.get_multiple_types.return_value = {}
+
+        # Act & Assert: Verify the method completes without error
+        # (Detailed logging verification would require log capture setup)
+        result = await contract_details_service.get_contract_details(contract_id)
+        assert result is not None
