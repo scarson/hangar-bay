@@ -388,3 +388,236 @@ class TestContractDetailsService:
         # (Detailed logging verification would require log capture setup)
         result = await contract_details_service.get_contract_details(contract_id)
         assert result is not None
+
+    # =============================================================================
+    # Tests for Ship Contract Processing Methods
+    # =============================================================================
+
+    async def test_process_ship_details_success(self, contract_details_service, sample_contract_items, sample_ship_type_cache):
+        """Test successful ship details processing with all components."""
+        # Arrange
+        attribute_detail_level = "key_attributes"
+        
+        # Remove the universal mock since we want to test the actual method
+        del contract_details_service._process_ship_details
+        
+        # Mock dependencies
+        contract_details_service._find_ship_in_items = AsyncMock(return_value=sample_contract_items[0])  # Rifter
+        contract_details_service.esi_type_service.get_type_info = AsyncMock(return_value=sample_ship_type_cache)
+        contract_details_service.esi_type_service._process_ship_attributes = AsyncMock(return_value={
+            "mass": 1067000,
+            "volume": 27289,
+            "shield_hp": 150
+        })
+        contract_details_service.esi_type_service._generate_image_urls = AsyncMock(return_value={
+            "icon": "https://images.evetech.net/types/587/icon?size=64",
+            "render": "https://images.evetech.net/types/587/render?size=512"
+        })
+        
+        # Act
+        result = await contract_details_service._process_ship_details(
+            sample_contract_items, 
+            attribute_detail_level
+        )
+        
+        # Assert
+        assert result is not None
+        assert isinstance(result, ShipDetailsSchema)
+        assert result.type_id == 587
+        assert result.type_name == "Rifter"
+        assert "mass" in result.attributes
+        assert result.icon_url == "https://images.evetech.net/types/587/icon?size=64"
+        
+        # Verify method calls
+        contract_details_service._find_ship_in_items.assert_called_once_with(sample_contract_items)
+        contract_details_service.esi_type_service.get_type_info.assert_called_once_with(587)
+        contract_details_service.esi_type_service._process_ship_attributes.assert_called_once_with(587, "key_attributes")
+        contract_details_service.esi_type_service._generate_image_urls.assert_called_once_with(587)
+
+    async def test_process_ship_details_no_ship_found(self, contract_details_service, sample_contract_items):
+        """Test ship details processing when no ship is found in items."""
+        # Arrange
+        del contract_details_service._process_ship_details
+        contract_details_service._find_ship_in_items = AsyncMock(return_value=None)
+        
+        # Act
+        result = await contract_details_service._process_ship_details(sample_contract_items)
+        
+        # Assert
+        assert result is None
+        contract_details_service._find_ship_in_items.assert_called_once_with(sample_contract_items)
+
+    async def test_process_ship_details_no_type_info(self, contract_details_service, sample_contract_items):
+        """Test ship details processing when ESI type info is unavailable."""
+        # Arrange
+        del contract_details_service._process_ship_details
+        contract_details_service._find_ship_in_items = AsyncMock(return_value=sample_contract_items[0])
+        contract_details_service.esi_type_service.get_type_info = AsyncMock(return_value=None)
+        
+        # Act
+        result = await contract_details_service._process_ship_details(sample_contract_items)
+        
+        # Assert
+        assert result is None
+        contract_details_service.esi_type_service.get_type_info.assert_called_once_with(587)
+
+    async def test_process_ship_details_with_basic_attributes(self, contract_details_service, sample_contract_items, sample_ship_type_cache):
+        """Test ship details processing with basic attribute level."""
+        # Arrange
+        del contract_details_service._process_ship_details
+        contract_details_service._find_ship_in_items = AsyncMock(return_value=sample_contract_items[0])
+        contract_details_service.esi_type_service.get_type_info = AsyncMock(return_value=sample_ship_type_cache)
+        contract_details_service.esi_type_service._process_ship_attributes = AsyncMock(return_value={"mass": 1067000})
+        contract_details_service.esi_type_service._generate_image_urls = AsyncMock(return_value={})
+        
+        # Act
+        result = await contract_details_service._process_ship_details(sample_contract_items, "basic")
+        
+        # Assert
+        assert result is not None
+        contract_details_service.esi_type_service._process_ship_attributes.assert_called_once_with(587, "basic")
+
+    async def test_find_ship_in_items_success(self, contract_details_service, sample_contract_items):
+        """Test successfully finding a ship among contract items."""
+        # Arrange
+        contract_details_service.esi_type_service.is_ship_type = AsyncMock(side_effect=[True, False])  # First item is ship
+        
+        # Act
+        result = await contract_details_service._find_ship_in_items(sample_contract_items)
+        
+        # Assert
+        assert result is not None
+        assert result.type_id == 587  # Rifter
+        assert result.type_name == "Rifter"
+        contract_details_service.esi_type_service.is_ship_type.assert_called_with(587)
+
+    async def test_find_ship_in_items_no_ship(self, contract_details_service, sample_contract_items):
+        """Test finding ship when no ship exists in contract items."""
+        # Arrange
+        contract_details_service.esi_type_service.is_ship_type = AsyncMock(return_value=False)  # No ships
+        
+        # Act
+        result = await contract_details_service._find_ship_in_items(sample_contract_items)
+        
+        # Assert
+        assert result is None
+        # Should have checked both items
+        assert contract_details_service.esi_type_service.is_ship_type.call_count == 2
+
+    async def test_find_ship_in_items_empty_list(self, contract_details_service):
+        """Test finding ship in empty contract items list."""
+        # Act
+        result = await contract_details_service._find_ship_in_items([])
+        
+        # Assert
+        assert result is None
+        contract_details_service.esi_type_service.is_ship_type.assert_not_called()
+
+    async def test_find_ship_in_items_second_item_is_ship(self, contract_details_service, sample_contract_items):
+        """Test finding ship when the ship is not the first item."""
+        # Arrange
+        contract_details_service.esi_type_service.is_ship_type = AsyncMock(side_effect=[False, True])  # Second item is ship
+        
+        # Act
+        result = await contract_details_service._find_ship_in_items(sample_contract_items)
+        
+        # Assert
+        assert result is not None
+        assert result.type_id == 31  # Tritanium (in our test, second item)
+        assert contract_details_service.esi_type_service.is_ship_type.call_count == 2
+
+    async def test_build_ship_details_complete_data(self, contract_details_service, sample_contract_items, sample_ship_type_cache):
+        """Test building ship details with complete data."""
+        # Arrange
+        ship_item = sample_contract_items[0]  # Rifter
+        ship_attributes = {
+            "mass": 1067000,
+            "volume": 27289,
+            "shield_hp": 150,
+            "armor_hp": 300,
+            "structure_hp": 325
+        }
+        image_urls = {
+            "icon": "https://images.evetech.net/types/587/icon?size=64",
+            "image": "https://images.evetech.net/types/587/image?size=256",
+            "render": "https://images.evetech.net/types/587/render?size=512"
+        }
+        
+        # Act
+        result = await contract_details_service._build_ship_details(
+            ship_item, sample_ship_type_cache, ship_attributes, image_urls
+        )
+        
+        # Assert
+        assert isinstance(result, ShipDetailsSchema)
+        assert result.type_id == 587
+        assert result.type_name == "Rifter"
+        assert result.description == "The Rifter is a versatile frigate..."
+        assert result.attributes == ship_attributes
+        assert result.icon_url == "https://images.evetech.net/types/587/icon?size=64"
+        assert result.image_url == "https://images.evetech.net/types/587/image?size=256"
+        assert result.render_url == "https://images.evetech.net/types/587/render?size=512"
+        assert result.mass == 1067000.0
+        assert result.volume == 27289.0
+        assert result.capacity == 140.0
+
+    async def test_build_ship_details_minimal_data(self, contract_details_service, sample_contract_items):
+        """Test building ship details with minimal data (missing optional fields)."""
+        # Arrange
+        ship_item = sample_contract_items[0]
+        
+        # Create minimal ship type cache without optional fields
+        minimal_ship_type = EsiTypeCache(
+            type_id=587,
+            name="Rifter",
+            description=None,  # Optional
+            category_id=6,
+            group_id=25,
+            published=True,
+            mass=None,  # Optional
+            volume=None,  # Optional
+            capacity=None,  # Optional
+            dogma_attributes=[],
+            dogma_effects=[]
+        )
+        
+        ship_attributes = {}
+        image_urls = {}  # Empty image URLs
+        
+        # Act
+        result = await contract_details_service._build_ship_details(
+            ship_item, minimal_ship_type, ship_attributes, image_urls
+        )
+        
+        # Assert
+        assert isinstance(result, ShipDetailsSchema)
+        assert result.type_id == 587
+        assert result.type_name == "Rifter"
+        assert result.description is None
+        assert result.attributes == {}
+        assert result.icon_url is None
+        assert result.image_url is None
+        assert result.render_url is None
+        assert result.mass is None
+        assert result.volume is None
+        assert result.capacity is None
+
+    async def test_build_ship_details_partial_image_urls(self, contract_details_service, sample_contract_items, sample_ship_type_cache):
+        """Test building ship details with partial image URLs."""
+        # Arrange
+        ship_item = sample_contract_items[0]
+        ship_attributes = {"mass": 1067000}
+        image_urls = {
+            "icon": "https://images.evetech.net/types/587/icon?size=64"
+            # Missing 'image' and 'render'
+        }
+        
+        # Act
+        result = await contract_details_service._build_ship_details(
+            ship_item, sample_ship_type_cache, ship_attributes, image_urls
+        )
+        
+        # Assert
+        assert result.icon_url == "https://images.evetech.net/types/587/icon?size=64"
+        assert result.image_url is None
+        assert result.render_url is None
