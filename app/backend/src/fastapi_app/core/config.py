@@ -11,6 +11,10 @@ class Settings(BaseSettings):
 
     # General App Configuration
     ENVIRONMENT: str = "development"
+    LOG_LEVEL: str = Field(
+        default="INFO",
+        description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"
+    )
 
     # ESI Configuration
     ESI_BASE_URL: str = "https://esi.evetech.net"

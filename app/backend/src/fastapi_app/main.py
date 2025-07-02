@@ -1,5 +1,9 @@
 import logging
 import pydantic
+import structlog
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 # Print Pydantic version right at the start for immediate visibility
 print(f"PYDANTIC_VERSION_CHECK_PRINT: {pydantic.__version__}", flush=True)
@@ -16,14 +20,15 @@ from .core.cache import init_cache, close_cache
 from .core.http_client import init_http_client, close_http_client
 from .core.scheduler import add_aggregation_job, create_scheduler
 from .core.dependencies import get_cache
-from .db import AsyncSessionLocal # For manual session creation
+from .core.logging import setup_logging, RequestIDMiddleware
+from .db import AsyncSessionLocal, async_engine, Base
 from .core.esi_client_class import ESIClient # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService # For manual service creation
 from .api import contracts as contracts_router
-from .db import async_engine, Base
 from .models import contracts # This import is crucial for Base.metadata to find the tables.
 
-# Configure basic logging to ensure messages are surfaced
+# Configure basic logging for early startup messages
+# This will be enhanced with structured logging in the lifespan function
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(name)s - %(message)s')
 
 
@@ -32,6 +37,9 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(name)s - %(
 async def lifespan(app: FastAPI):
     """Manages application startup and shutdown events."""
     # Startup logic
+    # Setup structured logging first
+    setup_logging(settings)
+    
     await create_db_tables()
     init_http_client(app)
     await init_cache(app)
@@ -66,6 +74,22 @@ app = FastAPI(
     # Additional OpenAPI metadata can be added here
     # See: https://fastapi.tiangolo.com/tutorial/metadata/
 )
+
+# Add RequestID middleware for structured logging correlation
+app.add_middleware(RequestIDMiddleware)
+
+# Setup Prometheus metrics instrumentation
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    should_respect_env_var=False,  # Always enable metrics
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=[],  # Don't exclude metrics endpoint
+    inprogress_name="hangar_bay_requests_inprogress",
+    inprogress_labels=True,
+)
+instrumentator.instrument(app)
+instrumentator.expose(app, endpoint="/metrics")
 
 
 @app.get("/")
