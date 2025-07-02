@@ -9843,133 +9843,265 @@ Does that mean the any Angular proxy rules will need to be re-created with the w
 -----------------
 
 
-X
+Let's return to our task file plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.1-advanced-search-and-api.md for which you should /view-file. Assess where we are in the implementation checklist. I believe it's "**Step 7: Update Integration Tests**". If those are complete, check it off. Then proceed to conduct a through "## 7. Cross-Cutting Concerns Review". The CCC review is critical - do not make any assumptions. Everything that can possibly be verified against sources of truth in the project must be verified that way before marking it as complete.
 
 
 -----------------
 
 
-X
+Use #L1-400 to get all the content. Try again. You can find the project structure and files in design\fastapi\00-fastapi-architecture-overview.md "## 4. Directory and File Structure"
+
+
+-----------------
+
+You said:
+"I will now read the following files to gather the necessary evidence for the CCC review:
+
+app/backend/src/fastapi_app/tests/api/test_contract_filters.py
+ (to verify the scope of our integration tests)
+app/backend/src/fastapi_app/services/contract_service.py (to verify the secure sorting map and check for logging)
+app/backend/src/fastapi_app/schemas/contracts.py (to verify input validation models)
+app/backend/src/fastapi_app/api/v1/endpoints/contracts.py (to verify it's a public endpoint)
+pyproject.toml (to verify dependencies)
+app/backend/src/fastapi_app/tests/services/test_contract_service.py
+ (to verify unit tests)"
+
+But you also failed to read more than one line of:
+* app\backend\src\fastapi_app\tests\api\test_contract_filters.py
+* app\backend\src\fastapi_app\api\contracts.py
+* app\backend\src\fastapi_app\services\contract_service.py
+* app\backend\src\fastapi_app\tests\services\test_contract_service.py
+* app\backend\pyproject.toml
+
+You need to try again, requesting #L1-400 to ensure you read the full files, then re-assess the CCC review because the previous one was based on incomplete information about the file contents.
 
 
 -----------------
 
 
-X
+Take a close look at "## 5. Definition of Done". 
+1. Assess the criteria for accuracy with what we ended up implementing. As one example, I see another instance of the old API endpoint in there.
+2. Once you're confident the criteria are correct, verify each item against sources of truth, which you obviously did not do.
 
 
 -----------------
 
 
-X
+1. /git-commit and make sure the commit message notes there are pending Observability items from the CCC review.
+
+2. The assumptions on the Definition of Done section were a bit miss. That section is useless as a critical verification gate if Cascade is just going to check everything off without verifying it's (a) correct and (b) done, both of which didn't happen here. I want you to think about what instruction would be effective to provide to Cascade to state that verifying the Definition of Done items against sources of truth is mandatory, then update the task file template at plans\implementation\00-mvp-implementation-task-template.md section "## 5. Definition of Done (DoD)" with that. 
+
+3. I rejected your changes for "### 7.2. Observability" in the CCC review. Why did you think you could mark those items as complete by simply changing their descriptions to various forms of "We'll think about doing this later". You can't retroactively change the criteria to punt the tasks to later - that completely defeats the point. Instead, that should have triggered a thought that if there were criteria in the CCC review that weren't addressed in the implementation, that perhaps "## 3. Key Implementation Steps" and/or "## 5. Definition of Done" were deficient.
+
+4. Let's take the opportunity to think about the outstanding observability items. Looking at them closely, they do seem like a significant scope of work themselves. How do you think we should address those? Update plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.1-advanced-search-and-api.md and keep working on them there, break them down into their own "05.2" task file, or something else? Consider multiple options and compare them. Assess which path forward would be best and why. Justify your assessment.
+
+Note: Cascade created "Mandatory DoD and CCC Review Process" memory.
+-----------------
+
+
+1. For the template plans\implementation\00-mvp-implementation-task-template.md, you replaced:
+"*   [ ] **Implementation Complete:** All placeholder and scaffold code (e.g., `// TODO`, `return true;`, empty functions) has been replaced with the final, working logic. Perform the mandatory Pre-Completion Audit as required by our development process. Make NO assumptsion based on other items in the task or plan. Verify everything from a source of truth whenever possible, and exercise extreme caution about making assumptions when it's not possible."
+with:
+"*   [ ] **DoD Verified:** Each criterion below has been rigorously verified against a definitive source of truth (e.g., the current codebase, an executed test suite, a design specification). **Marking an item as complete without direct, evidence-based verification is a process violation.**"
+
+Was that intentional? The new statement seems to lose some potentially useful detail. What's meaningfully different between them? Is the real issue that the directive didn't make it from the template into the task file itself? Maybe *that's* what you need to address.
+
+2. For plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.2-observability-for-search-api.md
+
+2.1. You missed some of the critical AI Guidance in the template's CCC section: "Mandatory: If a concern is not applicable to this task, mark it as N/A with a brief explanation. Do NOT remove it from the list. It's important to keep track of which concerns are not applicable to each task and why." Fix that and ensure all CCC items are present.
+
+2.2. "## 2. Relevant Specifications" file references should use absolute paths.
+
+2.3. "## 3. Key Implementation Steps" review every single item extremely carefully for project alignment and explain to me why you proposed doing it that awy. We haven't really done anything meaningful for observability so far, so we should take this opportunity to get our observability architecture planned out. 
+
+For example, "**Step 3: Implement Prometheus Metrics:** - Add the `starlette-prometheus` middleware to the FastAPI app."
+
+This seems LOADED with implications. We don't have Prometheus in our architcture stack (yet - I'm open to it). From my research, fastapi and starlette are essentially competing frameworks. Without very clear design justification, I have to assume this is statistical observability babble until proven otherwise. 
 
 
 -----------------
 
 
-X
+1. In plans\implementation\00-mvp-implementation-task-template.md, I noticed line 50 says "*   Example: "When generating FastAPI routes, ensure all paths are prefixed with `/api/v1` and include appropriate OpenAPI documentation (summary, description, tags). Responses should use Pydantic models."_" I don't think that API endpoint example is correct, right? We should probably update that in the template if so.
+
+2. In plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.2-observability-for-search-api.md, "## 5. Definition of Done (DoD)" has:
+[ ] The `contract_service.py` is fully instrumented with structured logging for key events and errors.
+and the CCC has:
+"*   [ ] **Key Events Logged:** To be implemented."
+
+How do we know what the "key events" are? How can we verify this DoD item without knowing that?
+
+3. "### 3.2. Implementation" has:
+*   [ ] **Step 6: Update Tests.**
+    *   Add tests to verify that API errors produce the expected structured log output.
+    *   Add tests to verify that API calls correctly increment the relevant Prometheus metrics.
+
+Is this really sufficient test coverage? While I realize there's pending design work, these don't seem *too* observability stack dependent. Are the items written with enough detail to be useful to Cascade?
+
+4. "## 7. Cross-Cutting Concerns Review" is not up to standards of detail, even for a design-heavy task. Do an update pass to improve the quality and effectiveness of the future CCC review. Remember, all CCC section items must be present, and those N/A must have an explanation why.
+
+5. Are there other dependencies to this whole setup? For example, can we actually finish all the DoD criteria without a working instance of Prometheus (or other chosen solution), because I don't see setting that up anywhere in the task list. Think carefully here. Do two rounds of pre-mortem review stepping through the steps in this task and try to identify where implementation could fail.
+
+-----------------
+
+0. Re-read plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.2-observability-for-search-api.md with /view-file to get the latest contents.
+
+1. You just created an entirely new top level directory structure with ops\prometheus\prometheus.yml. That's a major decision for project organization. I'm guessing your training data suggests that /ops/ is a common directory for such a thing, but you need to step back and evaluate that in the context of the Hangar Bay project. It might be the right decision, but it needs to be thoughtfully considered as part of the bigger picture.
+
+2. We have an existing app\backend\docker\compose.yml file. You put \docker-compose.observability.yml at the project root which is absolutely not the correct place for it. Think about if it should go as a separate file in a docker director or be merged into app\backend\docker\compose.yml alongside Postgres and Valkey. Also think about the potential relationship to the "Ops" directory you created (if we're going to keep that). What makes Prometheus (and Grafana, which you also threw into the mix) different than Postgres and Valkey organizationally?
+
+3. I renumbered the observability guide from 05 to 02 as that's the next available index number. New path: design\fastapi\guides\02-observability-guide.md. I already updated all references to the guide in the task file.
+
+Outside of those specific instructions above, /await-approval
 
 
 -----------------
 
 
-X
+Regarding app\backend\docker\compose.observability.yml, what do you think the latest version of Prometheus and Grafana are? Hint: not those, which appear to be from circa 2022-2023. We want to ensure we have the latest updates, features, and security and bug fixes.
 
 
 -----------------
 
 
-X
+You have two reseach steps left from "### 3.1. Research and Design". Do those, then /await-approval.
 
 
 -----------------
 
 
-X
+1. Our app\backend\docker\prometheus folder doesn't have any subdirectories. What's the value of having a /provisioning/ subdirectory? What other directories might be at the same level that justify having it vs putting things directly in app\backend\docker\grafana to mirror the promethus structure?
+
+2. Make sure the Grafana files you create are appropriate for version 12.0.2. Check the internet if necessary. The original compose file you made was three major versions behind so we need to make sure we're aligned for v12.
+
+3. Make sure app\backend\docker\prometheus\prometheus.yml is updated for 3.4.2. Check the internet if necessary. The original compose file you made was a major version behind so we need to make sure we're aligned for v3.4.
+
+4. In design\fastapi\guides\09-testing-strategies.md, review the original "### 6.1. Default Metrics" and compare to the new "### 4.1. Default Metrics". Which is correct and appropriate now?
 
 
 -----------------
 
 
-X
+My instruction for #4 was incorrect. design\fastapi\guides\02-observability-guide.md contains "### 6.1. Default Metrics" (the original section 4.1, which I manually renumbered to avoid duplicate section numbers) which I want you to compare to the new "### 4.1. Default Metrics" you added. Which is correct and appropriate now?
 
 
 -----------------
 
 
-X
+You removed "These will be exposed as histograms (e.g., `http_requests_latency_seconds_bucket`)." and replaced it with "These metrics will be labeled with `method`, `status_code`, and `handler` to allow for detailed analysis." Why?
+
+
+-----------------
+
+Before we begin any implementation:
+1. Do one more review of plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.2-observability-for-search-api.md, keeping in mind all the research and design updates we just made. Read it and design\fastapi\guides\02-observability-guide.md with /view-file to ensure you have the latest contents. As part of your review, strategically think about any additional new directories you might need to create and how to align those with the backend project structure documented at design\fastapi\00-fastapi-architecture-overview.md section "## 4. Directory and File Structure".
+
+2. /view-file on plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.2-observability-for-search-api.md again and do one more pre-mortem review.
+
+/await-approval
+/git-commit before we begin 
+
+
+-----------------
+
+For all following instructions that involve viewing files, /view-file.
+1. Regarding "1. Plan and Directory Structure Review", I agree. Create a placeholder for this file now that contains a helpful comment for Cascade and humans explaining its purpose. Then update plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.2-observability-for-search-api.md to describe this plan and directory structure so Cascade knows where and how to do those things during implementation. It may be appropriate to make updates to several sections - consider which.
+
+2. Regarding "2. Pre-mortem Review", these are critical risks. Think very carefully about how to capture them in plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.2-observability-for-search-api.md and/or design\fastapi\guides\02-observability-guide.md in a way that will be most effective for Cascade to understand the *why* of the risks and how to mitigate them during implementation. 
+
+3. /design-log, then /await-approval
+
+
+-----------------
+
+1. I don't see where these are addressed?
+"Risk: Incorrect Correlation ID Propagation.
+Scenario: The request_id might not be correctly propagated to all log messages, especially those generated from background tasks initiated by a request or from deep within nested service calls. This would make debugging a specific user's request flow nearly impossible.
+Mitigation: The implementation of the structlog middleware that binds the request_id using contextvars is critical. Our testing strategy must include a specific test case that verifies the request_id is present in logs generated from multiple layers of the application (e.g., API router, service layer, utility function)."
+
+"Risk: Performance Overhead.
+Scenario: Excessive logging (e.g., leaving the log level at DEBUG in production) or overly complex metric calculations could introduce latency and add non-trivial performance overhead to the application.
+Mitigation: The logging configuration must be environment-aware, setting the level to INFO for production and DEBUG for development. This will be managed via the central Settings object in core/config.py."
+
+2. I tried running the observability containers with docker compose and got this error trace:
+Executing task in folder hangar-bay: docker compose -f 'app\backend\docker\compose.observability.yml' up -d --build 
+
+time="2025-06-30T02:55:33-05:00" level=warning msg="C:\\Users\\Sam\\OneDrive\\Documents\\Code\\hangar-bay\\app\\backend\\docker\\compose.observability.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+[+] Running 21/21
+ ✔ grafana Pulled                                                                                                                                                                                                                                              10.2s 
+ ✔ prometheus Pulled                                                                                                                                                                                                                                            7.5s 
+network hangar-bay-net declared as external, but could not be found
+
+ *  The terminal process "C:\Users\Sam\AppData\Local\Microsoft\WindowsApps\Microsoft.PowerShell_8wekyb3d8bbwe\pwsh.exe -Command docker compose -f 'app\backend\docker\compose.observability.yml' up -d --build" terminated with exit code: 1. 
+ *  Terminal will be reused by tasks, press any key to close it. 
+
+
+-----------------
+
+You don't have a full picture of the docker setup because you only read one line again. Try again and use #L1-100 for those *.yml files.
+
+1. app\backend\docker\compose.yml says "# This Docker Compose file defines the backend services (PostgreSQL database and Valkey cache)
+# for local development.", is only for Postgres and Valkey (right now) and has no mention of "hangar-bay-net".
+2. Should that get renamed something more specific like "compose.db-and-cache.yml"?
+3. Should we then have a new "compose.yml" that's the "main" setup file that instantiates things like the "hangar-bay-net" network, and eventually the Hangar Bay frontend and backend containers (which don't yet exist)?
+/await-approval
 
 
 -----------------
 
 
-X
+Which of the four services:
+* Postgres
+* Valkey
+* Prometheus
+* Grafana
+Actually need to talk to each other? Is there any reason to put services that don't need to directly communicate on the same docker network? Review our design\specifications\security-spec.md with /view-file and consider what the least-privilege / zero trust design here is.
 
 
 -----------------
 
 
-X
+Recall that we will also have a frontend Angular app container. Re-assess your network design to include where the frontend would fit in. Prefix all network names with "hb-".
 
 
 -----------------
 
 
-X
+1. Proceed. Add clear, detailed comments to the compose yml files that would allow anyone reviewing them to understand the design, why it was implemented, and which services connect to which on which networks.
+2. /design-log and be more verbose than normal to capture the rich detail of this security-related decision, including alignment with the Zero Trust Architecture (ZTA) and Microsegmentation principles of design\specifications\security-spec.md.
+3. Then, I will try starting up the docker compose stack. Provide a command for that. 
+4. /await-approval while we wait to see if we have the docker setup working.
 
-
------------------
-
-
-X
-
+Docker command: docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.dependencies.yml -f app/backend/docker/compose.observability.yml up -d --build
 
 -----------------
 
 
-X
 
+Excellent.
+---
+docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.dependencies.yml -f app/backend/docker/compose.observability.yml up -d --build
+[+] Running 8/8
+ ✔ Network hb-monitoring-net        Created                                                                                                                                                                                                                     0.0s 
+ ✔ Network hb-data-tier-net         Created                                                                                                                                                                                                                     0.0s 
+ ✔ Volume "docker_grafana_data"     Created                                                                                                                                                                                                                     0.0s 
+ ✔ Volume "docker_prometheus_data"  Created                                                                                                                                                                                                                     0.0s 
+ ✔ Container prometheus             Started                                                                                                                                                                                                                     0.8s 
+ ✔ Container grafana                Started                                                                                                                                                                                                                     0.9s 
+ ✔ Container hangar_bay_postgres    Started                                                                                                                                                                                                                     0.8s 
+ ✔ Container hangar_bay_valkey      Started
+---
 
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
-
+Question: Why wasn't the "hb-public-net" network created? Is it because no containers currently reference it, even though it's declared in compose.yml?
 
 -----------------
 
 
-X
+1. /view-file plans\implementation\phase-05-backend-f002-advanced-search-filtering-logic\05.2-observability-for-search-api.md with and assess the current state of "## 3. Key Implementation Steps". Check each item. If you believe an item is complete, you must verify it against a source of truth before marking it as done. I think the remaining subtasks of "### 3.1. Research and Design" might be done. DO NOT DO ANY NEW IMPLEMENTATION WORK. We are only getting the task file to reflect current state.
 
+2. /view-file design\fastapi\00-fastapi-architecture-overview.md and update "## 4. Directory and File Structure" to reflect the current structure, which you MUST validate against source of truth with tool calls. KEEP all current comments and ensure any new entries have similarly structured comments.
 
------------------
-
-
-X
-
-
------------------
-
-
-X
-
-
------------------
-
-
-X
+3. /git-commit and /await-approval
 
 
 -----------------
