@@ -10369,15 +10369,35 @@ Redo that last commit with the message in "conventional commit" format.
 
 -----------------
 
-X
+This is a good milestone to merge the dev branch with main. The first dev branch commit since the last merge is 8a80368.
+Write a PR message covering changes since then. Provide the PR message in markdown wrapped in backticks so I can copy it with the formatting.
 
 -----------------
 
-X
+Update section "### Phase 5: Backend - F002: Advanced Search & Filtering Logic" of plans\implementation\00-mvp-implementation-plan-progress.md to reflect work completed in phase 5. Use completed sections "### Phase 3: Frontend Core Infrastructure" and "### Phase 4: Frontend - F001/F002: Contract Listing & Basic Filtering" as a reference for how to fill it out.
 
 -----------------
 
-X
+Since we're still waiting on the PrimeNg 20 release for frontend work, we're going to skip ahead to Phase 07, detailed contract view.
+
+However, the task file we originally generated for this at the beginning of the project (plans\implementation\phase-07-backend-f003-detailed-ship-contract-view\07.1-api-endpoints-f003-old.md) is now severely outdated, is based on a much older version of the task template, and doesn't reflect any updates since we began implemenation work.
+
+We should prepare for Phase 07 by creating one or more task files (as you deem appropriate) based on:
+* the latest template plans\implementation\00-mvp-implementation-task-template.md
+* a review of design\features\F003-Detailed-Ship-Contract-View.md with /view-file  (note - this file has also not been updated since MVP implemenation work began, so the references in it are not authoritative and likely to diverge from the current source)
+
+* design\fastapi\00-fastapi-architecture-overview.md and any of the following that might be relevant (all with /view-file )
+* * design\fastapi\guides\02-observability-guide.md
+* * design\fastapi\guides\09-testing-strategies.md
+* * design\fastapi\patterns\01-dependency-injection.md
+* * design\fastapi\patterns\02-service-construction.md
+* * design\fastapi\patterns\03-database-transactions.md
+* * design\fastapi\patterns\04-api-client-service-pattern.md
+* * design\fastapi\patterns\05-dual-mode-service-pattern.md
+* * design\fastapi\patterns\06-schema-model-parity.md
+
+* verification against source of current state of schemas, api surfaces, etc
+* backend work from earlier phases as noted in plans\implementation\00-mvp-implementation-plan-progress.md (follow any file links necessary to get the details you need)
 
 -----------------
 

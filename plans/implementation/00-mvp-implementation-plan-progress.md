@@ -212,10 +212,27 @@ The MVP development is structured into the following phases. Each task links to 
 *   **Phase 4 Summary:** The first feature slice of the frontend is complete. Users can now view, search, and paginate through public contracts. The implementation successfully applied the project's core architectural patterns for state management and testing in a modern zoneless Angular environment. The key challenge of testing complex RxJS pipelines with `TestScheduler` was resolved, creating a valuable pattern for future development. The project is ready to proceed with more advanced features.
 
 ### Phase 5: Backend - F002: Advanced Search & Filtering Logic
-*   **Goal:** Enhance backend capabilities to support advanced search and filtering as per F002.
+*   **Goal:** Establish comprehensive backend observability infrastructure and resolve critical testing foundation issues.
 *   **Tasks:**
-    *   [05.1 Advanced Filtering Logic & Query Enhancements](./phase-05-backend-f002-advanced-search-filtering-logic/05.1-advanced-filtering-logic.md)
-    *   [05.2 Update API Endpoints for F002](./phase-05-backend-f002-advanced-search-filtering-logic/05.2-api-endpoints-f002-update.md)
+    *   [05.1 Advanced Search and API](./phase-05-backend-f002-advanced-search-filtering-logic/05.1-advanced-search-and-api.md)
+        *   **Status:** Completed (Foundational Components)
+        *   **Key Outcomes & Artifacts:**
+            *   **Pydantic Models:** Created comprehensive `ContractFilters`, `SortDirection`, and `SortableContractFields` schemas for type-safe API parameter validation.
+            *   **Service Layer:** Implemented `ContractService` with dynamic filtering, sorting, and pagination logic following the service construction pattern.
+            *   **Database Schema:** Added Alembic migration to rename `contract_type` to `type` field for consistency.
+            *   **Testing Infrastructure:** Resolved critical async SQLAlchemy event loop conflicts and race conditions in test fixtures.
+    *   [05.2 Observability for Search API](./phase-05-backend-f002-advanced-search-filtering-logic/05.2-observability-for-search-api.md)
+        *   **Status:** Completed
+        *   **Key Outcomes & Artifacts:**
+            *   **Structured Logging:** Complete implementation with `structlog` and Key Events schema for standardized log formatting.
+            *   **Prometheus Metrics:** FastAPI instrumentation with comprehensive metrics collection using `prometheus-fastapi-instrumentator`.
+            *   **Global Exception Handling:** Centralized error logging and standardized HTTP error responses.
+            *   **Request Correlation:** Request ID middleware for tracing requests across service layers.
+            *   **Local Monitoring Stack:** Docker Compose setup for Prometheus + Grafana development environment with microsegmented networks.
+            *   **Observability Testing:** Comprehensive test suite (`test_observability.py`) validating structured logging, metrics collection, and exception handling.
+            *   **Documentation:** Enhanced testing strategies guide and new comprehensive observability guide.
+
+*   **Phase 5 Summary:** This phase established a production-ready observability infrastructure for the backend, resolving critical testing foundation issues and implementing enterprise-grade monitoring capabilities. The work included structured logging with Key Events schema, Prometheus metrics instrumentation, global exception handling, request correlation middleware, and a complete local monitoring stack. Additionally, significant testing infrastructure improvements were made, including resolution of async SQLAlchemy event loop conflicts and comprehensive observability testing patterns. While the original advanced search filtering logic remains to be implemented, the observability foundation provides essential monitoring and debugging capabilities for all future backend development.
 
 ### Phase 6: Frontend - F002: Advanced Filtering Implementation
 *   **Goal:** Implement the advanced filtering interface in the frontend.
