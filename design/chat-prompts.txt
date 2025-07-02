@@ -10378,6 +10378,8 @@ Update section "### Phase 5: Backend - F002: Advanced Search & Filtering Logic" 
 
 -----------------
 
+Note to self: This is a great task file generation prompt
+
 Since we're still waiting on the PrimeNg 20 release for frontend work, we're going to skip ahead to Phase 07, detailed contract view.
 
 However, the task file we originally generated for this at the beginning of the project (plans\implementation\phase-07-backend-f003-detailed-ship-contract-view\07.1-api-endpoints-f003-old.md) is now severely outdated, is based on a much older version of the task template, and doesn't reflect any updates since we began implemenation work.
