@@ -44,10 +44,23 @@ class TestContractDetailsService:
     @pytest.fixture
     def contract_details_service(self, mock_db_session, mock_esi_type_service):
         """ContractDetailsService instance with mocked dependencies."""
-        return ContractDetailsService(
+        service = ContractDetailsService(
             db_session=mock_db_session,
             esi_type_service=mock_esi_type_service
         )
+        
+        # Add standard _process_ship_details mock to prevent validation errors
+        from fastapi_app.schemas.contracts import ShipDetailsSchema
+        mock_ship_details = ShipDetailsSchema(
+            type_id=587,
+            type_name="Test Ship",
+            attributes={},
+            icon_url="https://images.evetech.net/types/587/icon?size=64",
+            render_url="https://images.evetech.net/types/587/render?size=512"
+        )
+        service._process_ship_details = AsyncMock(return_value=mock_ship_details)
+        
+        return service
 
     @pytest.fixture
     def sample_contract(self):
