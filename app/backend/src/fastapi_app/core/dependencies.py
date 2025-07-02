@@ -3,9 +3,12 @@ from typing import Optional
 import httpx
 from fastapi import Depends, HTTPException, Request, status
 from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import Settings, settings
 from .esi_client_class import ESIClient
+from ..db import get_db
+from ..services.esi_type_service import ESITypeService
 
 
 async def get_cache(request: Request) -> Redis:
@@ -55,3 +58,16 @@ async def get_esi_client(
     return ESIClient(
         settings=settings, http_client=http_client, redis_client=redis_client
     )
+
+
+async def get_esi_type_service(
+    db: AsyncSession = Depends(get_db),
+    esi_client: ESIClient = Depends(get_esi_client),
+) -> ESITypeService:
+    """
+    FastAPI dependency to get an instance of the ESITypeService.
+    
+    This service provides comprehensive ESI type information with caching,
+    used for detailed contract views including ship attributes and images.
+    """
+    return ESITypeService(db_session=db, esi_client=esi_client)
