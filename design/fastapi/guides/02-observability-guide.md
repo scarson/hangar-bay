@@ -2,10 +2,11 @@
 
 ## 1. Overview
 
-This guide establishes the standards for observability within the Hangar Bay backend. Adhering to these standards ensures that our application is transparent, debuggable, and maintainable. The strategy covers three pillars:
+This guide establishes the standards for observability within the Hangar Bay backend. Adhering to these standards ensures that our application is transparent, debuggable, and maintainable. The strategy covers four pillars:
 
 -   **Structured Logging:** For event-based, queryable insights into application behavior.
 -   **Metrics:** For aggregated, numerical data on performance and system health.
+-   **Global Exception Handling:** For consistent error logging and response formatting.
 -   **Testing:** To ensure our observability instrumentation is reliable and accurate.
 
 ## 2. Technology Stack, Chosen Libraries, & Rationale
@@ -88,6 +89,84 @@ When logging significant business events (e.g., a contract search), the log MUST
 {"event": "contract_search_executed", "success": true, "duration_ms": 123.45, "search_terms": {"type": "item_exchange", "location": "jita"}, "results_count": 50, "log_level": "info", ...}
 ```
 
+## 3.4. Global Exception Handling (Mandatory)
+
+A global exception handler MUST be configured to catch any unhandled exceptions and ensure they are logged with structured data while returning consistent error responses to clients.
+
+### Implementation Pattern
+
+The global exception handler must be registered **before** any middleware in the FastAPI application to ensure it catches all unhandled exceptions:
+
+```python
+# In app/main.py - Add FIRST, before middleware
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import structlog
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler to catch any unhandled exceptions and return a
+    standardized 500 error response.
+    """
+    # Use structlog to log the exception with context
+    logger = structlog.get_logger("uvicorn.error")
+    logger.error(
+        "unhandled_exception",
+        exc_info=exc,
+        error_message=str(exc),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected server error occurred."},
+    )
+```
+
+### Key Requirements
+
+1. **Structured Logging**: All exceptions must be logged with `exc_info` for full stack traces
+2. **Consistent Response**: Always return the same JSON structure for unhandled errors
+3. **Security**: Never expose internal error details to clients
+4. **Correlation**: The request ID will automatically be included via `structlog.contextvars`
+
+### Testing the Global Exception Handler
+
+The global exception handler MUST be tested to ensure proper error logging and response formatting:
+
+```python
+@pytest.mark.asyncio
+async def test_global_exception_handler_logs_and_responds(
+    client: AsyncClient, 
+    mocker: MockerFixture
+):
+    """
+    Verify that unhandled exceptions are caught, logged, and return proper responses.
+    """
+    # Arrange: Mock service to raise exception
+    mocker.patch(
+        "fastapi_app.services.contract_service.list_contracts",
+        side_effect=Exception("Critical database failure")
+    )
+    
+    # Mock the error logger
+    mock_logger = mocker.patch("structlog.get_logger")
+    mock_error_logger = mock_logger.return_value
+    
+    # Act: Make request that triggers exception
+    response = await client.get("/contracts/")
+    
+    # Assert: Verify error response structure
+    assert response.status_code == 500
+    assert response.json()["detail"] == "An unexpected server error occurred."
+    
+    # Verify structured error logging
+    mock_error_logger.error.assert_called_once()
+    log_call = mock_error_logger.error.call_args[1]
+    assert "exc_info" in log_call
+    assert "error_message" in log_call
+    assert log_call["error_message"] == "Critical database failure"
+```
+
 ## 4. Metrics Strategy
 
 The `prometheus-fastapi-instrumentator` will be configured in the main application factory. It will automatically expose a `/metrics` endpoint for Prometheus to scrape.
@@ -115,66 +194,175 @@ Custom metrics (e.g., `esi_api_calls_total`) will be defined as needed in releva
 
 ## 5. Testing Strategy
 
-### 5.1. Testing Structured Logs
+Observability testing is **mandatory** and must verify that structured logging, metrics instrumentation, and error handling work correctly. This section provides comprehensive patterns based on real implementation experience.
 
-*   Unit tests should assert that service functions emit logs that conform to the **Key Events Schema**. 
-*   Integration tests should verify that API errors are captured and logged correctly.
-*   To verify that the correct logs are emitted, we will use a `pytest` fixture that leverages `structlog.testing.capture_logs`.
+### 5.1. Core Testing Tools
 
-**Example Fixture and Test:**
+*   **`pytest-mock`**: Essential for isolating and verifying logging behavior without actual I/O
+*   **`httpx.AsyncClient`**: For making API requests in integration tests
+*   **MockerFixture**: For mocking logger instances and capturing log calls
+*   **Metrics endpoint**: The `/metrics` endpoint for verifying Prometheus instrumentation
+
+For complete testing infrastructure setup, see our [FastAPI Testing Strategies Guide](09-testing-strategies.md#observability-testing-a-mandatory-category).
+
+### 5.2. Testing Structured Logging with Key Events Schema
+
+Tests must verify that service functions emit logs conforming to the **Key Events Schema** defined above.
+
 ```python
-# In conftest.py or a dedicated test file
 import pytest
-from structlog.testing import capture_logs
+from pytest_mock import MockerFixture
+from httpx import AsyncClient
 
-@pytest.fixture
-def log_capture():
-    """A fixture to capture structlog's output."""
-    with capture_logs() as captured:
-        yield captured
-
-# In a test file, e.g., test_services.py
-def test_some_service_function_logging(log_capture):
-    # Call the function that is expected to log
-    result = my_service_function(param="test")
-
-    # Assert the function behaved correctly
-    assert result is True
-
-    # Assert that the log was captured and contains the expected data
-    assert len(log_capture) == 1
-    log = log_capture[0]
-    assert log["event"] == "my_service_event"
-    assert log["log_level"] == "info"
-    assert log["some_key"] == "some_value"
+@pytest.mark.asyncio
+async def test_successful_request_logs_key_event(
+    client: AsyncClient, 
+    mocker: MockerFixture
+):
+    """
+    Verify that successful operations generate structured logs 
+    matching the Key Events schema.
+    """
+    # Arrange: Mock the service logger to capture calls
+    mock_logger = mocker.patch("fastapi_app.services.contract_service.logger")
+    
+    # Act: Trigger the operation
+    response = await client.get("/contracts/")
+    
+    # Assert: Verify response and Key Events schema compliance
+    assert response.status_code == 200
+    
+    # Verify logger was called with correct structure
+    mock_logger.info.assert_called_once()
+    log_call = mock_logger.info.call_args[1]  # Get keyword arguments
+    
+    # Verify required Key Events fields
+    assert "event" in log_call
+    assert "success" in log_call
+    assert "duration_ms" in log_call
+    assert log_call["success"] is True
+    assert isinstance(log_call["duration_ms"], (int, float))
+    
+    # Verify event-specific fields
+    if "results_count" in log_call:
+        assert isinstance(log_call["results_count"], int)
 ```
 
-### 5.2. Testing Metrics
+### 5.3. Testing Prometheus Metrics Instrumentation
 
-> **Best Practice: Avoid Brittle Tests**
-> When testing metrics, avoid asserting exact values (e.g., `...} 1`), which can be brittle. Instead, test for *changes* in metrics or use `>` comparisons. For logs, assert the *presence* of key fields and their values rather than matching an exact log string. This makes tests resilient to minor changes in log format or execution order.
+Tests must verify that API endpoints correctly increment Prometheus metrics with proper labels.
 
-* Integration tests should make requests to instrumented endpoints and then scrape a test client's `/metrics` endpoint to assert that the correct Prometheus counters/histograms have been incremented with the correct labels.
-* To verify metrics, we will use the standard FastAPI `TestClient` to perform requests and then scrape the `/metrics` endpoint to check the values.
-
-**Example Test:**
 ```python
-from fastapi.testclient import TestClient
-
-# client is a pytest fixture providing a TestClient instance
-def test_metrics_increment_on_request(client: TestClient):
-    # 1. Get initial metric value (optional, but good for robustness)
-    response_before = client.get("/metrics")
-    assert response_before.status_code == 200
-    # A helper function to parse Prometheus text format would be useful here
-    # For simplicity, we'll use string checking
-    assert 'http_requests_total{method="GET",path="/my-endpoint"} 0' in response_before.text
-
-    # 2. Make a request to the endpoint being measured
-    client.get("/my-endpoint")
-
-    # 3. Get updated metric value and assert it has changed
-    response_after = client.get("/metrics")
-    assert response_after.status_code == 200
-    assert 'http_requests_total{method="GET",path="/my-endpoint"} 1' in response_after.text
+@pytest.mark.asyncio
+async def test_successful_request_increments_prometheus_metrics(
+    client: AsyncClient
+):
+    """
+    Verify that API requests increment Prometheus metrics with correct labels.
+    """
+    # Act: Make request to instrumented endpoint
+    response = await client.get("/contracts/")
+    assert response.status_code == 200
+    
+    # Verify: Check metrics endpoint for proper instrumentation
+    metrics_response = await client.get("/metrics")
+    assert metrics_response.status_code == 200
+    metrics_text = metrics_response.text
+    
+    # Verify specific metrics with correct labels
+    assert 'http_requests_total{handler="/contracts/",method="GET",status="200"}' in metrics_text
+    assert 'http_request_duration_seconds_bucket{handler="/contracts/",method="GET"}' in metrics_text
+    
+    # Verify metrics are actually incremented (not just present)
+    # Look for non-zero values in the metrics output
+    assert any('} 1.0' in line or '} 1' in line for line in metrics_text.split('\n') 
+              if 'http_requests_total' in line and 'GET' in line)
 ```
+
+### 5.4. Testing Global Exception Handler
+
+Tests must verify that unhandled exceptions are caught by the global exception handler and logged properly.
+
+```python
+@pytest.mark.asyncio
+async def test_failed_request_logs_key_event(
+    client: AsyncClient, 
+    mocker: MockerFixture
+):
+    """
+    Verify that server errors trigger proper exception handling and structured logging.
+    """
+    # Arrange: Mock service to raise exception
+    mocker.patch(
+        "fastapi_app.services.contract_service.list_contracts",
+        side_effect=Exception("Critical database failure")
+    )
+    
+    # Mock the error logger used by global exception handler
+    mock_logger = mocker.patch("structlog.get_logger")
+    mock_error_logger = mock_logger.return_value
+    
+    # Act: Make request that triggers exception
+    response = await client.get("/contracts/")
+    
+    # Assert: Verify standardized error response
+    assert response.status_code == 500
+    assert response.json()["detail"] == "An unexpected server error occurred."
+    
+    # Verify structured error logging
+    mock_error_logger.error.assert_called_once()
+    log_call = mock_error_logger.error.call_args[1]
+    
+    # Verify required error logging fields
+    assert "exc_info" in log_call
+    assert "error_message" in log_call
+    assert log_call["error_message"] == "Critical database failure"
+```
+
+### 5.5. Testing Request ID Correlation
+
+Tests must verify that the same `request_id` propagates across all service layers during a single request.
+
+```python
+@pytest.mark.asyncio
+async def test_request_id_correlation(
+    client: AsyncClient, 
+    mocker: MockerFixture
+):
+    """
+    Verify that request_id is consistent across API and service layers.
+    """
+    # Arrange: Mock loggers from different layers
+    api_mock = mocker.patch("fastapi_app.middleware.request_id.logger")
+    service_mock = mocker.patch("fastapi_app.services.contract_service.logger")
+    
+    # Act: Make request that touches multiple layers
+    response = await client.get("/contracts/")
+    assert response.status_code == 200
+    
+    # Extract request_id from both loggers
+    api_request_id = api_mock.info.call_args[1].get("request_id")
+    service_request_id = service_mock.info.call_args[1].get("request_id")
+    
+    # Verify: Same request_id across all layers
+    assert api_request_id is not None
+    assert service_request_id is not None
+    assert api_request_id == service_request_id
+```
+
+### 5.6. Best Practices for Observability Testing
+
+> **Critical: Use pytest-mock for Isolation**
+> Always use `pytest-mock` to isolate logging behavior. Never rely on actual log output or files, as this creates brittle tests and potential race conditions.
+
+1. **Schema Compliance**: Always verify that logs match the defined Key Events schema
+2. **Mock Isolation**: Use `pytest-mock` to isolate logging from actual I/O operations
+3. **Label Verification**: For metrics tests, verify both presence and correct labeling
+4. **Error Scenarios**: Test both success and failure paths for complete coverage
+5. **Correlation Testing**: Verify request ID propagation across service boundaries
+
+### 5.7. Integration with Main Testing Strategy
+
+Observability tests should be integrated into the main test suite, not run separately. They use the same fixtures (`client`, `db_session`) as integration tests but focus specifically on telemetry verification.
+
+For complete fixture setup and additional observability testing patterns, see the [FastAPI Testing Strategies Guide](09-testing-strategies.md).

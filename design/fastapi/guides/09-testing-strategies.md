@@ -19,6 +19,7 @@ Our testing strategy is a **Pragmatic Hybrid**, balancing the confidence of inte
 -   **`httpx` & `TestClient`**: For making requests to our app in tests.
 -   **`pytest-httpx`**: Crucial for mocking external HTTP requests made by our `ESIClient`.
 -   **`pytest-vcr`**: Used for our specialized "Live ESI Contract Tests" to record and replay real API interactions.
+-   **`pytest-mock`**: Essential for observability testing - capturing logs, mocking logger instances, and isolating components for structured logging verification.
 
 ## 3. The Test Environment: `conftest.py`
 
@@ -164,6 +165,161 @@ async def test_special_feature_is_active(client: AsyncClient):
 ```
 
 This pattern provides powerful control and isolation for configuration-dependent tests.
+
+## 3.4. Observability Testing: A Mandatory Category
+
+Observability testing ensures our structured logging, metrics instrumentation, and error handling work correctly. This is a **mandatory** testing category that complements integration and unit tests by verifying that our application generates the correct telemetry data.
+
+### Core Patterns for Observability Testing
+
+#### A. Structured Logging Verification
+
+Tests must verify that service functions emit logs conforming to the **Key Events Schema** defined in our [observability guide](02-observability-guide.md).
+
+```python
+# Example from test_observability.py
+import pytest
+from pytest_mock import MockerFixture
+from httpx import AsyncClient
+
+@pytest.mark.asyncio
+async def test_successful_request_logs_key_event(
+    client: AsyncClient, 
+    mocker: MockerFixture
+):
+    """
+    Verify that successful contract service operations generate 
+    structured logs matching the Key Events schema.
+    """
+    # Arrange: Mock the logger to capture log calls
+    mock_logger = mocker.patch("fastapi_app.services.contract_service.logger")
+    
+    # Act: Make request that triggers service logging
+    response = await client.get("/contracts/")
+    
+    # Assert: Verify response and log structure
+    assert response.status_code == 200
+    
+    # Verify logger was called with Key Events schema
+    mock_logger.info.assert_called_once()
+    log_call = mock_logger.info.call_args[1]  # Get keyword arguments
+    
+    # Verify Key Events schema compliance
+    assert "event" in log_call
+    assert "success" in log_call
+    assert "duration_ms" in log_call
+    assert log_call["success"] is True
+    assert isinstance(log_call["duration_ms"], (int, float))
+```
+
+#### B. Prometheus Metrics Testing
+
+Tests must verify that API endpoints correctly increment Prometheus metrics with proper labels.
+
+```python
+@pytest.mark.asyncio
+async def test_successful_request_increments_prometheus_metrics(
+    client: AsyncClient
+):
+    """
+    Verify that API requests increment Prometheus metrics correctly.
+    """
+    # Act: Make request to instrumented endpoint
+    response = await client.get("/contracts/")
+    assert response.status_code == 200
+    
+    # Verify: Check metrics endpoint for correct increments
+    metrics_response = await client.get("/metrics")
+    assert metrics_response.status_code == 200
+    metrics_text = metrics_response.text
+    
+    # Verify specific metrics with correct labels
+    assert 'http_requests_total{handler="/contracts/",method="GET",status="200"}' in metrics_text
+    assert 'http_request_duration_seconds_bucket{handler="/contracts/",method="GET"}' in metrics_text
+```
+
+#### C. Global Exception Handler Testing
+
+Tests must verify that unhandled exceptions are caught by the global exception handler and logged with structured data.
+
+```python
+@pytest.mark.asyncio
+async def test_failed_request_logs_key_event(
+    client: AsyncClient, 
+    mocker: MockerFixture
+):
+    """
+    Verify that server errors trigger proper exception handling and logging.
+    """
+    # Arrange: Mock service to raise exception
+    mocker.patch(
+        "fastapi_app.services.contract_service.list_contracts",
+        side_effect=Exception("Critical database failure")
+    )
+    
+    # Mock the error logger
+    mock_logger = mocker.patch("structlog.get_logger")
+    mock_error_logger = mock_logger.return_value
+    
+    # Act: Make request that triggers exception
+    response = await client.get("/contracts/")
+    
+    # Assert: Verify error response and logging
+    assert response.status_code == 500
+    assert response.json()["detail"] == "An unexpected server error occurred."
+    
+    # Verify structured error logging
+    mock_error_logger.error.assert_called_once()
+    log_call = mock_error_logger.error.call_args[1]
+    assert "exc_info" in log_call
+    assert "error_message" in log_call
+    assert log_call["error_message"] == "Critical database failure"
+```
+
+#### D. Request ID Correlation Testing
+
+Tests must verify that the same `request_id` propagates across all service layers during a single request.
+
+```python
+@pytest.mark.asyncio
+async def test_request_id_correlation(
+    client: AsyncClient, 
+    mocker: MockerFixture
+):
+    """
+    Verify that request_id is consistent across API and service layers.
+    """
+    # Arrange: Mock both API and service loggers
+    api_mock = mocker.patch("fastapi_app.middleware.request_id.logger")
+    service_mock = mocker.patch("fastapi_app.services.contract_service.logger")
+    
+    # Act: Make request
+    response = await client.get("/contracts/")
+    assert response.status_code == 200
+    
+    # Extract request_id from both loggers
+    api_request_id = api_mock.info.call_args[1].get("request_id")
+    service_request_id = service_mock.info.call_args[1].get("request_id")
+    
+    # Verify: Same request_id in both layers
+    assert api_request_id is not None
+    assert service_request_id is not None
+    assert api_request_id == service_request_id
+```
+
+### Key Principles for Observability Testing
+
+1. **Schema Compliance**: Always verify that logs match the defined Key Events schema
+2. **Isolation**: Use `pytest-mock` to isolate logging components from actual I/O
+3. **Correlation**: Test that request IDs propagate correctly across service boundaries
+4. **Error Handling**: Verify that exceptions are caught and logged with proper structure
+5. **Metrics Accuracy**: Ensure metrics increment with correct labels and values
+
+### Integration with Main Testing Strategy
+
+Observability tests should be run as part of the main test suite, not separately. They use the same fixtures (`client`, `db_session`) as integration tests but focus specifically on telemetry verification rather than business logic.
+
+For detailed observability patterns and schemas, see our [FastAPI Observability Guide](02-observability-guide.md).
 
 ## 4. Writing an Integration Test: A Practical Example
 

@@ -1688,4 +1688,74 @@ The `fastapi_app` container is the only component that will be attached to all t
 
 ---
 
+## 2025-07-02 00:35:00-05:00 :: Comprehensive Observability Testing Documentation Enhancement
+
+**Context:** After successfully implementing and validating our backend observability testing infrastructure, we identified significant gaps in our design guides that would leave future developers without proper guidance for comprehensive observability testing.
+
+**Problem:** Both `design/fastapi/guides/09-testing-strategies.md` and `design/fastapi/guides/02-observability-guide.md` lacked critical patterns and examples based on our real-world implementation experience:
+
+1. **Missing Observability Testing Category**: The testing strategies guide covered Integration, Unit, and Structural tests but completely omitted Observability Testing as a distinct, mandatory category.
+
+2. **Incomplete Core Tooling**: `pytest-mock` was missing from the tooling list despite being essential for log capture and verification.
+
+3. **Outdated Testing Examples**: The observability guide provided only basic, incomplete testing examples that didn't reflect our comprehensive implementation patterns.
+
+4. **Missing Global Exception Handler Documentation**: Our implementation included a critical global exception handler with structured logging, but this pattern wasn't documented.
+
+5. **No Request ID Correlation Testing**: The guides mentioned request ID correlation but didn't show how to test it across service layers.
+
+**Solution Implemented:**
+
+**Enhanced `09-testing-strategies.md`:**
+- Added `pytest-mock` to core tooling list as essential for observability testing
+- Created comprehensive **"3.4. Observability Testing: A Mandatory Category"** section with:
+  - Structured logging verification with Key Events schema compliance
+  - Prometheus metrics testing with proper label verification
+  - Global exception handler testing patterns
+  - Request ID correlation testing across service boundaries
+  - Real code examples from our `test_observability.py` implementation
+  - Cross-references to the observability guide
+
+**Enhanced `02-observability-guide.md`:**
+- Updated overview to include **Global Exception Handling** as the 4th pillar of observability
+- Added comprehensive **"3.4. Global Exception Handling (Mandatory)"** section with:
+  - Complete implementation pattern from our `main.py`
+  - Key requirements and security considerations
+  - Testing pattern for exception handler verification
+- Completely rewrote **"5. Testing Strategy"** section with:
+  - Real working examples from our implementation
+  - `pytest-mock` integration patterns for log isolation
+  - Key Events schema validation using dictionary assertions
+  - Metrics testing with proper label checking and increment verification
+  - Request ID correlation testing patterns
+  - Best practices based on actual implementation experience
+  - Cross-references to the testing strategies guide
+
+**Key Design Decisions:**
+
+1. **Observability as Mandatory Testing Category**: Elevated observability testing from an afterthought to a required, first-class testing category alongside integration and unit tests.
+
+2. **pytest-mock as Essential Tool**: Recognized `pytest-mock` as critical infrastructure for observability testing, enabling proper isolation and verification without brittle I/O dependencies.
+
+3. **Real Implementation Examples**: Used actual patterns from our working `test_observability.py` rather than theoretical examples, ensuring actionable guidance.
+
+4. **Cross-Guide Integration**: Ensured both guides reference each other and use consistent terminology, creating a cohesive documentation ecosystem.
+
+5. **Global Exception Handler as Required Pattern**: Documentation now mandates the global exception handler pattern we implemented, preventing future developers from missing this critical observability component.
+
+**Impact:**
+- Future developers now have comprehensive, actionable guidance for observability testing
+- Both guides are aligned and cross-referenced, eliminating inconsistencies
+- Testing patterns are based on real implementation experience, not theoretical approaches
+- The documentation accurately reflects our current observability architecture and practices
+- Risk of incomplete observability instrumentation is significantly reduced through better guidance
+
+**Files Modified:**
+- `design/fastapi/guides/09-testing-strategies.md`: Added observability testing section and updated tooling
+- `design/fastapi/guides/02-observability-guide.md`: Added global exception handling and comprehensive testing patterns
+
+This enhancement transforms our observability documentation from basic guidance to comprehensive, implementation-proven patterns that will ensure consistent, high-quality observability across all future backend development.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))
