@@ -67,6 +67,7 @@ async def get_contract(
 @router.get("/details/{contract_id}", response_model=DetailedContractSchema)
 async def get_contract_details_endpoint(
     contract_id: int,
+    attribute_detail: str = "key_attributes",
     db: AsyncSession = Depends(get_db),
     esi_type_service: ESITypeService = Depends(get_esi_type_service),
 ):
@@ -76,14 +77,19 @@ async def get_contract_details_endpoint(
     
     This endpoint provides enhanced contract information with:
     - Complete item details with ESI type information
-    - Ship attributes for ship contracts
+    - Ship attributes for ship contracts (configurable detail level)
     - Image URLs for visual representation
     - Comprehensive ship statistics and properties
+    
+    Args:
+        contract_id: The contract ID to retrieve
+        attribute_detail: Level of ship attribute detail ("key_attributes" or "all_attributes")
     """
     contract_details = await get_contract_details(
         db=db, 
         contract_id=contract_id, 
-        esi_type_service=esi_type_service
+        esi_type_service=esi_type_service,
+        attribute_detail_level=attribute_detail
     )
     
     if not contract_details:

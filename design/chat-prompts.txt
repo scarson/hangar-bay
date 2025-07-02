@@ -10403,31 +10403,69 @@ We should prepare for Phase 07 by creating one or more task files (as you deem a
 
 -----------------
 
-X
+Refer to section "## 4. Directory and File Structure" of design\fastapi\00-fastapi-architecture-overview.md for a backend project structure reference.
 
 -----------------
 
-X
+1. In app\backend\src\fastapi_app\api\contracts.py, you replaced:
+
+@router.get("/{contract_id}", response_model=ContractSchema)
+async def get_contract(
+
+with:
+
+@router.get("/details/{contract_id}", response_model=DetailedContractSchema)
+async def get_contract_details_endpoint(
+
+Why? Does this mean the /details/{contract_id} route completely replaces the /{contract_id} one? 
+
+Wil this change break existing tests in app\backend\src\fastapi_app\tests\api\test_contracts.py?
+
+2. Section "### 7.3. Testing" of plans\implementation\phase-07-backend-f003-detailed-ship-contract-view\07.1-detailed-contract-api-enhanced.md lays out required testing items for the item to pass its review gate. Section "## 5. Definition of Done (DoD)" also has "*   [ ] **Comprehensive Testing:** Unit and integration tests cover all new functionality with >85% coverage". I think we overlooked adding a "## 3. Key Implementation Steps" subsection to implement these tests. Please add one. Note that we should aim for 100% test coverage for this core feature if feasible.
+
+3. Review "## 3. Key Implementation Steps" and check off items you've completed implementation work for. You can only check off items that are actually done.
 
 -----------------
 
-X
+The user has raised some very important points:
+
+They're questioning my decision to replace the basic /{contract_id} endpoint with /details/{contract_id}. This was actually a mistake on my part - I should have kept the existing basic endpoint and added the detailed one as a separate endpoint. This could indeed break existing tests.
+They're pointing out that I missed adding the testing implementation steps to the Phase 07 task file, which is a critical oversight.
+They want me to review and check off completed items in the implementation steps.
+Let me address these one by one:
+
+For the API endpoint issue, I should restore the basic /{contract_id} endpoint and add the detailed one as a separate endpoint like /details/{contract_id}. This maintains backward compatibility.
+I need to add comprehensive testing steps to the task file.
+I need to review the task file and check off completed items.
+This definitely warrants a plan update since there are significant issues to address.
 
 -----------------
 
-X
+You are only calling partial file views. Use #L1-400 to get the whole file. Re-read and reasses.
 
 -----------------
 
-X
+A thought. We have app\backend\src\fastapi_app\services\contract_service.py. Would it make more sense to call it app\backend\src\fastapi_app\services\contract_details_service.py rather than app\backend\src\fastapi_app\services\detailed_contract_service.py? ContractDetail(s)Service rather than DetailedContractService? And the functions and classes "ContractDetail(s)" rather than DetaileContracts?
+
+I'm not sure what the right decision is so help me reason though it.
+Don't make any code change.
+/await-approval.
+
 
 -----------------
 
-X
+Using "ContractDetailsService" does align with my instincts.
+
+1. /git-commit for a checkpoint
+2. Plan how to update everything you've implemented so far to the new name, including updating items in plans\implementation\phase-07-backend-f003-detailed-ship-contract-view\07.1-detailed-contract-api-enhanced.md to reflect the change.
+3. Implement the update plan.
+4. Thoroughly check your work
+5. /git-commit to checkpoint the updates
+6. Procceed with the Key Implementation Steps in plans\implementation\phase-07-backend-f003-detailed-ship-contract-view\07.1-detailed-contract-api-enhanced.md. "**Step 3.2: Implement Ship Attribute Processing**" is the next unchecked item.
 
 -----------------
 
-X
+
 
 -----------------
 

@@ -2,7 +2,127 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Dict, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+
+class EsiTypeSchema(BaseModel):
+    """Schema for ESI type information with schema-model parity to EsiTypeCache.
+    
+    Includes computed fields for EVE image server URLs (render and icon).
+    """
+    
+    type_id: int
+    name: str
+    description: str
+    category_id: Optional[int] = None
+    group_id: Optional[int] = None
+    market_group_id: Optional[int] = None
+    
+    # Physical properties
+    mass: Optional[float] = None
+    volume: Optional[float] = None
+    capacity: Optional[float] = None
+    
+    # Visual representation IDs
+    icon_id: Optional[int] = None
+    graphic_id: Optional[int] = None
+    
+    # Publishing status
+    published: bool = True
+    
+    # Comprehensive attribute data from ESI
+    dogma_attributes: Optional[Dict[str, Any]] = None
+    dogma_effects: Optional[Dict[str, Any]] = None
+    
+    # Store the complete ESI response for future-proofing
+    raw_esi_response: Optional[Dict[str, Any]] = None
+    
+    @computed_field
+    @property
+    def icon_url(self) -> str:
+        """Generate EVE image server icon URL."""
+        return f"https://images.evetech.net/types/{self.type_id}/icon?size=64"
+    
+    @computed_field
+    @property
+    def image_url(self) -> str:
+        """Generate EVE image server render URL (alias for render_url)."""
+        return f"https://images.evetech.net/types/{self.type_id}/render?size=512"
+    
+    @computed_field
+    @property
+    def render_url(self) -> str:
+        """Generate EVE image server render URL."""
+        return f"https://images.evetech.net/types/{self.type_id}/render?size=512"
+    
+    @computed_field
+    @property
+    def thumbnail_url(self) -> str:
+        """Generate EVE image server thumbnail render URL."""
+        return f"https://images.evetech.net/types/{self.type_id}/render?size=128"
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShipAttributeGroupSchema(BaseModel):
+    """Schema for a group of related ship attributes."""
+    
+    group_name: str = Field(..., description="Name of the attribute group (e.g., 'Tank', 'Capacitor')")
+    attributes: Dict[str, Any] = Field(default_factory=dict, description="Attributes in this group")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShipAttributeSchema(BaseModel):
+    """Schema for displaying ship attributes in organized groups.
+    
+    Processes dogma_attributes JSON into user-friendly attribute groups
+    like Tank, Capacitor, Targeting, Slots, etc.
+    """
+    
+    # Key attributes for quick overview
+    key_attributes: Dict[str, ShipAttributeGroupSchema] = Field(
+        default_factory=dict, 
+        description="Essential ship attributes grouped by category"
+    )
+    
+    # Complete attribute set for detailed view
+    all_attributes: Dict[str, ShipAttributeGroupSchema] = Field(
+        default_factory=dict, 
+        description="Complete ship attributes grouped by category"
+    )
+    
+    # Raw attribute data for debugging/advanced use
+    raw_dogma_attributes: Optional[Dict[str, Any]] = Field(
+        default=None, 
+        description="Raw dogma attributes from ESI (optional, for debugging)"
+    )
+    
+    # Derived ship statistics
+    ship_stats: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Calculated ship statistics (EHP, DPS, etc.)"
+    )
+    
+    @computed_field
+    @property
+    def has_key_attributes(self) -> bool:
+        """Check if key attributes are available."""
+        return len(self.key_attributes) > 0
+    
+    @computed_field
+    @property
+    def attribute_group_names(self) -> List[str]:
+        """Get list of available attribute group names."""
+        return list(self.all_attributes.keys())
+    
+    @computed_field
+    @property
+    def total_attribute_count(self) -> int:
+        """Get total count of individual attributes across all groups."""
+        return sum(len(group.attributes) for group in self.all_attributes.values())
+    
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContractItemSchema(BaseModel):
