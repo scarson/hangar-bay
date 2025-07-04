@@ -6,7 +6,7 @@ All ESI client responses and database interactions are mocked for isolated testi
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 
@@ -89,7 +89,9 @@ class TestESITypeService:
         """Test get_type_info returns cached data when available."""
         # Arrange
         type_id = 587
-        esi_type_service.db_session.execute.return_value.scalar_one_or_none.return_value = sample_cached_type
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = sample_cached_type
+        esi_type_service.db_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
         result = await esi_type_service.get_type_info(type_id)
@@ -104,31 +106,35 @@ class TestESITypeService:
         """Test get_type_info fetches from ESI when not cached."""
         # Arrange
         type_id = 587
-        esi_type_service.db_session.execute.return_value.scalar_one_or_none.return_value = None
         esi_type_service.esi_client.get_type_info.return_value = sample_esi_type_data
         
-        # Mock the upsert operation
-        mock_result = AsyncMock()
-        mock_result.inserted_primary_key = [type_id]
-        esi_type_service.db_session.execute.side_effect = [
-            AsyncMock(scalar_one_or_none=AsyncMock(return_value=None)),  # Cache miss
-            mock_result,  # Upsert result
-            AsyncMock(scalar_one_or_none=AsyncMock(return_value=sample_esi_type_data))  # Fetch after insert
-        ]
+        # Mock the database operations sequence
+        cache_miss_result = Mock()
+        cache_miss_result.scalar_one_or_none.return_value = None
+        
+        upsert_result = Mock()
+        upsert_result.inserted_primary_key = [type_id]
+        
+        esi_type_service.db_session.execute = AsyncMock(side_effect=[
+            cache_miss_result,  # Cache miss
+            upsert_result,  # Upsert result
+        ])
 
         # Act
         result = await esi_type_service.get_type_info(type_id)
 
         # Assert
         esi_type_service.esi_client.get_type_info.assert_called_once_with(type_id)
-        assert esi_type_service.db_session.execute.call_count == 3  # Cache check, upsert, fetch after insert
+        assert esi_type_service.db_session.execute.call_count == 2  # Cache check, upsert
 
     @pytest.mark.asyncio
     async def test_get_type_info_esi_failure(self, esi_type_service):
         """Test get_type_info handles ESI failures gracefully."""
         # Arrange
         type_id = 587
-        esi_type_service.db_session.execute.return_value.scalar_one_or_none.return_value = None
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = None
+        esi_type_service.db_session.execute = AsyncMock(return_value=mock_result)
         esi_type_service.esi_client.get_type_info.side_effect = Exception("ESI API Error")
 
         # Act
@@ -295,7 +301,9 @@ class TestESITypeService:
         """Test _get_cached_type when type is found."""
         # Arrange
         type_id = 587
-        esi_type_service.db_session.execute.return_value.scalar_one_or_none.return_value = sample_cached_type
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = sample_cached_type
+        esi_type_service.db_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
         result = await esi_type_service._get_cached_type(type_id)
@@ -308,7 +316,9 @@ class TestESITypeService:
         """Test _get_cached_type when type is not found."""
         # Arrange
         type_id = 587
-        esi_type_service.db_session.execute.return_value.scalar_one_or_none.return_value = None
+        mock_result = Mock()
+        mock_result.scalar_one_or_none.return_value = None
+        esi_type_service.db_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
         result = await esi_type_service._get_cached_type(type_id)
@@ -325,7 +335,11 @@ class TestESITypeService:
             sample_cached_type,
             EsiTypeCache(type_id=588, name='Punisher')
         ]
-        esi_type_service.db_session.execute.return_value.scalars.return_value.all.return_value = cached_types
+        mock_scalars = Mock()
+        mock_scalars.all.return_value = cached_types
+        mock_result = Mock()
+        mock_result.scalars.return_value = mock_scalars
+        esi_type_service.db_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
         result = await esi_type_service._get_cached_types(type_ids)
@@ -365,39 +379,44 @@ class TestESITypeService:
 
     @pytest.mark.asyncio
     async def test_is_ship_type_valid_ship(self, esi_type_service, sample_cached_type):
-        """Test _is_ship_type with valid ship category."""
+        """Test is_ship_type with valid ship category."""
         # Arrange
         sample_cached_type.category_id = 6  # Ship category
+        esi_type_service.get_type_info = AsyncMock(return_value=sample_cached_type)
 
         # Act
-        result = await esi_type_service._is_ship_type(sample_cached_type)
+        result = await esi_type_service.is_ship_type(sample_cached_type.type_id)
 
         # Assert
         assert result is True
+        esi_type_service.get_type_info.assert_called_once_with(sample_cached_type.type_id)
 
     @pytest.mark.asyncio
     async def test_is_ship_type_invalid_ship(self, esi_type_service, sample_cached_type):
-        """Test _is_ship_type with non-ship category."""
+        """Test is_ship_type with non-ship category."""
         # Arrange
         sample_cached_type.category_id = 8  # Charge category
+        esi_type_service.get_type_info = AsyncMock(return_value=sample_cached_type)
 
         # Act
-        result = await esi_type_service._is_ship_type(sample_cached_type)
+        result = await esi_type_service.is_ship_type(sample_cached_type.type_id)
 
         # Assert
         assert result is False
+        esi_type_service.get_type_info.assert_called_once_with(sample_cached_type.type_id)
 
     @pytest.mark.asyncio
-    async def test_is_ship_type_missing_category(self, esi_type_service, sample_cached_type):
-        """Test _is_ship_type with missing category."""
+    async def test_is_ship_type_missing_category(self, esi_type_service):
+        """Test is_ship_type with missing type info."""
         # Arrange
-        sample_cached_type.category_id = None
+        esi_type_service.get_type_info = AsyncMock(return_value=None)
 
         # Act
-        result = await esi_type_service._is_ship_type(sample_cached_type)
+        result = await esi_type_service.is_ship_type(999)
 
         # Assert
         assert result is False
+        esi_type_service.get_type_info.assert_called_once_with(999)
 
 
     # =============================================================================
