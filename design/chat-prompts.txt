@@ -10865,15 +10865,16 @@ Excellent, all tests pass with no warnings.
 
 -----------------
 
-X
+1. Next, review plans\implementation\phase-07-backend-f003-detailed-ship-contract-view\07.1-detailed-contract-api-enhanced.md to see if any tasks in "### 3.5. Testing Implementation" remain. You must verify each item against source of truth in the code before checking off completion. 
+2. If and only if all Testing Implementation items are complete, proceed to review "### 3.6. Observability Implementation" and come up with a comprehensive plan to address the implementation. Think carefully - are we missing anything? The Observability Implementation items are written in a general way. Think about specifics. Update the task items with more detail before proceeding if that's helpful to Cascade. For any implementation items that describe specific code updates, you MUST verify the details against source code or design files and cannot make assumptions about content, because that's how we get implementation errors.
 
 -----------------
 
-X
+Commit plans\implementation\phase-07-backend-f003-detailed-ship-contract-view\07.1-detailed-contract-api-enhanced.md as a task file updated pre-execution checkpoint.
 
 -----------------
 
-X
+
 
 -----------------
 
