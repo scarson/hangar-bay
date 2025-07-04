@@ -1926,4 +1926,75 @@ This approach transforms test debugging from reactive fixing to proactive archit
 
 ---
 
+## 2025-07-04 14:05:00-05:00 :: Async Testing Patterns: Mock vs AsyncMock Architecture Discovery
+
+### Problem Context
+Encountered systematic test failures in ESITypeService with async database operations returning coroutines instead of expected values. Initial approach of using AsyncMock everywhere proved incorrect.
+
+### Root Cause Analysis
+The issue stemmed from misunderstanding the async/sync boundary in SQLAlchemy operations:
+- `db_session.execute()` **IS async** → Returns awaitable
+- `result.scalar_one_or_none()` **IS sync** → Returns value directly
+- `result.scalars().all()` **IS sync** → Returns list directly
+
+### Architecture Discovery: The Async-Sync Boundary Pattern
+
+**Correct Pattern:**
+```python
+# Mock the async method with AsyncMock
+db_session.execute = AsyncMock(return_value=mock_result)
+
+# Mock the sync result object with regular Mock
+mock_result = Mock()
+mock_result.scalar_one_or_none.return_value = expected_value
+```
+
+**Anti-Pattern (What Failed):**
+```python
+# Wrong: Using AsyncMock for sync result methods
+mock_result = AsyncMock()  # This creates coroutines!
+mock_result.scalar_one_or_none.return_value = value  # Returns coroutine
+```
+
+### Systematic Resolution Process
+
+1. **Identify Async Boundaries**: Traced each method call to determine async vs sync nature
+2. **Apply Mock Typing**: AsyncMock for async methods, Mock for sync objects
+3. **Import Resolution**: Added missing `Mock` import
+4. **Test Expectation Alignment**: Corrected DB call counts based on actual service implementation
+5. **Dependency Chain Mocking**: Ensured all called methods properly mocked
+
+### Key Testing Principles Established
+
+**AsyncMock Usage:**
+- Database session methods (`execute`, `commit`, `rollback`)
+- Service async methods (`get_type_info`, `get_ship_attributes`)
+- ESI client async methods
+
+**Mock Usage:**
+- SQLAlchemy result objects and their methods
+- Synchronous data transformation methods
+- Return values from async operations
+
+**Chain Mocking Pattern:**
+```python
+# For complex chains like result.scalars().all()
+mock_scalars = Mock()
+mock_scalars.all.return_value = data
+mock_result = Mock()
+mock_result.scalars.return_value = mock_scalars
+db_session.execute = AsyncMock(return_value=mock_result)
+```
+
+### Impact and Validation
+- Fixed 9 failing async tests systematically
+- Eliminated all async coroutine warnings
+- Achieved 32/32 tests passing with zero warnings
+- Established reusable async testing patterns for FastAPI services
+
+### Architectural Insight: Service Implementation Optimization
+Discovered that the service correctly returns created objects directly rather than re-fetching from database after upsert operations, optimizing performance while maintaining data integrity.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))
