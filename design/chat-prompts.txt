@@ -10648,67 +10648,220 @@ X
 
 -----------------
 
-X
+Whatever happend with this command should not have. I shouldn't have approve dit when you were just running pdm pytest in the wrong director.
+Now the terminal appears to be in a (.venv) and a bunch of packages downloaded and installed. Very carefully evaluate what happened and how to undo anything that should be undone.
+
+Python -m venv .venv --without-pip && .venv\Scripts\Activate.ps1 && pip install pytest pytest-asyncio                  
+Collecting pytest
+  Downloading pytest-8.4.1-py3-none-any.whl.metadata (7.7 kB)
+Collecting pytest-asyncio
+  Downloading pytest_asyncio-1.0.0-py3-none-any.whl.metadata (4.0 kB)
+Collecting colorama>=0.4 (from pytest)
+  Using cached colorama-0.4.6-py2.py3-none-any.whl.metadata (17 kB)
+Collecting iniconfig>=1 (from pytest)
+  Downloading iniconfig-2.1.0-py3-none-any.whl.metadata (2.7 kB)
+Requirement already satisfied: packaging>=20 in c:\users\sam\appdata\local\packages\pythonsoftwarefoundation.python.3.11_qbz5n2kfra8p0\localcache\local-packages\python311\site-packages (from pytest) (25.0)
+Collecting pluggy<2,>=1.5 (from pytest)
+  Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+Requirement already satisfied: pygments>=2.7.2 in c:\users\sam\appdata\local\packages\pythonsoftwarefoundation.python.3.11_qbz5n2kfra8p0\localcache\local-packages\python311\site-packages (from pytest) (2.19.1)
+Downloading pytest-8.4.1-py3-none-any.whl (365 kB)
+Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+Downloading pytest_asyncio-1.0.0-py3-none-any.whl (15 kB)
+Using cached colorama-0.4.6-py2.py3-none-any.whl (25 kB)
+Downloading iniconfig-2.1.0-py3-none-any.whl (6.0 kB)
+Installing collected packages: pluggy, iniconfig, colorama, pytest, pytest-asyncio
+Successfully installed colorama-0.4.6 iniconfig-2.1.0 pluggy-1.6.0 pytest-8.4.1 pytest-asyncio-1.0.0                                                                                   
+(.venv) PS C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend> 
 
 -----------------
 
-X
+That is a recursive remove on any .venv. Is that the right scoping to remove what you created?
 
 -----------------
 
-X
+Cascade:
+This comprehensive test suite covers:
+
+_process_ship_attributes (6 tests):
+
+Basic detail level processing
+Key attributes level processing
+All attributes level processing
+No type info available handling
+Invalid detail level fallback
+_extract_basic_ship_attributes (2 tests):
+
+Complete data extraction
+Minimal data handling
+_extract_all_ship_attributes (3 tests):
+
+Complete data with dogma attributes/effects
+No dogma data handling
+Empty dogma lists handling
+_generate_image_urls (4 tests):
+
+Comprehensive URL generation with all 8 URL types
+Different type IDs validation
+Edge cases (large numbers, zero)
+URL structure and parameter validation
+The tests cover success paths, error conditions, edge cases, and data validation scenarios for all four new methods
 
 -----------------
 
-X
+Why am I now getting this error?
+
+pdm run pytest src\fastapi_app\tests\services\test_contract_details_service.py -v
+INFO: The saved Python interpreter does not exist or broken. Trying to find another one.
+WARNING: Project requires a python version of >=3.11, The virtualenv is being created for you as it cannot be matched to the right version.
+INFO: python.use_venv is on, creating a virtualenv for this project...
+Virtualenv is created successfully at C:\Users\Sam\OneDrive\Documents\Code\hangar-bay\app\backend\.venv
+
+Why did we lose all our dependencies? Those existed before you ran the new venv commadn Then you ran the recursive .venv delete and they were gone after. what happened?
 
 -----------------
 
 TODO: Update plans\implementation\00-mvp-implementation-task-template.md "## 3. Key Implementation Steps" to include a required Testing implementation section. We keep only realizing we need tests during DoD or CCC review.
 
 -----------------
+Adding these is on the todo list:
+Perfect! Now I can see the actual fields in the 
+EsiTypeCache
+ model. The test fixture is trying to use fields that don't exist:
 
-X
+portion_size (doesn't exist)
+created_at and updated_at (don't exist)
+Let me fix the test fixture:
+---
+
+Implement 
+_process_ship_details()
+ - Service currently calls this but it doesn't exist
+Add audit fields to EsiTypeCache - Enable proper cache management
+Clarify error handling strategy - Document exception vs graceful return patterns
+Review Feature F003 spec - Verify expected ship contract functionality
+Implement remaining ship processing methods if required by feature spec
+
+---
+Key Architectural Decisions Needed:
+1. EsiTypeCache Model: Should it have audit fields?
+Current State: No created_at/updated_at fields Question: Should we add audit timestamps to cached EVE Online type data?
+
+Considerations:
+
+Pro: Enables cache invalidation strategies, data lineage tracking, debugging cache staleness
+Con: Adds storage overhead, complexity for external API data that has its own versioning
+EVE Context: ESI data has its own ETags/versioning system
+Recommendation: Probably YES - even for cached external data, knowing when we cached it is valuable for:
+
+Cache invalidation policies
+Debugging stale data issues
+Analytics on cache hit/miss patterns
+
+---
+Architectural Decision Needed: Project-wide error handling strategy
+
+Options:
+
+python
+# Option A: Graceful (test expectation)
+async def get_contract_details(self, contract_id: int) -> Optional[ContractDetailsSchema]:
+    try:
+        # ... processing
+        return result
+    except (ESIError, DatabaseError):
+        return None
+
+# Option B: Exception-based (current)
+async def get_contract_details(self, contract_id: int) -> ContractDetailsSchema:
+    # ... processing (let exceptions bubble up)
+    return result
+Recommendation: Exception-based is generally better for:
+
+Clear error types for API layer to handle appropriately
+Avoiding silent failures that mask real issues
+FastAPI's built-in exception handling
+-----------------
+
+pdm run pytest src/fastapi_app/tests/services/test_esi_type_service.py src/fastapi_app/tests/services/test_contract_details_service.py --tb=short
 
 -----------------
 
-X
+Explain:
+
+1. Removed:
+"sample_cached_type.dogma_attributes = [
+            {'attribute_id': 9, 'value': 1067000},     # Mass
+            {'attribute_id': 161, 'value': 27289},     # Volume  
+            {'attribute_id': 38, 'value': 315},        # Capacity
+            {'attribute_id': 479, 'value': 150},       # Shield HP
+            {'attribute_id': 263, 'value': 300},       # Armor HP
+            {'attribute_id': 482, 'value': 325},       # Structure HP
+        ]"
+for
+"        type_id = 587
+        esi_type_service.get_ship_attributes = AsyncMock(return_value={
+            'physical': {'mass': 1067000, 'volume': 27289},
+            'defensive': {'shield_hp': 150, 'armor_hp': 300}
+        })"
+		
+2. "        assert 'physical' in result
+        assert 'defensive' in result
+        assert 'other' in result
+        assert len(result['other']) >= 1  # Should include unknown attribute"		
+for
+"        assert 'mass' in result
+        assert 'dogma_attributes' in result
+        assert len(result['dogma_attributes']) == 3
+        esi_type_service.get_type_info.assert_called_once_with(type_id)"
 
 -----------------
 
-X
+pdm run pytest src/fastapi_app/tests/services/test_esi_type_service.py -k "test_process_ship_attributes or test_extract_basic_ship_attributes or test_extract_all_ship_attributes or test_generate_image_urls" -v
+
+*all new tests working
 
 -----------------
 
-X
+Next, we need to fix the remaining 12 failures and 1 warning in app\backend\src\fastapi_app\tests\services\test_esi_type_service.py. Here's the output with short traceback info. Let me know if you need to run it with full tracebacks to have enough information.
+
+pdm run pytest src/fastapi_app/tests/services/test_esi_type_service.py --tb=short
 
 -----------------
 
-X
+All 3 ship type tests passed. Here's the full verbose output for the whole test file:
+
+pdm run pytest src/fastapi_app/tests/services/test_esi_type_service.py -v        
 
 -----------------
 
-X
+The output is below. Before proceeding, please explain why we're using Mock() (which is presumably sync?) instead of AsyncMock(). I recall an earlier discussion where you said it was very important we use async tests for our async FastAPI code. I can see the tests themselves are still declared async with "async def $test()". Is using Mock() instead of AsyncMock() correct here? I'm not familiar with FastAPI async test patterns so I'm not saying the change is wrong. I'm trying to better understand and hope you can explain what's going on there.
+
+Output:
+pdm run pytest src/fastapi_app/tests/services/test_esi_type_service.py -k "test_get_type_info or test_get_cached_type" 
 
 -----------------
 
-X
+All 6 tests pass!
+1. Commit app\backend\src\fastapi_app\tests\services\test_esi_type_service.py with a descriptive message the notes the tests we fixed, their errors, and the categorical resolutions.
+2. You said "The test was expecting a third fetch after the upsert, but the service returns the EsiTypeCache object directly without re-fetching from the database." Does that sound like the correct service implementation? Is there any reason it should do that 3rd step of re-fetching from the database? On the surface, it sounds like an extraneous call we can avoid with the direct object return, but I want to double check with you.
 
 -----------------
 
-X
+1. /design-log 
+2. Here's the test output with the last three errors:
+
+pdm run pytest src/fastapi_app/tests/services/test_esi_type_service.py
 
 -----------------
 
-X
+Excellent, all tests pass with no warnings.
+1. /design-log about these errors and how we systemically successfully troubleshooted them and the correct test design patterns we ended up with.
+2. Commit app\backend\src\fastapi_app\tests\services\test_esi_type_service.py with a descriptive message the notes the tests we fixed, their errors, and the categorical resolutions. Then commit design-log.md.
 
 -----------------
 
-X
-
------------------
-
-X
+1. Review design\fastapi\guides\09-testing-strategies.md with /view-file to assess if there are any updates that would be appropriate in consideration of recent work, issues, and fixes. Focus on describing correct patterns and usage guidance in a way that will most effectively help Cascade execute correct and consistent implementations in the future. Be EXTREMELY CAREFUL to not remove any existing correct details. Past revisions of this design guide by Cascade have often resulted in accidental removal of content. Target your edits carefully.
+2. Commit design\fastapi\guides\09-testing-strategies.md
 
 -----------------
 
