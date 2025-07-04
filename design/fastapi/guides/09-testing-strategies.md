@@ -393,7 +393,142 @@ async def test_list_public_contracts_with_data(
     assert data["items"][0]["contract_id"] == 123
 ```
 
-## 5. Special Case: Live ESI Contract Testing
+## 5. Async Service Testing: Mock vs AsyncMock Patterns
+
+**Critical Knowledge:** When testing async FastAPI services that interact with SQLAlchemy AsyncSession, understanding the **async-sync boundary** is essential for proper mocking.
+
+### The Async-Sync Boundary Problem
+
+A common mistake is using `AsyncMock` everywhere in async tests. However, SQLAlchemy's async operations have a specific boundary:
+
+- `db_session.execute()` **IS async** → Returns awaitable
+- `result.scalar_one_or_none()` **IS sync** → Returns value directly  
+- `result.scalars().all()` **IS sync** → Returns list directly
+
+### Correct Mocking Patterns
+
+#### ✅ **Correct Pattern: Respect the Async-Sync Boundary**
+
+```python
+# For simple database queries
+@pytest.mark.asyncio
+async def test_get_cached_type_found(esi_type_service, sample_cached_type):
+    """Test service method that uses db_session.execute().scalar_one_or_none()"""
+    # Arrange
+    type_id = 587
+    
+    # Mock the sync result object with regular Mock
+    mock_result = Mock()
+    mock_result.scalar_one_or_none.return_value = sample_cached_type
+    
+    # Mock the async method with AsyncMock
+    esi_type_service.db_session.execute = AsyncMock(return_value=mock_result)
+
+    # Act
+    result = await esi_type_service._get_cached_type(type_id)
+
+    # Assert
+    assert result == sample_cached_type
+```
+
+#### ✅ **Chain Mocking Pattern: For Complex Result Operations**
+
+```python
+# For queries that use result.scalars().all()
+@pytest.mark.asyncio
+async def test_get_multiple_types_all_cached(esi_type_service, cached_types):
+    """Test service method that uses db_session.execute().scalars().all()"""
+    # Arrange
+    type_ids = [587, 588]
+    
+    # Build the mock chain from inside-out
+    mock_scalars = Mock()
+    mock_scalars.all.return_value = cached_types
+    
+    mock_result = Mock()
+    mock_result.scalars.return_value = mock_scalars
+    
+    # Only the execute method is async
+    esi_type_service.db_session.execute = AsyncMock(return_value=mock_result)
+
+    # Act
+    result = await esi_type_service._get_cached_types(type_ids)
+
+    # Assert
+    assert len(result) == 2
+```
+
+#### ✅ **Side Effect Pattern: For Multi-Step Database Operations**
+
+```python
+@pytest.mark.asyncio
+async def test_fetch_and_cache_type(esi_type_service, sample_esi_type_data):
+    """Test method that does cache check, then upsert operation"""
+    # Arrange
+    type_id = 587
+    esi_type_service.esi_client.get_type_info.return_value = sample_esi_type_data
+    
+    # Mock sequence: cache miss, then upsert success
+    cache_miss_result = Mock()
+    cache_miss_result.scalar_one_or_none.return_value = None
+    
+    upsert_result = Mock()
+    upsert_result.inserted_primary_key = [type_id]
+    
+    esi_type_service.db_session.execute = AsyncMock(side_effect=[
+        cache_miss_result,  # Cache check
+        upsert_result,      # Upsert operation
+    ])
+
+    # Act
+    result = await esi_type_service.get_type_info(type_id)
+
+    # Assert
+    assert esi_type_service.db_session.execute.call_count == 2
+```
+
+### ❌ **Anti-Pattern: Using AsyncMock for Sync Result Objects**
+
+```python
+# WRONG: This creates coroutines instead of values!
+mock_result = AsyncMock()  # ❌ AsyncMock for sync object
+mock_result.scalar_one_or_none.return_value = value  # Returns coroutine!
+
+# Result: AssertionError: assert <coroutine ...> == expected_value
+```
+
+### Essential Guidelines for Async Service Testing
+
+1. **Import Requirements**: Always include `Mock` in your imports:
+   ```python
+   from unittest.mock import AsyncMock, Mock, patch
+   ```
+
+2. **Identify the Async Boundary**: 
+   - `AsyncMock` for: `db_session.execute()`, `db_session.commit()`, service async methods
+   - `Mock` for: SQLAlchemy result objects, sync data transformation methods
+
+3. **Mock Complete Dependency Chains**: If your service calls other async methods (like `get_type_info`), mock them to prevent coroutine warnings:
+   ```python
+   esi_type_service.get_type_info = AsyncMock(return_value=sample_cached_type)
+   ```
+
+4. **Verify Call Counts Match Implementation**: Test expectations should align with actual service behavior (e.g., 2 DB calls for cache-check + upsert, not 3).
+
+### When to Use Each Mock Type
+
+| Component | Mock Type | Reason |
+|-----------|-----------|--------|
+| `db_session.execute()` | `AsyncMock` | Async method |
+| `result.scalar_one_or_none()` | `Mock` | Sync method on result object |
+| `result.scalars().all()` | `Mock` chain | Sync methods |
+| `ESIClient` methods | `AsyncMock` | Async external API calls |
+| Service async methods | `AsyncMock` | Async business logic |
+| Pydantic model creation | `Mock` | Sync data objects |
+
+These patterns ensure clean, reliable async service tests without coroutine warnings or assertion errors.
+
+## 6. Special Case: Live ESI Contract Testing
 
 **Problem:** Our standard integration tests mock the ESI API for speed and reliability. However, as we've experienced, the live ESI API can have quirks and inconsistencies (e.g., missing fields instead of `null`). Mocking can give us a false sense of security that our parsing logic is robust enough for the real world.
 
@@ -476,7 +611,7 @@ async def test_get_real_public_contracts():
 
 This layered approach gives us fast, reliable day-to-day tests while providing a powerful, controlled safety net to ensure our application can handle the realities of the ESI API.
 
-## 6. The Limits of Testing & Structural Contracts
+## 7. The Limits of Testing & Structural Contracts
 
 *(This section remains critical and is preserved from the previous version.)*
 
