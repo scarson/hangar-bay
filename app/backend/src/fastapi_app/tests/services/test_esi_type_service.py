@@ -164,7 +164,11 @@ class TestESITypeService:
             sample_cached_type,
             EsiTypeCache(type_id=588, name='Punisher', category_id=6)
         ]
-        esi_type_service.db_session.execute.return_value.scalars.return_value.all.return_value = cached_types
+        mock_scalars = Mock()
+        mock_scalars.all.return_value = cached_types
+        mock_result = Mock()
+        mock_result.scalars.return_value = mock_scalars
+        esi_type_service.db_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
         result = await esi_type_service.get_multiple_types(type_ids)
@@ -183,20 +187,24 @@ class TestESITypeService:
         # Arrange
         type_ids = [587, 588]
         cached_types = [sample_cached_type]  # Only 587 cached
-        esi_type_service.db_session.execute.return_value.scalars.return_value.all.return_value = cached_types
         
         # Mock ESI response for missing type
         esi_data_588 = {**sample_esi_type_data, 'type_id': 588, 'name': 'Punisher'}
         esi_type_service.esi_client.get_type_info.return_value = esi_data_588
         
-        # Mock upsert for missing type
-        mock_result = AsyncMock()
-        mock_result.inserted_primary_key = [588]
-        esi_type_service.db_session.execute.side_effect = [
-            AsyncMock(scalars=AsyncMock(return_value=AsyncMock(all=AsyncMock(return_value=cached_types)))),  # Cache query
-            mock_result,  # Upsert for 588
-            AsyncMock(scalar_one_or_none=AsyncMock(return_value=EsiTypeCache(type_id=588, name='Punisher')))  # Fetch after insert
-        ]
+        # Mock database operations
+        cache_result = Mock()
+        cache_scalars = Mock()
+        cache_scalars.all.return_value = cached_types
+        cache_result.scalars.return_value = cache_scalars
+        
+        upsert_result = Mock()
+        upsert_result.inserted_primary_key = [588]
+        
+        esi_type_service.db_session.execute = AsyncMock(side_effect=[
+            cache_result,  # Cache query
+            upsert_result,  # Upsert for 588
+        ])
 
         # Act
         result = await esi_type_service.get_multiple_types(type_ids)
@@ -213,7 +221,11 @@ class TestESITypeService:
         # Arrange
         type_ids = [587, 588, 589]
         cached_types = [sample_cached_type]  # Only 587 cached
-        esi_type_service.db_session.execute.return_value.scalars.return_value.all.return_value = cached_types
+        mock_scalars = Mock()
+        mock_scalars.all.return_value = cached_types
+        mock_result = Mock()
+        mock_result.scalars.return_value = mock_scalars
+        esi_type_service.db_session.execute = AsyncMock(return_value=mock_result)
         
         # Mock ESI failures for missing types
         esi_type_service.esi_client.get_type_info.side_effect = Exception("ESI Error")
@@ -233,6 +245,7 @@ class TestESITypeService:
         """Test ship attribute processing with key attributes only."""
         # Arrange
         type_id = 587
+        esi_type_service.get_type_info = AsyncMock(return_value=sample_cached_type)
         esi_type_service.get_ship_attributes = AsyncMock(return_value={
             'physical': {'mass': 1067000, 'volume': 27289},
             'defensive': {'shield_hp': 150, 'armor_hp': 300}
