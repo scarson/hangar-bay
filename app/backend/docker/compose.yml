@@ -32,6 +32,8 @@
 # To run the entire stack, combine this file with the service-specific files:
 # docker compose -f compose.yml -f compose.dependencies.yml -f compose.observability.yml up -d --build
 
+#
+
 networks:
   hb-public-net:
     driver: bridge

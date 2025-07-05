@@ -14,6 +14,8 @@
 # (which is also on this network), allowing Prometheus to scrape metrics and
 # Grafana to query Prometheus. They have no direct network path to the data tier.
 
+# name: hangar_bay
+
 services:
   prometheus:
     image: prom/prometheus:v3.4.2
@@ -33,10 +35,11 @@ services:
 
   loki:
     image: grafana/loki:3.4.4
+    container_name: hangar_bay_loki
     command: ["-config.file=/etc/loki/config.yaml"]
     volumes:
       - ./loki:/etc/loki
-      - loki_data:/tmp/loki
+      - loki_data:/loki
     ports:
       - "3100:3100"
     networks:
@@ -57,10 +60,11 @@ services:
     networks:
       - hb-monitoring-net
 
-
+  # https://community.grafana.com/t/how-does-grafana-alloy-support-opentelemetry/139829
   otel-collector:
-    image: otel/opentelemetry-collector:latest
-    command: ["--config=/etc/otel-collector/config.yaml"]
+    image: grafana/agent:latest
+    container_name: hangar_bay_otel_collector      
+    command: ["--config.file=/etc/otel-collector/config.yaml"]
     volumes:
       - ./otel-collector:/etc/otel-collector
       - otel_data:/tmp/otel-collector

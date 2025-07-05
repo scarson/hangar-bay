@@ -25,6 +25,8 @@
 # backend FastAPI application. They have no direct network path to the
 # frontend or the monitoring stack.
 
+# name: hangar_bay
+
 services:
   postgres_db:
     image: postgres:16-alpine # Using a specific version is recommended

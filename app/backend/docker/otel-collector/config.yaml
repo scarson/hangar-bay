@@ -22,29 +22,25 @@ exporters:
     resource_to_telemetry_conversion:
       enabled: true
 
-  loki:
-    endpoint: "http://loki:3100/loki/api/v1/push"
-    format: "json"
-    tenant_id: "hangar-bay"
+  otlphttp/logs:
+    endpoint: "http://loki:3100/otlp"
+    tls:
+      insecure: true
 
-  logging:
+  debug:
     verbosity: detailed
-
-  otlp:
-    endpoint: "http://localhost:4318"
-    # No TLS configuration needed for HTTP endpoints
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging, otlp]
+      exporters: [debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheus, logging]
+      exporters: [prometheus, debug]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loki, logging]
+      exporters: [otlphttp/logs, debug]
