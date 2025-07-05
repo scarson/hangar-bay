@@ -1997,4 +1997,38 @@ Discovered that the service correctly returns created objects directly rather th
 
 ---
 
+## Observability Implementation Strategy (Approx. 2025-01-27 15:30:00-05:00)
+
+*   **Context:** Implementing observability for the F003 detailed contract view functionality, with consideration of OpenTelemetry vs. simpler approaches.
+*   **Options Considered:**
+    *   **OpenTelemetry:** Full distributed tracing, advanced correlation, industry standard, but complex setup and learning curve.
+    *   **Simple Approach:** structlog + prometheus-fastapi-instrumentator + manual request ID correlation, immediate value, familiar patterns.
+*   **Decision:** Start with the simpler approach (structlog + prometheus + manual correlation) while leaving the door open for OpenTelemetry migration later.
+    *   **Reasoning:** 
+        *   Immediate observability value with familiar tools and patterns
+        *   Lower complexity for initial implementation and testing
+        *   Can achieve comprehensive observability without OpenTelemetry complexity
+        *   Migration path is well-documented and low-risk
+*   **Implementation Status:**
+    *   ✅ **Phase 1 Complete:** Integration tests for detailed contract observability implemented
+    *   ✅ **Structured Logging:** Using structlog with Key Events schema
+    *   ✅ **Request Correlation:** RequestIDMiddleware for cross-layer correlation
+    *   ✅ **Metrics:** prometheus-fastapi-instrumentator for HTTP metrics
+    *   ✅ **Testing:** Comprehensive observability tests with pytest-mock and capsys
+*   **Migration Documentation:** Created comprehensive OpenTelemetry migration guide (`design/fastapi/guides/03-observability-opentelemetry-migration.md`) with:
+    *   Three-phase migration approach (minimal disruption to advanced features)
+    *   Code examples and configuration for each phase
+    *   Testing strategies that preserve existing test coverage
+    *   AI implementation prompts for Cursor
+    *   Clear assessment of migration complexity and risk
+*   **Future Migration Benefits:** When OpenTelemetry is added later:
+    *   Existing code continues to work unchanged
+    *   Existing tests continue to pass
+    *   Migration is mostly additive (configuration + optional tracing spans)
+    *   Can be implemented incrementally without breaking changes
+    *   Provides distributed tracing and advanced correlation capabilities
+*   **Rationale:** This approach balances immediate observability needs with future extensibility, ensuring we can deliver value quickly while maintaining a clear path for advanced observability features when needed.
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))

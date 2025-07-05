@@ -2,7 +2,6 @@ import json
 import re
 from datetime import datetime, timezone
 from decimal import Decimal
-import logging
 
 import pytest
 import pytest_asyncio
@@ -134,7 +133,6 @@ async def test_successful_request_increments_prometheus_metrics(client: AsyncCli
                 and 'status_code="200"' in line
             ):
                 found_metric = True
-                actual_metric_line = line
                 break
 
     assert (
@@ -328,8 +326,10 @@ def parse_log_records(log_output):
                 if any(
                     key_event in line
                     for key_event in [
-                        "contract_detail_request_start",
-                        "contract_detail_request_complete",
+                        "contract_detail_request",
+                        "contract_detail_success",
+                        "contract_detail_error",
+                        "contract_not_found",
                         "esi_data_enhancement_complete",
                         "ship_attributes_processed",
                         "esi_cache_hit",
@@ -348,8 +348,10 @@ def parse_log_records(log_output):
 
                     # Extract event type
                     for event_type in [
-                        "contract_detail_request_start",
-                        "contract_detail_request_complete",
+                        "contract_detail_request",
+                        "contract_detail_success",
+                        "contract_detail_error",
+                        "contract_not_found",
                         "esi_data_enhancement_complete",
                         "ship_attributes_processed",
                         "esi_cache_hit",
@@ -371,13 +373,13 @@ def parse_log_records(log_output):
                         record["success"] = success_match.group(1).lower() == "true"
 
                     # Extract additional fields based on event type
-                    if record.get("event") == "contract_detail_request_complete":
-                        items_count_match = re.search(r"items_count=(\d+)", line)
-                        ships_count_match = re.search(r"ships_count=(\d+)", line)
+                    if record.get("event") == "contract_detail_success":
+                        items_count_match = re.search(r"item_count=(\d+)", line)
+                        has_ship_details_match = re.search(r"has_ship_details=(\w+)", line)
                         if items_count_match:
-                            record["items_count"] = int(items_count_match.group(1))
-                        if ships_count_match:
-                            record["ships_count"] = int(ships_count_match.group(1))
+                            record["item_count"] = int(items_count_match.group(1))
+                        if has_ship_details_match:
+                            record["has_ship_details"] = has_ship_details_match.group(1).lower() == "true"
 
                     elif record.get("event") == "esi_data_enhancement_complete":
                         enhanced_count_match = re.search(r"enhanced_count=(\d+)", line)
@@ -400,32 +402,16 @@ def parse_log_records(log_output):
     return log_records
 
 
-class ListHandler(logging.Handler):
-    def __init__(self):
-        super().__init__()
-        self.records = []
-
-    def emit(self, record):
-        self.records.append(record)
-
-
-@pytest.mark.asyncio
 async def test_detailed_contract_request_logs_key_event(
     client: AsyncClient,
+    capsys,
     sample_contract_data_for_observability,
     sample_esi_type_cache_for_observability,
 ):
     """
     Test that detailed contract requests generate Key Events schema logs.
     """
-    # Attach a custom handler to the service logger
-    from fastapi_app.services import contract_details_service
-
-    handler = ListHandler()
-    logger = contract_details_service.logger
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-
+    # Arrange
     contract, _ = sample_contract_data_for_observability
     contract_id = contract.contract_id
 
@@ -433,17 +419,21 @@ async def test_detailed_contract_request_logs_key_event(
     response = await client.get(f"/contracts/details/{contract_id}")
     assert response.status_code == 200
 
-    # Now inspect handler.records for the expected log events
+    # Assert: Capture and parse stdout
+    captured = capsys.readouterr()
+    log_output = captured.out.strip().split("\n")
+    log_records = parse_log_records(log_output)
+
+    # Find the specific key event logs from the service
     found_start = False
     found_complete = False
     start_event = None
     complete_event = None
-    for record in handler.records:
-        event = getattr(record, "event", None)
-        if event == "contract_detail_request":
+    for record in log_records:
+        if record.get("event") == "contract_detail_request":
             found_start = True
             start_event = record
-        elif event == "contract_detail_success":
+        elif record.get("event") == "contract_detail_success":
             found_complete = True
             complete_event = record
 
@@ -451,18 +441,15 @@ async def test_detailed_contract_request_logs_key_event(
     assert found_complete, "contract_detail_success event was not logged"
 
     # Verify structure of the start event
-    assert getattr(start_event, "contract_id", None) == contract_id
-    assert hasattr(start_event, "include_ship_attributes")
-    assert hasattr(start_event, "attribute_detail_level")
+    assert start_event.get("contract_id") == contract_id
+    assert "include_ship_attributes" in start_event
+    assert "attribute_detail_level" in start_event
 
     # Verify structure of the completion event
-    assert getattr(complete_event, "contract_id", None) == contract_id
-    assert hasattr(complete_event, "item_count")
-    assert hasattr(complete_event, "has_ship_details")
-    assert getattr(complete_event, "item_count", -1) >= 0
-
-    # Clean up handler
-    logger.removeHandler(handler)
+    assert complete_event.get("contract_id") == contract_id
+    assert "item_count" in complete_event
+    assert "has_ship_details" in complete_event
+    assert complete_event.get("item_count", -1) >= 0
 
 
 async def test_detailed_contract_metrics_increment(
@@ -680,9 +667,7 @@ async def test_detailed_contract_invalid_parameter_logging(client: AsyncClient, 
     # Look for any error events or validation errors
     # Note: FastAPI validation errors might not trigger our custom logging
     # but the request should still be logged by the framework
-    error_events = [
-        record for record in log_records if record.get("success") is False or "error" in record.get("event", "").lower()
-    ]
+    # We don't need to check error_events for this test since FastAPI handles validation
 
     # Verify that the request was handled (even if not by our custom logging)
     # The main goal is to ensure the application doesn't crash and handles invalid input gracefully
