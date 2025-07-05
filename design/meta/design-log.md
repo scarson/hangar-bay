@@ -2031,4 +2031,71 @@ Discovered that the service correctly returns created objects directly rather th
 
 ---
 
+## 2025-07-04 16:45:00-05:00 :: Observability Strategy: OpenTelemetry-First Adoption and Integration Pattern
+
+### Context
+After initial implementation of observability using structlog, prometheus-fastapi-instrumentator, and manual request ID correlation, the team re-evaluated the long-term strategy for observability in the Hangar Bay backend. The decision was made to migrate to an OpenTelemetry-first approach for all logging, metrics, and tracing.
+
+### Decision
+- **Switch to OpenTelemetry-First:** All observability (logging, metrics, tracing) will use OpenTelemetry as the foundation, with structlog for structured logging and OpenTelemetry context for correlation.
+- **Rationale:**
+    - Industry standard for distributed tracing and correlation
+    - Eliminates need for manual correlation IDs
+    - Enables seamless integration with modern observability stacks (Prometheus, Loki, Grafana)
+    - Future-proofs the codebase for advanced tracing and cross-service correlation
+    - Reduces technical debt and avoids piecemeal migration later
+- **Tradeoffs:**
+    - Slightly higher initial complexity and learning curve
+    - Requires more configuration and testing up front
+    - Some team members needed to ramp up on OpenTelemetry concepts
+- **Migration Process:**
+    - Replaced manual correlation and prometheus-fastapi-instrumentator with OpenTelemetry instrumentation and collector
+    - Updated all documentation, guides, and test patterns to reflect OpenTelemetry-first approach
+    - Ensured all logs, metrics, and traces are correlated via OpenTelemetry span context
+    - Provided migration notes and rationale in the observability spec and design log
+
+---
+
+## 2025-07-04 16:46:00-05:00 :: structlog + OpenTelemetry Integration: Official Pattern Adoption
+
+### Context
+During the OpenTelemetry migration, the team evaluated options for integrating structlog with OpenTelemetry trace context. An initial attempt to use a non-existent `structlog-opentelemetry` library was corrected after research and review of the [official structlog documentation](https://www.structlog.org/en/stable/frameworks.html#opentelemetry).
+
+### Decision
+- **Adopt Official Custom Processor Pattern:** Use a custom processor function (`add_open_telemetry_spans`) as recommended by structlog docs to inject span context into all logs.
+- **Rationale:**
+    - No official or maintained third-party structlog-OpenTelemetry library exists
+    - The custom processor is simple, explicit, and robust
+    - Follows best practices and ensures compatibility with structlog and OpenTelemetry updates
+    - Output format is clear and matches documentation and test expectations
+- **Implementation:**
+    - All logs now include a `span` object with `trace_id`, `span_id`, and `parent_span_id` fields
+    - Example code and tests updated to use the official pattern
+    - Documentation updated to clarify the integration and avoid confusion about "automatic" correlation
+
+---
+
+## 2025-07-04 16:47:00-05:00 :: Documentation and Testing Review Process Improvements
+
+### Context
+A previous review of the observability guide failed to catch a critical omission: the structlog processor chain did not actually include OpenTelemetry context, despite claims in the text. This led to a process improvement for technical documentation and observability testing.
+
+### Decision
+- **Adopt Explicit Technical Review Checklist:**
+    - Verify all code examples implement the features described in the text
+    - Cross-reference each technical claim with its implementation
+    - Test code examples for completeness and actual output
+    - Ensure all integration points between components are explicitly shown
+    - Check that processor chains and output formats match documentation and tests
+- **Rationale:**
+    - Prevents mismatches between documentation and implementation
+    - Ensures guides are actionable and trustworthy for both humans and AI agents (Cascade)
+    - Reduces risk of silent errors in observability and other cross-cutting concerns
+- **Implementation:**
+    - All future documentation reviews will use this checklist
+    - Observability guides and specs updated to reflect actual implementation patterns
+    - Test examples updated to match real log output and processor chains
+
+---
+
 DESIGN_LOG_FOOTER_MARKER_V1 :: (End of Design Log. New entries are appended above this line. Entry heading timestamp format: YYYY-MM-DD HH:MM:SS-05:00 (e.g., 2025-06-06 09:16:09-05:00))
