@@ -43,6 +43,7 @@ TEST_DATABASE_URL = str(settings.DATABASE_URL_TESTS)
 # cost of performance, as the engine and tables are created and destroyed
 # for each test function.
 
+
 @pytest_asyncio.fixture(scope="function")
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """
@@ -84,6 +85,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 # --- Application and Client Fixtures ---
 
+
 @pytest.fixture(scope="function")
 def test_app(db_session: AsyncSession) -> Generator[FastAPI, None, None]:
     """
@@ -92,9 +94,28 @@ def test_app(db_session: AsyncSession) -> Generator[FastAPI, None, None]:
     """
     # Override the get_db dependency to use our test database session
     real_app.dependency_overrides[get_db] = lambda: db_session
+
+    # Add dummy Redis and HTTP clients to app state for testing
+    # These are required by the detailed contract endpoint dependencies
+    import httpx
+    from unittest.mock import AsyncMock
+
+    # Create dummy Redis client
+    dummy_redis = AsyncMock()
+    real_app.state.redis = dummy_redis
+
+    # Create dummy HTTP client
+    dummy_http_client = httpx.AsyncClient()
+    real_app.state.http_client = dummy_http_client
+
     yield real_app
-    # Clean up overrides after the test
+
+    # Clean up overrides and app state
     real_app.dependency_overrides.clear()
+    if hasattr(real_app.state, "redis"):
+        delattr(real_app.state, "redis")
+    if hasattr(real_app.state, "http_client"):
+        delattr(real_app.state, "http_client")
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -105,6 +126,7 @@ async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
 
 # Note: The `httpx_mock` and `vcr` fixtures are provided automatically by their
 # respective pytest plugins (`pytest-httpx` and `pytest-vcr`).
@@ -117,40 +139,125 @@ async def setup_contracts(db_session: AsyncSession):
     contracts_data = [
         # Contract 1: Standard ship sale (Tristan)
         Contract(
-            contract_id=101, title="Tristan for Sale", price=1_000_000, collateral=0, status="outstanding", type="item_exchange",
-            issuer_id=1, issuer_corporation_id=101, start_location_id=60003760, start_location_system_id=30000142, start_location_region_id=10000002,
-            for_corporation=False, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=7),
+            contract_id=101,
+            title="Tristan for Sale",
+            price=1_000_000,
+            collateral=0,
+            status="outstanding",
+            type="item_exchange",
+            issuer_id=1,
+            issuer_corporation_id=101,
+            start_location_id=60003760,
+            start_location_system_id=30000142,
+            start_location_region_id=10000002,
+            for_corporation=False,
+            date_issued=datetime.now(timezone.utc),
+            date_expired=datetime.now(timezone.utc) + timedelta(days=7),
             items=[
-                ContractItem(record_id=1011, type_id=587, type_name="Tristan", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=False)
-            ]
+                ContractItem(
+                    record_id=1011,
+                    type_id=587,
+                    type_name="Tristan",
+                    quantity=1,
+                    is_included=True,
+                    is_singleton=False,
+                    is_blueprint_copy=False,
+                )
+            ],
         ),
         # Contract 2: BPC auction (Caracal) with specific runs for testing
         Contract(
-            contract_id=102, title="Caracal BPC Auction", price=5_000_000, collateral=1_000_000, status="outstanding", type="auction",
-            issuer_id=2, issuer_corporation_id=102, start_location_id=60003760, start_location_system_id=30000142, start_location_region_id=10000002,
-            for_corporation=True, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=3),
+            contract_id=102,
+            title="Caracal BPC Auction",
+            price=5_000_000,
+            collateral=1_000_000,
+            status="outstanding",
+            type="auction",
+            issuer_id=2,
+            issuer_corporation_id=102,
+            start_location_id=60003760,
+            start_location_system_id=30000142,
+            start_location_region_id=10000002,
+            for_corporation=True,
+            date_issued=datetime.now(timezone.utc),
+            date_expired=datetime.now(timezone.utc) + timedelta(days=3),
             items=[
-                ContractItem(record_id=1021, type_id=621, type_name="Caracal Blueprint", quantity=1, is_included=True, is_singleton=True, is_blueprint_copy=True, raw_quantity=10)
-            ]
+                ContractItem(
+                    record_id=1021,
+                    type_id=621,
+                    type_name="Caracal Blueprint",
+                    quantity=1,
+                    is_included=True,
+                    is_singleton=True,
+                    is_blueprint_copy=True,
+                    raw_quantity=10,
+                )
+            ],
         ),
         # Contract 3: Multi-item contract in a different region (Venture, Tristan)
         Contract(
-            contract_id=103, title="Mining Starter Pack", price=2_500_000, collateral=500_000, status="outstanding", type="item_exchange",
-            issuer_id=3, issuer_corporation_id=103, start_location_id=60008494, start_location_system_id=30002187, start_location_region_id=10000020,
-            for_corporation=False, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=14),
+            contract_id=103,
+            title="Mining Starter Pack",
+            price=2_500_000,
+            collateral=500_000,
+            status="outstanding",
+            type="item_exchange",
+            issuer_id=3,
+            issuer_corporation_id=103,
+            start_location_id=60008494,
+            start_location_system_id=30002187,
+            start_location_region_id=10000020,
+            for_corporation=False,
+            date_issued=datetime.now(timezone.utc),
+            date_expired=datetime.now(timezone.utc) + timedelta(days=14),
             items=[
-                ContractItem(record_id=1031, type_id=17480, type_name="Venture", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=False),
-                ContractItem(record_id=1032, type_id=587, type_name="Tristan", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=False)
-            ]
+                ContractItem(
+                    record_id=1031,
+                    type_id=17480,
+                    type_name="Venture",
+                    quantity=1,
+                    is_included=True,
+                    is_singleton=False,
+                    is_blueprint_copy=False,
+                ),
+                ContractItem(
+                    record_id=1032,
+                    type_id=587,
+                    type_name="Tristan",
+                    quantity=1,
+                    is_included=True,
+                    is_singleton=False,
+                    is_blueprint_copy=False,
+                ),
+            ],
         ),
         # Contract 4: High-price, high-collateral contract (Rokh)
         Contract(
-            contract_id=104, title="Battleship Rokh", price=200_000_000, collateral=100_000_000, status="outstanding", type="item_exchange",
-            issuer_id=4, issuer_corporation_id=104, start_location_id=60003760, start_location_system_id=30000142, start_location_region_id=10000002,
-            for_corporation=False, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=7),
+            contract_id=104,
+            title="Battleship Rokh",
+            price=200_000_000,
+            collateral=100_000_000,
+            status="outstanding",
+            type="item_exchange",
+            issuer_id=4,
+            issuer_corporation_id=104,
+            start_location_id=60003760,
+            start_location_system_id=30000142,
+            start_location_region_id=10000002,
+            for_corporation=False,
+            date_issued=datetime.now(timezone.utc),
+            date_expired=datetime.now(timezone.utc) + timedelta(days=7),
             items=[
-                ContractItem(record_id=1041, type_id=24698, type_name="Rokh", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=False)
-            ]
+                ContractItem(
+                    record_id=1041,
+                    type_id=24698,
+                    type_name="Rokh",
+                    quantity=1,
+                    is_included=True,
+                    is_singleton=False,
+                    is_blueprint_copy=False,
+                )
+            ],
         ),
     ]
     db_session.add_all(contracts_data)

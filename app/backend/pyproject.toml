@@ -37,3 +37,21 @@ asyncio_mode = "strict"
 lint = "flake8 ."
 format = "black ."
 dev = "uvicorn fastapi_app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir src"
+
+[tool.black]
+line-length = 120
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
