@@ -27,7 +27,7 @@ _AI Guidance: List all relevant design documents, specification files (e.g., `..
 _AI Guidance: Break down the task into smaller, actionable steps. For each step:
 *   Use markdown checkboxes: `* [ ] Step description`.
 *   Be specific about the actions to be taken.
-*   If the step involves code generation, complex commands, or requires specific AI assistance, include an 'AI Prompt:' subsection with a clear, detailed prompt for Cascade.
+*   If the step involves code generation, complex commands, or requires specific AI assistance, include an 'AI Prompt:' subsection with a clear, detailed prompt for Cascade / Cursor.
 *   Distinguish between Backend, Frontend, or other relevant components if applicable using subheadings (e.g., `### 3.1. Backend (Python/FastAPI)`, `### 3.2. Frontend (Angular)`)._
 
 ### 3.1. [Component 1 / Aspect 1]
