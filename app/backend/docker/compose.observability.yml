@@ -17,7 +17,7 @@
 services:
   prometheus:
     image: prom/prometheus:v3.4.2
-    container_name: prometheus
+    container_name: hangar_bay_prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -26,20 +26,55 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'      
     networks:
       - hb-monitoring-net
 
+  loki:
+    image: grafana/loki:3.4.4
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./loki:/etc/loki
+      - loki_data:/tmp/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - hb-monitoring-net      
+
   grafana:
     image: grafana/grafana:12.0.2
-    container_name: grafana
+    container_name: hangar_bay_grafana
     ports:
       - "3000:3000"
+    environment:
+      # Enable public dashboards for development - allows sharing dashboards without authentication
+      # Useful for demos, external stakeholders, and development collaboration
+      - GF_FEATURE_TOGGLES_ENABLE=publicDashboards      
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning/:/etc/grafana/provisioning/
     networks:
       - hb-monitoring-net
 
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    command: ["--config=/etc/otel-collector/config.yaml"]
+    volumes:
+      - ./otel-collector:/etc/otel-collector
+      - otel_data:/tmp/otel-collector
+    ports:
+      # - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    networks:
+      - hb-monitoring-net
+    depends_on:
+      - prometheus
+      - loki
+
 volumes:
   prometheus_data: {}
+  loki_data: {}
   grafana_data: {}
+  otel_data: {}
