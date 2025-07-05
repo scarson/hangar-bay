@@ -39,10 +39,18 @@ Based on research and industry best practices, the following libraries have been
 > **Risk Mitigation: Performance Overhead**
 > To prevent performance degradation in production, the logging configuration MUST be environment-aware. The log level will be dynamically set based on a `LOG_LEVEL` setting from the central `Settings` object (`core/config.py`), defaulting to `INFO` in production and `DEBUG` in development.
 
+> **Important: Function Separation and Initialization Order**
+> The observability setup is split into two functions for clarity and proper dependency management:
+> 
+> 1. **`setup_opentelemetry()`** (Section 8.5): Configures OpenTelemetry TracerProvider and MeterProvider
+> 2. **`setup_observability()`** (Section 3.2): Configures structlog with OpenTelemetry integration
+> 
+> **Call Order**: `setup_opentelemetry()` must be called BEFORE `setup_observability()` to ensure OpenTelemetry is initialized before structlog tries to access trace context.
+
 Logging will be configured centrally in the application startup logic. The configuration will use a processor chain to add timestamps, log levels, OpenTelemetry trace context, and render the final output as JSON.
 
 ```python
-# Example configuration (to be placed in app/main.py or a config module)
+# Example configuration for setup_observability() (to be placed in core/logging.py)
 import logging
 import sys
 import structlog
@@ -54,13 +62,14 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 def setup_observability():
-    """Configures OpenTelemetry and structured logging for the application."""
+    """Configures structured logging with OpenTelemetry integration for the application.
     
-    # Initialize OpenTelemetry FIRST
-    trace.set_tracer_provider(TracerProvider())
-    trace.get_tracer_provider().add_span_processor(
-        BatchSpanProcessor(ConsoleSpanExporter())
-    )
+    Note: This function should be called AFTER setup_opentelemetry() to ensure
+    OpenTelemetry is properly initialized before structlog tries to use it.
+    """
+    
+    # OpenTelemetry should already be initialized by setup_opentelemetry()
+    # This function only handles structlog configuration with OpenTelemetry integration
     
     # Define OpenTelemetry integration processor (official structlog pattern)
     # https://www.structlog.org/en/stable/frameworks.html#opentelemetry
@@ -112,11 +121,20 @@ def setup_observability():
     root_logger.setLevel(logging.INFO)
 
 def instrument_fastapi_app(app):
-    """Instruments FastAPI app with OpenTelemetry."""
+    """Instruments FastAPI app with OpenTelemetry.
+    
+    Note: This function should be called AFTER both setup_opentelemetry() and setup_observability()
+    to ensure all OpenTelemetry components are properly initialized.
+    """
     FastAPIInstrumentor.instrument_app(app)
     HTTPXClientInstrumentor().instrument()
     # SQLAlchemy instrumentation will be added to the existing engine in db.py
     # See section 8.4 for complete setup instructions
+
+# File Organization:
+# - setup_opentelemetry(): Place in core/observability.py
+# - setup_observability(): Place in core/logging.py (replaces current setup_logging)
+# - instrument_fastapi_app(): Place in core/observability.py
 ```
 
 ### 3.3. Key Event Schema
@@ -806,43 +824,21 @@ resource = Resource.create({"service.name": "hangar-bay-backend"})
 Update the main application to use OpenTelemetry:
 
 ```python
-# app/main.py
+# app/main.py - Application startup
 from fastapi import FastAPI
-from opentelemetry import trace, metrics
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as OTLPSpanExporterHTTP
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter as OTLPMetricExporterHTTP
-
-def setup_opentelemetry():
-    """Configure OpenTelemetry for the application."""
-    
-    # Configure trace provider with service resource
-    from opentelemetry.sdk.resources import Resource
-    resource = Resource.create({"service.name": "hangar-bay-backend"})
-    
-    trace_provider = TracerProvider(resource=resource)
-    otlp_trace_exporter = OTLPSpanExporterHTTP(endpoint="http://localhost:4318/v1/traces")
-    trace_provider.add_span_processor(BatchSpanProcessor(otlp_trace_exporter))
-    trace.set_tracer_provider(trace_provider)
-    
-    # Configure metric provider with same service resource
-    metric_provider = MeterProvider(resource=resource)
-    otlp_metric_exporter = OTLPMetricExporterHTTP(endpoint="http://localhost:4318/v1/metrics")
-    metric_provider.add_metric_reader(PeriodicExportingMetricReader(otlp_metric_exporter))
-    metrics.set_meter_provider(metric_provider)
+from .core.observability import setup_opentelemetry, instrument_fastapi_app
+from .core.logging import setup_observability
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
-    setup_opentelemetry()
-    setup_observability()  # From section 3.2
+    # Initialize observability in the correct order
+    setup_opentelemetry()      # 1. Initialize OpenTelemetry first
+    setup_observability()      # 2. Configure structlog with OT integration
     
     app = FastAPI(title="Hangar Bay API")
     
     # Instrument FastAPI with OpenTelemetry
-    instrument_fastapi_app(app)  # From section 3.2
+    instrument_fastapi_app(app)
     
     # Add SQLAlchemy instrumentation to the existing engine
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
@@ -858,6 +854,52 @@ def create_app() -> FastAPI:
     # ...
     
     return app
+```
+
+And here's the separate `core/observability.py` file:
+
+```python
+# core/observability.py
+from opentelemetry import trace, metrics
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as OTLPSpanExporterHTTP
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter as OTLPMetricExporterHTTP
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from fastapi import FastAPI
+
+def setup_opentelemetry():
+    """Configure OpenTelemetry TracerProvider and MeterProvider for the application.
+    
+    This function should be called FIRST, before setup_observability().
+    """
+    
+    # Configure trace provider with service resource
+    resource = Resource.create({"service.name": "hangar-bay-backend"})
+    
+    trace_provider = TracerProvider(resource=resource)
+    otlp_trace_exporter = OTLPSpanExporterHTTP(endpoint="http://localhost:4318/v1/traces")
+    trace_provider.add_span_processor(BatchSpanProcessor(otlp_trace_exporter))
+    trace.set_tracer_provider(trace_provider)
+    
+    # Configure metric provider with same service resource
+    metric_provider = MeterProvider(resource=resource)
+    otlp_metric_exporter = OTLPMetricExporterHTTP(endpoint="http://localhost:4318/v1/metrics")
+    metric_provider.add_metric_reader(PeriodicExportingMetricReader(otlp_metric_exporter))
+    metrics.set_meter_provider(metric_provider)
+
+def instrument_fastapi_app(app: FastAPI):
+    """Instruments FastAPI app with OpenTelemetry.
+    
+    Note: This function should be called AFTER both setup_opentelemetry() and setup_observability()
+    to ensure all OpenTelemetry components are properly initialized.
+    """
+    FastAPIInstrumentor.instrument_app(app)
+    HTTPXClientInstrumentor().instrument()
 ```
 
 This configuration provides a complete OpenTelemetry-first observability solution that ensures end-to-end traceability, standardized metrics collection, and structured logging with automatic correlation across the entire application stack.
