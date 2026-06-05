@@ -134,6 +134,13 @@ Blind run?        yes — lanes given scope/load context only, not pre-suspected
 - 🟡 **No false-negative I can prove** — but worth noting the static-only run means index-scan and
   serialization wins are *argued*, not measured; a lane can't confirm a trigram index actually fires
   without a DB. Honest, but a ceiling on confidence the skill already acknowledges.
+- 📌 **Correction (added after the operator asked specifically about the packs):** this area originally
+  leaned on "lanes out-reasoned the packs" and under-credited the **profile packs themselves**. On
+  re-reading the packs against the findings, they were the run's **strongest grounded input** — ~60% of
+  non-trivial findings trace to a specific pack bullet (exact pool defaults, the 65 535 param ceiling,
+  the HOT-update mechanism, `httpx.Limits`, sync-logging-on-loop, pure-vs-impure pipe). See the
+  dedicated **"Did the framework profile packs actually help?"** section below for the
+  finding→pack-bullet evidence mapping.
 
 ### 6. Synthesis & finding model (Phase 3)
 - 👍 **Cross-lane agreement read as a true confidence signal, not noise.** P4/P5 (the fan-out cluster)
@@ -334,6 +341,78 @@ it to one line: **the skill didn't find dramatically better problems than a good
 repo this size — it found more of the boring-but-real ones, refused to pad, connected them across the
 codebase, and wrote it all down so it's trustworthy and repeatable. That's worth a lot at scale and
 overkill in the small, and the value is in the discipline, not in any single finding.**
+
+---
+
+## Did the framework profile packs actually help? (evidence-based — and a correction)
+
+The operator pushed on this specifically, and re-reading the packs against the findings, **I
+under-credited them in area 5 above.** Honest correction: **the profile packs were the single most
+useful grounded input in the run — materially more useful than the version-indexes** (which were stale,
+see area 5). Here is the evidence rather than an impression: a finding → exact-pack-bullet mapping. I
+read the packs the lanes used (`python/orm-database.md`, `sql/postgres.md`, `python/async-asyncio.md`,
+`javascript-typescript/angular.md`) and traced each non-obvious finding back to whether a pack bullet
+named it.
+
+### Findings the packs directly prompted or sharpened
+
+| Finding | Pack bullet that names it | What the pack added |
+|---|---|---|
+| **S1 P7** pool defaults cap concurrency | `orm-database` "Connection pool sizing left at defaults" — *names `pool_size=5, max_overflow=10, pool_timeout=30` and "beyond 15 … blocks or times out"* | the **exact numbers** (5/10/15) the lane reported, verbatim from the pack |
+| **S1 P3/P4/P6** unindexed cols / DISTINCT-count / sort node | `orm-database` "Query shape and index coverage hidden by the ORM" — *"filtering/sorting on unindexed columns, COUNT(*) … DISTINCT or multi-column ORDER BY forcing a sort node"* | a near-verbatim list of the three S1 index findings |
+| **S2 SP7** item batch 50 vs param ceiling | `orm-database` "Bulk write batching depth" — *"PostgreSQL: ~65 535 … `insertmanyvalues_page_size` default 1000"* | the **65 535 param ceiling** the lane used to argue 50 is far too small |
+| **S2 SP3** ON CONFLICT rewrites all cols → write amplification | `sql/postgres` "MVCC bloat" + *"HOT avoids writing new index entries when no indexed column changes"* | the **HOT-update mechanism** — a Postgres-distinctive reason a generic pass rarely names |
+| **S1 P11** `Numeric` arithmetic cost | `sql/postgres` *"`numeric` … significantly slower than `bigint` or `double precision` for arithmetic-heavy queries"* | a MINOR a naïve prompt almost never surfaces; the pack prompted it |
+| **S2 SP4** httpx default pool limits | `async-asyncio` "Client/session created per request" — *"for httpx use `Limits(max_connections=…, max_keepalive_connections=…)`"* | the exact `httpx.Limits` API the fix recommends |
+| **S2 SP1/SP5/SP6** serial awaits over independent items | `async-asyncio` "Per-task scheduling…" — *"`await coro()` inside a loop over independent items … sequential await serialises work that could overlap"* + "Unbounded concurrent fan-out" | named the pattern **and** the bounded-semaphore safety |
+| **S1 P8** sync logging parks the event loop | `async-asyncio` "Hidden blocking that parks the loop" — *"`logging` to a blocking file handler … symptom is event-loop latency that does not improve as concurrency rises"* | a **subtle** finding a naïve pass likely misses; the lane explicitly cited this bullet |
+| **S2 SP2/SP8** whole-run buffering vs streaming | `async-asyncio` "Async generators … buffered into memory" — *"`await resp.read()` … materialises the full payload … back-pressure via bounded Queue rather than collecting into a list"* | the generator/stream refactor direction |
+| **S3 FP6/FP10** pure-vs-impure pipe (don't go impure) | `angular` "Template expression cost — … impure pipes run every CD cycle … a `pure` pipe (called only when the input reference changes)" | the exact nuance the memory lane used to **warn against** `pure:false` |
+| **S3 FP10** virtual scroll for long lists | `angular` "Long lists (hundreds of items) need CDK virtual scroll regardless of tracking strategy" | named CDK virtual scroll (already a dep) |
+| **S3 FP8** no lazy-loading convention | `angular` "Large eager feature modules — `@defer` and lazy routes … `loadComponent`/`loadChildren`" | the lazy-route convention to set |
+
+That is **12 of the ~20 confirmed non-trivial findings traceable to a specific pack bullet** — not
+vague topical overlap, but the exact number, API, or mechanism the finding rests on.
+
+### The packs also *prevented* bad output (the under-appreciated half)
+- 👍 **They encoded the safety that stopped a false fix.** `async-asyncio`'s "unbounded `gather` opens
+  one connection per item → bound with a `Semaphore`" is *why* the concurrency lane recommended a
+  **capped** ESI fan-out instead of a naïve `gather` (which would trip ESI rate limits — a regression).
+  The pack carried the guard-rail; without it the "obvious" fix is the dangerous one.
+- 👍 **Reference-not-checklist worked in the hard direction too.** `angular`'s "unsubscribed
+  `subscribe()` leaks" is a checklist item the memory lane **declined to apply** — it judged the
+  root-singleton subscription a non-leak. The pack offered the prior; the lane's judgment overrode it.
+  The calibration lives in the lane, but the pack gave it the right thing to reason *about*.
+
+### The honest debits on the packs
+- 🟡 **Mechanism-naming, not pure discovery, for the loud findings.** For P3/P4/P6 and the serial-await
+  N+1, a strong model likely finds the *shape* unprompted; the pack's real contribution there is
+  **precision and mechanism** (exact defaults, the 65 535 ceiling, the HOT-update reason) — which is
+  what turns "this looks slow" into a credible, actionable finding, but it's *sharpening*, not
+  *discovery*. The genuine "pack surfaced something a naïve pass would miss" cases are narrower:
+  **P8 (sync-logging-blocks-the-loop), SP3 (HOT-update write amplification), P11 (numeric arithmetic)**.
+- 🟡 **One pack item went unused that merited a one-line check.** `async-asyncio` flags running
+  FastAPI **without uvloop** on Linux as "throughput left on the table"; no lane confirmed whether the
+  project's `uvicorn[standard]` actually selects uvloop (it almost certainly does — but it's an
+  *unverified* non-finding the pack explicitly teed up). A small false-negative-adjacent gap.
+- 🟡 **Context cost vs applicable bullets on a small repo.** Each pack is 10–16 KB and I loaded several
+  per slice; on a 2.5k-LOC repo the lanes used ~3–4 bullets of each and correctly ignored the rest
+  (PgBouncer, CTE fences, UUIDv4 fragmentation, `work_mem` spills, eager-task-factory, SSR hydration).
+  Good that they didn't pad on the inapplicable ones — but the signal-to-context ratio per pack is
+  modest in the small (fine at the scale the skill targets).
+- 👍 **The packs were *more current than the version-indexes*.** The `angular` pack knew zoneless /
+  signals / standalone / `@defer`; the JS-TS *version-index* lagged at Angular 19. Where the index was
+  stale, the **pack carried the load** — which is a strong argument for the pack layer specifically.
+
+### Verdict on the packs
+**They earned their keep — and they're where the skill's framework-specific value actually lives**,
+more than in the version-indexes. They directly grounded ~60% of the non-trivial findings (with the
+exact numbers/APIs/mechanisms that make a finding credible), surfaced a few genuinely non-obvious ones
+(sync-logging-on-loop, HOT-update amplification, numeric cost), and — importantly — encoded the safety
+that kept the concurrency fix from being a regression. The caveats are honest: for the *loud* findings
+they sharpened rather than discovered, the per-pack context cost is high relative to applicable bullets
+on a small repo, and one teed-up item (uvloop) went unverified. If the version-indexes are the skill's
+weak grounding layer, **the profile packs are its strong one.**
 
 ---
 
