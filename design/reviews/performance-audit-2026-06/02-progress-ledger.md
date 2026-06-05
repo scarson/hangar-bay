@@ -15,7 +15,7 @@ All run artifacts are under `docs/perf-audits/`. Planning SHA `68925a0`.
 | S2 | FULL | backend ESI ingestion & aggregation | DONE | `docs/perf-audits/2026-06-05*-s2-backend-ingest-*` (6 raw + consolidated + validated + kickoff) |
 | S3 | REDUCED+payload (latent) | frontend Angular SPA | DONE | `docs/perf-audits/2026-06-05*-s3-frontend-*` (5 raw + consolidated + validated + kickoff) |
 | ROLLUP | — | cross-slice synthesis | DONE | `docs/perf-audits/2026-06-05-WHOLE-REPO-ROLLUP.md` + `docs/plans/2026-06-05-whole-repo-perf-audit-remediation-plan.md` |
-| FEEDBACK | — | field feedback on the skill | IN-PROGRESS | `design/reviews/performance-audit-2026-06/90-skill-feedback.md` |
+| FEEDBACK | — | field feedback on the skill | DONE | `design/reviews/performance-audit-2026-06/90-skill-feedback.md` |
 
 ## Phase checklist per slice (performance-audit-cycle)
 
@@ -33,3 +33,4 @@ All run artifacts are under `docs/perf-audits/`. Planning SHA `68925a0`.
 
 ## Log
 - 2026-06-05T01:5x — Survey + partition + 3-round review complete; artifacts written; S1 starting.
+- 2026-06-05T02:xx — ALL DONE: S1+S2+S3 audited & validated, whole-repo roll-up + draft remediation plan written, field feedback finalized, index README written. 5 critical / 15 major / 21 minor confirmed; 23 suspected bugs handed off; anti-padding stress test passed. Nothing executed (audit only).
