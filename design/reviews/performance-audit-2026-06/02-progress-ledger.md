@@ -14,7 +14,7 @@ All run artifacts are under `docs/perf-audits/`. Planning SHA `68925a0`.
 | S1 | FULL | backend read/request pipeline | DONE | `docs/perf-audits/2026-06-05*-s1-backend-read-*` (6 raw + consolidated + validated + kickoff) |
 | S2 | FULL | backend ESI ingestion & aggregation | DONE | `docs/perf-audits/2026-06-05*-s2-backend-ingest-*` (6 raw + consolidated + validated + kickoff) |
 | S3 | REDUCED+payload (latent) | frontend Angular SPA | DONE | `docs/perf-audits/2026-06-05*-s3-frontend-*` (5 raw + consolidated + validated + kickoff) |
-| ROLLUP | — | cross-slice synthesis | IN-PROGRESS | `docs/perf-audits/2026-06-05-WHOLE-REPO-ROLLUP.md` |
+| ROLLUP | — | cross-slice synthesis | DONE | `docs/perf-audits/2026-06-05-WHOLE-REPO-ROLLUP.md` + `docs/plans/2026-06-05-whole-repo-perf-audit-remediation-plan.md` |
 | FEEDBACK | — | field feedback on the skill | IN-PROGRESS | `design/reviews/performance-audit-2026-06/90-skill-feedback.md` |
 
 ## Phase checklist per slice (performance-audit-cycle)
@@ -26,7 +26,7 @@ All run artifacts are under `docs/perf-audits/`. Planning SHA `68925a0`.
   — 3 CRITICAL / 7 MAJOR / 7 MINOR confirmed; 7 suspected bugs handed off; serial ESI item-fetch N+1 is the repo's #1 throughput issue.
 - **S3** — [x] lanes · [x] raw reports · [x] consolidated · [x] cross-validated · [x] committed+pushed
   — 0 CRITICAL / 1 MAJOR / 9 MINOR (all latent); anti-padding stress test PASSED (honest non-findings, no manufactured nits); 8 suspected bugs handed off.
-- **ROLLUP** — [ ] cross-slice themes · [ ] heat map · [ ] assume-hot surfaces · [ ] committed+pushed
+- **ROLLUP** — [x] cross-slice themes (6) · [x] heat map · [x] assume-hot surfaces (none — calibration clean) · [x] remediation plan drafted · [x] committed+pushed
 - **Remediation plan** — deferred decision: written only if findings warrant (see roll-up). Operator
   is offline, so the plan is produced as an artifact (not executed); the cycle's "present to user"
   loop is captured as a written decisions section rather than an interactive prompt.
