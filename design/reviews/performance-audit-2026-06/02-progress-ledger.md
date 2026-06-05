@@ -11,16 +11,17 @@ All run artifacts are under `docs/perf-audits/`. Planning SHA `68925a0`.
 
 | Slice | Tier | Scope paths | State | Artifacts |
 |---|---|---|---|---|
-| S1 | FULL | backend read/request pipeline | IN-PROGRESS | `docs/perf-audits/2026-06-05-*-s1-backend-read-*` |
-| S2 | FULL | backend ESI ingestion & aggregation | PENDING | — |
+| S1 | FULL | backend read/request pipeline | DONE | `docs/perf-audits/2026-06-05*-s1-backend-read-*` (6 raw + consolidated + validated + kickoff) |
+| S2 | FULL | backend ESI ingestion & aggregation | IN-PROGRESS (lanes done, synthesizing) | `docs/perf-audits/2026-06-05T01-58-s2-backend-ingest-*` (6 raw) |
 | S3 | REDUCED+payload (latent) | frontend Angular SPA | PENDING | — |
 | ROLLUP | — | cross-slice synthesis | PENDING | `docs/perf-audits/2026-06-05-WHOLE-REPO-ROLLUP.md` |
 | FEEDBACK | — | field feedback on the skill | IN-PROGRESS | `design/reviews/performance-audit-2026-06/90-skill-feedback.md` |
 
 ## Phase checklist per slice (performance-audit-cycle)
 
-- **S1** — [ ] Phase2 lanes dispatched · [ ] raw lane reports written · [ ] Phase3 synthesis/consolidated ·
-  [ ] cycle Phase3 cross-validation (re-read code) · [ ] validated report · [ ] committed+pushed
+- **S1** — [x] Phase2 lanes dispatched · [x] raw lane reports written · [x] Phase3 synthesis/consolidated ·
+  [x] cycle Phase3 cross-validation (re-read code) · [x] validated report · [x] committed+pushed
+  — 2 CRITICAL / 7 MAJOR / 5 MINOR confirmed; 8 suspected bugs handed off; 1 FP correctly rejected.
 - **S2** — [ ] lanes · [ ] raw reports · [ ] consolidated · [ ] cross-validated · [ ] committed+pushed
 - **S3** — [ ] lanes · [ ] raw reports · [ ] consolidated · [ ] cross-validated · [ ] committed+pushed
 - **ROLLUP** — [ ] cross-slice themes · [ ] heat map · [ ] assume-hot surfaces · [ ] committed+pushed
