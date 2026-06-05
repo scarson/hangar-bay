@@ -236,6 +236,107 @@ human-in-the-loop phases.
 
 ---
 
+## Brutally honest: what did the skill add over a naïve "Claude, do a perf audit of this repo" prompt?
+
+The operator asked for this directly, so here it is without hedging — including the parts that don't
+flatter the skill. The honest control to compare against is a *moderate-quality* single prompt:
+"Claude, do a performance audit of this repo and write up the findings" given to the same model with
+no skill. I'll separate **did it find better problems** from **did it produce a better process**,
+because they are not the same thing and conflating them is how skills oversell themselves.
+
+### Where the skill genuinely added analytical value (not just paperwork)
+1. **It defeated early-stopping / anchoring.** The single biggest real win. A naïve perf prompt on this
+   repo reliably finds the 2–4 loudest things — the serial ESI N+1, the missing read cache, maybe the
+   fan-out join — and then *stops*, because they feel like "the answer." The independent-lane structure
+   forced coverage of dimensions a single pass skips: the **memory** lane's whole-run accumulation /
+   peak-RSS analysis, the **idiom-currency** lane's double-`response_model` validation and the
+   `sqlalchemy.future` shim, the **payload** lane's eager `@angular/localize` polyfill. None of those
+   is "obvious"; all are real; a naïve pass would have missed most of them. The lanes are, in effect, a
+   structural cure for "I found three things, I'm done."
+2. **Calibration kept the latent frontend honest — both directions.** This is where a naïve prompt most
+   reliably fails. Pointed at the Angular SPA, a default audit does one of two bad things: ignores it
+   ("looks fine") or pads it with `trackBy`/`OnPush`/`unsubscribe` boilerplate nits that don't apply
+   (it's zoneless + signals + a root singleton). The finding model's `Impact = reachability × frequency
+   × cost` plus the explicit "what is NOT a finding" produced the *correct* answer — "this is latent,
+   here's what bites once wired, and no, that subscription is not a leak." A naïve prompt almost never
+   reasons explicitly about reachability, and it would not have produced the anti-padding restraint.
+3. **The bug/perf boundary produced a cleaner deliverable.** Left to its own devices, a naïve audit
+   conflates correctness and performance — it would have started *fixing* or deep-diving the
+   `drop_all`-on-startup or the `record_id` PK collision mid-audit, muddying the perf report. "Record
+   bugs, hand them off, don't chase" is a discipline a naïve prompt does not impose on itself, and it's
+   why the perf reports stayed focused and the 23 bugs came out as a clean separate track.
+4. **The cross-slice root-cause synthesis is a real emergent.** The roll-up's "the `contracts↔items`
+   one-to-many is mishandled on *both* the read (fan-out) and write (serial N+1) sides — same root" is
+   something a single linear pass is unlikely to *state*, because it sees the N+1 and the fan-out as two
+   separate findings in two parts of the code. Forcing separate slices and then synthesizing surfaced a
+   connection that improves the *fix* (one design change, not two patches). Modest, but real, and the
+   kind of thing that's worth the ceremony.
+5. **Ensemble agreement is a genuine epistemic gain.** "P4/P5 flagged by 4 independent blind lanes"
+   is a stronger confidence signal than one model asserting it once. A naïve prompt gives you a single
+   sample with a single set of blind spots; the lanes are independent samples. That's real, not theater.
+6. **Structured, regression-ready output.** Fingerprints + `runs.jsonl` + per-task verification gates +
+   a resumable ledger are things a naïve prompt simply does not produce — it gives you a chat message or
+   one markdown blob. For a *recurring* audit this is substantial; for a one-shot it's partly wasted.
+
+### Where it added little, or where the cost outweighs it — the honest debits
+1. **On a repo this small, the headline findings were within reach of one careful pass.** This is the
+   most important admission. Hangar Bay is ~2.5k production LOC — a single strong model can hold the
+   whole thing in context and read it carefully. The serial ESI N+1, the missing cache, the
+   leading-wildcard `ILIKE`, the missing indexes, the fan-out, `drop_all`-on-startup — a moderate
+   "do a perf audit" prompt **finds most of these.** My honest estimate: a good naïve pass recovers
+   ~70–80% of the *critical/major* findings here. The skill's marginal yield on the **top severity band
+   was real but not dramatic**; its marginal yield was largest in the **long tail, the calibration, and
+   the synthesis** — not in "found a critical nobody would have."
+2. **The compute/complexity cost is enormous and only justified at scale.** This run was ~18 Opus
+   subagents + a multi-phase orchestration — call it 15–20× the tokens and far more wall-clock and
+   moving parts than one prompt. The skill is explicitly distilled from a ~96k-LOC app, and *that's*
+   where the math works: at that size a single pass genuinely cannot hold the repo and *will* miss
+   whole subsystems, so the slicing + lanes pay for themselves. On a 2.5k-LOC repo, a large fraction of
+   the machinery is ceremony relative to the marginal findings. **The skill is sized for repos where a
+   single pass structurally fails; this repo is near the floor of where it's worth it.**
+3. **"Blind independent lanes" is partly attenuated by a single runner.** I chose every lane's scope,
+   load context, and file list, and I synthesized and cross-validated using *my own* prior reading of
+   the code. The lanes are genuinely independent at the dimension level, but the framing, the scope, and
+   the final judgement are a single point — the same single-perspective limitation a naïve prompt has,
+   now with a more authoritative-looking wrapper. The independence is real but smaller than the artifact
+   count implies.
+4. **Most of the added rigor is *process* rigor, not *analytical* rigor — and that's a trap.** The
+   decision log, the three review rounds, the ledger, the fingerprints make the work **legible,
+   auditable, and resumable** — genuinely valuable for trust and for recurring use. But they do not, by
+   themselves, make the *findings* more correct. A skeptical reader should not mistake the volume and
+   structure of the paper trail for analytical certainty. Which leads to the real risk:
+5. **The biggest risk the skill introduces: manufactured authority around still-unverified claims.**
+   Every finding here is a **static argument** — nothing was measured (no PG/Valkey/ESI/dataset; dynamic
+   deferred). A naïve prompt produces obviously-provisional prose; this skill wraps the *same*
+   static reasoning in severities, fingerprints, verification gates, a regression ledger, and a
+   remediation plan. That presentation is more useful **and** more dangerous — it can make a Heuristic
+   look Measured. To its credit the skill is *unusually disciplined* about this (Confidence levels, the
+   `Measured|Strong-static|Heuristic` ladder, "dynamic deferred, no fabricated numbers," LOW-confidence
+   tags on the ungrounded idiom findings) — which is exactly the guard-rail that keeps the authority
+   honest. But the failure mode is latent in the format, and a less careful runner could ship
+   confident-looking static guesses. The naïve prompt is less impressive and, in that one narrow sense,
+   less able to mislead.
+6. **Neither approach substitutes for tooling.** The findings that *most* want confirmation —
+   `EXPLAIN ANALYZE`, a flame graph, a bundle analyzer — were produced by neither the skill nor a naïve
+   prompt; both are static reasoners. The skill's advantage is that it *names the measurement to run*
+   (verification gates) instead of implying it already knows. That's a real but modest edge.
+
+### Net, brutally honest
+On **this** repo, a moderate "do a perf audit" prompt would have gotten you **most of the top findings**
+and a readable writeup, cheaply. The skill earned its keep in four specific places — **the long tail
+(memory/idiom/payload dimensions a single pass skips), the calibration of latent/low-value code, the
+cross-slice root-cause synthesis, and the reproducible bug/perf-separated artifact set** — at a large
+compute and complexity premium. That premium is **marginal-to-unjustified on a 2.5k-LOC one-shot** and
+**clearly justified on a large or recurring codebase**, which is what the skill is actually built for.
+The thing to guard against is the skill's own polish: it makes static reasoning *look* like measurement,
+and only its (genuinely good) Confidence/verification discipline keeps that honest. If I had to reduce
+it to one line: **the skill didn't find dramatically better problems than a good naïve prompt would on a
+repo this size — it found more of the boring-but-real ones, refused to pad, connected them across the
+codebase, and wrote it all down so it's trustworthy and repeatable. That's worth a lot at scale and
+overkill in the small, and the value is in the discipline, not in any single finding.**
+
+---
+
 ## Minimal quick version
 ```
 Context: Hangar Bay (FastAPI + Angular 20), ~2.5k prod LOC, 2 ecosystems; Claude Code remote, Agent-tool
