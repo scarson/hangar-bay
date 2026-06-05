@@ -135,7 +135,7 @@ debits — context cost vs applicable bullets on this repo size, and any teed-up
 Write a single markdown document named `skill-value-eval-<repo-slug>-<YYYY-MM-DD>.md` containing, in
 order: the Step-0 covariates; the Step-1 counterfactual (A/B/C); a compact table of the ten D-scores
 (dimension | score | one-line justification) followed by the per-dimension evidence+debit paragraphs;
-the Step-3 pack table and its three summary statements; and finally:
+the Step-3 pack table and its three summary statements; the Step-5 open reflection; and finally:
 
 - NET VERDICT — one brutally honest paragraph: what the skill genuinely added, what it didn't, and
   whether it was worth the cost AT THIS REPO'S SIZE.
@@ -145,6 +145,30 @@ the Step-3 pack table and its three summary statements; and finally:
 Keep it tight and evidential. A shorter doc dense with citations beats a long one full of adjectives.
 If your honest answer is "the skill added little here," say exactly that and show why — that is a
 successful evaluation, not a failed one.
+
+## Step 5 — Open reflection (unstructured — write this in your own voice)
+
+The rubric above is deliberately narrow so runs can be compared; it will miss things. This section is
+the opposite: **free prose, no required structure, no scoring.** Put it in the output doc under a clear
+`## Open reflection` heading and use it for whatever the scaffolding above squeezed out. Prompts to get
+you going (ignore any that don't apply — do NOT treat these as a checklist to march through):
+
+- What surprised you about running this skill — good or bad — that no dimension above captured?
+- Where did the skill change HOW you thought, not just what you reported (did the lane framing, the
+  cost-map, the bug/perf split actually reorganize your reasoning)? Or did it feel like ceremony you
+  complied with while thinking the same way you always would?
+- What did running it FEEL like — fluent, or a fight against the structure? Where did you have to
+  fork from the prescribed flow, and was that the skill's fault or the repo's?
+- Any finding you're quietly unsure about, or any place you suspect the skill (or you) is wrong but
+  the format pressured you toward false confidence?
+- If you ran this skill again tomorrow on a different repo, what would you do differently, and what
+  would you trust it for vs. not?
+- Anything you'd want to tell the skill's AUTHOR directly that doesn't fit a "finding."
+
+Honesty and specificity beat polish here. Contradicting your own scores is allowed and useful — if the
+numbers say one thing and your gut says another, write the tension down rather than resolving it
+artificially. This section is explicitly mined by the meta-analysis as a source of themes the rubric
+can't anticipate, so unfiltered signal is worth more than tidy conclusions.
 ````
 
 ---

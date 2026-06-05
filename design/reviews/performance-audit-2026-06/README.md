@@ -13,7 +13,12 @@ under [`docs/plans/`](../../../docs/plans/).
   evidence-mapped assessment of the framework profile packs.
 - **[Skill-value evaluation prompt](91-skill-value-eval-prompt.md)** — a portable, repo-agnostic prompt
   to hand *other* agents running this skill, so their skill-value assessments are structured the same
-  way and become comparable data points on the same question.
+  way and become comparable data points on the same question (10 scored dimensions + the naïve-prompt
+  counterfactual + a finding→pack-bullet mapping + a free-prose open-reflection section).
+- **[Skill-value meta-analysis prompt](92-skill-value-meta-analysis-prompt.md)** — the companion that
+  ingests N completed evaluation docs and synthesizes them: pooled scores vs repo size, agreement vs
+  dissent, themes mined from the free-prose sections, contamination checks, and a ranked improvement
+  list for the skill's author.
 - **[Whole-repo roll-up](../../../docs/perf-audits/2026-06-05-WHOLE-REPO-ROLLUP.md)** — cross-slice
   themes + heat map + the prioritized repo-wide fix list. The single highest-value audit artifact.
 - **[Remediation plan (DRAFT)](../../../docs/plans/2026-06-05-whole-repo-perf-audit-remediation-plan.md)**
