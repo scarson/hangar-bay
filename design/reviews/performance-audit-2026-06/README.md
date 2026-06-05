@@ -9,6 +9,11 @@ under [`docs/plans/`](../../../docs/plans/).
 ## Start here
 - **[Field feedback on the skill](90-skill-feedback.md)** — the deliverable the operator weighted as
   highly as the audit. Wins / friction / defects / top-3, per the skill's own `feedback-template.md`.
+  Includes a brutally-honest marginal-value section (vs a naïve "do a perf audit" prompt) and an
+  evidence-mapped assessment of the framework profile packs.
+- **[Skill-value evaluation prompt](91-skill-value-eval-prompt.md)** — a portable, repo-agnostic prompt
+  to hand *other* agents running this skill, so their skill-value assessments are structured the same
+  way and become comparable data points on the same question.
 - **[Whole-repo roll-up](../../../docs/perf-audits/2026-06-05-WHOLE-REPO-ROLLUP.md)** — cross-slice
   themes + heat map + the prioritized repo-wide fix list. The single highest-value audit artifact.
 - **[Remediation plan (DRAFT)](../../../docs/plans/2026-06-05-whole-repo-perf-audit-remediation-plan.md)**
