@@ -88,3 +88,45 @@ async def test_complex_filter_api(client: AsyncClient, setup_contracts):
     assert len(data["items"]) == 1
     assert data["items"][0]["items"][0]["type_name"] == "Tristan"
     assert data["items"][0]["price"] < 1_500_000
+
+
+async def test_filter_by_region_ids_repeated_query_params(
+    client: AsyncClient, setup_contracts
+):
+    """Regression (FASTAPI-1): list filters must bind as repeated query params."""
+    response = await client.get("/contracts/?region_ids=10000020")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert [c["contract_id"] for c in data["items"]] == [103]
+
+
+async def test_filter_by_multiple_region_ids(client: AsyncClient, setup_contracts):
+    response = await client.get("/contracts/?region_ids=10000002&region_ids=10000020")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 4
+
+
+async def test_filter_by_type_ids_repeated_query_params(
+    client: AsyncClient, setup_contracts
+):
+    response = await client.get("/contracts/?type_ids=17480")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["contract_id"] == 103
+
+
+async def test_id_list_filters_are_query_params_in_openapi_schema():
+    """The generated schema must expose the ID lists where browser clients can use them."""
+    from fastapi_app.main import app
+
+    schema = app.openapi()
+    operation = schema["paths"]["/contracts/"]["get"]
+
+    assert "requestBody" not in operation
+    param_names = {p["name"] for p in operation["parameters"]}
+    assert {"region_ids", "system_ids", "station_ids", "type_ids"} <= param_names

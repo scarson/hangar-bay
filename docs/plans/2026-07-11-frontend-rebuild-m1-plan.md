@@ -135,7 +135,7 @@ Two contract-preserving bugfixes + the OpenAPI export script. All backend work h
 
 Do NOT add per-field `Query()` defaults inside the Pydantic model, and do NOT change any filter semantics — the fix is the endpoint annotation only.
 
-- [ ] **Step 1.1: Write the failing tests**
+- [x] **Step 1.1: Write the failing tests**
 
 Append to `app/backend/src/fastapi_app/tests/api/test_contract_filters.py` (module already has `pytestmark = pytest.mark.asyncio`; the `setup_contracts` fixture in `conftest.py` creates contracts 101/102/104 in region 10000002 and contract 103 in region 10000020, with a Venture item `type_id=17480` only on 103):
 
@@ -182,12 +182,12 @@ async def test_id_list_filters_are_query_params_in_openapi_schema():
     assert {"region_ids", "system_ids", "station_ids", "type_ids"} <= param_names
 ```
 
-- [ ] **Step 1.2: Run them to verify they fail for the right reason**
+- [x] **Step 1.2: Run them to verify they fail for the right reason**
 
 Run: `pdm run pytest src/fastapi_app/tests/api/test_contract_filters.py -q -k "region_ids or type_ids or openapi_schema"`
 Expected: `test_filter_by_region_ids_repeated_query_params` and `test_filter_by_type_ids_repeated_query_params` FAIL on the `total` assertions (filter silently ignored → all 4 contracts returned where 1 expected); the schema test FAILS on `requestBody not in operation`. `test_filter_by_multiple_region_ids` PASSES even before the fix (both regions together cover all 4 fixture contracts — it exists to guard against over-filtering after the fix, not to detect the bug). If the failures look different (e.g. 422s), STOP and investigate before proceeding.
 
-- [ ] **Step 1.3: Implement the fix**
+- [x] **Step 1.3: Implement the fix**
 
 In `app/backend/src/fastapi_app/api/contracts.py`, change the import line and the endpoint signature:
 
@@ -214,14 +214,14 @@ In `app/backend/src/fastapi_app/schemas/contracts.py`, replace the false comment
     # in the endpoint (see pitfall FASTAPI-1: bare Depends() sends lists to the GET body).
 ```
 
-- [ ] **Step 1.4: Run the new tests, then the full backend suite**
+- [x] **Step 1.4: Run the new tests, then the full backend suite**
 
 Run: `pdm run pytest src/fastapi_app/tests/api/test_contract_filters.py -q`
 Expected: PASS (all, including pre-existing tests — the annotation change must not alter scalar-param behavior).
 Run: `pdm run pytest -q`
 Expected: PASS. (`test_contracts.py` tests marked `esi_live`/`vcr` replay from cassettes; if any fail for cassette reasons unrelated to this change, note it as a Discovery — do not "fix" cassettes in this task.)
 
-- [ ] **Step 1.5: Commit**
+- [x] **Step 1.5: Commit**
 
 ```bash
 git add app/backend/src/fastapi_app/api/contracts.py app/backend/src/fastapi_app/schemas/contracts.py app/backend/src/fastapi_app/tests/api/test_contract_filters.py

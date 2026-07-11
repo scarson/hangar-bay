@@ -106,7 +106,8 @@ class ContractFilters(BaseModel):
     max_te: Optional[int] = Field(
         default=None, ge=0, description="Maximum Time Efficiency for BPCs."
     )
-    # ID lists - FastAPI handles string-to-list conversion for query params
+    # ID lists — bound as repeated query params via Annotated[ContractFilters, Query()]
+    # in the endpoint (see pitfall FASTAPI-1: bare Depends() sends lists to the GET body).
     region_ids: Optional[List[int]] = Field(
         default=None, description="List of region IDs to filter by."
     )
