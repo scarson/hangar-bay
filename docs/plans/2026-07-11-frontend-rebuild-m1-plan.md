@@ -67,7 +67,7 @@ notes and commit messages.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 1 — Backend enablement fixes | ✅ Shipped | `598dd22`, `c854668`, `31f4a37`, `e10b109` | Tasks 1–3 shipped on `claude/hangar-bay-frontend-rebuild-2e4fe7`. Group review complete (≥3 rounds); 3 minor findings (plan bookkeeping staleness, TEST-1 system/station/is_bpc coverage gap, FASTAPI-2 inert-param schema markers) remediated in the follow-up `fix(task-gate)` commit. |
+| 1 — Backend enablement fixes | ✅ Shipped | `598dd22`, `c854668`, `31f4a37`, `e10b109`, `c051add` | Tasks 1–3 shipped on `claude/hangar-bay-frontend-rebuild-2e4fe7`. Group review complete (≥3 rounds); 3 minor findings (plan bookkeeping staleness, TEST-1 system/station/is_bpc coverage gap, FASTAPI-2 inert-param schema markers) remediated in the follow-up `fix(task-gate)` commit `c051add` (inert-param schema markers, 5 new HTTP/pagination tests, re-exported `openapi.json`). |
 | 2 — Frontend scaffold | ⬜ Not started | — | — |
 | 3 — Acceptance, teardown, docs | ⬜ Not started | — | — |
 
@@ -120,7 +120,7 @@ Expected: all tests PASS. If they fail for environment reasons, fix the environm
 
 ## Phase 1 — Backend enablement fixes
 
-**Execution Status:** ✅ SHIPPED — branch `claude/hangar-bay-frontend-rebuild-2e4fe7`. Tasks 1–3 shipped: Task 1 (`598dd22`, + review fixups `c854668`), Task 2 (`31f4a37`), Task 3 (`e10b109`). Group review complete (≥3 rounds); it surfaced 3 minor findings — stale plan bookkeeping, a TEST-1 HTTP-coverage gap on `system_ids`/`station_ids` and page-boundary pagination under the `is_bpc` trigger, and FASTAPI-2 inert-param (`min_me`/`max_me`/`min_te`/`max_te`) schema markers — all remediated in the follow-up `fix(task-gate): address review findings` commit (which also re-exported `app/frontend/web/openapi.json`). No code-behavior regressions found; the SQL pagination change was verified correct under each `needs_item_join` trigger.
+**Execution Status:** ✅ SHIPPED — branch `claude/hangar-bay-frontend-rebuild-2e4fe7`. Tasks 1–3 shipped: Task 1 (`598dd22`, + review fixups `c854668`), Task 2 (`31f4a37`), Task 3 (`e10b109`). Group review complete (≥3 rounds); it surfaced 3 minor findings — stale plan bookkeeping, a TEST-1 HTTP-coverage gap on `system_ids`/`station_ids` and page-boundary pagination under the `is_bpc` trigger, and FASTAPI-2 inert-param (`min_me`/`max_me`/`min_te`/`max_te`) schema markers — all remediated in the follow-up `fix(task-gate): address review findings` commit `c051add` (which also re-exported `app/frontend/web/openapi.json`). No code-behavior regressions found; the SQL pagination change was verified correct under each `needs_item_join` trigger.
 
 Two contract-preserving bugfixes + the OpenAPI export script. All backend work happens in `app/backend/`; run all pytest commands from that directory.
 
