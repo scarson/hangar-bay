@@ -432,7 +432,7 @@ ordered, contract_id tiebreaker), then hydrated. Count query unchanged."
 
 **Context:** Frontend codegen needs the OpenAPI schema as a file, without requiring a running server. Importing `fastapi_app.main` requires env vars (pitfall ENV-1), so the script provides safe dummy defaults via `os.environ.setdefault` — real env, when present, always wins. Output goes to `app/frontend/web/openapi.json` (committed, so frontend builds never need a Python environment). Depends on Task 1 — the exported schema must contain the fixed query params.
 
-- [ ] **Step 3.1: Write the failing test**
+- [x] **Step 3.1: Write the failing test**
 
 Create `app/backend/src/fastapi_app/tests/test_export_openapi.py`:
 
@@ -468,12 +468,12 @@ def test_export_openapi_writes_usable_schema(tmp_path):
     assert "PaginatedResponse_ContractSchema_" in schema["components"]["schemas"]
 ```
 
-- [ ] **Step 3.2: Run to verify failure**
+- [x] **Step 3.2: Run to verify failure**
 
 Run: `pdm run pytest src/fastapi_app/tests/test_export_openapi.py -q`
 Expected: FAIL — `result.returncode == 0` assertion fails because the script doesn't exist (`No such file or directory` in stderr).
 
-- [ ] **Step 3.3: Implement the script**
+- [x] **Step 3.3: Implement the script**
 
 Create `app/backend/src/export_openapi.py`:
 
@@ -526,14 +526,14 @@ Add to `[tool.pdm.scripts]` in `app/backend/pyproject.toml`:
 export-openapi = "python src/export_openapi.py"
 ```
 
-- [ ] **Step 3.4: Run the test, then the script for real**
+- [x] **Step 3.4: Run the test, then the script for real**
 
 Run: `pdm run pytest src/fastapi_app/tests/test_export_openapi.py -q`
 Expected: PASS.
 Run: `mkdir -p ../frontend/web && pdm run export-openapi`
 Expected: `OpenAPI schema written to ../frontend/web/openapi.json (N paths)` and the file exists at `app/frontend/web/openapi.json`. (The directory won't exist until Task 4 scaffolds the app; `mkdir -p` makes this order-independent.)
 
-- [ ] **Step 3.5: Commit**
+- [x] **Step 3.5: Commit**
 
 ```bash
 git add app/backend/src/export_openapi.py app/backend/pyproject.toml app/backend/src/fastapi_app/tests/test_export_openapi.py app/frontend/web/openapi.json
