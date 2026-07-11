@@ -63,11 +63,11 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** 🚧 In progress — Phase 1 (Backend enablement fixes).
+**Overall:** 🚧 In progress — Phase 1 (Backend enablement fixes) shipped and group-reviewed; Phase 2 (Frontend scaffold) next.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 1 — Backend enablement fixes | 🚧 In progress | — | Claimed on `claude/hangar-bay-frontend-rebuild-2e4fe7`. Task 1 complete (`598dd22`); Tasks 2–3 + group review pending. Ship SHA(s) recorded at the group-review step. |
+| 1 — Backend enablement fixes | ✅ Shipped | `598dd22`, `c854668`, `31f4a37`, `e10b109` | Tasks 1–3 shipped on `claude/hangar-bay-frontend-rebuild-2e4fe7`. Group review complete (≥3 rounds); 3 minor findings (plan bookkeeping staleness, TEST-1 system/station/is_bpc coverage gap, FASTAPI-2 inert-param schema markers) remediated in the follow-up `fix(task-gate)` commit. |
 | 2 — Frontend scaffold | ⬜ Not started | — | — |
 | 3 — Acceptance, teardown, docs | ⬜ Not started | — | — |
 
@@ -97,11 +97,11 @@ Review the phase's batch of commits from multiple perspectives (correctness, tes
 
 ## Phase 0 prerequisite — backend test environment
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ DONE — executed out-of-band by the workflow harness. The test environment (Postgres + Valkey in Docker, `app/backend/src/.env` with `DATABASE_URL_TESTS` → `hangar_bay_test`) was provisioned before Phase 1, and the green baseline (24 passed) was run prior to any Phase 1 code change. Steps 0.1/0.2 below are checked to reflect that; no separate Phase 0 commit exists because the harness owns provisioning.
 
 Backend tests need a real Postgres. Before Phase 1:
 
-- [ ] **Step 0.1: Confirm the backend test suite runs at all**
+- [x] **Step 0.1: Confirm the backend test suite runs at all**
 
 `app/backend/src/.env` must contain a `DATABASE_URL_TESTS` entry pointing at a scratch Postgres database (the test fixture drops/recreates all tables per test — never point it at a database with data you care about), e.g.:
 
@@ -111,7 +111,7 @@ DATABASE_URL_TESTS=postgresql+asyncpg://postgres:postgres@localhost:5432/hangar_
 
 Create the database if needed: `createdb hangar_bay_test` (or via docker — see `app/backend/docker/`).
 
-- [ ] **Step 0.2: Run the existing HTTP filter tests as a green baseline**
+- [x] **Step 0.2: Run the existing HTTP filter tests as a green baseline**
 
 Run: `cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_contract_filters.py -q`
 Expected: all tests PASS. If they fail for environment reasons, fix the environment before touching code — Phase 1's TDD signal depends on a green baseline. If they fail for code reasons, STOP and report; that's a Discovery.
@@ -120,7 +120,7 @@ Expected: all tests PASS. If they fail for environment reasons, fix the environm
 
 ## Phase 1 — Backend enablement fixes
 
-**Execution Status:** 🚧 IN PROGRESS — branch `claude/hangar-bay-frontend-rebuild-2e4fe7`. Claim recorded retroactively at 2026-07-11T22:53:24Z (UTC), anchored to the first Phase 1 commit (`598dd22`, Task 1) since the "on phase claim" banner flip was missed when work started. Task 1 is complete; Tasks 2–3 and the Phase 1 group review remain. Per the Living Document Contract, ship SHA(s) are recorded at the Phase 1 group-review step (see "Phase 1 group review" below), not per-task.
+**Execution Status:** ✅ SHIPPED — branch `claude/hangar-bay-frontend-rebuild-2e4fe7`. Tasks 1–3 shipped: Task 1 (`598dd22`, + review fixups `c854668`), Task 2 (`31f4a37`), Task 3 (`e10b109`). Group review complete (≥3 rounds); it surfaced 3 minor findings — stale plan bookkeeping, a TEST-1 HTTP-coverage gap on `system_ids`/`station_ids` and page-boundary pagination under the `is_bpc` trigger, and FASTAPI-2 inert-param (`min_me`/`max_me`/`min_te`/`max_te`) schema markers — all remediated in the follow-up `fix(task-gate): address review findings` commit (which also re-exported `app/frontend/web/openapi.json`). No code-behavior regressions found; the SQL pagination change was verified correct under each `needs_item_join` trigger.
 
 Two contract-preserving bugfixes + the OpenAPI export script. All backend work happens in `app/backend/`; run all pytest commands from that directory.
 
@@ -542,8 +542,12 @@ git commit -m "feat(backend): add OpenAPI export script for frontend codegen"
 
 ### Phase 1 group review
 
-- [ ] Review Phase 1 commits from ≥3 perspectives (correctness of the SQL change under each `needs_item_join` trigger; regression-test rigor per TEST-1/TEST-4; spec fidelity — no feature work smuggled in). Minimum 3 rounds; continue until a round finds nothing.
-- [ ] Update the Phase 1 banner and Execution Status table.
+- [x] Review Phase 1 commits from ≥3 perspectives (correctness of the SQL change under each `needs_item_join` trigger; regression-test rigor per TEST-1/TEST-4; spec fidelity — no feature work smuggled in). Minimum 3 rounds; continue until a round finds nothing. **Outcome:** the SQL pagination change is correct under every trigger (`search`/`type_ids`/`is_bpc`/`min_runs`/`max_runs`/`ship_name`), the count query was left untouched, and no feature work was smuggled in. Three minor findings were raised and fixed (see below); a final round found nothing further.
+- [x] Update the Phase 1 banner and Execution Status table. *(Done in the `fix(task-gate)` remediation commit.)*
+- [x] **Finding remediation (`fix(task-gate)` commit):**
+  - Plan bookkeeping (this finding): Phase 0 banner flipped to ✅ DONE and Steps 0.1/0.2 checked (env provisioned out-of-band by the harness); Phase 1 banner + top-of-plan Execution Status table flipped to ✅ Shipped with SHAs `598dd22`/`c854668`/`31f4a37`/`e10b109`.
+  - TEST-1 coverage gap: added HTTP-level behavioral tests for `system_ids` and `station_ids` (plus over-filter guards) and a page-boundary pagination test under the `is_bpc` trigger (`test_pagination_with_is_bpc_returns_full_distinct_pages`, 3×2-item BPC fixture, size=2, TEST-4 union/intersection/page-length invariants) in `app/backend/src/fastapi_app/tests/api/test_contract_filters.py`.
+  - FASTAPI-2: appended "(NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients)" to the `min_me`/`max_me`/`min_te`/`max_te` `Field` descriptions in `app/backend/src/fastapi_app/schemas/contracts.py` and re-ran `pdm run export-openapi` to refresh the committed `app/frontend/web/openapi.json`.
 
 ---
 

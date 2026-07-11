@@ -545,7 +545,7 @@
             }
           },
           {
-            "description": "Minimum Material Efficiency for BPCs.",
+            "description": "Minimum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
             "in": "query",
             "name": "min_me",
             "required": false,
@@ -559,12 +559,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Minimum Material Efficiency for BPCs.",
+              "description": "Minimum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
               "title": "Min Me"
             }
           },
           {
-            "description": "Maximum Material Efficiency for BPCs.",
+            "description": "Maximum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
             "in": "query",
             "name": "max_me",
             "required": false,
@@ -578,12 +578,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Maximum Material Efficiency for BPCs.",
+              "description": "Maximum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
               "title": "Max Me"
             }
           },
           {
-            "description": "Minimum Time Efficiency for BPCs.",
+            "description": "Minimum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
             "in": "query",
             "name": "min_te",
             "required": false,
@@ -597,12 +597,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Minimum Time Efficiency for BPCs.",
+              "description": "Minimum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
               "title": "Min Te"
             }
           },
           {
-            "description": "Maximum Time Efficiency for BPCs.",
+            "description": "Maximum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
             "in": "query",
             "name": "max_te",
             "required": false,
@@ -616,7 +616,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Maximum Time Efficiency for BPCs.",
+              "description": "Maximum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
               "title": "Max Te"
             }
           },

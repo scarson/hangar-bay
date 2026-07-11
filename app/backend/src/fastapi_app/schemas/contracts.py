@@ -94,17 +94,41 @@ class ContractFilters(BaseModel):
         default=None, ge=-1, description="Minimum runs for BPCs (-1 for original)."
     )
     max_runs: Optional[int] = Field(default=None, ge=-1, description="Maximum runs for BPCs.")
+    # NOTE (FASTAPI-2): min_me/max_me/min_te/max_te are accepted but never applied
+    # by the service (ME/TE data is not in the model). The descriptions flag them as
+    # inert so generated clients (openapi.json → frontend codegen) do not surface them
+    # as functional controls.
     min_me: Optional[int] = Field(
-        default=None, ge=0, description="Minimum Material Efficiency for BPCs."
+        default=None,
+        ge=0,
+        description=(
+            "Minimum Material Efficiency for BPCs. "
+            "(NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients)"
+        ),
     )
     max_me: Optional[int] = Field(
-        default=None, ge=0, description="Maximum Material Efficiency for BPCs."
+        default=None,
+        ge=0,
+        description=(
+            "Maximum Material Efficiency for BPCs. "
+            "(NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients)"
+        ),
     )
     min_te: Optional[int] = Field(
-        default=None, ge=0, description="Minimum Time Efficiency for BPCs."
+        default=None,
+        ge=0,
+        description=(
+            "Minimum Time Efficiency for BPCs. "
+            "(NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients)"
+        ),
     )
     max_te: Optional[int] = Field(
-        default=None, ge=0, description="Maximum Time Efficiency for BPCs."
+        default=None,
+        ge=0,
+        description=(
+            "Maximum Time Efficiency for BPCs. "
+            "(NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients)"
+        ),
     )
     # ID lists — bound as repeated query params via Annotated[ContractFilters, Query()]
     # in the endpoint (see pitfall FASTAPI-1: bare Depends() sends lists to the GET body).
