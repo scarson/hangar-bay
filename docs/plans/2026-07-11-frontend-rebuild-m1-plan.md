@@ -243,7 +243,7 @@ cannot send a GET body. Annotated[ContractFilters, Query()] (FastAPI
 
 Do NOT touch the count query, the filter section, logging, or the exception handling. Do NOT change the response shape.
 
-- [ ] **Step 2.1: Write the failing test**
+- [x] **Step 2.1: Write the failing test**
 
 Append to `test_contract_filters.py`. The fixture makes every contract match the search term via TWO items each (guaranteeing joined-row duplication), with strictly ordered prices and IDs so ordering assertions are deterministic (pitfall TEST-3):
 
@@ -339,12 +339,12 @@ async def test_pagination_sorted_by_ship_name_no_duplicates(
 
 (Check the file's existing imports first: `AsyncClient` is already imported; add `from sqlalchemy.ext.asyncio import AsyncSession` plus the `datetime`/model imports shown above only if not already present.)
 
-- [ ] **Step 2.2: Run to verify failure**
+- [x] **Step 2.2: Run to verify failure**
 
 Run: `pdm run pytest src/fastapi_app/tests/api/test_contract_filters.py -q -k pagination`
 Expected: both tests FAIL. The search test fails with a short page 1 (joined-row pagination), e.g. `page 1 short: [201]`. The ship_name test's pre-fix failure shape is nondeterministic (its joined sort key is fully tied, so the database's row order decides which assertion trips — it may fail on page-2 contents, e.g. `ids2 == [303, 301]`, rather than a short page). Either shape is the expected bug signature; only a PASS here would be surprising.
 
-- [ ] **Step 2.3: Implement the fix**
+- [x] **Step 2.3: Implement the fix**
 
 In `contract_service.py`, replace the `--- Data Query ---` block (lines 154-177, from `sort_column = SORT_MAP.get(...)` through `contracts = result.scalars().unique().all()`) with:
 
@@ -403,14 +403,14 @@ In `contract_service.py`, replace the `--- Data Query ---` block (lines 154-177,
 
 Notes: `query.with_only_columns(...)` (SQLAlchemy 2.0) keeps the accumulated joins and WHERE clauses while swapping the selected columns. An out-of-range page yields `page_ids == []` and `in_([])` correctly returns no rows. `func` and `select` are already imported in this module.
 
-- [ ] **Step 2.4: Run the new tests, then the full suite**
+- [x] **Step 2.4: Run the new tests, then the full suite**
 
 Run: `pdm run pytest src/fastapi_app/tests/api/test_contract_filters.py -q`
 Expected: PASS — including the pre-existing sort tests (`test_sort_by_price_asc` etc.), which must survive the added `contract_id` tiebreaker. If a pre-existing ordering test fails, the fixture likely has tied sort keys — per TEST-2/TEST-3, fix by making the assertion account for the documented tiebreaker, never by deleting the assertion.
 Run: `pdm run pytest -q`
 Expected: PASS.
 
-- [ ] **Step 2.5: Commit**
+- [x] **Step 2.5: Commit**
 
 ```bash
 git add app/backend/src/fastapi_app/services/contract_service.py app/backend/src/fastapi_app/tests/api/test_contract_filters.py

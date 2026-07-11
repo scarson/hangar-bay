@@ -152,29 +152,55 @@ async def get_contracts(
             return PaginatedResponse(total=0, page=filters.page, size=filters.size, items=[])
 
         # --- Data Query ---
-        # Now, apply sorting and pagination to the filtered query to get the
-        # specific page of results.
+        # Apply sorting and pagination to get the specific page of results.
         sort_column = SORT_MAP.get(filters.sort_by)
         if sort_column is None:
             # Fallback to default or raise an error for an unsupported sort key
             sort_column = Contract.date_issued
 
-        if filters.sort_direction == SortDirection.desc:
-            sort_column = sort_column.desc()
+        descending = filters.sort_direction == SortDirection.desc
+
+        if needs_item_join:
+            # Paginating the joined query directly would offset/limit over
+            # joined (duplicated) rows, producing short pages and contracts
+            # skipped or repeated across page boundaries. Paginate over
+            # distinct contract IDs first, then load that page's contracts.
+            # Ordering uses an aggregate of the sort column (min/max picks
+            # the sort-direction-appropriate representative when a contract
+            # has multiple items) with contract_id as a deterministic
+            # tiebreaker.
+            sort_aggregate = func.max(sort_column) if descending else func.min(sort_column)
+            order_expr = sort_aggregate.desc() if descending else sort_aggregate.asc()
+            id_query = (
+                query.with_only_columns(Contract.contract_id)
+                .group_by(Contract.contract_id)
+                .order_by(order_expr, Contract.contract_id.asc())
+                .offset((filters.page - 1) * filters.size)
+                .limit(filters.size)
+            )
+            id_result = await db.execute(id_query)
+            page_ids = [row[0] for row in id_result.all()]
+
+            data_query = (
+                select(Contract)
+                .where(Contract.contract_id.in_(page_ids))
+                .options(selectinload(Contract.items))
+            )
+            result = await db.execute(data_query)
+            contracts = list(result.scalars().unique().all())
+            # Restore the page order computed by id_query.
+            position = {cid: index for index, cid in enumerate(page_ids)}
+            contracts.sort(key=lambda contract: position[contract.contract_id])
         else:
-            sort_column = sort_column.asc()
-
-        data_query = (
-            query
-            .order_by(sort_column)
-            .offset((filters.page - 1) * filters.size)
-            .limit(filters.size)
-            .options(selectinload(Contract.items))
-        )
-
-        result = await db.execute(data_query)
-        # .unique() is needed here because of the join, to ensure we get unique Contract objects
-        contracts = result.scalars().unique().all()
+            order_expr = sort_column.desc() if descending else sort_column.asc()
+            data_query = (
+                query.order_by(order_expr, Contract.contract_id.asc())
+                .offset((filters.page - 1) * filters.size)
+                .limit(filters.size)
+                .options(selectinload(Contract.items))
+            )
+            result = await db.execute(data_query)
+            contracts = result.scalars().unique().all()
 
         # Calculate duration and log successful completion
         duration_ms = (time.time() - start_time) * 1000

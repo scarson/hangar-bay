@@ -26,8 +26,13 @@
 # Do NOT use `await db_session.commit()`, as the fixture manages the
 # transaction lifecycle.
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi_app.models import Contract, ContractItem
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -130,3 +135,87 @@ async def test_id_list_filters_are_query_params_in_openapi_schema():
     assert "requestBody" not in operation
     param_names = {p["name"] for p in operation["parameters"]}
     assert {"region_ids", "system_ids", "station_ids", "type_ids"} <= param_names
+
+
+async def test_pagination_with_search_returns_full_distinct_pages(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Regression (SQLA-1/TEST-4): offset/limit must apply to distinct contracts,
+    not joined rows. Three contracts x two matching items each; size=2 must give
+    pages of [2, 1] contracts with no overlap."""
+    now = datetime.now(timezone.utc)
+    for n, cid in enumerate((201, 202, 203)):
+        db_session.add(
+            Contract(
+                contract_id=cid, title=f"Grid Pack {cid}", price=(n + 1) * 1_000_000,
+                collateral=0.0, status="outstanding", type="item_exchange",
+                issuer_id=1, issuer_corporation_id=1, for_corporation=False,
+                is_ship_contract=True, start_location_id=60003760,
+                date_issued=now, date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=cid * 10 + 1, type_id=587,
+                        type_name="Gridrunner Alpha", quantity=1,
+                        is_included=True, is_singleton=False,
+                    ),
+                    ContractItem(
+                        record_id=cid * 10 + 2, type_id=588,
+                        type_name="Gridrunner Beta", quantity=1,
+                        is_included=True, is_singleton=False,
+                    ),
+                ],
+            )
+        )
+    await db_session.flush()
+
+    base = "/contracts/?search=Gridrunner&size=2&sort_by=price&sort_direction=asc"
+    page1 = (await client.get(f"{base}&page=1")).json()
+    page2 = (await client.get(f"{base}&page=2")).json()
+
+    assert page1["total"] == 3
+    assert page2["total"] == 3
+    ids1 = [c["contract_id"] for c in page1["items"]]
+    ids2 = [c["contract_id"] for c in page2["items"]]
+    assert len(ids1) == 2, f"page 1 short: {ids1}"
+    assert len(ids2) == 1, f"page 2 wrong length: {ids2}"
+    assert set(ids1) & set(ids2) == set(), "contract duplicated across pages"
+    assert set(ids1) | set(ids2) == {201, 202, 203}, "contract skipped"
+    assert ids1 == [201, 202], "price-asc order violated"
+
+
+async def test_pagination_sorted_by_ship_name_no_duplicates(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """ship_name sort forces the item join even without filters; same invariants,
+    with contract_id as the tiebreaker when the aggregate sort key ties."""
+    now = datetime.now(timezone.utc)
+    for cid in (301, 302, 303):
+        db_session.add(
+            Contract(
+                contract_id=cid, title=f"Hull Lot {cid}", price=1_000_000,
+                collateral=0.0, status="outstanding", type="item_exchange",
+                issuer_id=1, issuer_corporation_id=1, for_corporation=False,
+                is_ship_contract=True, start_location_id=60003760,
+                date_issued=now, date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=cid * 10 + 1, type_id=587,
+                        type_name="Atron", quantity=1,
+                        is_included=True, is_singleton=False,
+                    ),
+                    ContractItem(
+                        record_id=cid * 10 + 2, type_id=588,
+                        type_name="Breacher", quantity=1,
+                        is_included=True, is_singleton=False,
+                    ),
+                ],
+            )
+        )
+    await db_session.flush()
+
+    base = "/contracts/?sort_by=ship_name&sort_direction=asc&size=2"
+    ids1 = [c["contract_id"] for c in (await client.get(f"{base}&page=1")).json()["items"]]
+    ids2 = [c["contract_id"] for c in (await client.get(f"{base}&page=2")).json()["items"]]
+
+    assert ids1 == [301, 302]
+    assert ids2 == [303]
