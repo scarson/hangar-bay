@@ -565,7 +565,7 @@ All commands run from `app/frontend/web/` unless stated otherwise. Node ≥ 20.1
 
 **Context:** CONTRIBUTING.md mandates exactly-pinned frontend dependency versions (no `^`/`~`). `.npmrc` with `save-exact=true` enforces that for every future install; the template's own generated ranges get pinned from the lockfile. Tailwind v4 is Vite-plugin based (no tailwind.config.js needed). The TanStack Router plugin must precede the React plugin in the plugins array. Delete the template's demo content — this scaffold ships no design opinions (that's /impeccable's phase).
 
-- [ ] **Step 4.1: Generate the app and enforce exact pins**
+- [x] **Step 4.1: Generate the app and enforce exact pins**
 
 Task 3 already committed `app/frontend/web/openapi.json`, and `npm create vite` prompts interactively when the target directory is non-empty (which would hang an unattended run). Move the file aside first. From `app/frontend/`:
 
@@ -591,7 +591,9 @@ fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
 
 Verify: `grep -E '"[\^~]' package.json` → no output (no range specifiers remain).
 
-- [ ] **Step 4.2: Install the stack (exact pins are automatic via .npmrc)**
+- [x] **Step 4.2: Install the stack (exact pins are automatic via .npmrc)**
+
+> **Deviation (ESLint 10 ERESOLVE, forced by reality):** After the plan's review, `eslint@10.7.0` and `@eslint/js@10.0.1` were published. The unversioned `npm install -D eslint @eslint/js ...` floated to ESLint 10, which ERESOLVEd against `eslint-plugin-jsx-a11y@6.10.2` (peer caps at `^9`). Per the plan's own no-`--force`/`--legacy-peer-deps` policy and its "pin the compatible major first" approach to the TypeScript ERESOLVE, the fix was to pin `eslint@9` and `@eslint/js@9` (the ESLint major the whole flat-config chain supports). Resolved cleanly; installed `eslint@9.39.5`, `@eslint/js@9.39.5`, `eslint-plugin-react-hooks@7.1.1`, `typescript-eslint@8.63.0`, `eslint-plugin-jsx-a11y@6.10.2`. TypeScript landed at exactly `5.9.3` as named. All deps exact-pinned via `.npmrc`.
 
 The current create-vite template pins `typescript@~6.0.x`, but `openapi-typescript` declares a `typescript@^5.x` peer — installing without downgrading first ERESOLVEs and halts. Do NOT reach for `--legacy-peer-deps`/`--force` (they undermine the exact-pin reproducibility policy); pin TypeScript 5.x first:
 
@@ -605,7 +607,7 @@ npm uninstall oxlint
 
 (The template lints with oxlint and ships no ESLint at all; the spec mandates ESLint flat config + jsx-a11y, so ESLint and its config chain are installed explicitly and oxlint is removed. If `npm uninstall oxlint` reports it wasn't installed, that's fine — template contents shift between releases.)
 
-- [ ] **Step 4.3: Write vite.config.ts (proxy, plugins, vitest)**
+- [x] **Step 4.3: Write vite.config.ts (proxy, plugins, vitest)**
 
 Replace `vite.config.ts` with:
 
@@ -643,7 +645,9 @@ Create `src/test/setup.ts`:
 import '@testing-library/jest-dom/vitest'
 ```
 
-- [ ] **Step 4.4: Tailwind, lint, format, scripts, template cleanup**
+- [x] **Step 4.4: Tailwind, lint, format, scripts, template cleanup**
+
+> **Deviation (minor, template drift):** The current create-vite template ships more demo assets than the plan enumerates — `src/assets/` contained `react.svg` **plus** `hero.png` and `vite.svg`. Since `main.tsx` no longer imports `App` or any asset, the whole `src/assets/` directory is unreferenced, so it was deleted in full (`rm -rf src/assets`) rather than just `react.svg`. `public/favicon.svg` (referenced by `index.html`) and `public/icons.svg` were left untouched. `eslint-plugin-react-hooks@7.1.1` does expose `configs['recommended-latest']`, so the plan's `eslint.config.js` was used verbatim.
 
 Replace `src/index.css` entirely with:
 
@@ -733,13 +737,18 @@ Set `package.json` scripts (merge with template's existing `dev`/`build`/`previe
 }
 ```
 
-- [ ] **Step 4.5: Verify the scaffold is green**
+- [x] **Step 4.5: Verify the scaffold is green**
+
+> **Deviation/adaptation notes (Step 4.5):**
+> 1. **react-hooks flat config key (version adaptation, plan-anticipated):** `eslint-plugin-react-hooks@7.1.1` exposes `configs['recommended-latest']` as the **legacy** eslintrc shape (`plugins: ['react-hooks']` array-of-strings), which flat config rejects. The flat config lives at `configs.flat['recommended-latest']` (plugins as an object). Per the plan's own contingency note, `eslint.config.js` uses `reactHooks.configs.flat['recommended-latest']`. Plugin not dropped; `npm run lint` exits 0.
+> 2. **`passWithNoTests: true` (plan-prescribed):** vitest 4.1.10 exits 1 on "No test files found"; the plan's Step 4.5 explicitly authorizes adding `passWithNoTests: true` to the vitest block. Added; `npm run test` now exits 0. No-op once Task 5 adds tests.
+> 3. **Benign build/test stderr (observation, not a deviation):** `npm run build` and `npm run test` both print a non-fatal `ENOENT ... scandir '.../src/routes'` from `@tanstack/router-generator` because `src/routes` does not exist until Task 5. Both commands still exit 0 and produce correct output (dist built; tests pass-with-none). The message disappears once Task 5 creates `src/routes`.
 
 Run: `npm run build` — Expected: tsc + vite build succeed.
 Run: `npm run lint` — Expected: exit 0.
 Run: `npm run test` — Expected: "No test files found" exit 0 (or configure `passWithNoTests: true` in the vitest block if it exits non-zero; tests arrive in Task 5).
 
-- [ ] **Step 4.6: Commit**
+- [x] **Step 4.6: Commit**
 
 ```bash
 git add app/frontend/web
