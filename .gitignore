@@ -187,3 +187,6 @@ pids
 *.launch
 .settings/
 *.sublime-workspace
+
+# PDM local project config (harness-created; venv.in_project)
+app/backend/pdm.toml

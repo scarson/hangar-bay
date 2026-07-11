@@ -68,7 +68,7 @@ notes and commit messages.
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 1 — Backend enablement fixes | ✅ Shipped | `598dd22`, `c854668`, `31f4a37`, `e10b109`, `c051add` | Tasks 1–3 shipped on `claude/hangar-bay-frontend-rebuild-2e4fe7`. Group review complete (≥3 rounds); 3 minor findings (plan bookkeeping staleness, TEST-1 system/station/is_bpc coverage gap, FASTAPI-2 inert-param schema markers) remediated in the follow-up `fix(task-gate)` commit `c051add` (inert-param schema markers, 5 new HTTP/pagination tests, re-exported `openapi.json`). |
-| 2 — Frontend scaffold | ⬜ Not started | — | — |
+| 2 — Frontend scaffold | 🚧 In progress | — | Claimed 2026-07-11T23:40Z on `claude/hangar-bay-frontend-rebuild-2e4fe7`; executed by workflow harness (Tasks 4–8, sequential with per-task review gates). |
 | 3 — Acceptance, teardown, docs | ⬜ Not started | — | — |
 
 ---
@@ -553,7 +553,7 @@ git commit -m "feat(backend): add OpenAPI export script for frontend codegen"
 
 ## Phase 2 — Frontend scaffold
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-11T23:40Z (branch `claude/hangar-bay-frontend-rebuild-2e4fe7`, workflow-harness execution, Tasks 4–8 sequential)
 
 All commands run from `app/frontend/web/` unless stated otherwise. Node ≥ 20.19 required (`node --version`).
 
