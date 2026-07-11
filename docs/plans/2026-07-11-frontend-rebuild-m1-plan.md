@@ -647,7 +647,7 @@ import '@testing-library/jest-dom/vitest'
 
 - [x] **Step 4.4: Tailwind, lint, format, scripts, template cleanup**
 
-> **Deviation (minor, template drift):** The current create-vite template ships more demo assets than the plan enumerates — `src/assets/` contained `react.svg` **plus** `hero.png` and `vite.svg`. Since `main.tsx` no longer imports `App` or any asset, the whole `src/assets/` directory is unreferenced, so it was deleted in full (`rm -rf src/assets`) rather than just `react.svg`. `public/favicon.svg` (referenced by `index.html`) and `public/icons.svg` were left untouched. `eslint-plugin-react-hooks@7.1.1` does expose `configs['recommended-latest']`, so the plan's `eslint.config.js` was used verbatim.
+> **Deviation (minor, template drift):** The current create-vite template ships more demo assets than the plan enumerates — `src/assets/` contained `react.svg` **plus** `hero.png` and `vite.svg`. Since `main.tsx` no longer imports `App` or any asset, the whole `src/assets/` directory is unreferenced, so it was deleted in full (`rm -rf src/assets`) rather than just `react.svg`. The template also ships `public/icons.svg` — an unreferenced brand-icon sprite from the demo `App.tsx`; it was removed too (in the `fix(task-4)` review-fix commit) so the scaffold ships no demo content. `public/favicon.svg` is kept — `index.html` references it. (For the `eslint-plugin-react-hooks` flat-config key, the config uses `reactHooks.configs.flat['recommended-latest']`, not the plan's verbatim `configs['recommended-latest']`; this adaptation is documented in the Step 4.5 note #1 below.)
 
 Replace `src/index.css` entirely with:
 

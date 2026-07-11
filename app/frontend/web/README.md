@@ -1,32 +1,30 @@
-# React + TypeScript + Vite
+# Hangar Bay — web frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Single-page app for browsing EVE Online contracts.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Vite** (build/dev server) + **React 19**
+- **TypeScript** (strict mode)
+- **Tailwind CSS v4** (Vite-plugin based — no `tailwind.config.js`)
+- **TanStack Router** (file-based routing) + **TanStack Query**
+- **openapi-fetch** / **openapi-typescript** (typed API client generated from `openapi.json`)
+- **ESLint** (flat config: `eslint.config.js`, with `jsx-a11y`) + **Prettier**
+- **Vitest** + **Testing Library** (jsdom)
 
-## React Compiler
+Dependency versions are exactly pinned (no `^`/`~`); `.npmrc` sets `save-exact=true`.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Scripts
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm run dev          # start the Vite dev server
+npm run build        # tsc -b && vite build
+npm run preview      # preview the production build
+npm run lint         # eslint .
+npm run format       # prettier --write .
+npm run test         # vitest run
+npm run generate:api # regenerate src/lib/api/schema.d.ts from openapi.json
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+> This README is a scaffold stub. A fuller README (setup, architecture, contribution notes)
+> is written at milestone end per the project spec.
