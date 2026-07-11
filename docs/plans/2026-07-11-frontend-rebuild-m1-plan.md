@@ -63,11 +63,11 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** 🚧 In progress — Phase 1 (Backend enablement fixes).
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 1 — Backend enablement fixes | ⬜ Not started | — | — |
+| 1 — Backend enablement fixes | 🚧 In progress | — | Claimed on `claude/hangar-bay-frontend-rebuild-2e4fe7`. Task 1 complete (`598dd22`); Tasks 2–3 + group review pending. Ship SHA(s) recorded at the group-review step. |
 | 2 — Frontend scaffold | ⬜ Not started | — | — |
 | 3 — Acceptance, teardown, docs | ⬜ Not started | — | — |
 
@@ -120,7 +120,7 @@ Expected: all tests PASS. If they fail for environment reasons, fix the environm
 
 ## Phase 1 — Backend enablement fixes
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — branch `claude/hangar-bay-frontend-rebuild-2e4fe7`. Claim recorded retroactively at 2026-07-11T22:53:24Z (UTC), anchored to the first Phase 1 commit (`598dd22`, Task 1) since the "on phase claim" banner flip was missed when work started. Task 1 is complete; Tasks 2–3 and the Phase 1 group review remain. Per the Living Document Contract, ship SHA(s) are recorded at the Phase 1 group-review step (see "Phase 1 group review" below), not per-task.
 
 Two contract-preserving bugfixes + the OpenAPI export script. All backend work happens in `app/backend/`; run all pytest commands from that directory.
 
