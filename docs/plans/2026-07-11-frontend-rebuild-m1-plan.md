@@ -1450,7 +1450,7 @@ git commit -m "feat(frontend): URL filter model with search gate + contract quer
 
 **Context:** These pages are the milestone's mechanical end-to-end proof — correct data flow, working filters-in-URL, explicit loading/error/empty branches. Presentation is deliberately bare-bones Tailwind; /impeccable redesigns it next phase. Do NOT invest in visual design, do NOT add filters beyond the spec's M1 minimum surface (search, price range, region multi-select, BPC toggle, sort, pagination), and do NOT add ME/TE controls (backend-inert — pitfall FASTAPI-2). The region selector uses a bundled static map generated once from ESI (public API, no auth); the generator script is committed for future refresh.
 
-- [ ] **Step 8.1: Generate the static region map**
+- [x] **Step 8.1: Generate the static region map**
 
 Create `scripts/generate-regions.mjs`:
 
@@ -1506,7 +1506,7 @@ describe('static region map', () => {
 })
 ```
 
-- [ ] **Step 8.2: Write failing page tests**
+- [x] **Step 8.2: Write failing page tests**
 
 `src/features/contracts/components/pages.test.tsx` — uses the route-level harness so URL↔filter wiring is exercised, not mocked (pitfall TEST-5):
 
@@ -1644,7 +1644,9 @@ Update `src/routes.test.tsx`, whose placeholder-text assertions become stale onc
 Run: `npm run test -- src/features/contracts/components`
 Expected: FAIL — component modules not found.
 
-- [ ] **Step 8.3: Implement the pages**
+> **Deviation (minor, expected-failure phrasing — no code change):** Step 8.2's stated red reason ("component modules not found") did not manifest literally, because `pages.test.tsx` reaches the pages through the route harness (`renderApp`) rather than importing `ContractsPage`/`ContractDetailPage` directly. The RED run failed all 7 tests with `TestingLibraryElementError: Unable to find …` — the routes still rendered the "arrives in Task 8" placeholders, so the assertions for real page content (Tristan, empty/error/not-found states) could not match. Same conceptual cause the step intends (pages not yet implemented); the tests were transcribed verbatim and no assertion was weakened.
+
+- [x] **Step 8.3: Implement the pages**
 
 `src/features/contracts/components/ContractsPage.tsx`:
 
@@ -1955,13 +1957,18 @@ export const Route = createFileRoute('/contracts/$contractId')({
 })
 ```
 
-- [ ] **Step 8.4: Run the full frontend suite, lint, build**
+- [x] **Step 8.4: Run the full frontend suite, lint, build**
 
 Run: `npm run test` — Expected: PASS (all files).
 Run: `npm run lint` — Expected: exit 0 (jsx-a11y included).
 Run: `npm run build` — Expected: green.
 
-- [ ] **Step 8.5: Commit**
+> **Deviations (Step 8.3/8.4, all forced by reality — no assertion touched, no runtime behavior changed):**
+> 1. **RTL cleanup (`src/test/setup.ts`, a Task 4 file):** the plan's Task 4 `vite.config.ts` sets no `globals: true`, so `@testing-library/react@16.3.2` never auto-registers `cleanup()` (it only does when `afterEach` is a global). The five `ContractsPage` renders in `pages.test.tsx` accumulated in the DOM, so `getByLabelText(/blueprint copies only/i)` and `getByText(/jita/i)` failed with "Found multiple elements". Fix: the canonical RTL-without-globals pattern — `import { cleanup } from '@testing-library/react'; afterEach(() => cleanup())` in the shared `setup.ts`. Deterministic; weakens nothing (TEST-2 compliant). Earlier tasks' tests never queried accumulating text, which is why this stayed latent until Task 8.
+> 2. **Named route components (`contracts.index.tsx`, `contracts.$contractId.tsx`):** `eslint-plugin-react-hooks@7.1.1`'s stricter rules-of-hooks flags `Route.useSearch()` / `Route.useParams()` inside the plan's anonymous `component: () => …` arrow ("neither a React component nor a hook"). Fix: extract each route's `component` into a named uppercase `RouteComponent` function (TanStack Router's own documented pattern). Identical runtime behavior; `npm run lint` → exit 0.
+> 3. **`SearchSchemaInput` marker (`contracts.index.tsx`):** wiring `validateSearch: parseContractSearch` (which returns a `ContractSearch` with required `page`/`size`/`sort_by`/`sort_direction`) made `/contracts` search params *required for navigation*, so `tsc -b` rejected the plan's own bare `redirect({ to: '/contracts' })` (Task 5 `index.tsx`) and `<Link to="/contracts">` (Task 8 detail page) with TS2741/TS2345. Fix: give the route's inline `validateSearch` the input type `Record<string, unknown> & SearchSchemaInput` (delegating to `parseContractSearch`), the documented TanStack idiom that makes defaulted search params optional for navigation while `useSearch()` keeps the full `ContractSearch`. Localized to this one route file — `filters.ts` (Task 7) and every direct `parseContractSearch({…})` test call stay verbatim (adding the required phantom marker to `parseContractSearch`'s own signature would have broken those direct calls). `npm run build` → exit 0.
+
+- [x] **Step 8.5: Commit**
 
 ```bash
 git add app/frontend/web/scripts app/frontend/web/src
