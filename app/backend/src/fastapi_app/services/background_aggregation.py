@@ -130,6 +130,11 @@ class ContractAggregationService:
                             try:
                                 contracts_page = await self.esi_client.get_public_contracts(region_id)
                                 logger.info(f"Fetched {len(contracts_page)} contracts for region {region_id}.")
+                                # ESI contract payloads carry no region; stamp the
+                                # fetch region so it survives into the DB (the
+                                # region_ids filter reads start_location_region_id).
+                                for contract_data in contracts_page:
+                                    contract_data["_hb_region_id"] = region_id
                                 all_contracts_data.extend(contracts_page)
                             except ESINotModifiedError:
                                 logger.info(f"Contracts for region {region_id} not modified.")
@@ -218,6 +223,7 @@ class ContractAggregationService:
                 "issuer_id": c["issuer_id"],
                 "issuer_corporation_id": c["issuer_corporation_id"],
                 "start_location_id": c.get("start_location_id"),
+                "start_location_region_id": c.get("_hb_region_id"),
                 "end_location_id": c.get("end_location_id"),
                 "type": c["type"],  # Direct mapping - field names now match
                 "status": c.get("status", "unknown"),
