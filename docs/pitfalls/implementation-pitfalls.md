@@ -53,3 +53,17 @@ there are two divergent Settings classes (`fastapi_app/config.py` and
 aggregation (dev limit: 100 contracts from configured regions). Real data appears minutes
 after boot, not instantly. Don't diagnose an empty contract list as a frontend bug until
 ingestion has had time to run.
+
+## ENV-3 — uvicorn --reload + startup ingestion + the Valkey lock interact badly in dev
+
+Every backend source edit triggers a reload, which drops/recreates all tables (ENV-2) and
+starts a fresh aggregation run; killing a run mid-flight (reload, pkill, app restart) can
+strand the Valkey lock so the NEXT startup run logs "already running" and silently skips —
+leaving an empty database that looks like a data bug. **Do instead:** finish all backend
+edits first, then one clean cycle: `docker exec hangar_bay_valkey valkey-cli DEL
+"hangar-bay:aggregation:lock"`, `touch app/backend/src/fastapi_app/main.py`, hands off the
+backend until ingestion completes (first run ~2-7 min; ESI ETag/TTL caches in Valkey make
+repeats much faster). The lock is TTL-bounded (30 min) and fencing-tokened since `d16d145`,
+so production self-heals; this is purely a dev-loop trap. Also: run dev servers as tracked
+background tasks with visible logs — a detached server logging to /dev/null cost a debugging
+session when stale logs from a dead process were mistaken for live state.
