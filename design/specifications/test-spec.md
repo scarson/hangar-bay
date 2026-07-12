@@ -122,7 +122,7 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
     *   **HTTP Client for API tests:** `httpx` (FastAPI's test client)
 *   **Frontend (React):**
     *   **Unit / Component Tests:** Vitest (test runner) + React Testing Library (with jsdom).
-    *   **E2E Tests:** Playwright — deferred until the `/impeccable` phase delivers the UI it would smoke-test. Tools should support viewport manipulation for responsive design testing.
+    *   **E2E Tests:** Playwright — **live** as of 2026-07-12 at `app/frontend/web/e2e/` (`npx playwright test`). Two lanes: a deterministic fixture lane (API intercepted at `page.route`, desktop + mobile viewport projects) and an opt-in live-backend smoke lane (`E2E_LIVE=1`, structural assertions only). The viewport projects satisfy §3.3's responsive-testing mandate.
 *   **Code Coverage:**
     *   Backend: `pytest-cov`
     *   Frontend: Vitest coverage (`vitest run --coverage`).
