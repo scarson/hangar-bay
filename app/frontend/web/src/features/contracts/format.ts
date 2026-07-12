@@ -32,10 +32,16 @@ export function timeRemaining(dateExpired: string, now: number = Date.now()): st
 }
 
 /**
- * Row/heading label. Real ESI titles are often "" (not null), which ?? passes
- * through — treat blank titles as absent (found live during M1 acceptance).
+ * Row/heading label. The hull is the headline on a ship marketplace: prefer
+ * the included SHIP item (ingestion marks category === 'ship') over whatever
+ * module happens to be listed first in a fitted-hull contract. Real ESI titles
+ * are often "" (not null), which ?? passes through — treat blank as absent
+ * (found live during M1 acceptance).
  */
 export function primaryLabel(contract: Contract): string {
-  const included = contract.items.find((item) => item.is_included && item.type_name)
-  return included?.type_name ?? (contract.title?.trim() || `Contract ${contract.contract_id}`)
+  const included = contract.items.filter((item) => item.is_included && item.type_name)
+  const ship = included.find((item) => item.category === 'ship')
+  return (
+    (ship ?? included[0])?.type_name ?? (contract.title?.trim() || `Contract ${contract.contract_id}`)
+  )
 }

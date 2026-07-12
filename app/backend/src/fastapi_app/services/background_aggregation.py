@@ -241,8 +241,11 @@ class ContractAggregationService:
                 "start_location_name": id_to_name_map.get(c.get("start_location_id")),
                 "issuer_name": id_to_name_map.get(c.get('issuer_id')),
                 "issuer_corporation_name": id_to_name_map.get(c.get('issuer_corporation_id')),
-                "is_ship_contract": False,  # Default, will be updated later
-                "item_processing_status": "PENDING_ITEMS",
+                # is_ship_contract and item_processing_status are deliberately
+                # ABSENT: they are maintained by item enrichment, and the upsert
+                # copies every mapped column on conflict — including them here
+                # decayed ship flags to False whenever items were ETag-304'd and
+                # skipped re-enrichment. Column defaults cover fresh inserts.
             }
             for c in contracts
         ]

@@ -60,7 +60,7 @@ describe('accessibility (axe)', () => {
   it('contract detail view has no violations', async () => {
     stubFetch(() => jsonResponse(CONTRACT))
     const { container } = renderApp('/contracts/101')
-    await screen.findByText('Tristan for Sale')
+    await screen.findByRole('heading', { name: 'Tristan' })
 
     expect(await axe(container)).toHaveNoViolations()
   })

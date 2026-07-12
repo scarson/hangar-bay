@@ -139,23 +139,35 @@ describe('ContractDetailPage', () => {
 
     renderApp('/contracts/101')
 
-    expect(await screen.findByText('Tristan for Sale')).toBeInTheDocument()
+    // Heading is hull-first; the seller's title renders as a quoted subtitle.
+    expect(await screen.findByRole('heading', { name: 'Tristan' })).toBeInTheDocument()
+    expect(screen.getByText(/Tristan for Sale/)).toBeInTheDocument()
     // The list item renders as "1× Tristan" across text nodes — match the
     // full normalized text, not the bare name (which also appears in the h1).
     expect(screen.getByText(/1× Tristan/)).toBeInTheDocument()
     expect(screen.getByText(/jita/i)).toBeInTheDocument()
   })
 
-  it('falls back to "Contract <id>" in the heading when the title is empty', async () => {
-    // Same real-ESI trap as the list row (title is "" not null): ?? passes the
-    // empty string through and the <h1> renders blank. The detail heading must
-    // apply the same trim-or-fallback as ContractsPage's primaryLabel.
+  it('heads with the item name when the title is blank, and "Contract <id>" as last resort', async () => {
+    // Hull-first heading (primaryLabel): item name beats the seller title,
+    // and the blank-"" ESI-title trap still falls through to the id when no
+    // item name resolves (M1 acceptance discovery, preserved).
     const untitled = { ...CONTRACT, contract_id: 777, title: '' }
     stubFetch(() => jsonResponse(untitled))
+    const named = renderApp('/contracts/777')
+    expect(await screen.findByRole('heading', { name: 'Tristan' })).toBeInTheDocument()
+    named.unmount()
+    vi.unstubAllGlobals()
 
-    renderApp('/contracts/777')
-
-    expect(await screen.findByRole('heading', { name: 'Contract 777' })).toBeInTheDocument()
+    const bare = {
+      ...CONTRACT,
+      contract_id: 778,
+      title: '',
+      items: [{ ...CONTRACT.items[0], type_name: null }],
+    }
+    stubFetch(() => jsonResponse(bare))
+    renderApp('/contracts/778')
+    expect(await screen.findByRole('heading', { name: 'Contract 778' })).toBeInTheDocument()
   })
 
   it('shows not-found for a 404', async () => {

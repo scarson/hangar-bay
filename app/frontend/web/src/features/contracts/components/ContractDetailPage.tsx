@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { Badge } from '../../../components/Badge'
 import { Button } from '../../../components/Button'
 import { ApiError } from '../../../lib/api/client'
-import { formatIsk, timeRemaining } from '../format'
+import { formatIsk, primaryLabel, timeRemaining } from '../format'
 import { useContract } from '../hooks/useContract'
 
 const DATETIME = new Intl.DateTimeFormat('en-US', {
@@ -69,20 +69,24 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
   return (
     <div className="mx-auto max-w-3xl">
       <BackLink />
-      <header className="mt-3 mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
-        {/* Real ESI titles are often "" (not null), which ?? passes through —
-            treat blank titles as absent, matching primaryLabel (M1 acceptance
-            discovery). */}
-        <h1 className="text-[1.375rem] font-semibold">
-          {data.title?.trim() || `Contract ${data.contract_id}`}
-        </h1>
-        <span className="inline-flex gap-1.5">
-          <Badge tone={data.type === 'auction' ? 'brand' : 'neutral'}>
-            {data.type === 'auction' ? 'Auction' : 'Exchange'}
-          </Badge>
-          {isBpc ? <Badge tone="copper">BPC</Badge> : null}
-          {expiry === 'Expired' ? <Badge tone="neutral">Expired</Badge> : null}
-        </span>
+      <header className="mt-3 mb-6">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {/* Hull-first, matching the list (primaryLabel prefers the included
+              ship, then first item, then the seller's title, then the id). */}
+          <h1 className="text-[1.375rem] font-semibold">{primaryLabel(data)}</h1>
+          <span className="inline-flex gap-1.5">
+            <Badge tone={data.type === 'auction' ? 'brand' : 'neutral'}>
+              {data.type === 'auction' ? 'Auction' : 'Exchange'}
+            </Badge>
+            {isBpc ? <Badge tone="copper">BPC</Badge> : null}
+            {expiry === 'Expired' ? <Badge tone="neutral">Expired</Badge> : null}
+          </span>
+        </div>
+        {/* The seller's own words, when they wrote any and they aren't already
+            the heading. */}
+        {data.title?.trim() && data.title.trim() !== primaryLabel(data) ? (
+          <p className="mt-1 text-sm text-ink-dim">“{data.title.trim()}”</p>
+        ) : null}
       </header>
 
       <div className="grid gap-x-10 gap-y-6 md:grid-cols-2">
@@ -153,6 +157,7 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
                   {item.quantity.toLocaleString('en-US')}×{' '}
                   {item.type_name ?? `Type ${item.type_id}`}
                 </span>
+                {item.category === 'ship' ? <Badge tone="brand">Ship</Badge> : null}
                 {item.is_blueprint_copy ? <Badge tone="copper">BPC</Badge> : null}
                 {!item.is_included ? (
                   <span className="text-xs text-warn">asked for, not included</span>

@@ -199,3 +199,35 @@ async def test_process_contracts_type_resolution_failure_degrades_gracefully(
         )
     ).scalar_one()
     assert item.type_name is None
+
+
+async def test_reingestion_with_unmodified_items_keeps_ship_flag(
+    db_session: AsyncSession,
+):
+    """Regression: the contract upsert used to write is_ship_contract=False on
+    every run, while ETag-304'd items skip enrichment — so ship flags decayed
+    to False on the next aggregation cycle. The upsert must leave
+    enrichment-maintained columns untouched on conflict."""
+    from fastapi_app.core.exceptions import ESINotModifiedError
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 41, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    await service._process_contracts(db_session, [_ship_contract_dict(900104)])
+
+    # Second run: same contract, items unchanged (ESI answers 304).
+    service.esi_client.get_contract_items = AsyncMock(side_effect=ESINotModifiedError())
+    await service._process_contracts(db_session, [_ship_contract_dict(900104)])
+
+    contract = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 900104))
+    ).scalar_one()
+    assert contract.is_ship_contract is True, "ship flag must survive 304'd re-ingestion"
+    assert contract.item_processing_status == "COMPLETED"
