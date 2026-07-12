@@ -83,3 +83,119 @@ async def test_process_contracts_without_region_stamp_stores_null(
         )
     ).scalar_one()
     assert row.start_location_region_id is None
+
+
+def _ship_contract_dict(cid: int) -> dict:
+    from datetime import datetime, timezone
+
+    return {
+        "contract_id": cid,
+        "issuer_id": 1,
+        "issuer_corporation_id": 1,
+        "start_location_id": 60003760,
+        "type": "item_exchange",
+        "price": 1_000_000.0,
+        "date_issued": "2026-07-01T00:00:00Z",
+        "date_expired": "2026-07-08T00:00:00Z",
+        "_hb_region_id": 10000002,
+    }
+
+
+async def test_process_contracts_flags_ships_and_resolves_type_names(
+    db_session: AsyncSession,
+):
+    """F001/F002 enabler: is_ship_contract previously defaulted to False forever
+    ('will be updated later' — later never came), so the ships-only default view
+    matched nothing. Item processing must resolve type→group→category via ESI,
+    enrich items (type_name, market_group_id, category), and flag contracts
+    whose INCLUDED items contain a ship (EVE category 6)."""
+    from fastapi_app.models.contracts import ContractItem
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 11, "type_id": 587, "quantity": 1, "is_included": True},
+            {"record_id": 12, "type_id": 34, "quantity": 5000, "is_included": True},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            34: {"name": "Tritanium", "group_id": 18, "market_group_id": 1857},
+        }[type_id]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {
+            25: {"name": "Frigate", "category_id": 6},
+            18: {"name": "Mineral", "category_id": 4},
+        }[group_id]
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(900101)])
+
+    contract = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 900101))
+    ).scalar_one()
+    assert contract.is_ship_contract is True
+    assert contract.item_processing_status == "COMPLETED"
+
+    items = (
+        (await db_session.execute(select(ContractItem).order_by(ContractItem.record_id)))
+        .scalars()
+        .all()
+    )
+    assert [item.type_name for item in items] == ["Tristan", "Tritanium"]
+    assert items[0].category == "ship"
+    assert items[1].category is None
+    assert items[0].market_group_id == 1367
+
+
+async def test_process_contracts_excluded_ship_does_not_flag(db_session: AsyncSession):
+    """A ship that is merely ASKED FOR (is_included=False) must not make the
+    contract a ship contract — only included ships count."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 21, "type_id": 587, "quantity": 1, "is_included": False}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(900102)])
+
+    contract = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 900102))
+    ).scalar_one()
+    assert contract.is_ship_contract is False
+
+
+async def test_process_contracts_type_resolution_failure_degrades_gracefully(
+    db_session: AsyncSession,
+):
+    """ESI type lookups can fail; items keep NULL enrichment and the contract
+    stays unflagged rather than the whole aggregation run dying (assertion on
+    the mechanism: rows still land — TEST-2 mechanism-over-symptom)."""
+    from fastapi_app.models.contracts import ContractItem
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 31, "type_id": 99999, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(side_effect=RuntimeError("ESI down"))
+    service.esi_client.get_universe_group = AsyncMock(side_effect=RuntimeError("ESI down"))
+
+    await service._process_contracts(db_session, [_ship_contract_dict(900103)])
+
+    contract = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 900103))
+    ).scalar_one()
+    assert contract.is_ship_contract is False
+    item = (
+        await db_session.execute(
+            select(ContractItem).where(ContractItem.record_id == 31)
+        )
+    ).scalar_one()
+    assert item.type_name is None

@@ -7,6 +7,7 @@ from datetime import datetime
 
 import redis.asyncio as aioredis # For on-demand client creation
 from fastapi import Depends
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.dependencies import get_cache, get_esi_client, get_settings # Restored get_cache, added get_settings
@@ -259,12 +260,14 @@ class ContractAggregationService:
         logger.info(f"Finished upserting all {total_contracts} contracts.")
 
         all_items: List[dict] = []
+        processed_contract_ids: set[int] = set()
         for contract in contracts:
             if contract["type"] not in ["item_exchange", "auction"]:
                 continue
 
             try:
                 items = await self.esi_client.get_contract_items(contract["contract_id"])
+                processed_contract_ids.add(contract["contract_id"])
                 logger.debug(f"Fetched {len(items)} items for contract {contract['contract_id']}.")
 
                 item_values = [
@@ -285,6 +288,13 @@ class ContractAggregationService:
             except Exception as e:
                 logger.error(f"Failed to fetch items for contract {contract['contract_id']}: {e}", exc_info=True)
 
+        # Enrich items with static type data BEFORE upserting so a single
+        # write carries names/categories, and collect which contracts hold an
+        # included ship (fills the gap that left is_ship_contract permanently
+        # False — "will be updated later" never happened; found during the
+        # /impeccable design phase when the ships-only default matched nothing).
+        ship_contract_ids = await self._enrich_items_and_find_ships(all_items)
+
         if all_items:
             logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
             BATCH_SIZE = 50  # Number of items to process in each batch
@@ -295,6 +305,64 @@ class ContractAggregationService:
             logger.info(f"Finished upserting all {len(all_items)} contract items.")
         else:
             logger.info("No new contract items to process.")
+
+        if ship_contract_ids:
+            await db_session.execute(
+                update(Contract)
+                .where(Contract.contract_id.in_(ship_contract_ids))
+                .values(is_ship_contract=True)
+            )
+            logger.info(f"Flagged {len(ship_contract_ids)} contracts as ship contracts.")
+        if processed_contract_ids:
+            await db_session.execute(
+                update(Contract)
+                .where(Contract.contract_id.in_(processed_contract_ids))
+                .values(item_processing_status="COMPLETED")
+            )
+
+    SHIP_CATEGORY_ID = 6  # EVE static category: Ship
+
+    async def _enrich_items_and_find_ships(self, item_values: List[dict]) -> set:
+        """Resolve type -> group -> category for fetched items (ESI static data,
+        ETag-cached in Valkey, so repeat runs are near-free), enrich the item
+        dicts in place (type_name, market_group_id, category), and return the
+        contract_ids whose INCLUDED items contain a ship (EVE category 6).
+
+        Resolution failures degrade gracefully: the item keeps NULL enrichment
+        and the contract stays unflagged; the aggregation run never dies here.
+        """
+        if not item_values:
+            return set()
+
+        type_info: dict[int, dict] = {}
+        for type_id in {item["type_id"] for item in item_values}:
+            try:
+                type_info[type_id] = await self.esi_client.get_universe_type(type_id)
+            except Exception as e:
+                logger.warning(f"Type resolution failed for type {type_id}: {e}")
+
+        group_ids = {
+            info.get("group_id") for info in type_info.values() if info.get("group_id") is not None
+        }
+        group_info: dict[int, dict] = {}
+        for group_id in group_ids:
+            try:
+                group_info[group_id] = await self.esi_client.get_universe_group(group_id)
+            except Exception as e:
+                logger.warning(f"Group resolution failed for group {group_id}: {e}")
+
+        ship_contract_ids: set[int] = set()
+        for item in item_values:
+            info = type_info.get(item["type_id"]) or {}
+            group = group_info.get(info.get("group_id")) or {}
+            is_ship = group.get("category_id") == self.SHIP_CATEGORY_ID
+            # Keys must be uniform across every dict for the bulk upsert.
+            item["type_name"] = info.get("name")
+            item["market_group_id"] = info.get("market_group_id")
+            item["category"] = "ship" if is_ship else None
+            if is_ship and item["is_included"]:
+                ship_contract_ids.add(item["contract_id"])
+        return ship_contract_ids
 
 
 # Dependency for getting the service

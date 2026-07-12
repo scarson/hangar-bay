@@ -189,6 +189,17 @@ class ESIClient:
         path = f"/v1/contracts/public/items/{contract_id}/"
         return await self.get_esi_data_with_etag_caching(path)
 
+    async def get_universe_type(self, type_id: int) -> dict[str, Any]:
+        """Fetches static type info (name, group_id, market_group_id).
+        ETag-cached in Valkey — static data, so repeat runs are near-free."""
+        path = f"/v3/universe/types/{type_id}/"
+        return await self.get_esi_data_with_etag_caching(path)
+
+    async def get_universe_group(self, group_id: int) -> dict[str, Any]:
+        """Fetches static group info (name, category_id). ETag-cached."""
+        path = f"/v1/universe/groups/{group_id}/"
+        return await self.get_esi_data_with_etag_caching(path)
+
     async def resolve_ids_to_names(self, ids: list[int]) -> dict[int, str]:
         """Resolves a list of EVE Online IDs to their names."""
         if not ids:
