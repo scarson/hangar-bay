@@ -63,13 +63,32 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** 🚧 In progress — Phase 1 (Backend enablement fixes) shipped and group-reviewed; Phase 2 (Frontend scaffold) next.
+**Overall:** 🚧 In progress — Phases 1–2 shipped and gate-reviewed; Phase 3 (acceptance/teardown/docs) underway.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 1 — Backend enablement fixes | ✅ Shipped | `598dd22`, `c854668`, `31f4a37`, `e10b109`, `c051add` | Tasks 1–3 shipped on `claude/hangar-bay-frontend-rebuild-2e4fe7`. Group review complete (≥3 rounds); 3 minor findings (plan bookkeeping staleness, TEST-1 system/station/is_bpc coverage gap, FASTAPI-2 inert-param schema markers) remediated in the follow-up `fix(task-gate)` commit `c051add` (inert-param schema markers, 5 new HTTP/pagination tests, re-exported `openapi.json`). |
-| 2 — Frontend scaffold | 🚧 In progress | — | Claimed 2026-07-11T23:40Z on `claude/hangar-bay-frontend-rebuild-2e4fe7`; executed by workflow harness (Tasks 4–8, sequential with per-task review gates). |
-| 3 — Acceptance, teardown, docs | ⬜ Not started | — | — |
+| 2 — Frontend scaffold | ✅ Shipped | `b17b24c`, `ec07568`, `7420c77`, `c9d1d2d`, `58a9df5`, `448dc53`, `528ca95`, `ecaf2fa`, `4fa9438` | Tasks 4–8 shipped; Fable gate approved after 3 fix rounds (negative-price URL sanitization, NaN-id no-request test, plan bookkeeping). Final: 29 frontend tests, lint + strict build green. |
+| 3 — Acceptance, teardown, docs | 🚧 In progress | `afbd1bf` (Task 9 fix) | Task 9 claimed 2026-07-12T00:20Z, driven inline by the orchestrator against the live backend + browser. |
+
+### Discoveries
+
+- **Ingestion never persisted region IDs** (found in Task 9, fixed at `afbd1bf`): the aggregation
+  loop fetches contracts per region but never wrote `start_location_region_id`, so the column was
+  NULL for ALL real ingested data and the region filter matched nothing in production — while
+  every fixture-based test passed (fixtures set the column by hand; the TEST-1 trap one layer
+  down: the gap only appears when the real pipeline, not a fixture, writes the row). Fixed by
+  stamping the fetch region onto each ESI payload (`_hb_region_id`) and mapping it in
+  `_process_contracts`; first-ever tests added for the aggregation mapping. **Still open:**
+  `start_location_system_id` has the same gap (needs station→system resolution, which the
+  pipeline doesn't do) — acceptable for M1 since system filters are deferred, but it must be
+  fixed before any milestone exposes system filtering.
+- **`primaryLabel` renders an empty link for contracts with `title: ""`** (found in Task 9):
+  real ESI data carries empty-string titles (not null), which `??` doesn't catch, and non-ship
+  contracts often have no resolvable item `type_name`. Fixed during Task 9 (see its notes).
+- **Real-data nuance:** ingested contracts include non-ship contracts (`is_ship_contract: false`)
+  and items with unresolved `type_name`; the M1 UI displays them as-is. Worth a product decision
+  (default ship-only filter?) during the /impeccable phase — F001/F002 center on ship contracts.
 
 ---
 
@@ -1998,7 +2017,7 @@ design intentionally deferred to the /impeccable phase."
 
 **Files:** none modified — this is a verification gate. Requires the backend dev environment (pitfalls ENV-1, ENV-2).
 
-- [ ] **Step 9.1: Boot the backend**
+- [x] **Step 9.1: Boot the backend**
 
 Ensure `app/backend/src/.env` contains (values per your environment):
 
@@ -2015,22 +2034,30 @@ AGGREGATION_REGION_IDS=[10000002]
 Run: `cd app/backend && pdm run dev`
 Expected: startup completes; note that startup **drops and recreates all tables** and immediately runs aggregation — real data appears after a few minutes (ENV-2; dev limit is 100 contracts from The Forge). Verify data exists before judging the frontend: `curl -s "http://localhost:8000/contracts/?size=1" | head -c 400` returns `"total": <nonzero>`.
 
-- [ ] **Step 9.2: Boot the frontend and verify the acceptance checklist**
+- [x] **Step 9.2: Boot the frontend and verify the acceptance checklist**
 
 Run: `cd app/frontend/web && npm run dev` — open `http://localhost:5173/`.
 
 Checklist (all must hold):
-- [ ] `/` redirects to `/contracts`; a table of real contracts renders.
-- [ ] Typing 2 chars in search sends no request with `search`; the 3rd char triggers a filtered request (verify in devtools Network).
-- [ ] Selecting a region updates the URL (`?region_ids=...`) and the result set; the URL is shareable (paste into a new tab → same filtered view) and the back button restores the previous filter state.
-- [ ] BPC toggle, price bounds, sort field/direction all round-trip through the URL and change results; changing any filter resets to page 1.
-- [ ] Pagination: with `size=10` in the URL and >10 total contracts, Next/Previous walk pages with no duplicated or skipped contracts across the boundary (this exercises the Task 2 fix live when a search term is active).
-- [ ] Clicking a row opens `/contracts/<id>` with fields + items; a bogus id (`/contracts/999999999`) shows the not-found state; `/contracts/abc` shows not-found, not a crash.
-- [ ] Stopping the backend and clicking Retry shows the error state with a working retry once the backend returns.
+- [x] `/` redirects to `/contracts`; a table of real contracts renders. *(100 live Forge contracts.)*
+- [x] Typing 2 chars in search sends no request with `search`; the 3rd char triggers a filtered request (verify in devtools Network). *(Network-verified: only `search=ven` ever left the browser.)*
+- [x] Selecting a region updates the URL (`?region_ids=...`) and the result set; the URL is shareable (paste into a new tab → same filtered view) and the back button restores the previous filter state. *(Required the `afbd1bf` ingestion fix — see Discoveries. Hand-written repeated-param URLs are also accepted; the router normalizes to its JSON array encoding.)*
+- [x] BPC toggle, price bounds, sort field/direction all round-trip through the URL and change results; changing any filter resets to page 1. *(Sort-direction change from page 3 → page 1 verified. BPC toggle round-trips; this 100-contract sample happened to contain zero BPCs, so its result-set effect was verified as the correct empty state.)*
+- [x] Pagination: with `size=10` in the URL and >10 total contracts, Next/Previous walk pages with no duplicated or skipped contracts across the boundary (this exercises the Task 2 fix live when a search term is active). *(`search=blueprint`, 21 matches via the item join: pages [10, 10, 1], 21 unique, Next disabled on last page.)*
+- [x] Clicking a row opens `/contracts/<id>` with fields + items; a bogus id (`/contracts/999999999`) shows the not-found state; `/contracts/abc` shows not-found, not a crash.
+- [x] Stopping the backend and clicking Retry shows the error state with a working retry once the backend returns. *(One live-verification caveat: TanStack Query pauses retries while the tab is unfocused, so the error state needed a simulated `visibilitychange` in the headless pane — correct production behavior, jsdom tests cover the state directly.)*
 
-- [ ] **Step 9.3: Record the gate**
+- [x] **Step 9.3: Record the gate**
 
 Update this plan: Phase 3 banner, plus a one-line note per checklist item that failed and what was fixed (as Deviations/Discoveries). No commit for this task unless fixes were needed.
+
+**Acceptance record (2026-07-12, orchestrator-driven):** all items pass against live ESI data.
+Fixes required and shipped during acceptance: `afbd1bf` (ingestion region stamp) and `54956dd`
+(blank-title row label) — both in Discoveries. Dev-experience note: killing the backend
+mid-ingestion (e.g. uvicorn `--reload`) leaves the Valkey aggregation lock held until its TTL
+expires, so the next startup run logs "already running" and skips; remedy during development is
+`docker exec hangar_bay_valkey valkey-cli DEL "hangar-bay:aggregation:lock"`. The lock is
+TTL-bounded, so this self-heals in production.
 
 ### Task 10: Angular teardown
 
