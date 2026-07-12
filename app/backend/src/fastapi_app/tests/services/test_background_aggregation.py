@@ -1,0 +1,363 @@
+"""Regression tests for the contract aggregation pipeline's field mapping.
+
+Discovered during M1 Task 9 acceptance (2026-07-11): the aggregation loop
+fetches contracts per region — the region ID is in hand at fetch time — but
+never wrote it to Contract.start_location_region_id, leaving the column NULL
+for ALL real ingested data. The region filter (part of the M1 minimum UI
+surface) therefore matched nothing in production while every fixture-based
+test passed (fixtures set the column by hand). See pitfall TEST-1 for the
+general shape of this trap: the gap only shows up when the real pipeline,
+not a hand-built fixture, writes the row.
+"""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import fastapi_app.services.background_aggregation as bg_agg
+from fastapi_app.models.contracts import Contract, ContractItem
+from fastapi_app.services.background_aggregation import ContractAggregationService
+
+pytestmark = pytest.mark.asyncio
+
+
+def _make_service() -> ContractAggregationService:
+    esi_client = MagicMock()
+    esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant"}
+    )
+    # get_contract_items is exercised by other flows; keep it inert here.
+    esi_client.get_contract_items = AsyncMock(return_value=[])
+    settings = MagicMock()
+    return ContractAggregationService(esi_client=esi_client, settings=settings)
+
+
+async def test_process_contracts_persists_fetch_region_id(db_session: AsyncSession):
+    """A contract fetched from region R must be stored with
+    start_location_region_id == R (stamped by the fetch loop as _hb_region_id)."""
+    service = _make_service()
+    esi_contract = {
+        "contract_id": 900001,
+        "issuer_id": 1,
+        "issuer_corporation_id": 1,
+        "start_location_id": 60003760,
+        "type": "item_exchange",
+        "price": 1000000.0,
+        "date_issued": "2026-07-01T00:00:00Z",
+        "date_expired": "2026-07-08T00:00:00Z",
+        "_hb_region_id": 10000002,
+    }
+
+    await service._process_contracts(db_session, [esi_contract])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 900001)
+        )
+    ).scalar_one()
+    assert row.start_location_region_id == 10000002
+
+
+async def test_process_contracts_without_region_stamp_stores_null(
+    db_session: AsyncSession,
+):
+    """Contracts lacking the stamp (defensive path) store NULL, not garbage."""
+    service = _make_service()
+    esi_contract = {
+        "contract_id": 900002,
+        "issuer_id": 1,
+        "issuer_corporation_id": 1,
+        "start_location_id": 60003760,
+        "type": "item_exchange",
+        "price": 1000000.0,
+        "date_issued": "2026-07-01T00:00:00Z",
+        "date_expired": "2026-07-08T00:00:00Z",
+    }
+
+    await service._process_contracts(db_session, [esi_contract])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 900002)
+        )
+    ).scalar_one()
+    assert row.start_location_region_id is None
+
+
+def _ship_contract_dict(cid: int) -> dict:
+    from datetime import datetime, timezone
+
+    return {
+        "contract_id": cid,
+        "issuer_id": 1,
+        "issuer_corporation_id": 1,
+        "start_location_id": 60003760,
+        "type": "item_exchange",
+        "price": 1_000_000.0,
+        "date_issued": "2026-07-01T00:00:00Z",
+        "date_expired": "2026-07-08T00:00:00Z",
+        "_hb_region_id": 10000002,
+    }
+
+
+async def test_process_contracts_flags_ships_and_resolves_type_names(
+    db_session: AsyncSession,
+):
+    """F001/F002 enabler: is_ship_contract previously defaulted to False forever
+    ('will be updated later' — later never came), so the ships-only default view
+    matched nothing. Item processing must resolve type→group→category via ESI,
+    enrich items (type_name, market_group_id, category), and flag contracts
+    whose INCLUDED items contain a ship (EVE category 6)."""
+    from fastapi_app.models.contracts import ContractItem
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 11, "type_id": 587, "quantity": 1, "is_included": True},
+            {"record_id": 12, "type_id": 34, "quantity": 5000, "is_included": True},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            34: {"name": "Tritanium", "group_id": 18, "market_group_id": 1857},
+        }[type_id]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {
+            25: {"name": "Frigate", "category_id": 6},
+            18: {"name": "Mineral", "category_id": 4},
+        }[group_id]
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(900101)])
+
+    contract = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 900101))
+    ).scalar_one()
+    assert contract.is_ship_contract is True
+    assert contract.item_processing_status == "COMPLETED"
+
+    items = (
+        (await db_session.execute(select(ContractItem).order_by(ContractItem.record_id)))
+        .scalars()
+        .all()
+    )
+    assert [item.type_name for item in items] == ["Tristan", "Tritanium"]
+    assert items[0].category == "ship"
+    assert items[1].category is None
+    assert items[0].market_group_id == 1367
+
+
+async def test_process_contracts_excluded_ship_does_not_flag(db_session: AsyncSession):
+    """A ship that is merely ASKED FOR (is_included=False) must not make the
+    contract a ship contract — only included ships count."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 21, "type_id": 587, "quantity": 1, "is_included": False}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(900102)])
+
+    contract = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 900102))
+    ).scalar_one()
+    assert contract.is_ship_contract is False
+
+
+async def test_process_contracts_type_resolution_failure_degrades_gracefully(
+    db_session: AsyncSession,
+):
+    """ESI type lookups can fail; items keep NULL enrichment and the contract
+    stays unflagged rather than the whole aggregation run dying (assertion on
+    the mechanism: rows still land — TEST-2 mechanism-over-symptom)."""
+    from fastapi_app.models.contracts import ContractItem
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 31, "type_id": 99999, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(side_effect=RuntimeError("ESI down"))
+    service.esi_client.get_universe_group = AsyncMock(side_effect=RuntimeError("ESI down"))
+
+    await service._process_contracts(db_session, [_ship_contract_dict(900103)])
+
+    contract = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 900103))
+    ).scalar_one()
+    assert contract.is_ship_contract is False
+    # Enrichment failed for this contract's item, so its status must NOT claim
+    # COMPLETED — a future consumer trusting COMPLETED would skip re-enriching it.
+    assert contract.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    item = (
+        await db_session.execute(
+            select(ContractItem).where(ContractItem.record_id == 31)
+        )
+    ).scalar_one()
+    assert item.type_name is None
+
+
+async def test_reingestion_with_unmodified_items_keeps_ship_flag(
+    db_session: AsyncSession,
+):
+    """Regression: the contract upsert used to write is_ship_contract=False on
+    every run, while ETag-304'd items skip enrichment — so ship flags decayed
+    to False on the next aggregation cycle. The upsert must leave
+    enrichment-maintained columns untouched on conflict."""
+    from fastapi_app.core.exceptions import ESINotModifiedError
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 41, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    await service._process_contracts(db_session, [_ship_contract_dict(900104)])
+
+    # Second run: same contract, items unchanged (ESI answers 304).
+    service.esi_client.get_contract_items = AsyncMock(side_effect=ESINotModifiedError())
+    await service._process_contracts(db_session, [_ship_contract_dict(900104)])
+
+    contract = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 900104))
+    ).scalar_one()
+    assert contract.is_ship_contract is True, "ship flag must survive 304'd re-ingestion"
+    assert contract.item_processing_status == "COMPLETED"
+
+
+async def test_id_list_updates_batch_across_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """The post-enrichment is_ship_contract / item_processing_status UPDATEs must
+    chunk their id lists (asyncpg 32767 bind-param cap). With the chunk size
+    forced to 2 and THREE ship contracts, every contract must still be flagged
+    and completed — i.e. the loop crosses the batch boundary (TEST-4 spirit).
+    Before batching, one oversized IN() would have rolled back the whole run."""
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 2)
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: [{"record_id": cid, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    cids = [900301, 900302, 900303]
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+
+    rows = (
+        (await db_session.execute(select(Contract).where(Contract.contract_id.in_(cids))))
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 3
+    assert all(r.is_ship_contract is True for r in rows)
+    assert all(r.item_processing_status == "COMPLETED" for r in rows)
+
+
+class _FakeLockRedis:
+    """Minimal in-memory async Redis for the lock's set / eval(CAD) / close path."""
+
+    def __init__(self, store: dict):
+        self.store = store
+
+    async def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.store:
+            return None
+        self.store[key] = value
+        return True
+
+    async def eval(self, script, numkeys, *args):
+        key, token = args[0], args[1]
+        if self.store.get(key) == token:
+            del self.store[key]
+            return 1
+        return 0
+
+    async def close(self):
+        pass
+
+
+async def test_lock_release_deletes_only_its_own_token():
+    """Happy path: the holder acquires, then compare-and-deletes its own token."""
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        service = _make_service()
+        async with service._concurrency_lock():
+            assert bg_agg.AGGREGATION_LOCK_KEY in store  # held during the run
+        assert bg_agg.AGGREGATION_LOCK_KEY not in store  # released after
+
+
+async def test_lock_release_does_not_delete_a_reacquired_lock(caplog):
+    """If the TTL expires mid-run and a second runner reacquires the key, the
+    first runner's finally must NOT delete the second runner's lock (fencing
+    token mismatch), and it must warn — preventing cascading concurrent runs."""
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        service = _make_service()
+        with caplog.at_level("WARNING"):
+            async with service._concurrency_lock():
+                # Simulate our TTL expiring mid-run; another runner grabs the key.
+                store[bg_agg.AGGREGATION_LOCK_KEY] = "second-runner-token"
+
+    assert store.get(bg_agg.AGGREGATION_LOCK_KEY) == "second-runner-token"
+    assert "token mismatch" in caplog.text
+
+
+async def test_process_contracts_persists_bpc_flag_and_is_bpc_filter_matches(
+    db_session: AsyncSession, client: AsyncClient
+):
+    """Ingestion must map ESI's is_blueprint_copy onto the item — it was dropped
+    before, leaving the is_bpc filter dead on real data (same class as the
+    ship-flag gap). Drives the full pipeline: ingest a BPC item, then match it
+    over HTTP with ?is_bpc=true (TEST-1: prove the request-bound filter, not just
+    the column)."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {
+                "record_id": 51,
+                "type_id": 621,
+                "quantity": 1,
+                "is_included": True,
+                "is_blueprint_copy": True,
+                "raw_quantity": 10,
+            }
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Caracal Blueprint", "group_id": 105, "market_group_id": 2}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Cruiser Blueprint", "category_id": 9}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(900201)])
+    await db_session.flush()
+
+    item = (
+        await db_session.execute(select(ContractItem).where(ContractItem.record_id == 51))
+    ).scalar_one()
+    assert item.is_blueprint_copy is True
+
+    response = await client.get("/contracts/?is_bpc=true")
+    assert response.status_code == 200
+    matched_ids = [c["contract_id"] for c in response.json()["items"]]
+    assert 900201 in matched_ids

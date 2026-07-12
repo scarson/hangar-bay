@@ -109,8 +109,8 @@
     *   `volume`: DOUBLE
     *   `capacity`: DOUBLE
     *   `published`: BOOLEAN
-    *   `dogma_attributes`: JSONB (Store all attributes. For SQLite in dev, this will be TEXT using JSON1 functions; for PostgreSQL in prod, native JSONB.)
-    *   `dogma_effects`: JSONB (Store all effects. For SQLite in dev, this will be TEXT using JSON1 functions; for PostgreSQL in prod, native JSONB.)
+    *   `dogma_attributes`: JSONB (Store all attributes. Native PostgreSQL JSONB — used in all environments, including local dev and tests.)
+    *   `dogma_effects`: JSONB (Store all effects. Native PostgreSQL JSONB — used in all environments, including local dev and tests.)
     *   `last_esi_check`: TIMESTAMP (Timestamp of when contract items were last fetched/verified from ESI)
 *   **Relationships:**
     *   `contract_items.contract_id` has a FOREIGN KEY relationship to `contracts.contract_id`.
@@ -244,7 +244,7 @@
     *   [e.g., `Depends` for any internal service dependencies, Pydantic for data validation of ESI responses before DB storage, SQLAlchemy for ORM]
     *   [e.g., BackgroundTasks or a dedicated task queue like Celery for the aggregation tasks]
     *   [e.g., HTTP client like `httpx` for ESI calls, with robust handling of ETag and Cache-Control headers]
-*   Frontend (Angular):
+*   Frontend (React):
     *   N/A for this feature.
 
 ### 16.2. Critical Logic Points for AI Focus

@@ -36,12 +36,12 @@ Information and user interface components must be presentable to users in ways t
 *   **Adaptable (WCAG 1.3):**
     *   Create content that can be presented in different ways (e.g., simpler layout) without losing information or structure.
     *   **Semantic HTML:** Use HTML5 elements according to their semantic meaning (`<nav>`, `<main>`, `<article>`, `<aside>`, `<header>`, `<footer>`, `<button>`, `<a>` for navigation vs. actions, etc.).
-    *   **ARIA Roles & Attributes:** Use Accessible Rich Internet Applications (ARIA) roles and attributes to define UI components (e.g., `role="dialog"`, `aria-label`, `aria-describedby`, `aria-expanded`, `aria-hidden`) when semantic HTML alone is insufficient, especially for dynamic content and custom Angular components.
+    *   **ARIA Roles & Attributes:** Use Accessible Rich Internet Applications (ARIA) roles and attributes to define UI components (e.g., `role="dialog"`, `aria-label`, `aria-describedby`, `aria-expanded`, `aria-hidden`) when semantic HTML alone is insufficient, especially for dynamic content and custom components.
         *   AI Guidance: For custom components, prompt for necessary ARIA attributes based on the component's function and state.
 
         *   **AI Implementation Pattern (Semantic HTML & ARIA):**
             *   Prioritize standard HTML elements: `<button>`, `<nav>`, `<a>`, `<input>`, etc.
-            *   When creating custom Angular components that mimic standard controls (e.g., a custom dropdown), ensure appropriate `role` (e.g., `role="combobox"`, `role="listbox"`) and necessary ARIA states/properties (`aria-expanded`, `aria-selected`, `aria-owns`) are applied and dynamically updated.
+            *   When creating custom components that mimic standard controls (e.g., a custom dropdown), ensure appropriate `role` (e.g., `role="combobox"`, `role="listbox"`) and necessary ARIA states/properties (`aria-expanded`, `aria-selected`, `aria-owns`) are applied and dynamically updated.
     *   **Meaningful Sequence:** Ensure reading and navigation order is logical and intuitive.
 *   **Distinguishable (WCAG 1.4):**
     *   Make it easier for users to see and hear content including separating foreground from background.
@@ -97,12 +97,18 @@ Information and the operation of user interface must be understandable.
     *   **Labels or Instructions:** Provide labels or instructions for user inputs.
     *   **Error Prevention:** For sensitive actions (e.g., deletions), provide confirmation steps.
 
-        *   **AI Implementation Pattern (Input Assistance - Angular Forms):**
+        *   **AI Implementation Pattern (Input Assistance - React Forms):**
             *   Associate error messages with form controls using `aria-describedby`.
-            *   Set `aria-invalid="true"` on controls with errors.
+            *   Set `aria-invalid` on controls with errors.
             *   Provide clear, textual error messages next to the invalid field or in a summary.
-            *   Example: `<input [formControl]="myControl" [attr.aria-describedby]="myControlError ? 'myControlErrorId' : null" [attr.aria-invalid]="myControl.invalid && myControl.touched">
-                      <div id="myControlErrorId" *ngIf="myControl.invalid && myControl.touched">Error message here</div>`
+            *   Example (JSX):
+                ```jsx
+                <input
+                  aria-describedby={error ? 'field-error' : undefined}
+                  aria-invalid={error ? true : undefined}
+                />
+                {error && <p id="field-error">Error message here</p>}
+                ```
 
 ### 3.4. Robust
 
@@ -113,14 +119,14 @@ Content must be robust enough that it can be interpreted reliably by a wide vari
 Accessibility and internationalization are closely related. Ensuring that accessible features are also localizable is critical for a global audience. Refer to `i18n-spec.md` for comprehensive internationalization guidelines.
 
 *   **Translatable Accessibility Strings:** All text used for accessibility purposes (e.g., `aria-label`, `aria-labelledby`, `aria-describedby`, `title` attributes, `alt` text for images) MUST be processed through the internationalization system to ensure they can be translated.
-    *   *AI Guidance:* When generating elements with these attributes, ensure the content is marked for translation (e.g., using `i18n-aria-label` in Angular).
+    *   *AI Guidance:* When generating elements with these attributes, route the content through the frontend i18n layer so it can be translated. (Frontend i18n is deferred in Milestone 1 — the app currently ships hardcoded English strings; the message-catalog approach is to be defined for the React stack, see `i18n-spec.md`.)
 *   **Page Language (`lang` attribute):** The `<html>` element's `lang` attribute MUST be dynamically updated to reflect the current page language. This is critical for screen readers to use the correct pronunciation and for browser translation tools.
-    *   *AI Guidance:* This is typically handled by the frontend framework's i18n module (e.g., Angular's localization).
+    *   *AI Guidance:* Once frontend i18n is adopted, the active locale must drive a dynamically-set `<html lang>`; today the app sets `lang="en"` statically in `index.html`. (Frontend i18n is deferred in Milestone 1 — see `i18n-spec.md`.)
 *   **Layout Adaptability:** Ensure that changing languages (which can alter text length significantly) does not break accessible layouts or cause focus management issues.
 *   **Culturally Appropriate Icons/Symbols:** While not strictly an i18n-spec item, be mindful that icons or symbols used for accessibility cues should be universally understood or have translatable text alternatives.
 
 *   **Parsing (WCAG 4.1):** Ensure HTML is well-formed with complete start/end tags, nested correctly, and no duplicate IDs.
-*   **Name, Role, Value (WCAG 4.1.2):** For all UI components (including custom Angular components), their name and role can be programmatically determined; states, properties, and values that can be set by the user can be programmatically set; and notification of changes is available to assistive technologies.
+*   **Name, Role, Value (WCAG 4.1.2):** For all UI components (including custom components), their name and role can be programmatically determined; states, properties, and values that can be set by the user can be programmatically set; and notification of changes is available to assistive technologies.
 
     *   **AI Actionable Checklist (Name, Role, Value):**
         *   [ ] For custom interactive components, ensure `role` is appropriate (e.g., `button`, `checkbox`, `tab`).
@@ -128,34 +134,19 @@ Accessibility and internationalization are closely related. Ensuring that access
         *   [ ] Ensure states (e.g., `aria-checked`, `aria-selected`, `aria-expanded`) are programmatically set and updated.
         *   [ ] Ensure values (e.g., `aria-valuenow` for sliders) are programmatically set and updated.
 
-## 4. Technology-Specific Guidance (Angular)
+## 4. Technology-Specific Guidance (React)
 
-*   **Angular Material / CDK:** Leverage built-in accessibility features of Angular Material components and the Component Dev Kit (CDK). Many components are designed with A11y in mind (e.g., `MatDialog`, `MatMenu`).
-    *   AI Guidance: When using Angular Material, prefer its components over custom-built ones if they meet functional requirements, due to their built-in A11y.
+Milestone-1 ships a bare-bones scaffold; the full accessible component layer is built in the `/impeccable` phase, and detailed React patterns will be specified there. The WCAG requirements in Section 3 are framework-agnostic and authoritative regardless of framework. In the meantime, these React idioms replace the earlier Angular/Angular-Material guidance:
 
-        *   **AI Implementation Pattern (Angular Material):**
-            *   When AI is tasked to create UI for forms, dialogs, menus, tables, etc., explicitly instruct it to use the corresponding Angular Material component (`MatInput`, `MatDialog`, `MatMenu`, `MatTable`) unless a custom solution is strictly necessary and its A11y can be guaranteed.
-*   **ARIA Attributes in Components:** Dynamically bind ARIA attributes in Angular components based on component state (e.g., `[attr.aria-expanded]="isExpanded"`).
+*   **Semantic HTML first, ARIA second.** Prefer native elements (`<button>`, `<nav>`, `<a>`, `<label>`, `<input>`, `<dialog>`); reach for ARIA only when a native element can't express the semantics. `eslint-plugin-jsx-a11y` (active in `eslint.config.js`) catches many violations at lint time.
+*   **Dynamic ARIA in JSX:** bind ARIA from component state, e.g. `<button aria-expanded={isMenuOpen} onClick={toggleMenu}>Menu</button>`. React serializes boolean ARIA values to the required `"true"`/`"false"` strings.
+*   **Focus management:** trap focus within modals/overlays and restore it to the trigger on close (via refs / `useEffect`, or a vetted headless library adopted in `/impeccable`); ensure focus is never lost to `document.body`.
+*   **Live regions:** announce dynamic updates that don't move focus (search-result counts, status messages) with an `aria-live` region rather than a focus shift.
+*   **Route changes:** on navigation (TanStack Router), move or announce focus so screen-reader users are told the view changed, and keep a descriptive `<title>` per route.
+*   **Forms:** associate every control with a `<label htmlFor>`, link error messages via `aria-describedby`, set `aria-invalid` on invalid controls, indicate required fields, and group related controls with `<fieldset>`/`<legend>`.
 
-    *   **AI Implementation Pattern (Dynamic ARIA):**
-        *   AI should generate code like: `<button [attr.aria-expanded]="isMenuOpen" (click)="toggleMenu()">Menu</button>`
-        *   Ensure boolean values for ARIA states are correctly translated to string attributes 'true'/'false'.
-*   **Focus Management:** Use Angular's `Renderer2` or the CDK's `FocusTrap` and `FocusMonitor` for managing focus in dynamic UIs, modals, and custom components.
-
-    *   **AI Implementation Pattern (CDK FocusTrap):**
-        *   For modal dialogs or similar overlay components: `<div cdkTrapFocus *ngIf="isModalOpen">...modal content...</div>`
-        *   Instruct AI to import `A11yModule` and use `cdkTrapFocus` when creating modal-like experiences.
-*   **Live Announcers:** Use `LiveAnnouncer` from `@angular/cdk/a11y` to announce changes to assistive technologies for dynamic content updates that don't shift focus.
-
-    *   **AI Implementation Pattern (LiveAnnouncer):**
-        *   Inject `LiveAnnouncer`: `constructor(private liveAnnouncer: LiveAnnouncer) {}`
-        *   Announce message: `this.liveAnnouncer.announce("Item successfully added to cart", "polite");`
-        *   Instruct AI to use this for status messages, search result updates, etc., that don't involve a page reload or focus shift.
-*   **Router:** Ensure route changes announce page titles or main headings to screen readers.
-*   **Forms:** Use Angular's reactive or template-driven forms with proper labeling (`<label for>`), error messages associated with inputs (`aria-describedby`), and validation states (`aria-invalid`).
-
-    *   **AI Actionable Checklist (Angular Forms A11y):**
-        *   [ ] Each form control (`<input>`, `<select>`, `<textarea>`) has an associated `<label>` (use `for` attribute linking to control's `id`).
+    *   **AI Actionable Checklist (React Forms A11y):**
+        *   [ ] Each form control (`<input>`, `<select>`, `<textarea>`) has an associated `<label>` (via `htmlFor` linking to the control's `id`).
         *   [ ] Error messages are linked to controls via `aria-describedby`.
         *   [ ] `aria-invalid` is set to `true` on invalid controls.
         *   [ ] Required fields are indicated with `aria-required="true"` or visually (e.g., asterisk) with a note.
@@ -163,7 +154,7 @@ Accessibility and internationalization are closely related. Ensuring that access
 
 ## 5. Testing & Validation
 
-*   **Automated Tools:** Use tools like Axe-core (e.g., via `@axe-core/angular`), Lighthouse, and browser extensions during development and in CI/CD pipelines.
+*   **Automated Tools:** `eslint-plugin-jsx-a11y` (active — lint-time checks) plus `vitest-axe` on key views (arrives with the `/impeccable` phase), Lighthouse, and browser extensions during development and (once frontend CI exists) in the CI/CD pipeline.
 *   **Manual Testing:**
     *   **Keyboard-Only Navigation:** Test all interactive elements and user flows.
     *   **Screen Reader Testing:** Test with common screen readers (e.g., NVDA, JAWS, VoiceOver).

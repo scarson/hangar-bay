@@ -26,22 +26,23 @@ async def bulk_upsert(
 
     table = model_class.__table__
     primary_key_cols = [c.name for c in inspect(model_class).primary_key]
+    # Only update columns the caller actually supplied. `stmt.excluded`
+    # enumerates EVERY table column, so building set_ from it wholesale
+    # clobbers omitted columns with their defaults on conflict — that decayed
+    # enrichment-maintained fields (is_ship_contract) on ETag-304 re-ingestion.
+    supplied_cols = [name for name in values[0] if name not in primary_key_cols]
 
     dialect = db.bind.dialect.name
     if dialect == "postgresql":
         stmt = pg_insert(table).values(values)
-        update_cols = {
-            c.name: c for c in stmt.excluded if c.name not in primary_key_cols
-        }
+        update_cols = {name: stmt.excluded[name] for name in supplied_cols}
         stmt = stmt.on_conflict_do_update(
             index_elements=primary_key_cols,
             set_=update_cols,
         )
     elif dialect == "sqlite":
         stmt = sqlite_insert(table).values(values)
-        update_cols = {
-            c.name: c for c in stmt.excluded if c.name not in primary_key_cols
-        }
+        update_cols = {name: stmt.excluded[name] for name in supplied_cols}
         stmt = stmt.on_conflict_do_update(
             index_elements=primary_key_cols,
             set_=update_cols,

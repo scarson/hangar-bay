@@ -12,7 +12,7 @@
 # principle of least privilege, as outlined in design/specifications/security-spec.md.
 #
 # 1. hb-public-net:
-#    - Purpose: Connects the frontend (Angular) and backend (FastAPI) containers.
+#    - Purpose: Connects the frontend (React) and backend (FastAPI) containers.
 #    - This is the only network the frontend can access.
 #
 # 2. hb-data-tier-net:

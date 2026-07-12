@@ -153,7 +153,7 @@ AI_HANGAR_BAY_API_ENDPOINT_END -->
 *   Focus on what the user sees and does.
 *   **Internationalization & Localization:** Describe any UI elements or text that will require translation. Note if any content needs to be adapted for different locales (e.g., date formats, number formats). Reference `i18n-spec.md` for general guidelines.
 *   [Description of UI/UX elements]
-*   **AI Assistant Guidance:** When generating UI components, ensure all display strings are prepared for localization using Angular's i18n mechanisms (e.g., `i18n` attribute, `$localize` tagged messages) as detailed in `i18n-spec.md`.
+*   **AI Assistant Guidance:** When generating UI components, ensure all display strings are prepared for localization via the project's frontend i18n layer as detailed in `i18n-spec.md` (frontend i18n is deferred in Milestone 1 — strings are currently hardcoded English).
 
 ## 9. Error Handling & Edge Cases (Required)
 *   Identify potential error conditions, edge cases, and how the system should behave.
@@ -192,7 +192,7 @@ AI_HANGAR_BAY_API_ENDPOINT_END -->
     *   **Translatable Content:** List specific user-facing strings, labels, or messages introduced by this feature that require translation.
     *   **Locale-Specific Formatting:** Note any data (dates, numbers, currencies) that needs locale-specific formatting.
     *   **Right-to-Left (RTL) Support:** If applicable, highlight any UI elements that might require special attention for RTL layouts.
-*   **AI Assistant Guidance:** "Ensure all user-facing strings are externalized or marked for translation using the project's i18n framework (Angular's `@angular/localize` or FastAPI-Babel). Refer to `i18n-spec.md` for specific patterns and handling of pluralization or genderization if applicable."
+*   **AI Assistant Guidance:** "Ensure all user-facing strings are externalized or marked for translation using the project's i18n framework (a React message-catalog library — to be defined for the React stack; or FastAPI-Babel for backend-generated strings). Refer to `i18n-spec.md` for specific patterns and handling of pluralization or genderization if applicable."
 
 ## 14. Dependencies (Optional)
 *   List any dependencies this feature has on other features, modules, or external services (beyond ESI).
@@ -213,10 +213,10 @@ AI_HANGAR_BAY_API_ENDPOINT_END -->
     *   [e.g., `Depends` for authentication, Pydantic for data validation, SQLAlchemy for ORM]
     *   [e.g., BackgroundTasks for non-blocking operations]
     *   [e.g., FastAPI-Babel for i18n if serving translated strings directly from backend]
-*   Frontend (Angular):
-    *   [e.g., `HttpClientModule` for API calls, Angular Material components for UI, RxJS for state management]
-    *   [e.g., `@angular/localize` for i18n]
-    *   [e.g., Specific CDK features like `FocusTrap` or `LiveAnnouncer`]
+*   Frontend (React):
+    *   [e.g., the generated `openapi-fetch` typed client for API calls, hand-rolled components in `src/components/` styled with Tailwind v4 tokens, TanStack Query for server state, TanStack Router typed URL search params for filter/sort/pagination state]
+    *   [e.g., the chosen React message-catalog library for i18n — deferred, see `i18n-spec.md`]
+    *   [e.g., focus-trap and live-region (`aria-live`) helpers for accessible overlays and announcements]
 
 ### 14.2. Critical Logic Points for AI Focus
 *   [e.g., Ensure atomic operations for database writes related to financial transactions (if any).]
@@ -232,7 +232,7 @@ AI_HANGAR_BAY_API_ENDPOINT_END -->
 *   **Unit Tests:**
     *   [e.g., Test all data transformation functions thoroughly.]
     *   [e.g., Mock ESI calls and test API endpoint logic in isolation.]
-    *   [e.g., For Angular, test component logic, service methods.]
+    *   [e.g., For React, test component rendering and hook logic with Testing Library + Vitest.]
 *   **Integration Tests:**
     *   [e.g., Test API endpoint with a test database to verify data persistence.]
     *   [e.g., Test interaction between frontend services and backend API (mocked backend).]
@@ -244,6 +244,6 @@ AI_HANGAR_BAY_API_ENDPOINT_END -->
 *   [e.g., "When generating the service for this feature, ensure all public methods have comprehensive JSDoc/TSDoc comments."]
 *   [e.g., "Pay close attention to the retry logic specified in section 9 (Error Handling) when interacting with the ESI API."]
 *   [e.g., "Ensure all database interactions for this feature adhere to the query optimization and indexing guidelines in `performance-spec.md`."]
-*   [e.g., "When implementing UI components for this feature, apply Angular performance best practices (OnPush, trackBy, lazy loading) as detailed in `performance-spec.md`."]
-*   [e.g., "Generate all user-facing text in Angular components using i18n attributes, and provide a sample .xlf or .json entry for each new string, as per `i18n-spec.md`."]
+*   [e.g., "When implementing UI components for this feature, apply React performance best practices (memoization, stable list keys, code-splitting) as detailed in `performance-spec.md`."]
+*   [e.g., "Generate all user-facing text in React components routed through the i18n layer, and provide a sample message-catalog entry for each new string, as per `i18n-spec.md`."]
 *   [e.g., "Ensure all new UI components are keyboard accessible and include necessary ARIA attributes for screen readers, following `accessibility-spec.md`."]

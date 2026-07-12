@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -24,8 +26,8 @@ router = APIRouter(
 # validation error trying to parse "ships" as an integer.
 @router.get("/", response_model=PaginatedResponse[ContractSchema])
 async def list_public_contracts(
+    filters: Annotated[ContractFilters, Query()],
     db: AsyncSession = Depends(get_db),
-    filters: ContractFilters = Depends(ContractFilters),
 ):
     """
     Retrieves a paginated list of contracts based on specified filters.

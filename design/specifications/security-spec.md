@@ -160,14 +160,14 @@ Crucial for preventing injection attacks (XSS, SQLi, etc.).
         *   Example: `async def get_item(item_id: int = Path(..., gt=0), q: Optional[str] = Query(None, min_length=3, max_length=50)):`
         *   For ESI data, after fetching, pass it through a Pydantic model for validation before further use.
 
-### 3.2. Output Encoding (Frontend - Angular)
-*   **Angular's Built-in Sanitization:** Angular automatically sanitizes values interpolated into templates (`{{ value }}`) to prevent XSS. Trust Angular's built-in mechanisms.
-*   **`[innerHTML]` and `[outerHTML]`:** Avoid using these if possible. If absolutely necessary, ensure the HTML is sanitized using Angular's `DomSanitizer` (`bypassSecurityTrustHtml`).
-*   **Attribute Binding:** Be cautious when binding to attributes that can execute code (e.g., `href` with `javascript:` URLs, `style` with `url()`). Angular helps, but be mindful.
+### 3.2. Output Encoding (Frontend - React)
+*   **React's Built-in Escaping:** React automatically escapes values embedded in JSX (`{value}`) before rendering them to the DOM, preventing most XSS. Trust this default and render user/ESI-sourced content as plain JSX children rather than raw HTML.
+*   **`dangerouslySetInnerHTML`:** Avoid it. If rendering untrusted HTML is genuinely unavoidable, sanitize it first with a vetted library (e.g., DOMPurify) — no such sink or sanitizer exists in the codebase today, and none should be added without review.
+*   **Attribute Binding:** Be cautious with attributes that can execute code (e.g., `href`/`src` with `javascript:` URLs, `style` with `url()`). Unlike Angular, React does **not** sanitize URL attribute values, so validate the scheme (allow only `http`/`https`/`mailto`) before binding user-controlled URLs.
 
-    *   **AI Implementation Pattern (Angular Output Encoding):**
-        *   Primarily rely on Angular's default interpolation: `<div>{{ userProvidedContent }}</div>`.
-        *   If dynamic HTML is unavoidable: `constructor(private sanitizer: DomSanitizer) {} getSafeHtml(html: string) { return this.sanitizer.bypassSecurityTrustHtml(html); }` and use `[innerHTML]="getSafeHtml(userHtml)"`. Use with extreme caution.
+    *   **AI Implementation Pattern (React Output Encoding):**
+        *   Primarily rely on JSX's default escaping: `<div>{userProvidedContent}</div>`.
+        *   Do not use `dangerouslySetInnerHTML` for user/ESI-sourced content. If dynamic HTML is truly required, sanitize with DOMPurify first: `<div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(userHtml) }} />`. Use with extreme caution.
 
 ### 3.3. SQL Injection (SQLi) Prevention
 *   **ORM Usage:** Strictly use an ORM (SQLAlchemy for Python) for all database interactions. ORMs typically use parameterized queries or construct SQL safely, preventing most SQLi vulnerabilities.
@@ -208,10 +208,10 @@ Crucial for preventing injection attacks (XSS, SQLi, etc.).
                     content={"message": "An unexpected error occurred. Please try again later.", "detail": exc.detail, "error_ref": "some_correlation_id"},
                 )
             ```
-    *   **AI Implementation Pattern (Angular Generic Errors):**
-        *   Implement an `ErrorHandler` in Angular to catch client-side errors and display a generic message or redirect to an error page.
+    *   **AI Implementation Pattern (React Generic Errors):**
+        *   For render-time errors, wrap the app (or route subtrees) in a React error boundary that shows a generic fallback. A global boundary is to be defined for the React stack — M1 has none yet.
+        *   For API errors, TanStack Query exposes `isError`/`error`; the UI renders a generic `role="alert"` message with a retry action (see `ContractsPage.tsx`), never surfacing raw API/status internals to the user.
         *   Log detailed errors to a remote logging service or the console (for development).
-        *   When handling HTTP errors from API calls, display generic messages based on status codes or error content, avoiding direct display of API error internals.
 
 ## 4. Application-Specific Vulnerabilities
 
@@ -222,19 +222,19 @@ Crucial for preventing injection attacks (XSS, SQLi, etc.).
 Managing third-party libraries securely.
 
 *   **Minimize Dependencies:** Only include libraries that are actively needed.
-*   **Reputable Sources:** Use official package repositories (PyPI for Python, npm for Node.js/Angular).
-*   **Version Pinning:** Pin exact versions of dependencies in `requirements.txt` (Python) and `package-lock.json` (npm/Angular) to ensure reproducible and predictable builds.
+*   **Reputable Sources:** Use official package repositories (PyPI for Python, npm for Node.js/React).
+*   **Version Pinning:** Pin exact versions of dependencies in `pyproject.toml`/`pdm.lock` (Python) and `package.json`/`package-lock.json` (npm/React) to ensure reproducible and predictable builds.
 *   **Regular Updates:** Regularly update dependencies to their latest secure versions after checking changelogs for breaking changes.
 *   **Vulnerability Scanning:** Integrate automated vulnerability scanning tools into the CI/CD pipeline.
     *   Python: `safety`, `pip-audit`.
-    *   Node.js/Angular: `npm audit`, Snyk, Dependabot (GitHub).
+    *   Node.js/React: `npm audit`, Snyk, Dependabot (GitHub).
 
     *   **AI Actionable Checklist (Dependency Management):**
-        *   [ ] Initialize project with `requirements.txt` (Python) and `package.json` (Angular).
+        *   [ ] Initialize project with `pyproject.toml` (Python) and `package.json` (React).
         *   [ ] Pin all direct dependencies to specific versions.
         *   [ ] Generate and commit lock files (`requirements.txt` often serves this for Python if fully pinned, `package-lock.json` for npm).
         *   [ ] Set up Dependabot or Snyk for automated vulnerability alerts on the repository.
-        *   [ ] Add `npm audit --audit-level=high` (Angular) and `pip-audit` (Python) steps to CI pipeline.
+        *   [ ] Add `npm audit --audit-level=high` (React) and `pip-audit` (Python) steps to CI pipeline.
 
 ## 6. Logging and Monitoring
 

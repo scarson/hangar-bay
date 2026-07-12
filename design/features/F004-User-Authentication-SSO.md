@@ -201,7 +201,7 @@
 *   Display of logged-in user (e.g., character name, portrait if fetched) in the UI header/navigation.
 *   Clear "Logout" option.
 *   Graceful handling of SSO errors (e.g., user denies authorization, EVE SSO down) with user-friendly messages.
-*   **AI Assistant Guidance:** When generating UI components for login/logout, ensure all display strings (button text, status messages, error messages) are prepared for localization using Angular's i18n mechanisms (e.g., `i18n` attribute, `$localize` tagged messages) as detailed in `../i18n-spec.md`. Ensure interactive elements like login/logout buttons are accessible (keyboard navigable, proper ARIA roles if custom components are used) as per `../accessibility-spec.md`.
+*   **AI Assistant Guidance:** When generating UI components for login/logout, ensure all display strings (button text, status messages, error messages) are prepared for localization via the project's frontend i18n layer as detailed in `../i18n-spec.md` (frontend i18n is deferred in Milestone 1 — strings are currently hardcoded English). Ensure interactive elements like login/logout buttons are accessible (keyboard navigable, proper ARIA roles if custom components are used) as per `../accessibility-spec.md`.
 
 ## 9. Error Handling & Edge Cases (Required)
 *   EVE SSO unavailable or returns errors: Log, inform user, retry if appropriate.
@@ -242,8 +242,8 @@
     *   UI Text: "Login with EVE Online", "Logout", "Login successful", "Login failed: [reason]", "Logged out successfully", etc.
 *   **Non-Translatable Content (from ESI):**
     *   Character names are provided by EVE SSO/ESI and are typically not translated by the client application.
-*   Refer to `../i18n-spec.md` for specific Angular i18n patterns.
-*   **AI Assistant Guidance:** "Ensure all static user-facing strings in Angular components related to authentication (buttons, labels, messages) are externalized or marked for translation using Angular's `@angular/localize`. Error messages from the backend should ideally be translatable keys or messages."
+*   Refer to `../i18n-spec.md` for the frontend i18n approach (deferred; to be defined for the React stack).
+*   **AI Assistant Guidance:** "Ensure all static user-facing strings in React components related to authentication (buttons, labels, messages) are externalized or marked for translation via the chosen message-catalog library (to be defined for the React stack). Error messages from the backend should ideally be translatable keys or messages."
 
 ## 14. Dependencies (Optional)
 *   EVE Online SSO service.
@@ -268,10 +268,10 @@
     *   Session management library (e.g., `starlette-session` with Valkey or JWT-based sessions).
     *   Cryptography library for encrypting tokens at rest (e.g., `cryptography`).
     *   SQLAlchemy for DB interaction, Pydantic for data models.
-*   Frontend (Angular):
-    *   `HttpClientModule` for API calls.
-    *   Angular Router for navigation.
-    *   `@angular/localize` for i18n.
+*   Frontend (React):
+    *   The generated `openapi-fetch` typed client for API calls.
+    *   TanStack Router for navigation.
+    *   The chosen React message-catalog library for i18n (deferred — see `../i18n-spec.md`).
 
 ### 16.2. Critical Logic Points for AI Focus
 *   **Backend:**
@@ -303,7 +303,7 @@
     *   Test `/api/v1/me` returns correct user info when authenticated, and 401 when not.
     *   Test token encryption/decryption logic.
     *   Test access token refresh logic (if implemented).
-*   **Frontend (Angular - Component/Service Tests):**
+*   **Frontend (React - Component/Hook Tests via Testing Library + Vitest):**
     *   Test login button navigates to backend login URL.
     *   Test logout button calls backend logout and updates UI.
     *   Test display of user information after successful login.
@@ -315,7 +315,7 @@
     *   "Define SQLAlchemy model for `users` table including fields for `character_id`, `character_name`, encrypted `esi_access_token`, `esi_refresh_token`, `esi_access_token_expires_at`, and `esi_scopes`. Create corresponding Pydantic models."
     *   "Implement secure encryption and decryption for ESI tokens stored in the database."
     *   "Create an `/api/v1/me` endpoint that returns basic information for the authenticated user."
-*   **Frontend (Angular):**
-    *   "Create an `AuthService` in Angular to manage authentication state, initiate login (by navigating to backend `/auth/sso/login`), handle logout (by calling backend `/auth/sso/logout`), and fetch current user data (from backend `/api/v1/me`)."
+*   **Frontend (React):**
+    *   "Create a React auth layer (a TanStack Query hook, e.g. `useCurrentUser`) to manage authentication state, initiate login (by navigating to backend `/auth/sso/login`), handle logout (by calling backend `/auth/sso/logout`), and fetch current user data (from backend `/api/v1/me`)."
     *   "Create UI components for a 'Login with EVE Online' button and a 'Logout' button. Update a shared UI area (e.g., header) to display the logged-in character's name or the login button based on auth state."
-    *   "Ensure all user-facing text in authentication-related components is internationalized using `@angular/localize`."
+    *   "Ensure all user-facing text in authentication-related components is routed through the frontend i18n layer (deferred — see `../i18n-spec.md`)."

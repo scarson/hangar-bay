@@ -25,25 +25,25 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
                 *   Input validation errors (422 Unprocessable Entity).
                 *   Authentication/Authorization errors (401/403).
                 *   Mocking of service layer dependencies using `mocker` fixture from `pytest-mock`.
-    *   **Frontend (Angular):** Test individual components, services, pipes, and directives.
+    *   **Frontend (React):** Test individual components, hooks, and utility functions in isolation.
 
-        *   **AI Implementation Pattern (Angular Unit Tests - Jasmine/Karma):**
-            *   When generating a new Angular component/service, AI should also generate a `.spec.ts` file with:
-                *   Basic setup (`TestBed.configureTestingModule`, component fixture creation).
-                *   A test for component creation (`expect(component).toBeTruthy();`).
-                *   Placeholders or simple tests for public methods and key interactions.
-                *   Mocks for service dependencies using `jasmine.createSpyObj`.
+        *   **AI Implementation Pattern (React Unit/Component Tests - Vitest + React Testing Library):**
+            *   When generating a new React component or hook, AI should also generate a co-located `*.test.tsx` file with:
+                *   Rendering via React Testing Library (`render` for components, `renderHook` for hooks; wrap query-dependent code in a `QueryClientProvider`).
+                *   A smoke assertion that the component renders its key content (e.g. `expect(screen.getByRole(...)).toBeInTheDocument();`).
+                *   Simple tests for user interactions (via `@testing-library/user-event`) and for the key states of a hook.
+                *   Mocks for network/service dependencies using `vi.stubGlobal('fetch', …)` or `vi.mock()` / `vi.fn()`.
 
 ### 3.2. Integration Tests
 *   **Scope:** Test interactions between components or modules.
 *   **Backend:** Test API endpoints with a real (test) database, interactions with the caching layer (Valkey), and potentially mocked ESI interactions to verify request/response handling.
     *   **Frontend:** Test component interactions, service integrations, and routing.
 
-        *   **AI Actionable Checklist (Angular Integration Tests):**
-            *   [ ] Test that a parent component correctly passes data to a child component via `@Input()`.
-            *   [ ] Test that a parent component correctly listens to events from a child component via `@Output()`.
-            *   [ ] Test that a service method is called when a component action is performed.
-            *   [ ] Test basic routing scenarios (e.g., navigating to a page displays the correct component).
+        *   **AI Actionable Checklist (React Integration Tests):**
+            *   [ ] Test that a parent component correctly passes data to a child component via props.
+            *   [ ] Test that a parent component responds to callbacks/events raised by a child component.
+            *   [ ] Test that an API/service call is issued (or the relevant hook is invoked) when a component action is performed.
+            *   [ ] Test basic routing scenarios (e.g., navigating to a route renders the correct page — see the `renderApp` test helper).
 
 ### 3.3. End-to-End (E2E) Tests
 *   **Scope:** Test complete user flows through the deployed application (frontend through backend to database/cache).
@@ -60,7 +60,7 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   **Scope:** Evaluate application responsiveness, scalability, and stability under various load conditions, ensuring adherence to the targets and guidelines defined in `performance-spec.md`.
 *   **Key Areas (refer to `performance-spec.md` for details):
     *   API endpoint response times (FastAPI).
-    *   Frontend load and interaction times (Angular - FCP, LCP, TTI, INP).
+    *   Frontend load and interaction times (React - FCP, LCP, TTI, INP).
     *   Database query efficiency (PostgreSQL).
     *   Caching strategy effectiveness (Valkey).
     *   Resource utilization (CPU, memory) under load.
@@ -88,8 +88,8 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   **AI Coding Assistant Guidance:** The AI assistant should be prompted to generate code that passes automated A11y checks and to consider manual A11y testing scenarios when developing UI components.
 
     *   **AI Actionable Checklist (Accessibility Test Generation):**
-        *   [ ] When AI generates a new UI component, prompt it to include an Axe-core scan in its unit/integration tests.
-            *   Example (Angular with `@axe-core/angular`): `it('should pass accessibility scan', async () => { await TestBed.inject(AxeAngular).check(); });`
+        *   [ ] When AI generates a new UI component, prompt it to include an accessibility scan in its component tests.
+            *   Example (React, `/impeccable` phase): pair `@testing-library/react` with `vitest-axe` and assert `toHaveNoViolations()` on the rendered container.
         *   [ ] For E2E tests of UI features, remind AI to include checks for keyboard navigability (e.g., tabbing through elements, activating controls) and visible focus states.
 
 ### 3.7. Internationalization (i18n) Tests
@@ -120,19 +120,15 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
     *   **Test Runner:** `pytest`
     *   **Mocking:** `pytest-mock`, `unittest.mock`
     *   **HTTP Client for API tests:** `httpx` (FastAPI's test client)
-*   **Frontend (Angular):**
-    *   **Unit Tests:** Karma (test runner), Jasmine (testing framework)
-    *   **E2E Tests:** Protractor (though Angular is moving towards other solutions like Cypress or Playwright - *to be confirmed based on Angular best practices at implementation time*). Tools should support viewport manipulation for responsive design testing.
+*   **Frontend (React):**
+    *   **Unit / Component Tests:** Vitest (test runner) + React Testing Library (with jsdom).
+    *   **E2E Tests:** Playwright — deferred until the `/impeccable` phase delivers the UI it would smoke-test. Tools should support viewport manipulation for responsive design testing.
 *   **Code Coverage:**
     *   Backend: `pytest-cov`
-    *   Frontend: Istanbul (via Angular CLI)
+    *   Frontend: Vitest coverage (`vitest run --coverage`).
 *   **Accessibility Testing Tools:**
-    *   **Automated:** Axe-core (e.g., `@axe-core/angular` for integration with Angular tests, browser extensions for manual checks), Lighthouse (browser developer tools).
+    *   **Automated:** `eslint-plugin-jsx-a11y` (active — lint-time a11y checks in `eslint.config.js`) plus `vitest-axe` on key views (arrives with the `/impeccable` phase); Lighthouse (browser developer tools) for manual checks.
     *   **Screen Readers:** NVDA (Windows), JAWS (Windows), VoiceOver (macOS/iOS).
-
-        *   **AI Implementation Pattern (Angular Test Setup for A11y):**
-            *   Ensure `AxeAngular` is configured in `test.ts` or a test setup file if using `@axe-core/angular`.
-            *   AI should be aware of how to import and inject `AxeAngular` into test suites.
 
 ## 5. Test Data Management
 
@@ -146,6 +142,7 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   Builds MUST fail if tests do not pass.
 *   Test coverage reports SHOULD be generated and monitored.
 *   Automated accessibility scans (e.g., Axe-core) SHOULD be part of the CI pipeline, and critical violations MUST fail the build.
+*   **Frontend a11y (Milestone-1 posture):** frontend CI does not exist yet, so build-fail wiring for automated a11y scans is deferred until it does. The M1 posture is lint-time checks (`eslint-plugin-jsx-a11y`, active) plus test-time checks (`vitest-axe` on key views, arriving with the `/impeccable` phase). Once frontend CI exists, those scans SHOULD run there and critical violations MUST fail the build.
 
 ## 7. Security Testing
 
@@ -157,7 +154,7 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 
         *   **AI Actionable Checklist (Security Test Integration):**
             *   [ ] When setting up CI, instruct AI to include SAST tools (e.g., `bandit run -r . -ll` for Python).
-            *   [ ] Instruct AI to include dependency vulnerability scanning (e.g., `pip-audit` for Python, `npm audit --audit-level=high` for Angular) in CI scripts.
+            *   [ ] Instruct AI to include dependency vulnerability scanning (e.g., `pip-audit` for Python, `npm audit --audit-level=high` for the React frontend) in CI scripts.
 
 ## 8. Test Plan by Feature
 

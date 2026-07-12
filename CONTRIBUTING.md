@@ -10,7 +10,8 @@ First off, thank you for considering contributing to Hangar Bay! Whether you're 
   - [Cloning the Repository](#cloning-the-repository)
 - [Development Environment Setup](#development-environment-setup)
   - [Backend Setup (Python/FastAPI)](#backend-setup-pythonfastapi)
-  - [Frontend Setup (Angular)](#frontend-setup-angular)
+  - [Backend Dev Prerequisites (Local Run & Tests)](#backend-dev-prerequisites-local-run--tests)
+  - [Frontend Setup (React)](#frontend-setup-react)
   - [Running Linters and Formatters](#running-linters-and-formatters)
   - [Using Docker for Services](#using-docker-for-services-optional-but-recommended)
 - [Coding Standards](#coding-standards)
@@ -40,8 +41,7 @@ First off, thank you for considering contributing to Hangar Bay! Whether you're 
 *   **Git:** For version control.
 *   **Python:** Version 3.11 or newer for the backend.
 *   **PDM (Python Dependency Manager):** For managing backend dependencies. Install it via `pipx install pdm` or `pip install --user pdm`. Refer to [PDM's official documentation](https://pdm-project.org/latest/getting-started/installation/) for more options.
-*   **Node.js:** Version 20.19.0 or newer for the Angular frontend (includes npm). Refer to Angular's [version compatibility](https://angular.dev/reference/versions#actively-supported-versions) for more information.
-*   **Angular CLI:** Install globally after Node.js: `npm install -g @angular/cli`
+*   **Node.js:** Version 20.19.0 or newer for the React frontend (includes npm).
 *   **PostgreSQL:** Version 15 or 16. Required if not using Docker for the database. (See Backend Setup for details).
 *   **(Optional but Recommended) Docker:** For running PostgreSQL and Valkey in containers, matching the production environment.
 
@@ -53,7 +53,7 @@ cd hangar-bay
 
 ## Development Environment Setup
 
-This section outlines the steps to set up the development environment for Hangar Bay, covering both the Python backend and the Angular frontend.
+This section outlines the steps to set up the development environment for Hangar Bay, covering both the Python backend and the React frontend.
 
 ### Backend Setup (Python/FastAPI with PDM)
 
@@ -72,23 +72,9 @@ This section outlines the steps to set up the development environment for Hangar
     PDM automatically uses the project's virtual environment when you use `pdm run`. However, if your IDE or other tools need the environment to be explicitly activated, you can find the activation scripts within `app/backend/.venv/` (e.g., `app/backend/.venv/Scripts/activate` on Windows PowerShell/CMD, or `source app/backend/.venv/bin/activate` on Linux/macOS).
 
 4.  **Set up Environment Variables:**
-    *   Create a `.env` file in the `app/backend` directory (this file is ignored by Git).
-    *   Populate it with necessary configurations (e.g., database URLs, API keys, ESI client ID/secret). Refer to `app/backend/src/config.py` for how these environment variables are loaded and used.
-    *   Example `.env` structure:
-        ```env
-        DATABASE_URL="postgresql+asyncpg://user:password@host:port/database"
-        VALKEY_URL="valkey://localhost:6379/0"
-        # ESI Configuration
-        ESI_CLIENT_ID="YOUR_ESI_CLIENT_ID"
-        ESI_SECRET_KEY="YOUR_ESI_SECRET_KEY"
-        ESI_CALLBACK_URL="http://localhost:4200/auth/callback" # Or your frontend dev callback
-        # JWT Configuration
-        JWT_SECRET_KEY="YOUR_VERY_STRONG_JWT_SECRET_KEY" # Should be a long, random string
-        JWT_ALGORITHM="HS256"
-        JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
-        JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
-        # ... other application secrets
-        ```
+    *   The backend reads its environment from **`app/backend/src/.env`** (this location, not next to the code — Git ignores it). See the [Backend Dev Prerequisites (Local Run & Tests)](#backend-dev-prerequisites-local-run--tests) section below for the exact variables required for a local run and for the test suite (`DATABASE_URL`, `DATABASE_URL_TESTS`, `CACHE_URL`, `ESI_USER_AGENT`, and the JSON-list `AGGREGATION_REGION_IDS`).
+    *   How these are loaded is defined in `app/backend/src/fastapi_app/config.py` and `app/backend/src/fastapi_app/core/config.py`.
+    *   EVE SSO / JWT variables (`ESI_CLIENT_ID`, `ESI_SECRET_KEY`, `JWT_*`) are **not required for M1** (public contract browsing); they land with the SSO milestone (M2). Do not set them yet.
 
 5.  **Database Migrations (Alembic):**
     *(These commands assume Alembic is set up in `app/backend/src/alembic/`)*
@@ -107,32 +93,55 @@ This section outlines the steps to set up the development environment for Hangar
     ```
     The FastAPI application should be available at `http://localhost:8000`.
 
-### Frontend Setup (Angular)
+### Backend Dev Prerequisites (Local Run & Tests)
 
-1.  **Navigate to Frontend Directory:**
+The backend reads its environment from **`app/backend/src/.env`** (this location, not next to `.env.example`). For a local run and for the test suite you need PostgreSQL and Valkey running (see `app/backend/docker/`), plus these variables:
+
+```env
+# Local dev database + the scratch database the test suite drops/recreates each run.
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/hangar_bay
+DATABASE_URL_TESTS=postgresql+asyncpg://postgres:postgres@localhost:5432/hangar_bay_test
+# Valkey (Redis-compatible) is required — the aggregation pipeline holds a lock in it.
+CACHE_URL=redis://localhost:6379/0
+ESI_USER_AGENT=hangar-bay-dev (your-email@example.com)
+# MUST be a JSON list. A bare int or comma-separated string crashes at startup.
+AGGREGATION_REGION_IDS=[10000002]
+```
+
+Notes:
+
+*   **`AGGREGATION_REGION_IDS` must be a JSON list** (e.g. `[10000002]`). pydantic-settings JSON-decodes complex env fields before any field validator runs, so a bare int or comma-separated string fails at startup.
+*   **Valkey is required.** The aggregation pipeline takes a TTL-bounded lock in Valkey. If the backend is killed mid-ingestion (for example under `--reload`), the lock stays held until its TTL expires, so the next startup logs "already running" and skips ingestion. During development, clear it with `docker exec hangar_bay_valkey valkey-cli DEL "hangar-bay:aggregation:lock"`. It self-heals in production once the TTL lapses.
+*   **Every backend restart drops and recreates all tables** and immediately re-runs aggregation (dev limit: 100 contracts from the configured regions), so real contract data appears a few minutes after boot, not instantly. An empty contract list right after startup is expected, not a frontend bug.
+*   **`DATABASE_URL_TESTS`** points at a scratch database the test fixtures drop and recreate on every run — never point it at data you care about. Create it once with `createdb hangar_bay_test` (or via the Docker compose in `app/backend/docker/`).
+
+### Frontend Setup (React)
+
+The React single-page app lives in `app/frontend/web` (Vite + React 19 + TypeScript + Tailwind CSS v4 + TanStack Router/Query).
+
+1.  **Navigate to the frontend directory:**
     From the project root:
     ```bash
-    cd app/frontend/angular
+    cd app/frontend/web
     ```
 
 2.  **Install Dependencies:**
-    If you haven't already (e.g., during `ng new` or `ng add`):
     ```bash
     npm install
     ```
-    *(Ensure `package-lock.json` is committed and all dependencies in `package.json` are pinned as per project policy.)*
+    *(Ensure `package-lock.json` is committed and all dependencies in `package.json` stay exactly pinned — see [Dependency Management](#dependency-management).)*
 
-3.  **Set up Environment Variables:**
-    *   Angular uses environment files in `src/environments/`.
-    *   `environment.ts` is for development.
-    *   `environment.prod.ts` is for production.
-    *   Ensure `apiUrl` in `environment.ts` points to your local backend (e.g., `http://localhost:8000/api/v1`).
-
-4.  **Running the Frontend Development Server:**
+3.  **Running the Frontend Development Server:**
     ```bash
-    ng serve
+    npm run dev
     ```
-    This will typically start the Angular development server on `http://localhost:4200/`.
+    The app is served at `http://localhost:5173`, and proxies `/api/v1` requests to the backend on `http://localhost:8000` (no separate API-URL config needed for local dev).
+
+4.  **Regenerating the API client types (after backend schema changes):**
+    ```bash
+    cd app/backend && pdm run export-openapi    # writes app/frontend/web/openapi.json
+    cd app/frontend/web && npm run generate:api  # regenerates src/lib/api/schema.d.ts
+    ```
 
 ### Running Linters and Formatters
 
@@ -143,35 +152,36 @@ This section outlines the steps to set up the development environment for Hangar
     pdm run format # Runs Black
     ```
 
-*   **Frontend (Angular):**
-    From the `app/frontend/angular` directory:
+*   **Frontend (React):**
+    From the `app/frontend/web` directory:
     ```bash
-    npm run lint  # Runs ESLint
-    npm run format # Runs Prettier
+    npm run lint   # ESLint (flat config, with jsx-a11y)
+    npm run format # Prettier
+    npm run test   # Vitest
     ```
 
 ### Using Docker for Services (Optional but Recommended)
 
-If you have Docker installed, you can use it to run PostgreSQL and Valkey. A `docker-compose.yml` file is provided in `app/backend/docker/compose.yml` to simplify running these services. To use it, navigate to the `app/backend/docker/` directory and run `docker compose up -d`. Ensure your `.env` file in `app/backend` has the correct `DATABASE_URL` and `VALKEY_URL` to connect to these Docker containers (usually `localhost` or `127.0.0.1` with standard ports).
+If you have Docker installed, you can use it to run PostgreSQL and Valkey. A compose file is provided at `app/backend/docker/compose.yml` to simplify running these services. To use it, navigate to the `app/backend/docker/` directory and run `docker compose up -d`. Ensure your `app/backend/src/.env` file has the correct `DATABASE_URL` and `CACHE_URL` (Valkey/Redis) to connect to these Docker containers (usually `localhost` or `127.0.0.1` with standard ports).
 
 ---
 
 ## Coding Standards
 
 *   **General:**
-    *   Follow the style enforced by the project's linters and formatters (Black, Flake8 for Python; Prettier, ESLint for Angular/TypeScript).
+    *   Follow the style enforced by the project's linters and formatters (Black, Flake8 for Python; Prettier, ESLint for React/TypeScript).
     *   Write clear, concise, and well-commented code, especially for complex logic.
     *   Aim for readability and maintainability.
 *   **Python (Backend):**
     *   Adhere to PEP 8 guidelines.
     *   Use type hints extensively.
     *   Follow FastAPI best practices for structuring routers, models, and services.
-*   **TypeScript/Angular (Frontend):**
-    *   Follow Angular style guide recommendations.
-    *   Use strong typing; avoid `any` where possible.
-    *   Structure components, services, and modules logically.
-*   **Security:** Strictly adhere to the guidelines in [`design/security-spec.md`](design/security-spec.md).
-*   **Accessibility:** Implement frontend components following [`design/accessibility-spec.md`](design/accessibility-spec.md).
+*   **TypeScript/React (Frontend):**
+    *   Follow the conventions enforced by ESLint (flat config) + Prettier.
+    *   Use strong typing (TypeScript strict mode); avoid `any` where possible.
+    *   Structure components and hooks logically; keep server state in TanStack Query and URL/filter state in TanStack Router search params.
+*   **Security:** Strictly adhere to the guidelines in [`design/specifications/security-spec.md`](design/specifications/security-spec.md).
+*   **Accessibility:** Implement frontend components following [`design/specifications/accessibility-spec.md`](design/specifications/accessibility-spec.md).
 
 ## Version Control Workflow
 
@@ -207,7 +217,7 @@ If you have Docker installed, you can use it to run PostgreSQL and Valkey. A `do
 
 ## Testing
 
-*   Adhere to the testing strategies outlined in [`design/test-spec.md`](design/test-spec.md).
+*   Adhere to the testing strategies outlined in [`design/specifications/test-spec.md`](design/specifications/test-spec.md).
 *   **Unit Tests:** All new functions, methods, and components should have corresponding unit tests.
 *   **Integration Tests:** Write integration tests for interactions between components or services, especially for API endpoints.
 *   **End-to-End (E2E) Tests:** (To be implemented) For critical user flows.
@@ -216,7 +226,7 @@ If you have Docker installed, you can use it to run PostgreSQL and Valkey. A `do
 
 ## Dependency Management
 
-This project follows a strict dependency version pinning policy to ensure reproducible and stable builds. The full policy statement and rationale can be found in [`design/design-spec.md`](design/design-spec.md) (Section 6.0). All developers and AI assistants MUST adhere to the following practices:
+This project follows a strict dependency version pinning policy to ensure reproducible and stable builds. The full policy statement and rationale can be found in [`design/specifications/design-spec.md`](design/specifications/design-spec.md) (Section 6.0). All developers and AI assistants MUST adhere to the following practices:
 
 *   **Python (Backend):**
     *   Dependencies are managed by **PDM** via the `pyproject.toml` file.
@@ -231,10 +241,10 @@ This project follows a strict dependency version pinning policy to ensure reprod
     *   PDM automatically pins the exact version in `pdm.lock` and updates `pyproject.toml`.
     *   Commit both the `pyproject.toml` and `pdm.lock` files to the repository.
 
-*   **JavaScript/TypeScript (Frontend - Angular):**
-    *   All packages listed in `app/frontend/angular/package.json` (in both `dependencies` and `devDependencies`) MUST have their versions pinned.
-    *   Use `npm install --save-exact <package-name>` or `npm install --save-dev --save-exact <package-name>` to add new dependencies with exact versions to `package.json`.
-    *   **Example (in `package.json`):** `"@angular/core": "20.0.0"` (ensure no `^` or `~` prefixes).
+*   **JavaScript/TypeScript (Frontend - React):**
+    *   All packages listed in `app/frontend/web/package.json` (in both `dependencies` and `devDependencies`) MUST have their versions pinned — no `^` or `~` prefixes.
+    *   Exact pinning is enforced automatically by `app/frontend/web/.npmrc` (`save-exact=true`): every `npm install <package-name>` writes the exact resolved version to `package.json`, so a normal install already produces a compliant pin.
+    *   **Example (in `package.json`):** `"typescript": "5.9.3"` (ensure no `^` or `~` prefixes).
     *   Always commit the `package.json` and `package-lock.json` files.
 
 *   **Containerization (Docker) & Database Systems:**
@@ -260,8 +270,8 @@ Hangar Bay is an EVE Online in-game asset marketplace, focusing initially on shi
 
 **Core Technologies:**
 *   **Backend:** Python with FastAPI
-*   **Frontend:** Angular
-*   **Database:** PostgreSQL (with SQLite for local development/testing)
+*   **Frontend:** React 19 (Vite, TypeScript, Tailwind CSS v4, TanStack Router/Query)
+*   **Database:** PostgreSQL (local development **and** the test suite both use PostgreSQL — SQLite is not used anywhere; the test suite drops/recreates the `hangar_bay_test` database via `DATABASE_URL_TESTS`)
 *   **Caching:** Valkey
 *   **Authentication:** EVE SSO (OAuth 2.0)
 
@@ -269,18 +279,18 @@ Hangar Bay is an EVE Online in-game asset marketplace, focusing initially on shi
 
 The [`design/`](design/) directory is your primary source of truth for requirements and implementation details. Key documents include:
 
-*   [`design-spec.md`](design/design-spec.md): Overall architecture, features, and technology choices. Contains AI notes for high-level understanding.
+*   [`design-spec.md`](design/specifications/design-spec.md): Overall architecture, features, and technology choices. Contains AI notes for high-level understanding.
 *   [`features/`](design/features/): Individual feature specifications (e.g., `F001-*.md`, `F002-*.md`).
     *   These files detail specific application functionalities.
     *   **Key Structure:** Each feature spec now consistently includes a "0. Authoritative ESI & EVE SSO References" section at the beginning and AI actionable checklists for all defined ESI, EVE SSO, and Hangar Bay API endpoints.
     *   The `00-feature-spec-template.md` shows the overall template, including how data models, API endpoints, and general AI implementation guidance are structured. Use this template as a base when creating entirely new features.
-*   [`security-spec.md`](design/security-spec.md): Detailed security requirements with AI actionable checklists and implementation patterns. Prioritize these strictly.
-*   [`accessibility-spec.md`](design/accessibility-spec.md): Accessibility (WCAG 2.1 AA) requirements with AI actionable checklists and Angular-specific patterns.
-*   [`test-spec.md`](design/test-spec.md): Testing strategy, including unit, integration, E2E, security, and accessibility testing, with AI patterns for test generation.
-*   [`observability-spec.md`](design/observability-spec.md): Logging, metrics, and tracing strategy, emphasizing OpenTelemetry, with AI patterns for instrumentation.
-*   [`i18n-spec.md`](design/i18n-spec.md): Internationalization strategy, including guidance for localizing FastAPI and Angular components, and AI patterns for generating translatable content.
-*   [`performance-spec.md`](design/performance-spec.md): Performance targets, design principles, testing methodologies, and AI guidance for backend (FastAPI, Valkey, PostgreSQL) and frontend (Angular) development.
-*   [`ai-system-procedures.md`](design/ai-system-procedures.md): Documents "AI System Procedures" (AISPs) – significant, recurring operational patterns for AI execution or participation.
+*   [`security-spec.md`](design/specifications/security-spec.md): Detailed security requirements with AI actionable checklists and implementation patterns. Prioritize these strictly.
+*   [`accessibility-spec.md`](design/specifications/accessibility-spec.md): Accessibility (WCAG 2.1 AA) requirements with AI actionable checklists and React-specific patterns.
+*   [`test-spec.md`](design/specifications/test-spec.md): Testing strategy, including unit, integration, E2E, security, and accessibility testing, with AI patterns for test generation.
+*   [`observability-spec.md`](design/specifications/observability-spec.md): Logging, metrics, and tracing strategy, emphasizing OpenTelemetry, with AI patterns for instrumentation.
+*   [`i18n-spec.md`](design/specifications/i18n-spec.md): Internationalization strategy, including guidance for localizing FastAPI and the React frontend, and AI patterns for generating translatable content (frontend i18n is deferred in Milestone 1 — see that spec).
+*   [`performance-spec.md`](design/specifications/performance-spec.md): Performance targets, design principles, testing methodologies, and AI guidance for backend (FastAPI, Valkey, PostgreSQL) and frontend (React) development.
+*   [`ai-system-procedures.md`](design/meta/ai-system-procedures.md): Documents "AI System Procedures" (AISPs) – significant, recurring operational patterns for AI execution or participation.
     *   **Purpose:** AISPs provide a human-readable design record, detailing the problem, rationale, trigger conditions, AI execution steps, expected outcomes, and supporting details for complex or critical AI-involved workflows.
     *   **Usage:** While operational logic might be stored in AI memories, AISPs offer deeper context and step-by-step guidance. Refer to them to understand the 'why' and 'how' of these procedures. The document includes an `[AISP-000] AISP Entry Template` to guide the creation of new AISP entries.
 
@@ -293,11 +303,11 @@ The [`design/`](design/) directory is your primary source of truth for requireme
     *   Employ dependency injection (`Depends`) for authentication and shared services.
     *   Follow RESTful API design principles.
     *   Refer to `security-spec.md` for input validation and `observability-spec.md` for OpenTelemetry integration patterns.
-*   **Angular (Frontend):**
-    *   Use typed forms (Reactive Forms preferred).
-    *   Implement services for API communication and state management.
-    *   Adhere to component-based architecture.
-    *   Refer to `accessibility-spec.md` for ARIA, focus management, and Material component guidance.
+*   **React (Frontend):**
+    *   Build with function components and hooks; TypeScript strict mode.
+    *   Use TanStack Query for server state and TanStack Router (file-based) for URL-driven filter/sort/pagination state.
+    *   Use the generated typed API client (`openapi-typescript` + `openapi-fetch`) for backend calls; regenerate types after backend schema changes.
+    *   Refer to `accessibility-spec.md` for ARIA and focus-management guidance.
     *   Refer to `observability-spec.md` for OpenTelemetry integration patterns.
 *   **SQLAlchemy (Database ORM):**
     *   Define models in `app/backend/src/models/` (or similar conventional path).
@@ -312,7 +322,7 @@ The [`design/`](design/) directory is your primary source of truth for requireme
 2.  **Clarify Ambiguities:** If a spec is unclear, ask for clarification before coding.
 3.  **Generate Code:** Based on the specs, generate:
     *   Backend: FastAPI models, API route handlers, service logic, database models, tests.
-    *   Frontend: Angular components, services, templates, styles, tests.
+    *   Frontend: React components, hooks, TanStack Query/Router wiring, styles, tests.
 4.  **Incorporate AI Guidance:** Actively use the `AI Implementation Guidance`, checklists, and patterns from the specs.
 5.  **Testing:** Generate unit and integration tests as per `test-spec.md`. Include accessibility and security considerations in tests.
 6.  **Review & Iterate:** The generated code will be reviewed. Be prepared to make adjustments based on feedback.

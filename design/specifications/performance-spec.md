@@ -25,15 +25,15 @@
     *   **P99 (99th percentile):** < 500ms for most read operations under typical load.
     *   Write operations: Target < 500ms, acknowledging potential DB/ESI write latencies.
     *   *AI Guidance:* When generating API endpoints, consider query complexity, data processing, and potential for caching to meet these targets.
-*   **2.2. Frontend Load & Interaction Times (Angular):**
+*   **2.2. Frontend Load & Interaction Times (React):**
     *   **First Contentful Paint (FCP):** < 1.8 seconds.
     *   **Largest Contentful Paint (LCP):** < 2.5 seconds.
     *   **Time to Interactive (TTI):** < 5 seconds.
     *   **Interaction to Next Paint (INP):** < 200ms for most interactions.
-    *   *AI Guidance:* When generating components and pages, consider lazy loading, bundle sizes, change detection strategy, and efficient rendering.
+    *   *AI Guidance:* When generating components and pages, consider route-level code splitting, bundle sizes, re-render behavior, and efficient rendering.
 *   **2.3. Resource Utilization:**
     *   **Backend Service (FastAPI):** Define acceptable CPU and memory usage under typical load.
-    *   **Frontend Bundle Sizes:** Main bundle < 500KB, lazy-loaded modules < 200KB.
+    *   **Frontend Bundle Sizes:** Main bundle < 500KB, lazy-loaded route chunks < 200KB.
     *   *AI Guidance:* Promote code splitting, tree shaking, and efficient library use.
 *   **2.4. Database Query Performance (PostgreSQL):**
     *   Most common queries: < 50ms.
@@ -70,29 +70,28 @@
     *   For operations that don't need to be completed before returning a response (e.g., sending notifications, non-critical logging).
     *   *AI Guidance:* Identify opportunities for background tasks to improve endpoint responsiveness.
 
-### 3.2. Frontend (Angular)
+### 3.2. Frontend (React)
 
-*   **Change Detection Strategy:**
-    *   **AI Implementation Pattern:** Default to `ChangeDetectionStrategy.OnPush` for components to minimize change detection cycles. Trigger manually with `markForCheck()` when necessary.
-*   **Lazy Loading:**
-    *   **AI Implementation Pattern:** Use lazy loading for Angular modules to reduce initial bundle size.
-    *   Example (routing): `{ path: 'feature', loadChildren: () => import('./feature/feature.module').then(m => m.FeatureModule) }`
+*   **Minimizing Re-renders:**
+    *   **AI Implementation Pattern:** Keep state minimal and colocated; derive values during render rather than duplicating them in state. Reach for memoization (`React.memo`, `useMemo`, `useCallback`) only where profiling shows a hot re-render path — do not sprinkle it by default.
+*   **Route-Level Code Splitting:**
+    *   Already active: TanStack Router's Vite plugin runs with `autoCodeSplitting: true` (see `app/frontend/web/vite.config.ts`), so each route file is split into its own lazy-loaded chunk.
+    *   **AI Implementation Pattern:** Keep route components and their heavy dependencies inside the route files so the automatic split stays effective; do not re-import route-only dependencies from shared modules.
 *   **Tree Shaking & Bundle Optimization:**
-    *   Ensure Angular CLI build optimizations are enabled.
+    *   The Vite production build (`npm run build`) performs tree-shaking and minification via Rollup and esbuild; no additional build configuration is required.
     *   Import only necessary functions/modules from libraries.
-*   **Virtual Scrolling (`@angular/cdk/scrolling`):
-    *   **AI Implementation Pattern:** For long lists of items, use `cdk-virtual-scroll-viewport` to render only visible items.
-*   **`trackBy` for `*ngFor`:**
-    *   **AI Implementation Pattern:** Always use a `trackBy` function with `*ngFor` to improve rendering performance for lists, especially when items are reordered or modified.
-    *   Example: `<div *ngFor="let item of items; trackBy: trackById">{{ item.name }}</div>`
-                   `trackById(index: number, item: Item): string { return item.id; }`
-*   **Optimizing Angular Material Components:**
-    *   Be mindful of the performance characteristics of complex Material components.
-*   **Efficient State Management (e.g., NgRx, Akita, or services with BehaviorSubjects):
-    *   Minimize data duplication and ensure efficient data flow.
-    *   Use selectors to derive and memoize data.
+*   **Virtual Scrolling (long lists):**
+    *   **Requirement:** For long lists of items, render only the visible window (virtualization). This requirement carries forward from the original Angular design (which prescribed `@angular/cdk/scrolling`); a React virtualization library has NOT been selected — the choice is deferred to the `/impeccable` design phase, when list rendering performance is designed. Do not introduce one ad hoc; the current paginated table (max page size 100) does not need it.
+*   **Stable `key` props for lists:**
+    *   **AI Implementation Pattern:** Always key rendered list items with a stable domain identifier so React can reconcile reordered or modified lists efficiently; never use the array index for dynamic lists.
+    *   Example: `{contracts.map((c) => <ContractRow key={c.contract_id} contract={c} />)}`
+*   **Design-System Component Cost:**
+    *   Be mindful of the rendering cost of complex design-system components built during the `/impeccable` phase.
+*   **Efficient State Management:**
+    *   Server state lives in TanStack Query (caching, request deduplication, background refetch); filter/sort/pagination state lives in typed URL search params via TanStack Router. No global client-state store exists (per the Milestone-1 spec, none is added until a milestone needs one).
+    *   Minimize data duplication: components must not hold shadow copies of URL or server state.
 *   **Debouncing/Throttling User Inputs:**
-    *   For inputs that trigger API calls (e.g., search boxes), use `debounceTime` or `throttleTime` with RxJS.
+    *   For text inputs that trigger API calls (e.g., search boxes), debounce before the query fires; TanStack Query deduplicates identical in-flight requests, and keystroke-driven URL updates use `navigate({ replace: true })` so they do not pollute history.
 
 ### 3.3. Data Handling (General)
 
@@ -151,18 +150,19 @@
     *   Lack of database indexing for queried fields.
     *   Over-caching or under-caching; incorrect cache TTLs.
 *   **Frontend:**
-    *   No `trackBy` in `*ngFor`.
-    *   Not using `OnPush` change detection where appropriate.
-    *   Large initial bundles due to lack of lazy loading.
-    *   Subscribing to Observables without unsubscribing (memory leaks).
+    *   Index-based or unstable `key` props on dynamic lists.
+    *   Unnecessary re-renders (state lifted higher than needed; unstable object/array/function props defeating memoization).
+    *   Large initial bundles from defeating route-level code splitting (e.g., importing route-only heavy dependencies into shared modules).
+    *   Effects without cleanup (leaked timers, event listeners, subscriptions — memory leaks).
     *   Frequent, un-debounced API calls from user interactions.
+    *   Fetching outside the generated API client + TanStack Query hooks (loses caching/deduplication and duplicates server state).
 *   **AI Guidance:** AI should be explicitly instructed to avoid these anti-patterns.
 
 ## 7. AI Implementation Guidance Summary
 
 *   **AI Actionable Checklist (General):**
     *   [ ] When generating backend endpoints, apply async patterns, consider caching, and optimize database queries.
-    *   [ ] When generating Angular components, use `OnPush`, `trackBy`, consider lazy loading, and optimize for bundle size.
+    *   [ ] When generating React components, use stable list `key`s, avoid unnecessary re-renders, keep route-level code splitting effective, and optimize for bundle size.
     *   [ ] For list data, implement pagination by default.
     *   [ ] Proactively identify and avoid common performance anti-patterns.
     *   [ ] Suggest areas where performance testing or profiling would be beneficial.

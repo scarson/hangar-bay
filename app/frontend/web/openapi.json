@@ -1,0 +1,898 @@
+{
+  "components": {
+    "schemas": {
+      "ContractItemSchema": {
+        "description": "Schema for an item within a contract.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "is_blueprint_copy": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Blueprint Copy"
+          },
+          "is_included": {
+            "title": "Is Included",
+            "type": "boolean"
+          },
+          "is_singleton": {
+            "title": "Is Singleton",
+            "type": "boolean"
+          },
+          "market_group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Group Id"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "raw_quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Quantity"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "integer"
+          },
+          "type_id": {
+            "title": "Type Id",
+            "type": "integer"
+          },
+          "type_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Name"
+          }
+        },
+        "required": [
+          "record_id",
+          "type_id",
+          "quantity",
+          "is_included",
+          "is_singleton"
+        ],
+        "title": "ContractItemSchema",
+        "type": "object"
+      },
+      "ContractSchema": {
+        "description": "Schema for a public contract.",
+        "properties": {
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "date_completed": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Completed"
+          },
+          "date_expired": {
+            "format": "date-time",
+            "title": "Date Expired",
+            "type": "string"
+          },
+          "date_issued": {
+            "format": "date-time",
+            "title": "Date Issued",
+            "type": "string"
+          },
+          "end_location_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Location Id"
+          },
+          "for_corporation": {
+            "title": "For Corporation",
+            "type": "boolean"
+          },
+          "is_ship_contract": {
+            "title": "Is Ship Contract",
+            "type": "boolean"
+          },
+          "issuer_corporation_id": {
+            "title": "Issuer Corporation Id",
+            "type": "integer"
+          },
+          "issuer_corporation_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Corporation Name"
+          },
+          "issuer_id": {
+            "title": "Issuer Id",
+            "type": "integer"
+          },
+          "issuer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Name"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContractItemSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "reward": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reward"
+          },
+          "start_location_id": {
+            "title": "Start Location Id",
+            "type": "integer"
+          },
+          "start_location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Location Name"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "contract_id",
+          "issuer_id",
+          "issuer_corporation_id",
+          "start_location_id",
+          "type",
+          "status",
+          "for_corporation",
+          "date_issued",
+          "date_expired",
+          "is_ship_contract"
+        ],
+        "title": "ContractSchema",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "PaginatedResponse_ContractSchema_": {
+        "properties": {
+          "items": {
+            "description": "List of items for the current page",
+            "items": {
+              "$ref": "#/components/schemas/ContractSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "description": "Current page number",
+            "title": "Page",
+            "type": "integer"
+          },
+          "size": {
+            "description": "Number of items per page",
+            "title": "Size",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "size",
+          "items"
+        ],
+        "title": "PaginatedResponse[ContractSchema]",
+        "type": "object"
+      },
+      "SortDirection": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "title": "SortDirection",
+        "type": "string"
+      },
+      "SortableContractFields": {
+        "description": "Fields that can be used for sorting contracts.",
+        "enum": [
+          "date_issued",
+          "date_expired",
+          "price",
+          "collateral",
+          "ship_name",
+          "volume"
+        ],
+        "title": "SortableContractFields",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "API for the Hangar Bay application, providing access to EVE Online public contract data and related services.",
+    "title": "Hangar Bay API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "read_root__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Root"
+      }
+    },
+    "/cache-test": {
+      "get": {
+        "description": "Temporary endpoint to test cache connectivity and basic operations.",
+        "operationId": "cache_test_cache_test_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Cache Test",
+        "tags": [
+          "Development/Test"
+        ]
+      }
+    },
+    "/contracts/": {
+      "get": {
+        "description": "Retrieves a paginated list of contracts based on specified filters.\n\nThis endpoint uses a service layer to apply advanced filtering, sorting,\nand pagination to public contracts.",
+        "operationId": "list_public_contracts_contracts__get",
+        "parameters": [
+          {
+            "description": "Case-insensitive search across contract title and ship name.",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 3,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive search across contract title and ship name.",
+              "title": "Search"
+            }
+          },
+          {
+            "description": "Minimum price.",
+            "in": "query",
+            "name": "min_price",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum price.",
+              "title": "Min Price"
+            }
+          },
+          {
+            "description": "Maximum price.",
+            "in": "query",
+            "name": "max_price",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum price.",
+              "title": "Max Price"
+            }
+          },
+          {
+            "description": "Minimum collateral.",
+            "in": "query",
+            "name": "min_collateral",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum collateral.",
+              "title": "Min Collateral"
+            }
+          },
+          {
+            "description": "Maximum collateral.",
+            "in": "query",
+            "name": "max_collateral",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum collateral.",
+              "title": "Max Collateral"
+            }
+          },
+          {
+            "description": "Minimum runs for BPCs (-1 for original).",
+            "in": "query",
+            "name": "min_runs",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": -1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum runs for BPCs (-1 for original).",
+              "title": "Min Runs"
+            }
+          },
+          {
+            "description": "Maximum runs for BPCs.",
+            "in": "query",
+            "name": "max_runs",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": -1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum runs for BPCs.",
+              "title": "Max Runs"
+            }
+          },
+          {
+            "description": "Minimum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+            "in": "query",
+            "name": "min_me",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+              "title": "Min Me"
+            }
+          },
+          {
+            "description": "Maximum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+            "in": "query",
+            "name": "max_me",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+              "title": "Max Me"
+            }
+          },
+          {
+            "description": "Minimum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+            "in": "query",
+            "name": "min_te",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+              "title": "Min Te"
+            }
+          },
+          {
+            "description": "Maximum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+            "in": "query",
+            "name": "max_te",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+              "title": "Max Te"
+            }
+          },
+          {
+            "description": "List of region IDs to filter by.",
+            "in": "query",
+            "name": "region_ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "List of region IDs to filter by.",
+              "title": "Region Ids"
+            }
+          },
+          {
+            "description": "List of solar system IDs to filter by.",
+            "in": "query",
+            "name": "system_ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "List of solar system IDs to filter by.",
+              "title": "System Ids"
+            }
+          },
+          {
+            "description": "List of station IDs to filter by.",
+            "in": "query",
+            "name": "station_ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "List of station IDs to filter by.",
+              "title": "Station Ids"
+            }
+          },
+          {
+            "description": "List of ship type IDs to filter by.",
+            "in": "query",
+            "name": "type_ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "List of ship type IDs to filter by.",
+              "title": "Type Ids"
+            }
+          },
+          {
+            "description": "Filter for contracts containing blueprints (BPCs).",
+            "in": "query",
+            "name": "is_bpc",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter for contracts containing blueprints (BPCs).",
+              "title": "Is Bpc"
+            }
+          },
+          {
+            "description": "Filter for contracts flagged as ship contracts (contract-level flag).",
+            "in": "query",
+            "name": "is_ship_contract",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter for contracts flagged as ship contracts (contract-level flag).",
+              "title": "Is Ship Contract"
+            }
+          },
+          {
+            "description": "Page number.",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "Page number.",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items per page.",
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Number of items per page.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Field to sort by.",
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortableContractFields",
+              "default": "date_issued",
+              "description": "Field to sort by."
+            }
+          },
+          {
+            "description": "Sort direction.",
+            "in": "query",
+            "name": "sort_direction",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortDirection",
+              "default": "desc",
+              "description": "Sort direction."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_ContractSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Public Contracts",
+        "tags": [
+          "Contracts"
+        ]
+      }
+    },
+    "/contracts/{contract_id}": {
+      "get": {
+        "description": "Retrieves a single contract by its ID, including its items.",
+        "operationId": "get_contract_contracts__contract_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contract_id",
+            "required": true,
+            "schema": {
+              "title": "Contract Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractSchema"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Contract",
+        "tags": [
+          "Contracts"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Check"
+      }
+    },
+    "/metrics": {
+      "get": {
+        "description": "Endpoint that serves Prometheus metrics.",
+        "operationId": "metrics_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics"
+      }
+    }
+  }
+}

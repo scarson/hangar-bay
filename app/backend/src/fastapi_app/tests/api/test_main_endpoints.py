@@ -11,7 +11,7 @@
 #   routers and dependencies.
 #
 # - `db_session: AsyncSession`: Also from `conftest.py`, this fixture provides
-#   a clean, isolated, in-memory SQLite database session for each individual
+#   a clean, isolated, PostgreSQL test-database session (the dedicated `hangar_bay_test` DB via `DATABASE_URL_TESTS`) for each individual
 #   test function. It handles the creation and teardown of the database schema,
 #   ensuring tests do not interfere with each other.
 #

@@ -93,7 +93,7 @@
 *   Include field names, data types, and brief descriptions.
 *   **AI Assistant Guidance:** If any model fields store user-facing text that might require translation (e.g., descriptions, names not from a fixed external source like ESI), ensure they are designed with internationalization in mind. Consult `../i18n-spec.md` for strategies. For F002, this primarily applies to any frontend-specific state or labels not directly from API data.
 *   This feature primarily consumes data models defined in F001 (`contracts`, `contract_items`, `esi_type_cache`).
-*   Frontend state management for search terms, filter values, sort order, pagination (e.g., using Angular services or component state).
+*   Frontend state management for search terms, filter values, sort order, pagination (URL-driven via TanStack Router typed search params; server data via TanStack Query).
 
 ## 6. API Endpoints Involved (Optional)
 ### 6.1. Consumed ESI API Endpoints
@@ -156,7 +156,7 @@
 *   A clear visual indicator (e.g., an icon or badge) should be present on list items for contracts that include additional non-ship items.
 *   The filter panel should include distinct options for filtering by specific ship types (e.g., autocomplete search for 'Caracal') and by broad ship categories (e.g., dropdown for 'Frigates', 'Cruisers'). It should also include a filter for 'includes other items'.
 *   [NEEDS_DESIGN: Mockups/wireframes for the browsing interface.]
-*   **AI Assistant Guidance:** When generating UI components, ensure all display strings are prepared for localization using Angular's i18n mechanisms (e.g., `i18n` attribute, `$localize` tagged messages) as detailed in `../i18n-spec.md`. Ensure components are designed with accessibility in mind (keyboard navigation, ARIA attributes) as per `../accessibility-spec.md`.
+*   **AI Assistant Guidance:** When generating UI components, ensure all display strings are prepared for localization via the project's frontend i18n layer as detailed in `../i18n-spec.md` (frontend i18n is deferred in Milestone 1 — strings are currently hardcoded English). Ensure components are designed with accessibility in mind (keyboard navigation, ARIA attributes) as per `../accessibility-spec.md`.
 
 ## 9. Error Handling & Edge Cases (Required)
 *   API errors (backend unavailable, invalid request): Display user-friendly error messages.
@@ -192,14 +192,14 @@
     *   Dates (e.g., expiration date, date issued) must be formatted according to the user's locale.
     *   Numbers (e.g., price) must be formatted according to the user's locale (currency symbol, decimal/thousands separators).
 *   **Right-to-Left (RTL) Support:** Consider layout adjustments if RTL languages are to be supported.
-*   Refer to `../i18n-spec.md` for specific Angular i18n patterns.
-*   **AI Assistant Guidance:** "Ensure all user-facing strings in Angular components are externalized or marked for translation using Angular's `@angular/localize` (e.g., `i18n` attributes, `$localize` calls). Use Angular's `DatePipe`, `CurrencyPipe`, `DecimalPipe` for locale-aware formatting of dates and numbers. Refer to `../i18n-spec.md` for specific patterns."
+*   Refer to `../i18n-spec.md` for the frontend i18n approach (deferred; to be defined for the React stack).
+*   **AI Assistant Guidance:** "Ensure all user-facing strings in React components are externalized or marked for translation via the chosen message-catalog library (to be defined for the React stack). Use locale-aware `Intl` formatting (`Intl.DateTimeFormat`/`Intl.NumberFormat`) for dates and numbers. Refer to `../i18n-spec.md` for specific patterns."
 
 ## 14. Dependencies (Optional)
 *   [F001 (Public Contract Aggregation & Display)](./F001-Public-Contract-Aggregation-Display.md): Provides the data.
 *   [F003 (Detailed Ship Contract View)](./F003-Detailed-Ship-Contract-View.md): For navigation from list items.
 *   Backend API.
-*   Frontend framework (Angular).
+*   Frontend framework (React).
 
 ## 15. Notes / Open Questions (Optional)
 *   **Specific fields for list view**: Based on common EVE tools and F001 data, the list view will initially display:
@@ -230,11 +230,11 @@
 *   Backend (FastAPI):
     *   [e.g., Pydantic for validating query parameters for the `/api/v1/contracts/ships` endpoint.]
     *   [e.g., SQLAlchemy for constructing dynamic queries based on filter parameters.]
-*   Frontend (Angular):
-    *   [e.g., `HttpClientModule` for API calls, Angular Material components for UI (table, pagination, form fields, buttons, dropdowns), RxJS for state management and handling asynchronous operations (e.g., debouncing search input).]
-    *   [e.g., Angular Forms (`ReactiveFormsModule` or `FormsModule`) for managing search and filter inputs.]
-    *   [e.g., `@angular/cdk/collections` for `DataSource` if using Material table, or virtual scrolling if lists become very long before pagination.]
-    *   [e.g., `@angular/localize` for i18n.]
+*   Frontend (React):
+    *   [e.g., the generated `openapi-fetch` typed client for API calls; hand-rolled components in `src/components/` styled with Tailwind v4 for UI (table, pagination, form fields, buttons); TanStack Query for server state and async handling; TanStack Router typed URL search params for filter/sort/pagination state (debounce text inputs before navigating).]
+    *   [e.g., controlled React inputs bound to the URL search params for managing search and filter inputs.]
+    *   [e.g., a React virtualization library only if lists grow long before pagination — none selected, deferred to the `/impeccable` design phase; the paginated table (max page size 100) does not need it.]
+    *   [e.g., the chosen React message-catalog library for i18n — deferred, see `../i18n-spec.md`.]
 
 ### 16.2. Critical Logic Points for AI Focus
 *   [e.g., Frontend: State management for all search/filter criteria and pagination state.]
@@ -250,7 +250,7 @@
 *   [e.g., Backend: Ensure search terms are handled safely in SQL queries (SQLAlchemy generally handles this, but be mindful of how LIKE clauses are constructed if building raw SQL fragments).]
 
 ### 16.4. Test Cases for AI to Consider Generating
-*   [e.g., Frontend (Angular - Component Tests): Test that filter changes trigger API calls with correct parameters.]
+*   [e.g., Frontend (React - Component Tests via Testing Library + Vitest): Test that filter changes trigger API calls with correct parameters.]
 *   [e.g., Frontend: Test that pagination controls work correctly and update the displayed data.]
 *   [e.g., Frontend: Test that sorting by different columns updates the API request and display.]
 *   [e.g., Frontend: Test UI behavior for 'no results found' and API error states.]
@@ -258,10 +258,10 @@
 *   [e.g., Backend (FastAPI - Integration Tests): Test the `/api/v1/contracts/ships` endpoint with various combinations of filters, search terms, sorting, and pagination parameters, verifying the SQL queries generated (if possible) and the correctness of the response.]
 
 ### 16.5. Specific AI Prompts or Instructions
-*   [e.g., "Generate an Angular service (`ContractSearchService`) to manage API calls to `/api/v1/contracts/ships`, handle state for filters, search terms, pagination, and sorting. Use RxJS BehaviorSubjects for reactive state management."]
-*   [e.g., "Create an Angular component (`ContractListComponent`) that displays the paginated list of contracts using Angular Material table, including sortable columns. It should consume the `ContractSearchService`."]
-*   [e.g., "Create an Angular component (`ContractFilterPanelComponent`) containing controls for all specified filters (ship type, location, price, etc.) and emitting filter change events to be handled by a parent component or service."]
+*   [e.g., "Generate a TanStack Query hook (e.g., `useContracts`) to manage API calls to `/api/v1/contracts/ships`, deriving the query from the URL search params (filters, search terms, pagination, and sorting)."]
+*   [e.g., "Create a React component (`ContractTable`) that displays the paginated list of contracts with sortable columns. It should consume the `useContracts` hook."]
+*   [e.g., "Create a React component (`FilterRail`) containing controls for all specified filters (ship type, location, price, etc.) that update the URL search params on change."]
 *   [e.g., "On the backend, extend the FastAPI route for `/api/v1/contracts/ships` to accept and process all new filter parameters. Ensure that database queries are constructed dynamically and efficiently using SQLAlchemy, leveraging indexes defined in F001."]
 *   [e.g., "Implement keyword search functionality on the backend. The search should target fields like ship name (from `esi_type_cache`), contract title, and location name (resolved, potentially from a dedicated location cache as noted in F001). Consider using `ILIKE` for case-insensitive search in PostgreSQL."]
-*   [e.g., "Ensure all user-facing text in generated Angular components uses `i18n` attributes or `$localize` for translation, and provide example entries for a localization file (e.g., .xlf) for new strings."]
-*   [e.g., "When implementing UI components for this feature, apply Angular performance best practices (OnPush change detection, `trackBy` for lists) as detailed in `../performance-spec.md`."]
+*   [e.g., "Ensure all user-facing text in generated React components is routed through the i18n layer, and provide an example message-catalog entry for new strings (deferred — see `../i18n-spec.md`)."]
+*   [e.g., "When implementing UI components for this feature, apply React performance best practices (memoization, stable list keys, avoiding unnecessary re-renders) as detailed in `../performance-spec.md`."]

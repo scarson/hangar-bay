@@ -189,6 +189,77 @@ class ESIClient:
         path = f"/v1/contracts/public/items/{contract_id}/"
         return await self.get_esi_data_with_etag_caching(path)
 
+    async def _get_esi_object(self, path: str, cache_seconds: int = 86_400) -> dict[str, Any]:
+        """GET a single-OBJECT ESI endpoint with a plain Valkey TTL cache.
+
+        The paginated ETag helper is list-shaped: `full_data.extend(page)`
+        flattens a dict payload into its KEYS, silently destroying the data
+        (found live when type resolution returned key lists). Object endpoints
+        must come through here instead. These are static-data endpoints, so a
+        long dumb TTL beats conditional requests.
+        """
+        cache_key = f"esi-object:{path}"
+        try:
+            cached = await self.redis_client.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception as e:
+            logger.warning(f"Object cache read failed for {path}: {e}")
+
+        # Bounded retry/backoff mirroring get_esi_data_with_etag_caching: retry
+        # only transient failures (5xx + network errors) so a blip on
+        # /universe/types|groups doesn't silently un-enrich a run's ship contracts.
+        # 4xx (e.g. 404) still falls straight through to raise_for_status below.
+        max_retries = 3
+        backoff_factor = 0.5  # seconds
+        response = None
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                response = await self.http_client.get(path)
+                if response.status_code < 500:
+                    last_exception = None
+                    break
+                last_exception = httpx.HTTPStatusError(
+                    f"Server error '{response.status_code}'", request=response.request, response=response
+                )
+                logger.warning(
+                    f"ESI object request to {path} failed with status {response.status_code}. "
+                    f"Attempt {attempt + 1}/{max_retries}."
+                )
+            except (httpx.ReadTimeout, httpx.ConnectError) as e:
+                last_exception = e
+                logger.warning(f"Network error for {path} on attempt {attempt + 1}/{max_retries}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(backoff_factor * (2 ** attempt))
+
+        if last_exception is not None:
+            if isinstance(last_exception, httpx.HTTPStatusError):
+                raise ESIRequestFailedError(
+                    status_code=last_exception.response.status_code, message=str(last_exception)
+                )
+            raise ESIRequestFailedError(message=f"Network error for {path}: {last_exception}")
+
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ESIRequestFailedError(
+                message=f"Expected JSON object from {path}, got {type(data).__name__}"
+            )
+        try:
+            await self.redis_client.set(cache_key, response.content, ex=cache_seconds)
+        except Exception as e:
+            logger.warning(f"Object cache write failed for {path}: {e}")
+        return data
+
+    async def get_universe_type(self, type_id: int) -> dict[str, Any]:
+        """Fetches static type info (name, group_id, market_group_id)."""
+        return await self._get_esi_object(f"/v3/universe/types/{type_id}/")
+
+    async def get_universe_group(self, group_id: int) -> dict[str, Any]:
+        """Fetches static group info (name, category_id)."""
+        return await self._get_esi_object(f"/v1/universe/groups/{group_id}/")
+
     async def resolve_ids_to_names(self, ids: list[int]) -> dict[int, str]:
         """Resolves a list of EVE Online IDs to their names."""
         if not ids:
