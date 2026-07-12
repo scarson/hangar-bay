@@ -51,6 +51,8 @@ describe('ContractsPage', () => {
 
     expect(await screen.findByText('Tristan')).toBeInTheDocument()
     expect(screen.getByText(/1,000,000/)).toBeInTheDocument()
+    // Descriptive per-view title (WCAG 2.4.2), not the scaffold's "web".
+    expect(document.title).toBe('Ship Contracts — Hangar Bay')
   })
 
   it('falls back to "Contract <id>" when the title is empty and no item name resolves', async () => {
@@ -113,6 +115,24 @@ describe('ContractsPage', () => {
     expect(calls[0]).toContain('region_ids=10000002&region_ids=10000020')
   })
 
+  it('redirects an out-of-range page to the last page instead of a false empty state', async () => {
+    // A shared ?page=9 URL past the last page: the backend echoes {total>0,
+    // items:[]} without clamping. The app must navigate to the last valid page
+    // and render the row — never the contradictory "no contracts match" card
+    // (which the "30 matching" header would flatly contradict).
+    stubFetch((url) =>
+      url.includes('page=9')
+        ? jsonResponse({ total: 30, page: 9, size: 50, items: [] })
+        : jsonResponse({ total: 30, page: 1, size: 50, items: [CONTRACT] }),
+    )
+
+    const { router } = renderApp('/contracts?page=9')
+
+    expect(await screen.findByText('Tristan')).toBeInTheDocument()
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ page: 1 }))
+    expect(screen.queryByText(/no contracts match/i)).not.toBeInTheDocument()
+  })
+
   it('resets to page 1 when a filter changes', async () => {
     const calls = stubFetch(() =>
       jsonResponse({ total: 200, page: 3, size: 50, items: [CONTRACT] }),
@@ -146,6 +166,8 @@ describe('ContractDetailPage', () => {
     // full normalized text, not the bare name (which also appears in the h1).
     expect(screen.getByText(/1× Tristan/)).toBeInTheDocument()
     expect(screen.getByText(/jita/i)).toBeInTheDocument()
+    // Detail title carries the hull name (WCAG 2.4.2 / shareable-URL principle).
+    expect(document.title).toBe('Tristan — Hangar Bay')
   })
 
   it('heads with the item name when the title is blank, and "Contract <id>" as last resort', async () => {
@@ -176,6 +198,7 @@ describe('ContractDetailPage', () => {
     renderApp('/contracts/999')
 
     expect(await screen.findByText(/not found/i)).toBeInTheDocument()
+    expect(document.title).toBe('Contract not found — Hangar Bay')
   })
 
   it('shows not-found for a non-numeric id without issuing a request', async () => {

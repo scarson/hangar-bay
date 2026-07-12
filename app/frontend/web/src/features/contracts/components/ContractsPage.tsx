@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Button } from '../../../components/Button'
+import { useDocumentTitle } from '../../../lib/useDocumentTitle'
 import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
 import { useContracts } from '../hooks/useContracts'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
@@ -21,6 +22,7 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
   const navigate = useNavigate({ from })
   const { data, isPending, isError, isFetching, refetch } = useContracts(search)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  useDocumentTitle(search.ships_only ? 'Ship Contracts' : 'All Contracts')
 
   // Text inputs (search, min/max price) fire on every keystroke, so they
   // navigate with { replace: true } to avoid one history entry per character
@@ -54,22 +56,36 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
           : DEFAULT_DIRECTION[field],
     })
 
+  // A shared `?page=N` URL (or in-session data drift on an expiring market) can
+  // point past the last page — the backend echoes {total>0, items:[]} without
+  // clamping. Redirect to the last page instead of rendering the false
+  // "no contracts match" card, which contradicts the "N matching" header and
+  // traps the user behind "Clear filters" (destroying their query).
+  const pageCount = data ? Math.max(1, Math.ceil(data.total / (data.size ?? DEFAULT_SIZE))) : 1
+  const pageOutOfRange = data !== undefined && data.total > 0 && search.page > pageCount
+  useEffect(() => {
+    if (pageOutOfRange) {
+      navigate({ search: (prev) => ({ ...prev, page: pageCount }), replace: true })
+    }
+  }, [pageOutOfRange, pageCount, navigate])
+
   return (
     <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)] lg:gap-8">
       {/* One FilterRail instance: a static column on desktop, toggled by the
           Filters button below lg. Single instance keeps labels unique in the
           accessibility tree; filter state lives in the URL either way. */}
-      <button
-        className="mb-3 inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border border-line-strong px-3 text-sm text-ink-body transition-colors duration-150 hover:bg-raised lg:hidden"
+      <Button
+        className="mb-3 lg:hidden"
         aria-expanded={filtersOpen}
         aria-controls="filter-rail"
         onClick={() => setFiltersOpen((open) => !open)}
       >
         Filters
+        {/* +/− disclosure marker — distinct from the table's ▲/▼ sort glyphs. */}
         <span aria-hidden="true" className="font-mono text-xs text-ink-dim">
-          {filtersOpen ? '▲' : '▼'}
+          {filtersOpen ? '−' : '+'}
         </span>
-      </button>
+      </Button>
       <aside
         id="filter-rail"
         aria-label="Contract filters"
@@ -79,8 +95,17 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
       </aside>
 
       <section aria-label="Contract results" className="flex min-w-0 flex-col gap-4">
+        {/* Polite status so filter/sort/pagination outcomes reach assistive tech
+            without moving focus off a rail control (WCAG 4.1.3). Always mounted
+            so the text change is announced; the visible count below stays a plain
+            label to avoid a double read. */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {data !== undefined
+            ? `${data.total.toLocaleString('en-US')} contracts match your filters`
+            : ''}
+        </p>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-[1.375rem] font-semibold">
+          <h1 className="text-h1 font-semibold">
             {search.ships_only ? 'Ship Contracts' : 'All Contracts'}
           </h1>
           {data !== undefined ? (
@@ -102,7 +127,10 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
             </p>
             <Button onClick={() => refetch()}>Retry</Button>
           </div>
-        ) : data.items.length === 0 ? (
+        ) : pageOutOfRange ? (
+          // Transient: the effect above is navigating to the last valid page.
+          <ContractTableSkeleton />
+        ) : data.total === 0 ? (
           <div className="flex flex-col items-start gap-3 rounded-md border border-line bg-surface px-5 py-8">
             <h2 className="text-base font-medium text-ink">No contracts match these filters</h2>
             <p className="max-w-[52ch] text-sm text-ink-dim">

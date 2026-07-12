@@ -3,7 +3,11 @@ import type { Contract } from '../../lib/api/client'
 // Fixed locale: M1 is explicitly English-only (spec Non-goals), and tests
 // assert formatted values (pitfall TEST-3).
 const ISK = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
-const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+// Pinned to UTC: EVE is a UTC-native market, and the detail view's DATETIME
+// formatter is likewise UTC — without this the list's "Issued" column renders
+// date_issued in the viewer's local zone (a UTC-midnight timestamp reads as the
+// previous day for anyone west of UTC), an off-by-a-day the audience must trust.
+const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 
 export function formatIsk(value: number | null | undefined): string {
   return value == null ? '—' : ISK.format(value)

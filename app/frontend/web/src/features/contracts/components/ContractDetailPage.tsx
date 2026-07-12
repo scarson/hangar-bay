@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { Badge } from '../../../components/Badge'
 import { Button } from '../../../components/Button'
 import { ApiError } from '../../../lib/api/client'
+import { useDocumentTitle } from '../../../lib/useDocumentTitle'
 import { formatIsk, primaryLabel, timeRemaining } from '../format'
 import { useContract } from '../hooks/useContract'
 
@@ -22,17 +23,37 @@ function BackLink() {
   )
 }
 
-function Field({ label, children, mono = true }: { label: string; children: React.ReactNode; mono?: boolean }) {
+function Field({
+  label,
+  children,
+  mono = true,
+  // Defaults to the standard value color; callers override for emphasis (e.g.
+  // the copper Price row) so the definition-list row is defined in ONE place.
+  valueClassName = 'text-ink',
+}: {
+  label: string
+  children: React.ReactNode
+  mono?: boolean
+  valueClassName?: string
+}) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-b-0">
       <dt className="text-sm text-ink-dim">{label}</dt>
-      <dd className={`text-right ${mono ? 'text-data' : 'text-sm'} text-ink`}>{children}</dd>
+      <dd className={`text-right ${mono ? 'text-data' : 'text-sm'} ${valueClassName}`}>{children}</dd>
     </div>
   )
 }
 
 export function ContractDetailPage({ contractId }: { contractId: number }) {
   const { data, isPending, isError, error, refetch } = useContract(contractId)
+
+  // One title source for every branch (invalid id, 404, loading, loaded) so the
+  // parent effect never fights a child NotFound effect over document.title.
+  const notFound =
+    !Number.isInteger(contractId) ||
+    contractId <= 0 ||
+    (isError && error instanceof ApiError && error.status === 404)
+  useDocumentTitle(notFound ? 'Contract not found' : data ? primaryLabel(data) : 'Contract')
 
   if (!Number.isInteger(contractId) || contractId <= 0) {
     return <NotFound />
@@ -73,11 +94,9 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {/* Hull-first, matching the list (primaryLabel prefers the included
               ship, then first item, then the seller's title, then the id). */}
-          <h1 className="text-[1.375rem] font-semibold">{primaryLabel(data)}</h1>
+          <h1 className="text-h1 font-semibold">{primaryLabel(data)}</h1>
           <span className="inline-flex gap-1.5">
-            <Badge tone={data.type === 'auction' ? 'brand' : 'neutral'}>
-              {data.type === 'auction' ? 'Auction' : 'Exchange'}
-            </Badge>
+            <Badge tone="neutral">{data.type === 'auction' ? 'Auction' : 'Exchange'}</Badge>
             {isBpc ? <Badge tone="copper">BPC</Badge> : null}
             {expiry === 'Expired' ? <Badge tone="neutral">Expired</Badge> : null}
           </span>
@@ -95,12 +114,9 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
             Economics
           </h2>
           <dl>
-            <div className="flex items-baseline justify-between gap-4 border-b border-line py-2">
-              <dt className="text-sm text-ink-dim">Price</dt>
-              <dd className="text-data text-right !text-base font-medium text-(--color-copper)">
-                {formatIsk(data.price)} ISK
-              </dd>
-            </div>
+            <Field label="Price" valueClassName="text-base font-medium text-(--color-copper)">
+              {formatIsk(data.price)} ISK
+            </Field>
             {data.reward != null && data.reward > 0 ? (
               <Field label="Reward">{formatIsk(data.reward)} ISK</Field>
             ) : null}
@@ -157,7 +173,7 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
                   {item.quantity.toLocaleString('en-US')}×{' '}
                   {item.type_name ?? `Type ${item.type_id}`}
                 </span>
-                {item.category === 'ship' ? <Badge tone="brand">Ship</Badge> : null}
+                {item.category === 'ship' ? <Badge tone="neutral">Ship</Badge> : null}
                 {item.is_blueprint_copy ? <Badge tone="copper">BPC</Badge> : null}
                 {!item.is_included ? (
                   <span className="text-xs text-warn">asked for, not included</span>
@@ -174,7 +190,7 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
 function NotFound() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col items-start gap-3">
-      <h1 className="text-[1.375rem] font-semibold">Contract not found.</h1>
+      <h1 className="text-h1 font-semibold">Contract not found.</h1>
       <p className="text-sm text-ink-dim">
         It may have expired, been claimed, or never existed in this dataset.
       </p>

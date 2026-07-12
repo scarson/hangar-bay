@@ -89,13 +89,16 @@ export function ContractTable({
             return (
               <tr
                 key={contract.contract_id}
-                className="relative border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-raised"
+                className="border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-raised"
               >
+                {/* The ship-name link is the only click target (no full-row
+                    ::after overlay) so the spreadsheet-minded audience can still
+                    select/copy the price, location, and time-left cell text. */}
                 <td className="px-3 py-2 text-sm">
                   <Link
                     to="/contracts/$contractId"
                     params={{ contractId: String(contract.contract_id) }}
-                    className="font-medium text-ink after:absolute after:inset-0 hover:text-brand-bright"
+                    className="font-medium text-ink hover:text-brand-bright"
                   >
                     {primaryLabel(contract)}
                   </Link>
@@ -107,7 +110,7 @@ export function ContractTable({
                 </td>
                 <td className="px-3 py-2">
                   <span className="inline-flex gap-1">
-                    <Badge tone={contract.type === 'auction' ? 'brand' : 'neutral'}>
+                    <Badge tone="neutral">
                       {contract.type === 'auction' ? 'Auction' : 'Exchange'}
                     </Badge>
                     {contractIsBpc(contract) ? <Badge tone="copper">BPC</Badge> : null}
@@ -116,8 +119,14 @@ export function ContractTable({
                 <td className="text-data px-3 py-2 text-right text-ink">
                   {formatIsk(contract.price)}
                 </td>
-                <td className="max-w-64 truncate px-3 py-2 text-sm text-ink-dim max-lg:hidden">
-                  {contract.start_location_name ?? `Location ${contract.start_location_id}`}
+                <td className="px-3 py-2 text-sm text-ink-dim max-lg:hidden">
+                  {/* truncate needs a block child: `max-width` on a table cell
+                      does not cap a nowrap string's min-content width, so long
+                      Upwell structure names would stretch the column and shove
+                      the price/time-left protagonists into horizontal scroll. */}
+                  <div className="max-w-64 truncate">
+                    {contract.start_location_name ?? `Location ${contract.start_location_id}`}
+                  </div>
                 </td>
                 <td
                   className={`text-data px-3 py-2 text-right ${

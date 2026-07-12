@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Contract } from '../../lib/api/client'
-import { formatIsk, primaryLabel, timeRemaining } from './format'
+import { formatDate, formatIsk, primaryLabel, timeRemaining } from './format'
 
 function contract(items: Partial<Contract['items'][number]>[], title = ''): Contract {
   return {
@@ -71,5 +71,15 @@ describe('formatIsk', () => {
   it('groups with fixed locale and dashes nulls', () => {
     expect(formatIsk(374_999_999)).toBe('374,999,999')
     expect(formatIsk(null)).toBe('—')
+  })
+})
+
+describe('formatDate', () => {
+  it('renders the UTC calendar day regardless of the viewer timezone', () => {
+    // A UTC-midnight timestamp must read "Jul 1", not "Jun 30" (which is what a
+    // local-zone formatter yields for any viewer west of UTC). Pins the UTC
+    // formatter so the list matches the detail view's UTC datetime.
+    expect(formatDate('2026-07-01T00:00:00Z')).toBe('Jul 1')
+    expect(formatDate('garbage')).toBe('—')
   })
 })

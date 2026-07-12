@@ -11,7 +11,7 @@ export const Route = createRootRoute({
           >
             HANGAR<span className="text-brand">BAY</span>
           </Link>
-          <span className="hidden text-[0.8125rem] text-ink-dim sm:inline">
+          <span className="hidden text-meta text-ink-dim sm:inline">
             EVE Online ship contract market
           </span>
         </div>
