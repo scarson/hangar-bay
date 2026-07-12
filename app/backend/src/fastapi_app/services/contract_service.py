@@ -105,6 +105,10 @@ async def get_contracts(
         if filters.max_collateral is not None:
             query = query.filter(Contract.collateral <= filters.max_collateral)
 
+        # 2b. Contract-level flags (indexed column; no item join required)
+        if filters.is_ship_contract is not None:
+            query = query.filter(Contract.is_ship_contract == filters.is_ship_contract)
+
         # 3. Location filters
         if filters.region_ids:
             query = query.filter(Contract.start_location_region_id.in_(filters.region_ids))

@@ -338,6 +338,8 @@ export interface operations {
                 type_ids?: number[] | null;
                 /** @description Filter for contracts containing blueprints (BPCs). */
                 is_bpc?: boolean | null;
+                /** @description Filter for contracts flagged as ship contracts (contract-level flag). */
+                is_ship_contract?: boolean | null;
                 /** @description Page number. */
                 page?: number;
                 /** @description Number of items per page. */

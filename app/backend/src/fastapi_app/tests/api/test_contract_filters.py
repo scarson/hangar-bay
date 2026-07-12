@@ -320,3 +320,32 @@ async def test_pagination_with_is_bpc_returns_full_distinct_pages(
     assert set(ids1) & set(ids2) == set(), "contract duplicated across pages"
     assert set(ids1) | set(ids2) == {401, 402, 403}, "contract skipped"
     assert ids1 == [401, 402], "price-asc order violated"
+
+
+async def test_filter_by_is_ship_contract(client: AsyncClient, db_session: AsyncSession):
+    """F002 Criterion 1.1 enabler: the default UI view is ship contracts only,
+    which requires a contract-level is_ship_contract filter (mirrors is_bpc)."""
+    now = datetime.now(timezone.utc)
+
+    def make_contract(cid: int, is_ship: bool) -> Contract:
+        return Contract(
+            contract_id=cid, title=f"Contract {cid}", price=1_000_000,
+            collateral=0.0, status="outstanding", type="item_exchange",
+            issuer_id=1, issuer_corporation_id=1, for_corporation=False,
+            is_ship_contract=is_ship, start_location_id=60003760,
+            date_issued=now, date_expired=now + timedelta(days=7),
+        )
+
+    db_session.add_all([make_contract(401, True), make_contract(402, False)])
+    await db_session.flush()
+
+    filtered = (await client.get("/contracts/?is_ship_contract=true")).json()
+    assert filtered["total"] == 1
+    assert filtered["items"][0]["contract_id"] == 401
+
+    unfiltered = (await client.get("/contracts/")).json()
+    assert unfiltered["total"] == 2
+
+    non_ship = (await client.get("/contracts/?is_ship_contract=false")).json()
+    assert non_ship["total"] == 1
+    assert non_ship["items"][0]["contract_id"] == 402

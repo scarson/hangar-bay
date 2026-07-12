@@ -148,6 +148,10 @@ class ContractFilters(BaseModel):
     is_bpc: Optional[bool] = Field(
         default=None, description="Filter for contracts containing blueprints (BPCs)."
     )
+    is_ship_contract: Optional[bool] = Field(
+        default=None,
+        description="Filter for contracts flagged as ship contracts (contract-level flag).",
+    )
     # Pagination
     page: int = Field(default=1, ge=1, description="Page number.")
     size: int = Field(default=50, ge=1, le=100, description="Number of items per page.")

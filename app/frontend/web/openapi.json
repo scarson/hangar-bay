@@ -723,6 +723,24 @@
             }
           },
           {
+            "description": "Filter for contracts flagged as ship contracts (contract-level flag).",
+            "in": "query",
+            "name": "is_ship_contract",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter for contracts flagged as ship contracts (contract-level flag).",
+              "title": "Is Ship Contract"
+            }
+          },
+          {
             "description": "Page number.",
             "in": "query",
             "name": "page",
