@@ -123,4 +123,19 @@ describe('ContractDetailPage', () => {
 
     expect(await screen.findByText(/not found/i)).toBeInTheDocument()
   })
+
+  it('shows not-found for a non-numeric id without issuing a request', async () => {
+    // /contracts/abc -> Number('abc') -> NaN. The component's NaN guard must
+    // short-circuit to NotFound; useContract(NaN) is a disabled query, so no
+    // request should ever leave. Locks both the NotFound rendering and the
+    // no-wasted-request behavior — if the guard is reordered below the
+    // isPending branch, the disabled query's isPending stays true forever and
+    // this page would render an eternal "Loading contract…" instead.
+    const calls = stubFetch(() => jsonResponse(CONTRACT))
+
+    renderApp('/contracts/abc')
+
+    expect(await screen.findByText(/not found/i)).toBeInTheDocument()
+    expect(calls).toHaveLength(0)
+  })
 })
