@@ -763,7 +763,7 @@ git commit -m "feat(frontend): scaffold React 19 + Vite + TS + Tailwind v4 app w
 
 **Context:** File-based routing — the router plugin generates `src/routeTree.gen.ts` during any Vite-driven run (dev, build, and vitest, since vitest loads vite.config.ts). Commit `routeTree.gen.ts` (it's in eslint/prettier ignores). Routes here render mechanical placeholders; Tasks 7–8 fill them in. The `/` route redirects to `/contracts`.
 
-- [ ] **Step 5.1: Write the route files and providers**
+- [x] **Step 5.1: Write the route files and providers**
 
 `src/routes/__root.tsx`:
 
@@ -838,7 +838,7 @@ createRoot(document.getElementById('root')!).render(
 )
 ```
 
-- [ ] **Step 5.2: Write the routing smoke test (fails until routeTree generates + routes exist)**
+- [x] **Step 5.2: Write the routing smoke test (fails until routeTree generates + routes exist)**
 
 `src/test/renderApp.tsx` — shared test harness used by all route/component tests:
 
@@ -888,16 +888,20 @@ describe('route skeleton', () => {
 })
 ```
 
-- [ ] **Step 5.3: Run tests**
+- [x] **Step 5.3: Run tests**
 
 Run: `npm run test`
 Expected: PASS (2 tests). If `routeTree.gen.ts` is missing, run `npx vite build` (NOT `npm run build` — that runs `tsc -b` first, which fails on the unresolvable `./routeTree.gen` import before the plugin ever gets to generate it), then re-run the tests.
 
-- [ ] **Step 5.4: Verify in the browser**
+> **Execution note:** Confirmed `src/routeTree.gen.ts` was absent before the run (red precondition). `npm run test` → 2 passed; the vitest run (loading `vite.config.ts`) triggered the router plugin to generate `src/routeTree.gen.ts` with all four routes — the `npx vite build` fallback was not needed. As additional verification `npm run build` (tsc + vite build) and `npm run lint` both pass. The `Not implemented: Window's scrollTo()` lines are benign jsdom warnings from TanStack Router scroll restoration, not failures.
+
+- [x] **Step 5.4: Verify in the browser**
 
 Run: `npm run dev` — open `http://localhost:5173/`. Expected: URL changes to `/contracts` and the Task 8 placeholder text renders.
 
-- [ ] **Step 5.5: Commit**
+> **Deviation (execution environment — no live dev server):** The live `npm run dev` browser check was not performed. This task was executed by the unattended workflow harness under an explicit "Do NOT start servers" directive (Phase 2 needs no running backend/db — all tests stub the network). The exact behavior this step verifies — `/` redirecting to `/contracts` and the Task 8 placeholder rendering — is asserted programmatically by the Step 5.3 smoke test `src/routes.test.tsx` (`redirects / to /contracts` asserts `router.state.location.pathname === '/contracts'` after finding the `/Task 8/` placeholder text; `renders the contract detail route` finds the `/detail/i` text at `/contracts/12345`). Both passed. No manual browser step is load-bearing beyond what the automated smoke test already covers.
+
+- [x] **Step 5.5: Commit**
 
 ```bash
 git add app/frontend/web/src
