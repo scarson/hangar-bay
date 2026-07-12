@@ -54,7 +54,7 @@ The Hangar Bay application follows a modern web application architecture, design
 The core components are:
 
 *   **Frontend (Client-Side Application):**
-    *   **Technology:** Angular (with TypeScript).
+    *   **Technology:** React 19 with TypeScript (strict), built with Vite. Tailwind CSS v4 for styling; TanStack Router (file-based, typed URL search params) for routing; TanStack Query for server state. (Adopted in the 2026 frontend rebuild, replacing the original Angular implementation — see `docs/superpowers/specs/2026-07-11-frontend-rebuild-milestone-1-design.md`.)
     *   **Responsibilities:** Provides the user interface (UI) for browsing, searching, filtering (F002), and viewing detailed ship contracts (F003). Handles user interactions, makes API requests to the Backend, and renders data. Manages client-side state and routing.
     *   **Interaction:** Communicates exclusively with the Hangar Bay Backend API via HTTPS.
 
@@ -118,7 +118,7 @@ The following technology stack is proposed, with security, performance, and rapi
 
 *   **Scope:** This policy applies to all software dependencies, including but not limited to:
     *   Backend (Python) packages.
-    *   Frontend (Angular - JavaScript/TypeScript) packages and their lock files.
+    *   Frontend (React - JavaScript/TypeScript) packages and their lock files.
     *   Containerization (Docker) base images and packages installed within Dockerfiles.
     *   Consistent major versions for database systems (e.g., PostgreSQL).
 
@@ -153,18 +153,19 @@ Specific versions for the initially chosen technologies will be determined at th
     *   **Data Population:** Production database will be populated with fresh data from ESI and other relevant sources; migration of data from development SQLite instances will not be required.
 *   **Caching Layer: Valkey**
     *   **Reasoning:** A community-driven fork of Redis, offering high performance in-memory caching suitable for ESI responses and frequently accessed data. Chosen for its open-source governance and compatibility with Redis clients.
-*   **Frontend Framework: Angular**
-    *   **Reasoning:** A comprehensive and structured framework with TypeScript support, aligning with the USER's interest in learning it. Capable of building a rich user interface. TypeScript's static typing can contribute to robustness and help avoid certain classes of errors. Angular also has good support for accessibility (see `accessibility-spec.md`).
+*   **Frontend Framework: React 19 (with TypeScript, strict mode)**
+    *   **Reasoning:** Adopted in the 2026 frontend rebuild (see `docs/superpowers/specs/2026-07-11-frontend-rebuild-milestone-1-design.md`): deepest AI-agent training coverage, the best fit for the AI-driven design-system phase, and a hedge toward a future React Native app. TypeScript's static typing contributes to robustness and helps avoid certain classes of errors. Supporting stack: Vite (build), Tailwind CSS v4 (styling), TanStack Router (typed, file-based routing; filter/sort/pagination state lives in URL search params), TanStack Query (server state), and `openapi-typescript`/`openapi-fetch` (API types generated from the backend's OpenAPI schema). Accessibility checks run from lint time onward (`eslint-plugin-jsx-a11y`; see `accessibility-spec.md`).
+    *   **History:** The frontend was originally Angular; that implementation was abandoned and deleted in the 2026 rebuild (git history preserves it).
 *   **Web Server (for serving static frontend assets, if not using a CDN):**
     *   *(Placeholder: e.g., Nginx, Caddy, or cloud provider's static asset hosting. Often the backend API and frontend are served via different mechanisms/domains or through a reverse proxy.)*
 
 ### 6.7. AI Implementation Notes
 *   **General:** AI should prioritize code clarity, modularity, and adherence to specified patterns in feature specs (e.g., structured data models, API endpoint comments).
 *   **Backend (Python/FastAPI):** AI should leverage Pydantic for robust data validation and serialization. Focus on creating efficient database queries and asynchronous operations where appropriate (e.g., ESI calls).
-*   **Frontend (Angular):** AI should generate well-structured components, services, and modules. Utilize Angular Material and CDK for accessible and consistent UI elements. Employ RxJS for managing asynchronous data streams effectively. Ensure internationalization support using `@angular/localize`.
+*   **Frontend (React):** AI should generate well-structured function components and hooks, keeping the generated API client (`src/lib/api/`) and TanStack Query hooks cleanly separated from components. Server state belongs in TanStack Query; filter/sort/pagination state lives in typed URL search params via TanStack Router — components must not hold shadow copies of either. Use the design-system primitives (built on Tailwind CSS v4 during the `/impeccable` phase) for consistent, accessible UI. i18n: no React i18n library has been selected yet — the externalized-strings concern carries forward and the library selection is deferred (Milestone 1 ships hardcoded English by explicit decision; see `i18n-spec.md`).
 *   **Testing:** AI should assist in generating unit tests for all new logic (backend and frontend) and provide outlines for integration/E2E tests as guided by feature specs.
 
-*Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, `observability-spec.md`, and `i18n-spec.md`. The security, accessibility, internationalization, and testing best practices for each chosen technology will be strictly adhered to. This includes secure and accessible configuration, regular patching, and leveraging built-in mechanisms (e.g., `@angular/localize` for Angular i18n, `fastapi-babel` for FastAPI i18n).* 
+*Considerations: Refer to Section 4 (Security) and the detailed `security-spec.md`, `accessibility-spec.md`, `test-spec.md`, `observability-spec.md`, and `i18n-spec.md`. The security, accessibility, internationalization, and testing best practices for each chosen technology will be strictly adhered to. This includes secure and accessible configuration, regular patching, and leveraging built-in mechanisms (e.g., `fastapi-babel` for FastAPI i18n; the frontend i18n library selection is deferred — see `i18n-spec.md`).* 
 
 ## 7. Core Features
 <!-- AI_NOTE_TO_HUMAN: This section outlines the primary functionalities. AI development should focus on implementing these robustly, with attention to the details in their respective feature specification documents. -->
@@ -253,20 +254,20 @@ Primary ESI endpoints for the public contract aggregator model:
 
 *   **AI Action: Responsive and Mobile-Friendly Design:** Ensure the application is usable and provides a good experience on various screen sizes (desktops, tablets, mobile phones).
     *   **AI Implementation Guidance:**
-        *   **Leverage Angular's Capabilities:** Utilize Angular's features for responsive design, such as its component architecture, built-in directives, and integration with responsive grid systems (e.g., Angular Material's layout system, Bootstrap grid, or CSS Grid/Flexbox directly).
+        *   **Leverage the React Stack's Capabilities:** Utilize React's component architecture together with Tailwind CSS v4's responsive utilities (breakpoint variants) and CSS Grid/Flexbox for adaptive layout.
         *   **Fluid Layouts:** Employ fluid grids and flexible images/media that adapt to different viewport sizes. Use relative units (percentages, `em`, `rem`, `vw`, `vh`) and flexible containers to allow content to reflow gracefully.
         *   **Media Queries:** Use CSS media queries extensively to apply different styles and layouts based on screen characteristics.
         *   **Navigation:** Implement mobile-friendly navigation patterns (e.g., collapsible hamburger menus, off-canvas navigation, bottom navigation bars for key actions where appropriate).
         *   **Touch Interactions:** Ensure all interactive elements (buttons, links, form inputs) are adequately sized and spaced to be easily tappable on touchscreens. Avoid reliance on hover states for critical information disclosure.
         *   **Performance Optimization (Mobile):** Optimize assets (images, scripts, styles) for faster loading on mobile networks. Consider techniques like lazy loading for images and non-critical components.
         *   **Readability (Mobile & Desktop):** Ensure text is legible across all screen sizes with appropriate font sizes, line heights, and contrast ratios.
-        *   **Accessibility (Mobile & Desktop):** Design and implement with accessibility in mind from the start. Adhere to WCAG 2.1 Level AA guidelines. Refer to `accessibility-spec.md` for detailed requirements and ensure Angular Material/CDK accessibility features are leveraged.
+        *   **Accessibility (Mobile & Desktop):** Design and implement with accessibility in mind from the start. Adhere to WCAG 2.1 Level AA guidelines. Refer to `accessibility-spec.md` for detailed requirements; prefer semantic HTML, apply ARIA where needed, and keep `eslint-plugin-jsx-a11y` findings at zero.
         *   **Progressive Enhancement/Graceful Degradation:** Design with a mobile-first approach or ensure graceful degradation so core functionality remains accessible on less capable devices or browsers.
         *   **Testing (Mobile):** Thoroughly test on various emulated mobile viewports (using browser developer tools) and, where possible, on a range of real mobile devices. (Refer to `test-spec.md` for detailed testing requirements).
 
 *   **AI Action: Minimalism and Focus:** Design UIs that avoid clutter. Present only relevant information and actions to the user to maintain focus on the core tasks.
 *   **AI Action: Performance and Responsiveness (General):** Ensure the application loads quickly and responds promptly to user interactions. Implement optimized data loading and rendering strategies. (See `performance-spec.md` for detailed guidance).
-*   **AI Action: Consistency:** Maintain a consistent design language (colors, typography, layout, component behavior) throughout the application, leveraging Angular Material theming.
+*   **AI Action: Consistency:** Maintain a consistent design language (colors, typography, layout, component behavior) throughout the application, leveraging the design-system tokens (Tailwind CSS v4 theme/CSS variables) established during the `/impeccable` design phase.
 *   **AI Action: Error Handling and Feedback:** Implement clear, user-friendly error messages and feedback mechanisms for user actions (e.g., loading indicators, success/failure notifications using snackbars or toasts).
 *   **AI Action: Trust and Security Cues:** Visually reinforce trust and security in the UI elements, especially around authentication and user data sections. Use iconography and language that conveys security.
 *   **AI Action: Internationalization (i18n) Support:** Design UI components to be easily localizable. Ensure layouts can accommodate varying text lengths from different languages. Provide a clear mechanism for users to switch languages. All user-facing text must be externalized for translation. (Refer to `i18n-spec.md` for detailed guidance).
@@ -324,7 +325,7 @@ For the MVP, the following cross-cutting concerns will be addressed to the exten
 *   **Security:** Foundational security measures as per `security-spec.md` will be implemented for all MVP components (Frontend, Backend API, Database, ESI integration). This includes input validation, output encoding, secure ESI communication, and protection against common web vulnerabilities.
 *   **Performance:** Core application performance for contract browsing, searching, and viewing will be optimized as per `performance-spec.md`. This includes efficient database queries, backend API response times, and frontend rendering for the MVP features.
 *   **Accessibility (A11y):** The user interfaces for F002 and F003 will adhere to WCAG 2.1 Level AA guidelines as detailed in `accessibility-spec.md`.
-*   **Internationalization (i18n):** The frontend (Angular) will be structured for internationalization using `@angular/localize` as per `i18n-spec.md`. English (en) will be the default and initially supported language for the MVP. The backend (FastAPI) will support locale negotiation for API responses where applicable (e.g., ESI data).
+*   **Internationalization (i18n):** Frontend i18n is explicitly deferred in the current milestone — the React frontend ships hardcoded English strings by decision (see the Milestone-1 spec's Non-goals and the status note in `i18n-spec.md`). The concern carries forward: a React i18n library will be selected when i18n work is scheduled, before any feature milestone builds on it. English (en) is the default and initially supported language. The backend (FastAPI) will support locale negotiation for API responses where applicable (e.g., ESI data).
 *   **Observability:** Basic logging (application events, errors) and health checks for backend services will be implemented as a foundation, guided by `observability-spec.md`.
 *   **Testing:** Unit tests for critical backend and frontend logic for F001-F003 will be developed. Key API endpoints will have integration tests. End-to-end tests will cover core user flows for F002 and F003. All testing will follow `test-spec.md`.
 *   **Deployment:** The application (Frontend and Backend) will be containerized using Docker. Basic deployment scripts or configurations for a chosen environment will be prepared.
@@ -336,7 +337,7 @@ For the MVP, the following cross-cutting concerns will be addressed to the exten
 Accessibility is a core requirement for Hangar Bay. The application MUST be designed and developed to be usable by people with a wide range of disabilities.
 
 *   **Conformance Target:** WCAG 2.1 Level AA minimum. Aspire to Level AAA where feasible.
-*   **Detailed Specification:** A comprehensive `accessibility-spec.md` document is located in the `design` directory. It outlines specific principles (POUR), technology-focused guidance (Angular), and testing requirements.
+*   **Detailed Specification:** A comprehensive `accessibility-spec.md` document is located in the `design` directory. It outlines specific principles (POUR), technology-focused guidance (React), and testing requirements.
 *   **Interaction with Internationalization:** Ensure that accessibility features (e.g., ARIA labels, `alt` text) are translatable and that the page's `lang` attribute is correctly set. Refer to `i18n-spec.md` for details on localizing accessible content.
 *   **AI Assistant Guidance:** AI coding assistants MUST strictly adhere to the guidelines and patterns provided in `accessibility-spec.md` and `i18n-spec.md` when generating or modifying any frontend code or UI-related backend logic.
 
