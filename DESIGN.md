@@ -7,8 +7,8 @@ tokens are semantic so a courtesy light theme could redefine the layer later.
 
 ## Color
 
-OKLCH throughout. Neutrals are tinted toward the brand hue (~180) at 0.006–0.016
-chroma; depth comes from surface lightness, never shadows.
+OKLCH throughout. Neutrals are tinted toward hue 180 (near the brand cyan) at
+0.006–0.016 chroma; depth comes from surface lightness, never shadows.
 
 | Token | Value | Role |
 |---|---|---|
@@ -22,12 +22,12 @@ chroma; depth comes from surface lightness, never shadows.
 | `--color-ink-body` | `oklch(0.85 0.008 180)` | Body text |
 | `--color-ink-dim` | `oklch(0.71 0.01 180)` | Secondary labels (~8:1) |
 | `--color-ink-faint` | `oklch(0.62 0.012 180)` | Hints, placeholders (~5.5:1) |
-| `--color-brand` | `oklch(0.8 0.125 172)` | Oxidized teal: links, selection, focus, active sort |
+| `--color-brand` | `oklch(0.778 0.101 195.3)` | EVE cyan (`#5CCBCB`, sampled from eveonline.com): links, selection, focus, active sort, wordmark `BAY` |
 | `--color-brand-bright` / `-dim` / `-ink` / `-wash` | see tokens | Hover / pressed / on-fill text / selected wash |
 | `--color-copper` | `oklch(0.78 0.115 55)` | Counter-accent: price emphasis + BPC marker ONLY |
 | `--color-danger` / `-wash`, `--color-warn`, `--color-ok` | see tokens | Semantic states |
 
-Rules: brand = interaction, copper = economics, semantic colors = state. No
+Rules: brand = interaction + wordmark identity, copper = economics, semantic colors = state. No
 color carries meaning alone (badges/text always accompany). All text pairs
 verified ≥ 4.5:1 (most ≥ 7:1); interactive borders ≥ 3:1.
 

@@ -2,9 +2,9 @@
 
 /*
  * Hangar Bay design tokens — dark-first market instrument.
- * OKLCH throughout. Neutrals tint toward the brand hue (~180) at low chroma;
- * depth comes from surface lightness, not shadows (dark-theme rule).
- * Brand primary: oxidized teal, hue 172 (palette seed 170 ±10).
+ * OKLCH throughout. Neutrals tint toward hue 180 (near the brand cyan) at low
+ * chroma; depth comes from surface lightness, not shadows (dark-theme rule).
+ * Brand primary: EVE cyan, hue 195.3 (#5CCBCB, sampled from eveonline.com).
  * Counter-accent: copper (hue 55) — reserved for price emphasis.
  * Light mode is intentionally absent (dark-first by decree); tokens are
  * semantic so a courtesy theme could later redefine this layer only.
@@ -30,12 +30,13 @@
   --color-ink-dim: oklch(0.71 0.01 180);
   --color-ink-faint: oklch(0.62 0.012 180);
 
-  /* Brand — oxidized teal */
-  --color-brand: oklch(0.8 0.125 172);
-  --color-brand-bright: oklch(0.87 0.1 172);
-  --color-brand-dim: oklch(0.55 0.09 172);
-  --color-brand-ink: oklch(0.15 0.03 172);
-  --color-brand-wash: oklch(0.21 0.03 180);
+  /* Brand — EVE cyan (#5CCBCB); carries interaction AND the wordmark accent */
+  --color-brand: oklch(0.778 0.101 195.3);
+  --color-brand-bright: oklch(0.87 0.1 195.3);
+  --color-brand-dim: oklch(0.55 0.09 195.3);
+  /* C capped at 0.025 — 0.03 clips out of sRGB gamut at this hue/lightness */
+  --color-brand-ink: oklch(0.15 0.025 195.3);
+  --color-brand-wash: oklch(0.21 0.03 195.3);
 
   /* Copper counter-accent — price emphasis only */
   --color-copper: oklch(0.78 0.115 55);
