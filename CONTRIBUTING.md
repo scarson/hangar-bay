@@ -185,16 +185,12 @@ If you have Docker installed, you can use it to run PostgreSQL and Valkey. A com
 
 ## Version Control Workflow
 
-### Branching Strategy
+This project runs a **two-branch gitflow**. The canonical, authoritative rules — invariants, the worktree lifecycle, recovery procedures, merge authority, and the publication mechanic — live in [`docs/git-strategy.md`](docs/git-strategy.md). This section is the short form; where the two ever disagree, `docs/git-strategy.md` wins.
 
-*   **`main`:** This branch represents the latest stable release. Direct commits to `main` are prohibited. Merges to `main` happen only from `develop` during a release.
-*   **`develop`:** This is the primary development branch where all completed features are merged. It should always be in a state that could potentially be released.
-*   **Feature Branches:** All new development (features, bug fixes, chores) must be done in a feature branch.
-    *   Create feature branches from `develop`.
-    *   Naming convention: `type/scope/short-description` (e.g., `feat/auth/sso-integration`, `fix/ui/login-button-style`, `chore/docs/update-readme`).
-        *   `type`: `feat` (new feature), `fix` (bug fix), `docs` (documentation), `style` (formatting, linting), `refactor`, `perf` (performance), `test`, `chore` (maintenance).
-        *   `scope`: (Optional) The part of the project affected (e.g., `auth`, `ui`, `api`, `db`).
-*   **Hotfix Branches:** For urgent fixes to `main`, branch from `main` (e.g., `hotfix/critical-security-patch`) and merge back into both `main` and `develop`.
+*   **`dev` (integration branch):** The GitHub default branch and the target of **every** feature, fix, and docs PR. It should always be in a releasable state. Do not commit to `dev` directly — it advances only by fetching and resetting to `origin/dev` after PRs merge on GitHub.
+*   **`main` (release branch):** The published state of the project. No direct commits, no feature branches targeting it, no hotfixes landing on it directly. `main` advances **only** via deliberate `dev` → `main` publication PRs (see [`docs/git-strategy.md`](docs/git-strategy.md) §Release branch). There is no `develop` branch — if you have an old clone that predates the switch, run the one-time bootstrap in §One-time bootstrap of that doc.
+*   **Work happens in worktrees, not the root checkout.** Create an isolated worktree + branch in one step: `git worktree add .claude/worktrees/<slug> -b <branch-name>`. Branches are ephemeral — branch → work → PR → merge → delete, in the session that merges. See [`docs/git-strategy.md`](docs/git-strategy.md) §Day-one workflow.
+*   **Branch naming:** conventional prefixes drawn from the Conventional Commits vocabulary — `feat/*`, `fix/*`, `docs/*`, `refactor/*`, `perf/*`, `test/*`, `chore/*`, and `audit/*` for long-cycle campaigns. Optionally group with a scope: `feat/auth/sso-integration`, `fix/ui/login-button-style`. **Agent sessions** use the `claude/<topic>-<suffix>` namespace (e.g. `claude/m2-eve-sso-6a7202`); a `claude/*` branch is not a separate category — it maps onto whichever conventional type its work carries.
 
 ### Commit Messages
 
@@ -204,16 +200,24 @@ If you have Docker installed, you can use it to run PostgreSQL and Valkey. A com
 
 ### Pull Requests (PRs)
 
-*   Once a feature branch is complete and tested, create a Pull Request (PR) to merge it into `develop`.
-*   **PR Title:** Should be clear and descriptive, often similar to the primary commit message of the feature.
+*   Once a branch is complete and tested, open a PR targeting **`dev`**: `gh pr create --base dev --fill` (or supply a full title/body). The `--base dev` is required — without it `gh` falls back to the repo default, which in older clones still resolves to `main`.
+*   **PR Title:** Clear and descriptive; follow [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat(api): add contract detail endpoint`).
 *   **PR Description:**
-    *   Summarize the changes made.
-    *   Explain the "why" behind the changes.
-    *   Link to any relevant issues in the issue tracker (e.g., "Closes #123").
-    *   Include steps for testing or screenshots/GIFs for UI changes if applicable.
-*   Ensure all CI checks (linters, tests) pass before requesting a review.
-*   At least one other developer should review and approve the PR before merging.
-*   Delete the feature branch after the PR is merged.
+    *   Summarize the changes and explain the "why."
+    *   Link relevant issues (e.g., "Closes #123").
+    *   Include testing steps or screenshots/GIFs for UI changes where applicable.
+*   **Every PR body MUST include a `## Merge classification` heading** with exactly one of:
+    *   `Routine — auto-merge on green CI` — docs, tests, mechanical refactors, non-sensitive bug fixes, plan-reviewed features.
+    *   `Review — <trigger>` — the change touches a sensitive domain (auth/secrets/crypto/injection guards, data-integrity paths, or architecture: public interfaces, serialization/wire contracts, DB schema, external API contracts).
+    *   `Escalate — <concern>` — implementation surfaced something needing a maintainer's judgment (CI revealed a design issue, a substantive merge conflict, scope drift, or any other surprise).
+    *   A missing classification defaults to `Review`. Full definitions: [`docs/git-strategy.md`](docs/git-strategy.md) §Merge authority.
+*   **Merging:**
+    *   Ensure CI is green first; wait for it with a monitoring tool, not a sleep-poll loop.
+    *   `Routine` PRs are **self-merged by the author** (human or agent) once CI is green — click-to-approve with no real review is not required and adds no independence. `Review`/`Escalate` PRs are merged by a maintainer (Sam) after their judgment is applied.
+    *   Always merge with a true merge commit: `gh pr merge <n> --merge --delete-branch`. **Never `--squash`, never `--rebase`** — this project preserves full per-commit history for bisection.
+    *   Resolve any conflicts by rebasing in your worktree (not the GitHub UI) and `git push --force-with-lease` (never plain `--force`).
+*   After the merge, delete the branch and worktree, and realign local `dev` (`git fetch origin dev && git reset --hard origin/dev`). See [`docs/git-strategy.md`](docs/git-strategy.md) §Day-one workflow step 5.
+*   **Publication** (`dev` → `main`) is a separate, always-`Review` PR: `gh pr create --base main --head dev`, merged with `--merge --delete-branch=false` (`dev` is permanent). See [`docs/git-strategy.md`](docs/git-strategy.md) §Release branch.
 
 ## Testing
 
@@ -256,7 +260,12 @@ This project follows a strict dependency version pinning policy to ensure reprod
 
 ## Code Review Guidelines
 
-*   (Placeholder: Provide guidelines for both authors and reviewers. e.g., Reviewers should check for correctness, adherence to standards, security, performance, readability. Authors should be responsive to feedback.)
+Review depth is tied to the PR's **merge classification** (see [Pull Requests](#pull-requests-prs) and [`docs/git-strategy.md`](docs/git-strategy.md) §Merge authority), not applied uniformly:
+
+*   **`Routine` PRs do not require a second human reviewer.** CI is the gate; the author verifies their own PR description, confirms green CI, and self-merges. This is deliberate — a rubber-stamp approval adds ceremony without independence.
+*   **`Review` / `Escalate` PRs get a maintainer's judgment before merge.** Reviewers focus on the reason the PR was classified up: correctness and security for sensitive domains (auth, secrets, crypto, injection guards, data integrity), contract/schema stability for architecture changes, and the specific concern named in an `Escalate`.
+*   **Adversarial review for meaningful changes.** Substantial PRs should get an adversarial second opinion (e.g. a `/codex review` pass) before merge, per repo policy.
+*   **Authors** keep PRs small and focused, respond to feedback substantively rather than performatively (see the `superpowers:receiving-code-review` discipline), and fix CI failures to root cause rather than working around them.
 
 ---
 

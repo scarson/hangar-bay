@@ -2,7 +2,7 @@
 
 This file provides guidance to AI coding agents (Codex, Cursor, Cline, Aider, and other AGENTS.md-aware frameworks) when working with code in this repository.
 
-> **Sibling sync.** This file has a sibling at `CLAUDE.md` carrying the same rules for the other agent framework. When updating either, update the other — the two files should stay identical except for framework-specific phrasing (agent names, tool names, the intro line, and this reminder). If you make a change here and you're not sure whether to apply it there, apply it there.
+> **Sibling sync.** This file has a sibling at `CLAUDE.md` carrying the same rules for the other agent framework. When updating either, update the other — the two files should stay **semantically** identical. The only permitted differences are framework-specific phrasing: agent names, tool names, the intro line, this reminder, and **capability-conditional wording** where this file must not assume a tool a given framework may lack (e.g. a Skill tool, `TodoWrite`, a journal tool). Those sections read as "if your framework provides X, … otherwise <fallback>" here and as unconditional mandates in `CLAUDE.md`; the intent is the same. If you make a change here and you're not sure whether to apply it there, apply it there.
 
 ## Terminology
 
@@ -10,10 +10,13 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ## Project Overview
 
-<!-- TODO: 1-3 sentence description; list the major subsystems; link the top-priority
-design docs and pitfalls. -->
+Hangar Bay is a FastAPI + React web app that aggregates EVE Online's public ship contracts (via the ESI API) into a fast, filterable, shareable marketplace view. Three subsystems:
 
-Hangar Bay — a FastAPI + React web app that aggregates EVE Online's public ship contracts (via ESI) into a fast, filterable, shareable marketplace view
+- **`app/backend/`** — FastAPI service (SQLAlchemy 2.0 async over PostgreSQL, Valkey cache, an APScheduler job that ingests ESI contract data). Source under `app/backend/src/fastapi_app/`; it's a PDM project.
+- **`app/frontend/web/`** — React 19 SPA (Vite, TanStack Router + Query, Tailwind v4), talking to the backend through a typed OpenAPI client.
+- **`design/`** and **`docs/`** — product/design specs (`design/features/`, `design/specifications/`) and operational docs (pitfalls, git strategy, superpowers specs/plans/handoffs).
+
+Start here: [`PRODUCT.md`](PRODUCT.md) (what and why), [`DESIGN.md`](DESIGN.md) (architecture), [`docs/pitfalls/`](docs/pitfalls/) (read-before-you-code traps), [`design/features/`](design/features/) (per-feature specs).
 
 ## Principles
 
@@ -77,9 +80,7 @@ When presenting options to Sam, prefer the complete option over the shortcut. Wh
     3. Write ONLY enough code to make the failing test pass
     4. Run the test to confirm success
     5. Refactor if needed while keeping tests green
-- **Scope.** "Feature or bugfix" means production code (typically under `src/`). TDD does NOT apply to: documentation (`docs/`, `*.md`), configuration (`*.json`, `*.yml`, `.editorconfig`), scripts, CI (`.github/`), or spike/prototype code.
-  <!-- TODO: Adjust the scope to this project's layout. Exclude generated-code
-  directories (Kiota, protobuf, OpenAPI/GraphQL codegen, etc.) explicitly. -->
+- **Scope.** "Feature or bugfix" means production code — backend under `app/backend/src/fastapi_app/`, frontend under `app/frontend/web/src/`. TDD does NOT apply to: documentation (`docs/`, `design/`, `*.md`), configuration (`*.json`, `*.yml`, `.editorconfig`), scripts, or spike/prototype code. It also does NOT apply to **generated code**, which is never hand-edited: `app/frontend/web/src/lib/api/schema.d.ts` (openapi-typescript), `app/frontend/web/src/routeTree.gen.ts` (TanStack Router plugin), and `app/frontend/web/openapi.json` (exported backend schema).
 
 ## Writing code
 
@@ -116,15 +117,14 @@ When presenting options to Sam, prefer the complete option over the shortcut. Wh
  - YOU MUST NOT remove code comments unless you can PROVE they are actively false. Comments are important documentation and must be preserved.
  - YOU MUST NOT add comments about what used to be there or how something has changed.
  - YOU MUST NOT refer to temporal context in comments (like "recently refactored" "moved") or code. Comments should be evergreen and describe the code as it is. If you name something "new" or "enhanced" or "improved", you've probably made a mistake and MUST STOP and ask me what to do.
- - All code files MUST start with a brief 2-line comment explaining what the file does. Each line MUST start with "ABOUTME: " to make them easily greppable.
- - **Exception for generated code:** The rules in this section — comment preservation, ABOUTME headers, prohibitions on temporal/change-tracking comments — do NOT apply to auto-generated code.
-   <!-- TODO: Name the generated-code directories + the regen command. Delete
-   this bullet if the project has no codegen. -->
+ - **Files you CREATE MUST start with a brief 2-line header comment** explaining what the file does; each line MUST start with "ABOUTME: " to keep them greppable. When you substantially rewrite an existing file that lacks the header, add it opportunistically — but never as drive-by churn on a file you're only touching lightly, and never reformat an existing header just to match this shape. Generated files are exempt (see the next bullet).
+ - **Exception for generated code:** The rules in this section — comment preservation, ABOUTME headers, prohibitions on temporal/change-tracking comments — do NOT apply to auto-generated code. In this project that is: `app/frontend/web/src/lib/api/schema.d.ts` (regenerate with `npm run generate:api` in `app/frontend/web`), `app/frontend/web/openapi.json` (regenerate with `pdm run export-openapi` in `app/backend`), and `app/frontend/web/src/routeTree.gen.ts` (regenerated by the TanStack Router Vite plugin on dev/build). Never hand-edit these — change the source and regenerate.
 
   Examples:
-  <!-- TODO: 3 BAD examples + 1 GOOD example using this project's actual stack.
-  BAD should use real anti-patterns from PRs; GOOD should name a well-chosen
-  identifier or WHAT-the-code-does comment. -->
+  - BAD: `# improved query` — "improved" is a change-tracking claim, not a description.
+  - BAD: `// moved from ContractsPage` — temporal/historical context; describe what the code does now.
+  - BAD: `# NEW: BigInteger` — "NEW" plus an implementation detail; say why the width is needed, or say nothing.
+  - GOOD: `// Strip the /api/v1 prefix before proxying: the backend mounts its routers bare, and the /api/v1 namespace is owned by the deploy edge / Vite proxy, not FastAPI (PROXY-1).` — explains WHY a non-obvious constraint exists, and points at the pitfall tag.
 
   If you catch yourself writing "new", "old", "legacy", "wrapper", "unified", or implementation details in names or comments, STOP and find a better name that describes the thing's actual purpose.
 
@@ -170,7 +170,7 @@ Two failure modes this rule guards against:
 Every commit message MUST follow [Conventional Commits](https://www.conventionalcommits.org): a `<type>(<optional-scope>): <description>` subject line. This applies to **every individual commit**, not just PR titles — this project merges with `--merge` and preserves full per-commit history (see `docs/git-strategy.md` §Mechanics for auto-merge), so each commit subject is a permanent, bisect-visible record that must stand on its own.
 
 - **Allowed types:** `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `build`, `ci`. The branch-name prefixes in `docs/git-strategy.md` (`feat/*`, `fix/*`, `chore/*`, `docs/*`, `audit/*`) draw from the same vocabulary — that doc is the canonical source for the prefix list. Where a branch prefix names a campaign (e.g. `audit/*`), its commits use a standard type with the campaign as the scope: `docs(audit): …`, as in git-strategy §Output persistence.
-  <!-- TODO: Trim or extend this type list to the set this project actually uses, and enumerate any project-specific scopes (e.g. `feat(parser):`, `fix(api):`). -->
+  Scopes seen/expected in this repo: `api`, `web`, `auth`, `pitfalls`, `handoff`, `strategy`, `e2e`, `ci` (e.g. `feat(api): …`, `fix(web): …`, `docs(strategy): …`). Scope is optional — omit it when a change is genuinely cross-cutting.
 - **Description** is imperative mood, lower-case, no trailing period: `fix(auth): reject tokens with skewed clocks`, not `Fixed the auth bug.`
 - **Breaking changes** carry a `!` before the colon (`feat(api)!: drop v1 envelope`) and/or a `BREAKING CHANGE:` footer.
 - The subject still obeys the §Cross-references rule above: self-identifying, no opaque session shorthand. `fix: address Option C` is forbidden — name the actual thing.
@@ -208,8 +208,8 @@ Every commit message MUST follow [Conventional Commits](https://www.conventional
 
 ## Issue tracking
 
-- You MUST use your TodoWrite tool to keep track of what you're doing. Use it whenever you have 3+ distinct steps, multi-hour work, or multi-file edits. Skip it for single-file edits, trivial commits, or simple Q&A.
-- You MUST NOT discard tasks from your TodoWrite todo list without Sam's explicit approval
+- If your framework provides a task/todo tool (e.g. a `TodoWrite`-style tool), you MUST use it to track what you're doing whenever you have 3+ distinct steps, multi-hour work, or multi-file edits. Skip it for single-file edits, trivial commits, or simple Q&A. If your framework has no such tool, keep the same discipline in whatever persistent form it offers — a checklist at the top of your working notes, a scratch file, or your harness's task list.
+- You MUST NOT discard tracked tasks without Sam's explicit approval.
 
 ## Completion status & escalation
 
@@ -297,47 +297,89 @@ Redundancy is the feature. Each layer has different durability and different acc
 
 ## Learning and Memory Management
 
-- YOU MUST use the journal tool frequently to capture technical insights, failed approaches, and user preferences
-- Before starting complex tasks, search the journal for relevant past experiences and lessons learned
+- If your framework provides a journal/memory tool, use it frequently to capture technical insights, failed approaches, and user preferences. If it does not, record the same in a durable location that travels with the repo or your session (e.g. a dated `docs/learnings/` note, or your harness's memory store).
+- Before starting complex tasks, search that journal/memory for relevant past experiences and lessons learned.
 - Document architectural decisions and their outcomes for future reference
 - Track patterns in user feedback to improve collaboration over time
-- When you notice something that should be fixed but is unrelated to your current task, document it in your journal rather than fixing it immediately
+- When you notice something that should be fixed but is unrelated to your current task, record it (journal/memory/notes, per above) rather than fixing it immediately
 
 **Reflection trigger.** Before reporting a substantive task as DONE, ask: did any commands fail unexpectedly? Did you take a wrong approach and have to backtrack? Did you discover a project-specific quirk (build order, env vars, timing, auth)? Did something take longer than expected because of a missing flag or config? If yes, log a brief operational note to your private journal (or whatever pattern-store the project uses — an MCP journal, a `gstack-learn`-style command, a dated `docs/learnings/` file, etc.). The threshold: would knowing this save 5+ minutes in a future session? If yes, log it. If no, skip — don't pad the journal with obvious details or one-time transient errors.
 
 ## Build & Dev Commands
 
-<!-- TODO: Copy-paste-ready one-liners for build / test / lint / publish.
-Group by subsystem if the project has multiple (e.g., backend + frontend).
+**Dependencies (Docker):** Postgres + Valkey come from compose:
 
 ```bash
-[BUILD COMMAND]
-[TEST COMMAND]
-[LINT COMMAND]
-[PUBLISH COMMAND]
+docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.dependencies.yml up -d --wait postgres_db valkey_cache
 ```
--->
+
+**Backend** (run from `app/backend/`):
+
+```bash
+pdm install                 # install deps into .venv
+pdm run dev                 # uvicorn on :8000 — DESTRUCTIVE: drops+recreates ALL tables
+                            #   and re-ingests ESI data on EVERY start (ENV-2/ENV-3)
+pdm run pytest              # test suite (drops/recreates the DATABASE_URL_TESTS database)
+pdm run lint                # flake8
+pdm run format              # black
+pdm run export-openapi      # writes app/frontend/web/openapi.json from the live schema
+```
+
+**Frontend** (run from `app/frontend/web/`):
+
+```bash
+npm install
+npm run dev                 # Vite on :5173, proxies /api/v1 -> :8000
+npm run test                # vitest (unit/component; excludes e2e/** — TEST-6)
+npm run e2e                 # Playwright fixture lane (desktop+mobile; live-smoke auto-skips)
+E2E_LIVE=1 npx playwright test --project=live-smoke   # live smoke vs real backend on :8000
+npx eslint .                # lint (or: npm run lint)
+npx tsc -b                  # typecheck
+npm run build               # tsc -b && vite build
+npm run generate:api        # regenerate src/lib/api/schema.d.ts from openapi.json
+```
+
+After a backend schema change, regenerate the client end-to-end: `pdm run export-openapi` (backend) → `npm run generate:api` (frontend).
 
 ## Tech Stack
 
-<!-- TODO: Concise table — language, framework, testing, CI/CD, packaging. -->
+| Layer | Backend | Frontend |
+|---|---|---|
+| Language | Python 3.11+ | TypeScript |
+| Framework | FastAPI 0.115 | React 19 + Vite |
+| Data/state | SQLAlchemy 2.0 (async) + asyncpg → PostgreSQL; Valkey (redis-py) cache | TanStack Router + TanStack Query |
+| Scheduling | APScheduler (ESI ingestion) | — |
+| Styling | — | Tailwind CSS v4 |
+| API client | Pydantic v2 schemas → exported OpenAPI | openapi-typescript + openapi-fetch |
+| Logging | structlog | — |
+| Testing | pytest | vitest + Playwright |
+| Packaging | PDM | npm |
+
+CI/CD: none yet.
 
 ## Architecture (Key Points)
 
-<!-- TODO: Major layers/components, how they connect, key design decisions
-(auth pipeline, error model, serialization approach). Brief > verbose. -->
+- **Aggregation pipeline.** An APScheduler job drives an `ESIClient` that fetches EVE contract data, using ETag + Valkey caching to avoid refetching unchanged pages, and writes normalized rows into PostgreSQL. This runs on startup and on a schedule.
+- **API layer.** Routers are mounted **bare** (their `APIRouter(prefix="/contracts")` etc., no `/api/v1`). The `/api/v1` prefix is owned by the Vite dev proxy and the deploy edge, which strip it before the request reaches FastAPI — **PROXY-1**. There is **no CORS** config: the frontend is same-origin with the backend through that proxy.
+- **Schemas & client.** Request/response models are Pydantic v2 in `fastapi_app/schemas/`. The OpenAPI schema is exported (`pdm run export-openapi`) and codegen'd into a typed TS client (`openapi-typescript` → `schema.d.ts`, consumed via `openapi-fetch`).
+- **Dev-destructive startup.** Every backend boot drops+recreates all tables and re-ingests — **ENV-2/ENV-3**. An empty contract list right after startup is expected, not a bug; data appears a few minutes in.
+- **Two Settings classes trap.** There are currently two `Settings(BaseSettings)` definitions — `fastapi_app/config.py` and `fastapi_app/core/config.py` — **ENV-1**. Consolidation is planned in M2; until then, be sure you're editing the one actually loaded by the code path you're touching.
 
 ## Conventions
 
-<!-- TODO: Project-specific conventions that don't fit elsewhere (test project
-layout, generated-code directories, naming conventions, domain grouping). -->
+- **Backend.** Pydantic schemas live in `fastapi_app/schemas/`; routers in `fastapi_app/api/`, each declaring its own `prefix` on the `APIRouter` (never `/api/v1` — see PROXY-1); business logic in a `services/` layer; models in `fastapi_app/models/`.
+- **Frontend.** Feature folders under `src/features/<feature>/{components,hooks}`. Hooks are named `use<Thing>.ts` and use hierarchical TanStack Query keys. The typed client lives in `src/lib/api/`.
+- **E2E.** Wire-shape fixtures live in `e2e/fixtures/`; specs use role/label selectors only (no CSS/test-id selectors), and Playwright `retries` stay at **0** — flakes get fixed with deterministic synchronization, never masked (TEST-2).
 
 ## Language / Framework Gotchas
 
-READ `docs/pitfalls/implementation-pitfalls.md` for the full list. <!-- Run `pitfalls-docs-init` if docs/pitfalls/ does not exist. --> Critical items:
+READ `docs/pitfalls/implementation-pitfalls.md` and `docs/pitfalls/testing-pitfalls.md` for the full list. Critical items:
 
-<!-- TODO: Top 3-5 non-obvious traps with tag references (e.g., `(AOT-1)`).
-Example: "**No anonymous types in JSON under AOT.** Use concrete types. (AOT-1)" -->
+- **GET filter models take `Annotated[Model, Query()]`, never a bare `Depends(Model)`.** A bare `Depends` on a Pydantic model pushes list fields into the request *body* on a GET. (FASTAPI-1)
+- **Every backend `.py` edit under `--reload` wipes the database and re-ingests.** Batch your backend edits, then do one clean lock-clear/reload cycle — don't edit-reload-edit-reload. (ENV-2 / ENV-3)
+- **Don't add `/api/v1` in FastAPI.** Routers mount bare; the prefix and trailing-slash handling belong to the proxy/edge. Keep paths verbatim. (PROXY-1)
+- **Vitest excludes `e2e/**`.** Playwright specs use the `*.spec.ts` suffix under `e2e/`; unit/component tests use `*.test.ts(x)`. Mixing them makes `vitest run` choke on Playwright's `test.describe`. (TEST-6)
+- **Error-state tests must exhaust the QueryClient's retry.** The client retries once, so a stub that fails only the first call auto-recovers and the error branch never renders — fail as many consecutive calls as the retry policy issues. (TEST-7)
 
 ### Universal Gotchas
 
@@ -357,40 +399,51 @@ When running comparative evaluations (framework selections, technology spikes):
 
 **Commit frequently** — aim for small, focused commits that are individually CI-passing. Each logical unit (a package, a migration, a handler) should be its own commit. Large commits make review harder and lose context if context is compacted.
 
-<!-- TODO: Project-specific workflow rules — phase-estimate file updates,
-generated-artifact regen cadence, post-phase pitfall updates, etc. -->
+Project-specific workflow rules:
+
+- **Read `docs/pitfalls/` before coding.** The traps there (FASTAPI-*, ENV-*, PROXY-1, SQLA-1, TEST-*) are ones we've already paid for.
+- **Batch backend edits.** Because each backend `.py` save under `--reload` wipes the DB and re-ingests (ENV-3), group edits and do a single clean reload cycle rather than saving repeatedly.
+- **Regenerate the OpenAPI client chain after any backend schema change:** `pdm run export-openapi` → `npm run generate:api`. Commit the regenerated `openapi.json` and `schema.d.ts` alongside the schema change.
+- **Update `docs/pitfalls/` when a root cause is a reusable trap** — add the entry in the same PR that fixed it.
+- **Specs, plans, and handoffs live under `docs/superpowers/`.**
 
 ## Project Layout
 
-<!-- TODO: Choose ONE of two shapes depending on project size.
-
-Shape A — small/medium project: inline top-level directory tree with one-line
-purpose annotations. Focus on STRUCTURAL ROLES, not file lists — Claude can
-`ls` for details.
-
 ```
-[PROJECT NAME]/
-  src/                             # production code
-  test/                            # test projects
-  docs/                            # plans, pitfalls, design docs
-  scripts/                         # automation
+hangar-bay/
+  app/
+    backend/                          # FastAPI service (PDM project)
+      src/
+        fastapi_app/
+          api/                        # routers (bare prefixes; no /api/v1)
+          core/                       # config, cross-cutting infra
+          models/                     # SQLAlchemy models
+          schemas/                    # Pydantic v2 request/response models
+          services/                   # business logic (ESI client, aggregation)
+          tests/                      # pytest suite
+      docker/                         # compose.yml + dependency/observability stacks
+    frontend/
+      web/                            # React 19 SPA (Vite)
+        src/
+          components/                 # shared UI
+          features/<feature>/         # {components,hooks} per feature
+          lib/                        # api/ (typed client), utils
+          routes/                     # TanStack Router file-based routes
+          test/                       # vitest setup/helpers
+        e2e/                          # Playwright specs + fixtures/ + helpers/
+  design/                             # product & spec docs (features/, specifications/)
+  docs/
+    pitfalls/                         # implementation-pitfalls.md, testing-pitfalls.md
+    superpowers/                      # specs/, plans/, handoffs/
+    git-strategy.md                   # canonical git workflow
+  .claude/worktrees/                  # ephemeral per-branch worktrees (gitignored)
 ```
-
-Shape B — larger project: externalize the full tree to a root `INDEX.md`
-(agent-oriented recursive index with a last-regeneration-date header) and
-keep only a ~7-line headline skeleton here plus a pointer. Saves ~600-1000
-tokens per session load and keeps the authoritative tree in one place. If
-you pick Shape B, include a self-correcting rule in the pointer: "If
-verification surfaces any discrepancy between INDEX.md and the filesystem,
-YOU MUST update INDEX.md to reflect reality — don't route around the drift
-silently. Update the regeneration-date header on the same edit."
--->
 
 ## Skills & Subagents
 
 Use these proactively — don't wait to be asked.
 
-**Workflow skills** (invoke with the Skill tool):
+**Workflow skills.** If your framework provides a skill-invocation mechanism (e.g. a Skill tool), invoke the matching skill below rather than improvising. If it does not, treat each row as a named procedure and follow its discipline manually — the workflows still apply even when there's no tool to load them.
 
 | Skill | When to use |
 |-------|-------------|
@@ -409,31 +462,18 @@ Use these proactively — don't wait to be asked.
 | `commit-commands:commit` | When creating a git commit |
 | `commit-commands:commit-push-pr` | When committing, pushing, and opening a PR |
 
-**When to dispatch parallel subagents on this project:**
-<!-- TODO: Project-specific triggers (bug hunts, per-platform work, independent
-plan phases, large doc rewrites by section). Opus 4.7 spawns fewer subagents
-by default — lean into parallelism when work is genuinely independent. -->
+**When to dispatch parallel subagents on this project** (if your framework supports subagents): independent plan tasks (backend + frontend halves of a feature), multi-file recon (tracing a flow across `api/` → `services/` → `models/`), bug hunts, and doc sweeps (updating many specs/pitfalls by section). Lean into parallelism when the work is genuinely independent.
 
-**Project-specific skills:**
-
-<!-- TODO: Table of project-specific skills, or delete this subsection if none
-exist yet. -->
+**Project-specific skills:** none yet.
 
 ## Skill routing
 
-When the user's request matches an available skill, you MUST invoke it using the Skill tool as your FIRST action. Do NOT answer directly, do NOT use other tools first. The skill has specialized workflows that produce better results than ad-hoc answers.
-
-<!-- TODO: Key routing rules — trigger phrase → skill. If some workspace skills
-are intentionally NOT routed (e.g., gstack web-product skills in a CLI project),
-list them with an explicit "invoke only if user explicitly asks" note.
-
-Starter shape:
+If your framework provides a skill-invocation mechanism (e.g. a Skill tool) and the user's request matches an available skill, you MUST invoke that skill as your FIRST action — do NOT answer directly or use other tools first, because the skill carries a specialized workflow that beats an ad-hoc answer. If your framework has no skill mechanism, treat the routing rules below as pointers to the *disciplines* to apply (and, where a named workflow doc exists in the repo, read it) rather than tools to load.
 
 Key routing rules:
-- Bugs, errors, "why is this broken" → invoke investigate
-- Ship, deploy, push, create PR → invoke ship
-- Code review, check my diff → invoke review
-- Save progress, checkpoint, resume → invoke checkpoint
-- Writing implementation plans → invoke writing-plans-enhanced
-- Review a plan before committing → invoke plan-review-cycle
--->
+
+- New feature or any creative/design work → the `superpowers:brainstorming` discipline **first**, before writing code.
+- Writing an implementation plan → `superpowers-plus:writing-plans-enhanced`, then `superpowers-plus:plan-review-cycle` before committing the plan.
+- Any bug, test failure, or unexpected behavior → `superpowers:systematic-debugging`.
+- Before claiming work is done / fixed / passing → `superpowers:verification-before-completion`.
+- Adversarial second opinion on a PR → `/codex review`. Repo policy: meaningful PRs get a codex adversarial review before merge.

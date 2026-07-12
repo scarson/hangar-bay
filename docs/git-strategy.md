@@ -13,6 +13,7 @@ This doc captures the policy so the failure doesn't recur.
 ## Contents
 
 - [Invariants](#invariants)
+- [One-time bootstrap (existing clones)](#one-time-bootstrap-existing-clones) — realign an old clone to the `dev` default
 - [Day-one workflow for any new work](#day-one-workflow-for-any-new-work)
 - [What NOT to do](#what-not-to-do)
 - [Recovery from a messy state](#recovery-from-a-messy-state)
@@ -32,12 +33,28 @@ This doc captures the policy so the failure doesn't recur.
 2. **Local `dev` mirrors `origin/dev`.** Any divergence is transient — at most one operation away from being pushed or reset.
 3. **Work happens in dedicated worktrees.** `git worktree add .claude/worktrees/<name> -b <branch>` creates both the worktree and the branch atomically. The worktree is the workspace (for whoever — agent or human — is doing the work); the branch is the merge vehicle.
 4. **Branches are ephemeral.** Branch → work → PR → merge → delete branch + worktree **in the same session that performed the merge, before starting the next task**. That's the concrete bar — not "promptly" in the hand-wavy sense, but *this session, now, before I move on*. For day-sized work the branch's whole lifecycle fits in one session. For long campaigns (audits, multi-phase refactors, research with a Living Document), the branch lives for the duration of the campaign and is deleted in the session that merges its final PR. See §Campaign branches for the long-cycle pattern. No branch — regardless of prefix (`feat/*`, `fix/*`, `chore/*`, `audit/*`, etc.) — persists past its PR merge.
-5. **Push after every merge.** Local `dev` never sits ahead of `origin/dev` for more than the single operation between merge and push.
+5. **Local `dev` advances only by fetch + reset, never by local commit or push.** Merges land on `origin/dev` on GitHub via `gh pr merge` (see §Mechanics for auto-merge); the root checkout then re-syncs with `git fetch origin dev && git reset --hard origin/dev`. Local `dev` is a read-only mirror of `origin/dev` — in normal flow it never originates a commit and is never the source of a push. (The lone exception is the recovery path in §Recovery from a messy state, where local-only commits that predate this discipline get pushed once before the mirror is restored.)
 6. **Only one session writes to local `dev` at a time.** Concurrent merges by different sessions into local `dev` cause the three-way divergence described in §Why this exists.
 
    **Concrete test:** if you are running any of `gh pr merge`, `git push origin dev`, or `git reset --hard origin/dev` against local `dev` *right now*, you are the writer for that operation. No other session may run any of those at the same time — full stop, no exceptions, no "probably fine if it's fast." If you don't know whether another session is about to write, wait and ask.
 
    The practical consequence: worker sessions that push their branch and open a PR don't merge; the session that does the merge is the writer for that turn. Call that session the "orchestrator" if you like — the role name is shorthand, the mutual-exclusion test above is the load-bearing rule. In a single-session setup where one session authors + dispatches analysis subagents + merges, that session is the only writer by construction and there's no race to manage.
+
+## One-time bootstrap (existing clones)
+
+The GitHub default branch is now `dev`, so a **fresh** `git clone` checks out `dev`, sets `origin/HEAD → origin/dev`, and creates a local `dev` automatically — nothing to do. **Existing** clones made before the switch are the problem: their `origin/HEAD` still points at `main`, they may have no local `dev` at all, and `gh` commands that fall back to the repo's default branch (notably `gh pr create` without `--base`) will silently target `main`. Run this once per pre-existing clone to realign it:
+
+```bash
+cd <repo-root>
+git fetch origin                      # get origin/dev and any new refs
+git remote set-head origin -a         # repoint origin/HEAD to the remote's
+                                      #   current default (now origin/dev)
+git switch dev                        # DWIM-creates a local dev tracking
+                                      #   origin/dev if you don't have one yet
+git branch --show-current             # confirm: prints 'dev'
+```
+
+After this, `origin/HEAD` resolves to `origin/dev`, a local `dev` exists tracking `origin/dev`, and default-branch fallbacks behave. You still pass `--base dev` explicitly on every `gh pr create` (see Day-one workflow step 4) — the bootstrap fixes the fallback, but explicit is safer than relying on it.
 
 ## Day-one workflow for any new work
 
@@ -55,6 +72,8 @@ This is a project convention, not a universal rule. The alternative (nested dirs
 # 1. Ensure the root checkout is on dev and fresh
 cd <repo-root>
 git branch --show-current                 # must print 'dev'
+# If this prints something else (or there is no local 'dev' at all), you're on
+# a pre-switch clone — run the §One-time bootstrap steps once, then continue.
 git fetch origin dev
 git log --oneline origin/dev..dev       # should be empty
 # If non-empty and you want to keep those commits: push first.
@@ -74,7 +93,11 @@ cd .claude/worktrees/<name>
 
 # 4. Push the branch and open a PR
 git push -u origin <branch-name>
-gh pr create --fill   # or full body per project conventions
+gh pr create --base dev --fill   # or full body per project conventions.
+#   --base dev is REQUIRED: without it gh targets the repo default branch,
+#   which in existing clones still resolves via origin/HEAD to main. Every
+#   feature/fix/docs PR targets dev; only the publication PR targets main
+#   (see §Release branch).
 
 # 4a. If the PR develops conflicts with dev:
 #       cd .claude/worktrees/<name>
@@ -108,7 +131,7 @@ If the PR is closed WITHOUT merging (scope rejected, approach abandoned, duplica
   - **Destructive realignment** — local `dev` has divergent commits that you've decided are not worth keeping. The reset drops them permanently. In this mode you MUST stop, surface the divergent commits to the user (`git log --oneline origin/dev..dev`), and receive explicit user approval before running the reset.
 - **No `git pull` on `dev`** — via terminal or VS Code Sync. A diverged local dev + remote dev produces a merge-of-dev-into-dev commit. Use `git fetch origin dev && git reset --hard origin/dev` to realign.
 - **No branches living past their PR merge.** Merged-branch-still-exists is where the zoo starts. Delete on merge.
-- **No `git add -A`, `git add .`, or `git commit -a`.** All three stage more than you mean to. Explicit paths only. Keeps stale test fixtures, secrets, and cross-agent residue out of commits.
+- **Prefer explicit paths; don't blind-stage with `git add -A`, `git add .`, or `git commit -a`.** All three stage more than you mean to — stale test fixtures, secrets, and cross-agent residue slip in. Explicit paths are the default and stay preferred. The one carve-out (matching CLAUDE.md §Version Control, "not `git add -A` unless you've just done a `git status`"): `git add -A` is acceptable *immediately* after a `git status` you have actually read, once you've confirmed every listed path belongs in this commit. `git commit -a` gets no such exception — it stages tracked changes with no status-review step in between.
 - **No skipping hooks** (`--no-verify`, `--no-gpg-sign`) unless the user has explicitly authorized skipping for this specific operation. If a hook fails, fix the underlying issue — don't bypass it because "the user seemed okay with it last time."
 
 ## Recovery from a messy state
@@ -141,10 +164,12 @@ git reset --hard origin/dev
 git branch --merged dev
 ```
 
-Every branch listed (except `dev` itself) is already fully absorbed into `dev`. Safe to delete.
+Every branch listed is already fully absorbed into `dev` — **except the two permanent branches, `dev` and `main`, which you MUST NOT delete.** Both show up in this list (`dev` is the compare target; `main` is a release branch whose commits are all ancestors of `dev`), and both are load-bearing. Everything *else* in the list is a reclaimable ephemeral branch, safe to delete.
 
 ```bash
-# Delete each reclaimable branch. -d refuses if not merged (safety).
+# Delete each reclaimable branch — never dev, never main. -d refuses if not
+# merged (safety). To list only the deletable ones:
+git branch --merged dev | grep -vE '^\*| (dev|main)$'
 git branch -d <branch-name>
 ```
 
@@ -196,6 +221,7 @@ Multi-agent safety has two orthogonal dimensions — **git isolation** (preventi
 - **Every session that WRITES to the tree (commits, pushes) needs its own worktree.** Reads are different — see below. Two concurrent writers in the same worktree produce interleaved edits that cost hours to reconcile.
 - **Dispatched writer sessions MUST create a worktree, not reuse the parent checkout.** If your agent framework has an isolation setting (e.g. Claude Code's Agent tool takes `isolation: "worktree"`), enable it. If the framework has no such setting, the dispatch prompt itself must instruct the agent to `git worktree add .claude/worktrees/<name> -b <branch-name>` before doing any work. Without this, the dispatched writer will check out a branch in whatever checkout it was launched from — often the root checkout.
 - **Analysis dispatches (read-only, return findings, no commits) do NOT need their own worktree.** They can read from any checkout safely because reads don't conflict. One caveat: an analysis dispatch sees the state of whatever ref it was launched against. To audit an in-flight branch's state, launch the dispatch from that branch's worktree. To audit `origin/dev`, launch from the root checkout. Being clear about which ref you're auditing prevents the "I audited the wrong thing" failure mode.
+- **Persistence-only writes by analysis subagents are exempt from writer isolation.** This is the one deliberate seam between the two rules on this page: the output-persistence rule below (§Output persistence) requires analysis subagents to write their report *into the orchestrator's worktree* before returning. That is a tree write, but it does NOT make the subagent a "writer" for isolation purposes and does NOT earn it a dedicated worktree. The exemption is narrow and load-bearing: it covers **only** report/artifact files at dedicated, non-source paths — `docs/plans/`, `docs/superpowers/`, `docs/audits/<topic>/`, `dev/bug-hunts/`, or a scratch report file — which cannot collide with another writer's source edits, and which the orchestrator (the single writer for that branch) commits. Source-tree writes get no exemption: an analysis subagent that needs to modify application code, config, tests, or any non-artifact file **is** a writer and MUST take its own worktree (or hand the edit back to the orchestrator).
 - **Fetch before comparing.** When scripts or agents compare against `dev`, always use `origin/dev` after `git fetch origin dev`. Never the local `dev` ref — it can be stale by minutes when another agent just merged.
 
 ### Output persistence — analysis dispatches MUST write findings before returning
@@ -263,7 +289,7 @@ Shapes to use: `<worktree-root>/dev/bug-hunts/YYYY-MM-DD-<topic>-<variant>.md`, 
 
 **Stacked PRs are the escape hatch and are out of scope for this version.** If a campaign genuinely requires parallel writers, the pattern is: each writer has a sub-branch off the campaign branch, sub-branches merge into the campaign branch via PR, campaign branch merges into dev via final PR. This works, but the mechanics (rebase ordering, in-flight sub-branches, final-merge bookkeeping) aren't documented here. If you hit this, surface to the user — don't retrofit stacked-PRs without a documented pattern.
 
-**Session-to-session hand-off:** when a campaign spans sessions, the outgoing session commits any in-progress work (even WIP commits, as long as CI would still be green or the commit is marked `wip:` and not the merge head) and updates any Living Document to reflect current state (see §Living documents on campaign branches). The incoming session reads the branch's latest state from committed artifacts — not from the outgoing session's chat history, which it doesn't have.
+**Session-to-session hand-off:** when a campaign spans sessions, the outgoing session commits any in-progress work (even WIP commits, as long as CI would still be green or the commit is marked `chore(wip): …` and not the merge head) and updates any Living Document to reflect current state (see §Living documents on campaign branches). Note `wip` is not itself a Conventional Commit type — use a real type with a `wip` scope (`chore(wip): …`); the canonical allowed-type list lives in CLAUDE.md §Commit messages. The incoming session reads the branch's latest state from committed artifacts — not from the outgoing session's chat history, which it doesn't have.
 
 ## Living documents on campaign branches
 
@@ -288,8 +314,13 @@ git worktree remove .claude/worktrees/read-audit
 git show audit/security-review-2026-04-22:docs/plans/audit-plan.md
 
 # Option 3: if there's an open PR, read the PR's version via gh. Two paths:
-#   a) The diff of the file as the PR changes it (good for seeing what's changed):
-gh pr diff <pr-number> -- docs/plans/audit-plan.md
+#   a) What the PR changes (good for seeing the delta). `gh pr diff` takes at most
+#      ONE positional (the PR selector) and cannot filter to a path — so list the
+#      changed files, then diff the one you want locally against the PR head:
+gh pr diff <pr-number> --name-only                 # which files the PR touches
+gh api repos/{owner}/{repo}/pulls/<pr-number>/files --jq '.[].filename'  # same, via API
+git fetch origin <pr-head-branch>
+git diff origin/dev...origin/<pr-head-branch> -- docs/plans/audit-plan.md  # the file's delta
 #   b) The full file content at the PR's head ref (good for reading the whole thing):
 gh api "repos/{owner}/{repo}/contents/docs/plans/audit-plan.md?ref=<pr-head-branch>" \
     --jq '.content' | base64 -d
@@ -553,7 +584,13 @@ The `--delete-branch=false` flag is the one explicit deviation from §Mechanics 
 - `git log --oneline origin/dev..dev` non-empty → local dev is ahead and unpushed. Push it, or figure out why.
 - `git log --oneline dev..origin/dev` non-empty → local dev is behind. `git fetch && git reset --hard origin/dev`.
 - Local branch count materially higher than your in-flight-work count (e.g. 5+ branches but only 1-2 active worktrees) → zoo is regrowing; run the Recovery steps.
-- Your worktree directory (by default `.claude/worktrees/`) contains more subdirectories than `git worktree list` shows → abandoned worktree state; `git worktree prune`.
+- Your worktree directory (by default `.claude/worktrees/`) contains more subdirectories than `git worktree list` shows → abandoned worktree directories. **`git worktree prune` will NOT fix this** — prune only clears stale *administrative records* for worktrees whose directories have already vanished (the opposite case). It never deletes directories. Diagnose and clean up by hand:
+    ```bash
+    git worktree list                     # registered worktrees
+    ls .claude/worktrees/                 # directories actually on disk
+    ```
+    - A directory on disk but **absent** from `git worktree list` is an unregistered/abandoned tree. Check it for uncommitted work first (`git -C .claude/worktrees/<dir> status --short`, and stash anything worth keeping per §Abandoning a branch), then remove the directory manually (`rm -rf .claude/worktrees/<dir>`).
+    - A worktree **listed** by `git worktree list` whose directory is already gone is the stale-record case — that, and only that, is what `git worktree prune` cleans up.
 - An analysis dispatch returned a large report ONLY in its response, with no persistent file written → violation of §Multi-agent coordination output-persistence rule. Re-dispatch with an explicit persistence requirement in the prompt, or recover the report from the response and write it yourself before proceeding to consolidation.
 - An analysis dispatch's persistence artifact landed in the root checkout instead of the worktree (or any other wrong location) → the dispatch received a relative `<PERSISTENCE_PATH>` and the subagent's CWD didn't match the orchestrator's. Move the file to the correct worktree location, commit there, and re-craft future dispatch prompts with absolute paths derived from `git rev-parse --show-toplevel` in the orchestrator's context.
 
@@ -566,10 +603,10 @@ Each rule addresses a specific observed failure:
 | Root checkout stays on `dev` | Checkout roulette: two agents in same checkout, one switches branches, the other commits to the wrong branch |
 | Work in isolated worktrees | Concurrent edits to shared checkout producing interleaved commit histories |
 | Branches ephemeral | Branch zoo — dozens of branches, agents confused about which is current, fresh agents burn turns orienting |
-| Push after every merge | Local `dev` diverging from `origin/dev` during wave-boundary merges; three-way divergence requiring manual reconciliation |
+| Local `dev` advances only by fetch + reset | Local `dev` diverging from `origin/dev` when a session commits or pushes to it directly; three-way divergence requiring manual reconciliation |
 | One writer to local dev at a time | Concurrent merges by different sessions into local dev produce unreconciled state at wave boundaries |
 | No `git checkout` in root checkout | Handoff commits left dangling-unreachable after resets, nearly lost to gc |
-| No `git add -A` / `.` / `-a` | Secrets, unrelated fixtures, and cross-agent residue accidentally committed |
+| Explicit paths over blind `git add -A` / `.` / `-a` | Secrets, unrelated fixtures, and cross-agent residue accidentally committed |
 | Analysis dispatches persist findings before returning | Orchestrator context compacts mid-consolidation, lossily reconstructs reports from memory, findings silently dropped |
 | Persistence paths are absolute, not relative | Subagent CWD may not match orchestrator's (e.g. root checkout vs worktree); relative paths produce artifacts in the wrong location, often undetected until consolidation realizes files are missing from expected path |
 | Campaign branches rebase at phase boundaries | Conflict-surface at final-merge time too large; incompatibility surfaces late when original context is gone |
