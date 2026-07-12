@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useRouter } from '@tanstack/react-router'
 import { Badge } from '../../../components/Badge'
 import { Button } from '../../../components/Button'
 import { ApiError } from '../../../lib/api/client'
@@ -12,12 +12,24 @@ const DATETIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC',
 })
 
+const BACK_LINK_CLASS = 'text-sm text-ink-dim transition-colors duration-150 hover:text-brand'
+
 function BackLink() {
+  const router = useRouter()
+  // When the list is behind us in this tab's history (the user filtered/sorted,
+  // then opened a contract), go back to it so their full URL state — filters,
+  // sort, page — is restored exactly (PRODUCT principle #2: the URL is the
+  // interface). On a cold deep link (a shared /contracts/$id opened fresh) there
+  // is nothing to return to, so fall back to the default list.
+  if (router.history.canGoBack()) {
+    return (
+      <button type="button" onClick={() => router.history.back()} className={BACK_LINK_CLASS}>
+        ← All contracts
+      </button>
+    )
+  }
   return (
-    <Link
-      to="/contracts"
-      className="text-sm text-ink-dim transition-colors duration-150 hover:text-brand"
-    >
+    <Link to="/contracts" className={BACK_LINK_CLASS}>
       ← All contracts
     </Link>
   )

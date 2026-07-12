@@ -1,8 +1,9 @@
 import asyncio
 import json
 import logging
+import uuid
 from contextlib import asynccontextmanager, AbstractAsyncContextManager
-from typing import List, Callable # Added Callable
+from typing import Iterable, Iterator, List, Callable # Added Callable
 from datetime import datetime
 
 import redis.asyncio as aioredis # For on-demand client creation
@@ -28,6 +29,33 @@ logger = logging.getLogger(__name__)
 AGGREGATION_LOCK_KEY = "hangar-bay:aggregation:lock"
 # Lock timeout in seconds. Should be longer than a typical aggregation run.
 AGGREGATION_LOCK_TIMEOUT = 1800  # 30 minutes
+
+# Atomic compare-and-delete: only release the lock if THIS runner still holds it
+# (the stored value equals our token). Guards against the TTL expiring mid-run
+# and a second scheduler tick reacquiring the key — an unconditional DELETE would
+# then drop the other runner's lock and cascade into concurrent runs.
+_RELEASE_LOCK_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('del', KEYS[1]) else return 0 end"
+)
+
+# asyncpg caps a statement at 32767 bind parameters; a single UPDATE ... WHERE
+# contract_id IN (<all ids>) over a whole run (production scale ~35k contracts)
+# blows that ceiling and rolls back the entire aggregation transaction. Chunk the
+# id-list UPDATEs so no statement ever exceeds the cap.
+UPDATE_ID_CHUNK_SIZE = 1000
+
+# Bounded concurrency for the cold-cache type/group enrichment fan-out: without
+# it, thousands of unique types resolve as strictly sequential ESI round-trips,
+# minutes of added runtime that also push a run past the lock TTL.
+ENRICHMENT_CONCURRENCY = 8
+
+
+def _chunk_ids(ids: Iterable[int]) -> Iterator[list[int]]:
+    """Yield id-list slices capped at UPDATE_ID_CHUNK_SIZE (asyncpg bind limit)."""
+    id_list = list(ids)
+    for start in range(0, len(id_list), UPDATE_ID_CHUNK_SIZE):
+        yield id_list[start : start + UPDATE_ID_CHUNK_SIZE]
 
 
 class ConcurrencyLockError(Exception):
@@ -66,10 +94,13 @@ class ContractAggregationService:
         Creates its own Redis client on-demand.
         """
         redis_client = aioredis.from_url(str(self.settings.CACHE_URL))
+        # Unique fencing token: the lock value identifies THIS runner so release
+        # can verify ownership (see _RELEASE_LOCK_LUA) instead of blindly deleting.
+        lock_token = uuid.uuid4().hex
         lock_acquired = False
         try:
             lock_acquired = await redis_client.set(
-                AGGREGATION_LOCK_KEY, "1", nx=True, ex=AGGREGATION_LOCK_TIMEOUT
+                AGGREGATION_LOCK_KEY, lock_token, nx=True, ex=AGGREGATION_LOCK_TIMEOUT
             )
             if not lock_acquired:
                 logger.warning("Contract aggregation job is already running. Skipping this run.")
@@ -84,7 +115,19 @@ class ContractAggregationService:
         finally:
             if lock_acquired:
                 logger.info("Releasing concurrency lock for contract aggregation.")
-                await redis_client.delete(AGGREGATION_LOCK_KEY)
+                # Compare-and-delete: release only if we still hold the token. A
+                # zero result means the TTL expired mid-run and another runner
+                # reacquired the key — deleting it would drop THEIR lock.
+                released = await redis_client.eval(
+                    _RELEASE_LOCK_LUA, 1, AGGREGATION_LOCK_KEY, lock_token
+                )
+                if not released:
+                    logger.warning(
+                        "Aggregation lock token mismatch on release: the %ss lock TTL "
+                        "likely expired mid-run and was reacquired by another runner. "
+                        "Leaving the current holder's lock intact.",
+                        AGGREGATION_LOCK_TIMEOUT,
+                    )
             await redis_client.close() # Ensure redis client is closed
 
     async def run_aggregation(self):
@@ -281,6 +324,10 @@ class ContractAggregationService:
                         "quantity": i["quantity"],
                         "is_included": i["is_included"],
                         "is_singleton": i.get("is_singleton", False),
+                        # ESI item payloads carry is_blueprint_copy; without this
+                        # mapping the column stayed NULL and the is_bpc filter was
+                        # dead on real data (same class as the ship-flag gap).
+                        "is_blueprint_copy": i.get("is_blueprint_copy"),
                         "raw_quantity": i.get("raw_quantity"),
                     }
                     for i in items
@@ -309,18 +356,40 @@ class ContractAggregationService:
         else:
             logger.info("No new contract items to process.")
 
-        if ship_contract_ids:
+        for chunk in _chunk_ids(ship_contract_ids):
             await db_session.execute(
                 update(Contract)
-                .where(Contract.contract_id.in_(ship_contract_ids))
+                .where(Contract.contract_id.in_(chunk))
                 .values(is_ship_contract=True)
             )
+        if ship_contract_ids:
             logger.info(f"Flagged {len(ship_contract_ids)} contracts as ship contracts.")
-        if processed_contract_ids:
+
+        # item_processing_status must not imply enrichment SUCCESS: a contract
+        # whose type/group resolution failed keeps NULL enrichment (the
+        # graceful-degrade path), so a future consumer trusting 'COMPLETED' would
+        # skip re-enriching a transiently-failed row. Mark COMPLETED only when
+        # every fetched item resolved a type_name; the rest are ENRICHMENT_INCOMPLETE.
+        incomplete_contract_ids = {
+            item["contract_id"] for item in all_items if item.get("type_name") is None
+        }
+        completed_contract_ids = processed_contract_ids - incomplete_contract_ids
+        for chunk in _chunk_ids(completed_contract_ids):
             await db_session.execute(
                 update(Contract)
-                .where(Contract.contract_id.in_(processed_contract_ids))
+                .where(Contract.contract_id.in_(chunk))
                 .values(item_processing_status="COMPLETED")
+            )
+        for chunk in _chunk_ids(incomplete_contract_ids):
+            await db_session.execute(
+                update(Contract)
+                .where(Contract.contract_id.in_(chunk))
+                .values(item_processing_status="ENRICHMENT_INCOMPLETE")
+            )
+        if incomplete_contract_ids:
+            logger.info(
+                f"{len(incomplete_contract_ids)} contracts left ENRICHMENT_INCOMPLETE "
+                "(item type/group resolution degraded)."
             )
 
     SHIP_CATEGORY_ID = 6  # EVE static category: Ship
@@ -337,37 +406,51 @@ class ContractAggregationService:
         if not item_values:
             return set()
 
-        type_info: dict[int, dict] = {}
-        for type_id in {item["type_id"] for item in item_values}:
-            try:
-                info = await self.esi_client.get_universe_type(type_id)
-                # Shape guard: a surprise payload must degrade this one type,
-                # never kill the aggregation run (this happened live when the
-                # list-shaped ETag helper flattened object payloads into keys).
-                if isinstance(info, dict):
-                    type_info[type_id] = info
-                else:
-                    logger.warning(
-                        f"Unexpected type payload shape for {type_id}: {type(info).__name__}"
-                    )
-            except Exception as e:
-                logger.warning(f"Type resolution failed for type {type_id}: {e}")
+        # Bounded-concurrency fan-out: resolve unique ids through a shared
+        # semaphore instead of strictly sequential awaits. Each resolver keeps the
+        # per-id try/except + shape guard, so one bad/failed id degrades to NULL
+        # enrichment without killing the run — gather never sees an exception.
+        semaphore = asyncio.Semaphore(ENRICHMENT_CONCURRENCY)
+
+        async def _resolve(fetch, obj_id: int, kind: str) -> tuple[int, dict | None]:
+            async with semaphore:
+                try:
+                    payload = await fetch(obj_id)
+                except Exception as e:
+                    logger.warning(f"{kind} resolution failed for {kind.lower()} {obj_id}: {e}")
+                    return obj_id, None
+            # Shape guard (outside the semaphore): a surprise payload must degrade
+            # this one id, never kill the run (this happened live when the
+            # list-shaped ETag helper flattened object payloads into keys).
+            if isinstance(payload, dict):
+                return obj_id, payload
+            logger.warning(
+                f"Unexpected {kind.lower()} payload shape for {obj_id}: {type(payload).__name__}"
+            )
+            return obj_id, None
+
+        type_results = await asyncio.gather(
+            *(
+                _resolve(self.esi_client.get_universe_type, type_id, "Type")
+                for type_id in {item["type_id"] for item in item_values}
+            )
+        )
+        type_info: dict[int, dict] = {
+            type_id: info for type_id, info in type_results if info is not None
+        }
 
         group_ids = {
             info.get("group_id") for info in type_info.values() if info.get("group_id") is not None
         }
-        group_info: dict[int, dict] = {}
-        for group_id in group_ids:
-            try:
-                group = await self.esi_client.get_universe_group(group_id)
-                if isinstance(group, dict):
-                    group_info[group_id] = group
-                else:
-                    logger.warning(
-                        f"Unexpected group payload shape for {group_id}: {type(group).__name__}"
-                    )
-            except Exception as e:
-                logger.warning(f"Group resolution failed for group {group_id}: {e}")
+        group_results = await asyncio.gather(
+            *(
+                _resolve(self.esi_client.get_universe_group, group_id, "Group")
+                for group_id in group_ids
+            )
+        )
+        group_info: dict[int, dict] = {
+            group_id: group for group_id, group in group_results if group is not None
+        }
 
         ship_contract_ids: set[int] = set()
         for item in item_values:

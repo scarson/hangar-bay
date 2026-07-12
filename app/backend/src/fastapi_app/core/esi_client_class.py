@@ -206,7 +206,40 @@ class ESIClient:
         except Exception as e:
             logger.warning(f"Object cache read failed for {path}: {e}")
 
-        response = await self.http_client.get(path)
+        # Bounded retry/backoff mirroring get_esi_data_with_etag_caching: retry
+        # only transient failures (5xx + network errors) so a blip on
+        # /universe/types|groups doesn't silently un-enrich a run's ship contracts.
+        # 4xx (e.g. 404) still falls straight through to raise_for_status below.
+        max_retries = 3
+        backoff_factor = 0.5  # seconds
+        response = None
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                response = await self.http_client.get(path)
+                if response.status_code < 500:
+                    last_exception = None
+                    break
+                last_exception = httpx.HTTPStatusError(
+                    f"Server error '{response.status_code}'", request=response.request, response=response
+                )
+                logger.warning(
+                    f"ESI object request to {path} failed with status {response.status_code}. "
+                    f"Attempt {attempt + 1}/{max_retries}."
+                )
+            except (httpx.ReadTimeout, httpx.ConnectError) as e:
+                last_exception = e
+                logger.warning(f"Network error for {path} on attempt {attempt + 1}/{max_retries}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(backoff_factor * (2 ** attempt))
+
+        if last_exception is not None:
+            if isinstance(last_exception, httpx.HTTPStatusError):
+                raise ESIRequestFailedError(
+                    status_code=last_exception.response.status_code, message=str(last_exception)
+                )
+            raise ESIRequestFailedError(message=f"Network error for {path}: {last_exception}")
+
         response.raise_for_status()
         data = response.json()
         if not isinstance(data, dict):

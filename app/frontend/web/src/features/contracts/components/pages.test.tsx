@@ -53,6 +53,23 @@ describe('ContractsPage', () => {
     expect(screen.getByText(/1,000,000/)).toBeInTheDocument()
     // Descriptive per-view title (WCAG 2.4.2), not the scaffold's "web".
     expect(document.title).toBe('Ship Contracts — Hangar Bay')
+    // Column headers are sticky so the labels/sort toggles survive a 50-row
+    // scroll (JSDOM can't lay out `position: sticky`; guard the intent instead).
+    expect(screen.getAllByRole('columnheader')[0].className).toContain('sticky')
+  })
+
+  it('announces the result count in a polite status region (WCAG 4.1.3)', async () => {
+    stubFetch(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] }))
+
+    renderApp('/contracts')
+
+    // Wait for load so the skeleton's own role="status" has unmounted, leaving
+    // only the count region — filter/sort/page outcomes reach assistive tech
+    // without moving focus off a rail control.
+    await screen.findByText('Tristan')
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('1 contracts match your filters')
+    expect(status).toHaveAttribute('aria-live', 'polite')
   })
 
   it('falls back to "Contract <id>" when the title is empty and no item name resolves', async () => {
@@ -214,5 +231,47 @@ describe('ContractDetailPage', () => {
 
     expect(await screen.findByText(/not found/i)).toBeInTheDocument()
     expect(calls).toHaveLength(0)
+  })
+
+  it('back link restores the exact list filter/sort state via history when navigated in-app', async () => {
+    // Detail is reached from a FILTERED list, so the back link must return to
+    // that list with every URL param intact (PRODUCT #2: the URL is the
+    // interface). It uses router.history.back() when the list is behind us,
+    // rather than a bare to="/contracts" that would reset to defaults.
+    stubFetch((url) =>
+      /\/contracts\/\d+/.test(url)
+        ? jsonResponse(CONTRACT)
+        : jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] }),
+    )
+
+    const { router } = renderApp(
+      '/contracts?is_bpc=true&sort_by=price&sort_direction=asc&ships_only=false',
+    )
+
+    await userEvent.click(await screen.findByRole('link', { name: 'Tristan' }))
+    await screen.findByRole('heading', { name: 'Tristan' })
+    expect(router.state.location.pathname).toBe('/contracts/101')
+
+    await userEvent.click(screen.getByRole('button', { name: /all contracts/i }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/contracts'))
+    expect(router.state.location.search).toMatchObject({
+      is_bpc: true,
+      sort_by: 'price',
+      sort_direction: 'asc',
+      ships_only: false,
+    })
+  })
+
+  it('back link falls back to the default list on a cold deep link (no in-app history)', async () => {
+    // A shared /contracts/$id opened fresh has nothing behind it, so the back
+    // control is a plain link to the list rather than a history button.
+    stubFetch(() => jsonResponse(CONTRACT))
+
+    renderApp('/contracts/101')
+
+    await screen.findByRole('heading', { name: 'Tristan' })
+    const back = screen.getByRole('link', { name: /all contracts/i })
+    expect(back).toHaveAttribute('href', '/contracts')
   })
 })

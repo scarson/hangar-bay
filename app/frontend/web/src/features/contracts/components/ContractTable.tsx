@@ -41,12 +41,18 @@ export function ContractTable({
   isRefreshing: boolean
 }) {
   return (
-    <div className="overflow-x-auto rounded-md border border-line">
+    // Bounded height turns this wrapper into the vertical scroll context, so the
+    // sticky header below sticks to the top of THIS container (not the viewport):
+    // scanning a 50-row page keeps the column labels and sort toggles in view.
+    // The wrapper wins the scroll context because `overflow-x-auto` already makes
+    // it a scroll container on both axes; a page-level sticky would need the
+    // vertical scroll pulled out, so we keep it self-contained here instead.
+    <div className="max-h-[calc(100vh-11rem)] overflow-auto rounded-md border border-line">
       <table
         className={`w-full border-collapse transition-opacity duration-200 ${isRefreshing ? 'opacity-60' : ''}`}
       >
         <thead>
-          <tr className="border-b border-line bg-surface">
+          <tr>
             {COLUMNS.map((column) => {
               const sorted = column.sortField !== undefined && search.sort_by === column.sortField
               const alignment = column.align === 'right' ? 'text-right' : 'text-left'
@@ -61,7 +67,9 @@ export function ContractTable({
                         : 'descending'
                       : undefined
                   }
-                  className={`p-0 ${alignment} ${column.headerClass ?? ''}`}
+                  // Solid bg (rows scroll UNDER the header) + the semantic
+                  // --z-sticky token keeps the header above the tbody cells.
+                  className={`sticky top-0 z-(--z-sticky) border-b border-line bg-surface p-0 ${alignment} ${column.headerClass ?? ''}`}
                 >
                   {column.sortField ? (
                     <button
