@@ -1,5 +1,11 @@
 # Handoff — M1 + /impeccable design phase complete (2026-07-12)
 
+> **Superseded (later on 2026-07-12)** by
+> [`2026-07-12-e2e-docs-m2-kickoff-handoff.md`](./2026-07-12-e2e-docs-m2-kickoff-handoff.md) —
+> priority-queue items 2–4 below (re-ingest/sanity, Playwright E2E, docs sweep) are done;
+> the Runbook's `preview_start` note is stale (launch.json now lives at the MAIN repo's
+> `.claude/launch.json`, pointing into this worktree).
+
 ## Headline state
 
 - **Branch:** `claude/hangar-bay-frontend-rebuild-2e4fe7`, worktree at

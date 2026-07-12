@@ -45,3 +45,23 @@ recorded response shapes; assert both the rendered outcome AND the request URL w
 contract matters (e.g. repeated array params `region_ids=1&region_ids=2`, gated `search`
 under 3 chars never sent). Do not mock the hook itself in component tests — that tests the
 mock. `await` RTL's `findBy*`/`waitFor` rather than sleeping.
+
+## TEST-6 — Vitest's default glob swallows Playwright specs
+
+Vitest's default include (`**/*.{test,spec}.*`) matches Playwright's `*.spec.ts` files, so
+Playwright suites fail under `vitest run` with "Playwright Test did not expect test.describe()
+to be called here" — one failed *file* while all unit tests pass. **Do instead:** keep
+Playwright in `e2e/` and exclude it in the vitest config
+(`exclude: [...configDefaults.exclude, 'e2e/**']` in `vite.config.ts`), and keep unit tests on
+the `*.test.ts(x)` suffix. **Bit us:** the first E2E spec landed as `e2e/default-view.spec.ts`
+and broke `npm run test` (2026-07-12).
+
+## TEST-7 — Error-state tests must account for the QueryClient's retry policy
+
+The production QueryClient retries failed queries (retry: 1; `useContract` retries non-404s
+once), so an error state only renders after ALL attempts fail. A stub that fails only the
+first call auto-recovers on the retry and the error branch never shows — the test hangs or
+passes vacuously. **Do instead:** responders/stubs fail as many consecutive calls as the
+retry policy will issue (list: calls 0 AND 1), then let an explicit user Retry succeed;
+assert the alert appears before and the data after. **Bit us:** states.spec.ts error tests
+during the 2026-07-12 E2E build-out (caught by the author agent, never shipped red).
