@@ -88,8 +88,8 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   **AI Coding Assistant Guidance:** The AI assistant should be prompted to generate code that passes automated A11y checks and to consider manual A11y testing scenarios when developing UI components.
 
     *   **AI Actionable Checklist (Accessibility Test Generation):**
-        *   [ ] When AI generates a new UI component, prompt it to include an Axe-core scan in its unit/integration tests.
-            *   Example (Angular with `@axe-core/angular`): `it('should pass accessibility scan', async () => { await TestBed.inject(AxeAngular).check(); });`
+        *   [ ] When AI generates a new UI component, prompt it to include an accessibility scan in its component tests.
+            *   Example (React, `/impeccable` phase): pair `@testing-library/react` with `vitest-axe` and assert `toHaveNoViolations()` on the rendered container.
         *   [ ] For E2E tests of UI features, remind AI to include checks for keyboard navigability (e.g., tabbing through elements, activating controls) and visible focus states.
 
 ### 3.7. Internationalization (i18n) Tests
@@ -120,19 +120,15 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
     *   **Test Runner:** `pytest`
     *   **Mocking:** `pytest-mock`, `unittest.mock`
     *   **HTTP Client for API tests:** `httpx` (FastAPI's test client)
-*   **Frontend (Angular):**
-    *   **Unit Tests:** Karma (test runner), Jasmine (testing framework)
-    *   **E2E Tests:** Protractor (though Angular is moving towards other solutions like Cypress or Playwright - *to be confirmed based on Angular best practices at implementation time*). Tools should support viewport manipulation for responsive design testing.
+*   **Frontend (React):**
+    *   **Unit / Component Tests:** Vitest (test runner) + React Testing Library (with jsdom).
+    *   **E2E Tests:** Playwright — deferred until the `/impeccable` phase delivers the UI it would smoke-test. Tools should support viewport manipulation for responsive design testing.
 *   **Code Coverage:**
     *   Backend: `pytest-cov`
-    *   Frontend: Istanbul (via Angular CLI)
+    *   Frontend: Vitest coverage (`vitest run --coverage`).
 *   **Accessibility Testing Tools:**
-    *   **Automated:** Axe-core (e.g., `@axe-core/angular` for integration with Angular tests, browser extensions for manual checks), Lighthouse (browser developer tools).
+    *   **Automated:** `eslint-plugin-jsx-a11y` (active — lint-time a11y checks in `eslint.config.js`) plus `vitest-axe` on key views (arrives with the `/impeccable` phase); Lighthouse (browser developer tools) for manual checks.
     *   **Screen Readers:** NVDA (Windows), JAWS (Windows), VoiceOver (macOS/iOS).
-
-        *   **AI Implementation Pattern (Angular Test Setup for A11y):**
-            *   Ensure `AxeAngular` is configured in `test.ts` or a test setup file if using `@axe-core/angular`.
-            *   AI should be aware of how to import and inject `AxeAngular` into test suites.
 
 ## 5. Test Data Management
 
@@ -146,6 +142,7 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   Builds MUST fail if tests do not pass.
 *   Test coverage reports SHOULD be generated and monitored.
 *   Automated accessibility scans (e.g., Axe-core) SHOULD be part of the CI pipeline, and critical violations MUST fail the build.
+*   **Frontend a11y (Milestone-1 posture):** frontend CI does not exist yet, so build-fail wiring for automated a11y scans is deferred until it does. The M1 posture is lint-time checks (`eslint-plugin-jsx-a11y`, active) plus test-time checks (`vitest-axe` on key views, arriving with the `/impeccable` phase). Once frontend CI exists, those scans SHOULD run there and critical violations MUST fail the build.
 
 ## 7. Security Testing
 

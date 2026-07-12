@@ -128,34 +128,19 @@ Accessibility and internationalization are closely related. Ensuring that access
         *   [ ] Ensure states (e.g., `aria-checked`, `aria-selected`, `aria-expanded`) are programmatically set and updated.
         *   [ ] Ensure values (e.g., `aria-valuenow` for sliders) are programmatically set and updated.
 
-## 4. Technology-Specific Guidance (Angular)
+## 4. Technology-Specific Guidance (React)
 
-*   **Angular Material / CDK:** Leverage built-in accessibility features of Angular Material components and the Component Dev Kit (CDK). Many components are designed with A11y in mind (e.g., `MatDialog`, `MatMenu`).
-    *   AI Guidance: When using Angular Material, prefer its components over custom-built ones if they meet functional requirements, due to their built-in A11y.
+Milestone-1 ships a bare-bones scaffold; the full accessible component layer is built in the `/impeccable` phase, and detailed React patterns will be specified there. The WCAG requirements in Section 3 are framework-agnostic and authoritative regardless of framework. In the meantime, these React idioms replace the earlier Angular/Angular-Material guidance:
 
-        *   **AI Implementation Pattern (Angular Material):**
-            *   When AI is tasked to create UI for forms, dialogs, menus, tables, etc., explicitly instruct it to use the corresponding Angular Material component (`MatInput`, `MatDialog`, `MatMenu`, `MatTable`) unless a custom solution is strictly necessary and its A11y can be guaranteed.
-*   **ARIA Attributes in Components:** Dynamically bind ARIA attributes in Angular components based on component state (e.g., `[attr.aria-expanded]="isExpanded"`).
+*   **Semantic HTML first, ARIA second.** Prefer native elements (`<button>`, `<nav>`, `<a>`, `<label>`, `<input>`, `<dialog>`); reach for ARIA only when a native element can't express the semantics. `eslint-plugin-jsx-a11y` (active in `eslint.config.js`) catches many violations at lint time.
+*   **Dynamic ARIA in JSX:** bind ARIA from component state, e.g. `<button aria-expanded={isMenuOpen} onClick={toggleMenu}>Menu</button>`. React serializes boolean ARIA values to the required `"true"`/`"false"` strings.
+*   **Focus management:** trap focus within modals/overlays and restore it to the trigger on close (via refs / `useEffect`, or a vetted headless library adopted in `/impeccable`); ensure focus is never lost to `document.body`.
+*   **Live regions:** announce dynamic updates that don't move focus (search-result counts, status messages) with an `aria-live` region rather than a focus shift.
+*   **Route changes:** on navigation (TanStack Router), move or announce focus so screen-reader users are told the view changed, and keep a descriptive `<title>` per route.
+*   **Forms:** associate every control with a `<label htmlFor>`, link error messages via `aria-describedby`, set `aria-invalid` on invalid controls, indicate required fields, and group related controls with `<fieldset>`/`<legend>`.
 
-    *   **AI Implementation Pattern (Dynamic ARIA):**
-        *   AI should generate code like: `<button [attr.aria-expanded]="isMenuOpen" (click)="toggleMenu()">Menu</button>`
-        *   Ensure boolean values for ARIA states are correctly translated to string attributes 'true'/'false'.
-*   **Focus Management:** Use Angular's `Renderer2` or the CDK's `FocusTrap` and `FocusMonitor` for managing focus in dynamic UIs, modals, and custom components.
-
-    *   **AI Implementation Pattern (CDK FocusTrap):**
-        *   For modal dialogs or similar overlay components: `<div cdkTrapFocus *ngIf="isModalOpen">...modal content...</div>`
-        *   Instruct AI to import `A11yModule` and use `cdkTrapFocus` when creating modal-like experiences.
-*   **Live Announcers:** Use `LiveAnnouncer` from `@angular/cdk/a11y` to announce changes to assistive technologies for dynamic content updates that don't shift focus.
-
-    *   **AI Implementation Pattern (LiveAnnouncer):**
-        *   Inject `LiveAnnouncer`: `constructor(private liveAnnouncer: LiveAnnouncer) {}`
-        *   Announce message: `this.liveAnnouncer.announce("Item successfully added to cart", "polite");`
-        *   Instruct AI to use this for status messages, search result updates, etc., that don't involve a page reload or focus shift.
-*   **Router:** Ensure route changes announce page titles or main headings to screen readers.
-*   **Forms:** Use Angular's reactive or template-driven forms with proper labeling (`<label for>`), error messages associated with inputs (`aria-describedby`), and validation states (`aria-invalid`).
-
-    *   **AI Actionable Checklist (Angular Forms A11y):**
-        *   [ ] Each form control (`<input>`, `<select>`, `<textarea>`) has an associated `<label>` (use `for` attribute linking to control's `id`).
+    *   **AI Actionable Checklist (React Forms A11y):**
+        *   [ ] Each form control (`<input>`, `<select>`, `<textarea>`) has an associated `<label>` (via `htmlFor` linking to the control's `id`).
         *   [ ] Error messages are linked to controls via `aria-describedby`.
         *   [ ] `aria-invalid` is set to `true` on invalid controls.
         *   [ ] Required fields are indicated with `aria-required="true"` or visually (e.g., asterisk) with a note.
@@ -163,7 +148,7 @@ Accessibility and internationalization are closely related. Ensuring that access
 
 ## 5. Testing & Validation
 
-*   **Automated Tools:** Use tools like Axe-core (e.g., via `@axe-core/angular`), Lighthouse, and browser extensions during development and in CI/CD pipelines.
+*   **Automated Tools:** `eslint-plugin-jsx-a11y` (active — lint-time checks) plus `vitest-axe` on key views (arrives with the `/impeccable` phase), Lighthouse, and browser extensions during development and (once frontend CI exists) in the CI/CD pipeline.
 *   **Manual Testing:**
     *   **Keyboard-Only Navigation:** Test all interactive elements and user flows.
     *   **Screen Reader Testing:** Test with common screen readers (e.g., NVDA, JAWS, VoiceOver).

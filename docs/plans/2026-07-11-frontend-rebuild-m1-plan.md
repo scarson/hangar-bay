@@ -2092,36 +2092,46 @@ Superseded by app/frontend/web (React). Git history preserves the tree."
 
 **Context:** The spec's "Teardown & documentation updates" section is the requirements list. These are prose edits; the content requirements below are exhaustive — do not invent additional policy.
 
-- [ ] **Step 11.1: README.md**
+> **Deviations (Task 11 execution, 2026-07-12):**
+> 1. **Frontend `app/frontend/web/README.md` already rewritten in Phase 2 (`ec07568`).** The dispatch guardrail expected this file to still be the stale create-vite/Oxlint template deferred to Task 11, but the Phase-2 Task-4 review fix `ec07568` already replaced it with a stack-accurate stub (Vite + React 19 + TS strict + Tailwind v4 + ESLint flat/jsx-a11y + Vitest; all seven npm scripts; the `.npmrc save-exact` note). Verified accurate against the shipped toolchain — no further change needed in Task 11, so it is not in this task's commit.
+> 2. **Additional framework-name corrections beyond the three literal bullets.** To honor the "docs MUST describe what was actually built" mandate, CONTRIBUTING.md's AI-guidance stack declarations were also corrected (Core Technologies (AI Focus), the `TypeScript/React` Coding-Standards bullet, the `React (Frontend)` Key-Technologies block, the Development-Workflow frontend line, and the accessibility/i18n/performance spec one-line descriptions). These are factual stack statements, not new policy.
+> 3. **test-spec.md scope.** Step 11.3's §4 tooling swap was additionally applied to the §3.6 accessibility-test example (it carried a lowercase `@axe-core/angular` token that would otherwise fail the Step 11.5 gate and read as stale). The deeper AI-implementation-pattern prose in §3.1/§3.2/§3.4 (Jasmine/Karma/`TestBed` patterns) was **left as-is** — outside the plan's named §4/§6 scope, it is capital-`Angular` (does not trip the gate), and rewriting it into React/Vitest patterns would fabricate patterns not yet established (deferred to `/impeccable` + a later docs pass). Flagged as residual below.
+> 4. **accessibility-spec.md scope.** §4 (Angular Material/CDK tooling) was replaced with React idioms and §5's automated-tool line was swapped to jsx-a11y + vitest-axe, per the bullet. The incidental "custom Angular components" phrasing inside the §3 WCAG-requirement prose was left untouched per the bullet's explicit "WCAG requirements … stay untouched" (capital-`Angular`; does not trip the gate).
+> 5. **Step 11.5 grep — in-scope clean, out-of-scope residual (Discovery).** Restricted to Task 11's five named files the grep is clean (exit 1). Run against the whole `design/specifications/` directory as the plan's command literally does, it still flags **`design-spec.md`** (lines ~164/167/327) and **`performance-spec.md`** (lines ~81/83), which carry pre-existing Angular-as-current-stack references (`@angular/localize`, `@angular/cdk/scrolling`, "Angular CLI build optimizations"). Those two specs are **outside** Task 11's named file scope (the spec's Teardown list and this task both name only test/accessibility/i18n-spec), so they were not edited. The plan's Step 11.5 verification command is broader than its edit scope — a plan-internal inconsistency; a follow-up is needed to update those two specs.
+> 6. **Commit scope.** The plan's Step 11.5 `git add` names only `README.md CONTRIBUTING.md design/specifications/`; this commit also stages this plan file (Task 11 checkbox ticks + these notes), per the dispatch instruction to include plan edits in the task commit.
+
+- [x] **Step 11.1: README.md**
 
 - Core Technologies: replace `**Frontend:** Angular` with `**Frontend:** React 19 (Vite, TypeScript, Tailwind CSS v4, TanStack Router/Query)`.
 - Prerequisites: drop the Angular CLI requirement; keep Node ≥ 20.19.
 - Replace the "Frontend Setup (Angular)" section with: `cd app/frontend/web`, `npm install`, `npm run dev` (app at `http://localhost:5173`, proxying `/api/v1` to the backend on `:8000`), plus the type-regeneration flow: after backend schema changes run `cd app/backend && pdm run export-openapi` then `cd app/frontend/web && npm run generate:api`.
 - Mark the 2025 screenshot as pre-rebuild ("Angular-era screenshot; React rebuild in progress").
 
-- [ ] **Step 11.2: CONTRIBUTING.md**
+- [x] **Step 11.2: CONTRIBUTING.md**
 
 - Rewrite frontend setup/commands sections for `app/frontend/web` (same commands as README, plus `npm run lint`, `npm run format`, `npm run test`).
 - State the dependency policy: exact pins enforced by `.npmrc` (`save-exact=true`); no `^`/`~` in `package.json`.
 - Add a "Backend dev prerequisites" subsection with the env-file location (`app/backend/src/.env`), required vars incl. the JSON-list format for `AGGREGATION_REGION_IDS`, the Valkey requirement, the drop/recreate-on-restart + ingestion-delay behavior, and `DATABASE_URL_TESTS` for the test suite (content per pitfalls ENV-1/ENV-2 and Task 9 Step 9.1).
 
-- [ ] **Step 11.3: design/specifications/test-spec.md**
+- [x] **Step 11.3: design/specifications/test-spec.md**
 
 - §4 frontend rows: Karma/Jasmine → Vitest + React Testing Library; Protractor → Playwright (deferred until the /impeccable phase delivers the UI it would smoke-test); `@axe-core/angular` → `eslint-plugin-jsx-a11y` (active) + `vitest-axe` on key views (arrives with /impeccable).
 - §6: add that frontend CI build-fail wiring for a11y scans is deferred until frontend CI exists; the M1 posture is lint-time + test-time checks.
 
-- [ ] **Step 11.4: design/specifications/accessibility-spec.md and i18n-spec.md**
+- [x] **Step 11.4: design/specifications/accessibility-spec.md and i18n-spec.md**
 
 - accessibility-spec.md: replace Angular-specific mandatory tooling references with the React equivalents above; the WCAG requirements themselves are framework-agnostic and stay untouched.
 - i18n-spec.md: add a status note that M1 ships hardcoded English strings by explicit decision (spec Non-goals), with i18n wiring revisited before feature milestones; replace Angular-specific implementation guidance with a pointer to that note (do not delete the framework-agnostic requirements).
 
-- [ ] **Step 11.5: Verify and commit**
+- [x] **Step 11.5: Verify and commit**
 
 ```bash
 grep -rn "ng serve\|Angular CLI\|angular" README.md CONTRIBUTING.md design/specifications/ | grep -iv "angular-era\|historical\|previously\|was Angular"
 ```
 
 Expected: no hits describing Angular as the current stack (mentions framed as history are fine).
+
+> **Result:** across Task 11's five named files (`README.md`, `CONTRIBUTING.md`, `test-spec.md`, `accessibility-spec.md`, `i18n-spec.md`) the grep is clean. Run against the whole `design/specifications/` directory it still flags `design-spec.md` and `performance-spec.md`, which are out of Task 11's scope (see Deviation 5 above). `git add` also includes this plan file (see Deviation 6).
 
 ```bash
 git add README.md CONTRIBUTING.md design/specifications/

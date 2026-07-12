@@ -6,9 +6,11 @@ Internationalization (i18n) is the process of designing and developing Hangar Ba
 
 **AI Coding Assistant Goal:** Ensure all user-facing text is externalized and handled through i18n mechanisms. Implement locale-aware formatting and support language switching.
 
+> **Milestone-1 status (2026-07):** The React rebuild ships **hardcoded English strings by explicit decision** (see the Milestone-1 spec's Non-goals). No i18n runtime is wired into the frontend yet. The externalization requirements in this document remain the target and MUST be revisited before any feature milestone; the frontend implementation guidance below (originally written for Angular) is superseded and will be re-specified for React when i18n work is scheduled. The framework-agnostic principles and the backend (FastAPI/Babel) guidance still apply.
+
 ## 2. Core i18n Principles
 
-*   **Externalize Strings:** All user-interface text (labels, buttons, messages, errors, etc.) must be stored in external resource files (e.g., `.xlf` for Angular, `.po` for Python/FastAPI), not hardcoded in the application code.
+*   **Externalize Strings:** All user-interface text (labels, buttons, messages, errors, etc.) must be stored in external resource files (e.g., `.po` for Python/FastAPI, a message catalog for the frontend), not hardcoded in the application code.
 *   **Locale-Aware Formatting:** Dates, times, numbers, and currencies must be formatted according to the user's selected locale. (Note: EVE Online's currency, ISK, may have a standard representation, but general numeric formatting still applies).
 *   **UTF-8 Encoding:** All text data, including source files, database content, and API communications, must use UTF-8 encoding.
 *   **UI Adaptability:** Design UIs to accommodate varying text lengths and directions (though Right-to-Left (RTL) is a future consideration, not MVP). Use flexible layouts.
@@ -61,39 +63,11 @@ class ItemNotFoundException(HTTPException):
 # AI: ensure the 'detail' message is wrapped with `_()` for translation.
 ```
 
-### 3.2. Frontend (Angular)
+### 3.2. Frontend (React)
 
-**AI Actionable Checklist:**
+> **Deferred in Milestone 1 (see the status note in Section 1).** The frontend currently ships hardcoded English strings and wires no i18n runtime. When i18n is scheduled, this section will specify the React approach — a message-catalog library, locale-aware `Intl` formatting for dates/numbers/currency, a language switcher with a persisted preference, and a dynamically-set `<html lang>` attribute. The original Angular i18n tooling guidance no longer applies.
 
-*   [ ] Initialize Angular's built-in i18n (`@angular/localize`) for the project.
-*   [ ] Mark all translatable text in HTML templates with the `i18n` attribute.
-    *   For attributes, use `i18n-attributeName` (e.g., `i18n-title`, `i18n-aria-label`).
-*   [ ] For strings in component TypeScript code, prepare them for extraction (e.g., by using `$localize` tagged template literals if needed, though template-driven is preferred).
-*   [ ] Extract translatable strings into XLIFF (`.xlf`) files using `ng extract-i18n`.
-*   [ ] Configure `angular.json` for different locale builds (e.g., `en`, `de`).
-*   [ ] Implement a language switcher component that allows users to select their preferred language.
-*   [ ] Ensure the selected language preference is persisted (e.g., in `localStorage` or user profile).
-*   [ ] Dynamically set the `lang` attribute on the `<html>` tag based on the current locale.
-*   [ ] Use Angular pipes for locale-aware formatting: `DatePipe`, `CurrencyPipe`, `DecimalPipe`, `PercentPipe`.
-
-**AI Implementation Pattern (Angular Template):**
-
-```html
-<!-- Example: src/app/components/some-component/some-component.html -->
-<div>
-  <h1 i18n="Page title for user dashboard|Meaning: Main heading on the dashboard@@userDashboardTitle">User Dashboard</h1>
-  <p i18n="Welcome message for the user|Meaning: A friendly greeting@@welcomeUserMessage">Welcome to Hangar Bay!</p>
-  <button i18n-title="Button hint for logout|Meaning: Tooltip for logout button@@logoutButtonTitle" i18n="Logout button text|Meaning: Text on the button to log out@@logoutButton">Log Out</button>
-  
-  <p i18n="Item count display|Meaning: Shows how many items are available@@itemCount">You have {itemCount, plural, =0 {no items} =1 {one item} other {# items}}.</p>
-  <p>Last login: {{ lastLoginDate | date:'medium' }}</p>
-</div>
-
-<!-- AI: Use 'i18n' attribute for all static text elements. -->
-<!-- AI: Provide a description and a custom ID (e.g., 'userDashboardTitle') for clarity and stability. -->
-<!-- AI: Use ICU expressions for plurals and selections within i18n blocks. -->
-<!-- AI: Use Angular's date/number/currency pipes for dynamic data formatting. -->
-```
+The framework-agnostic requirement stands: **all user-facing strings must be externalizable.** Do not bury hardcoded copy in ways that make later extraction impractical, and keep locale-aware formatting (dates, numbers, currency) going through `Intl`/a formatting layer rather than hand-rolled string concatenation, so the eventual i18n retrofit is mechanical rather than a rewrite.
 
 ### 3.3. Data Handling (ESI vs. Application-Specific)
 
@@ -120,9 +94,8 @@ class ItemNotFoundException(HTTPException):
 
 **AI Actionable Checklist:**
 
-*   [ ] Ensure the `<html>` element's `lang` attribute is dynamically updated to reflect the current page language. (Covered in Angular checklist).
-*   [ ] All `aria-label`, `aria-labelledby`, `aria-describedby`, and `title` attributes containing translatable text must be processed by the i18n system.
-    *   *Pattern:* In Angular, use `i18n-aria-label`, `i18n-title`, etc.
+*   [ ] Ensure the `<html>` element's `lang` attribute is dynamically updated to reflect the current page language. (To be handled by the frontend i18n approach when scheduled — see Section 3.2.)
+*   [ ] All `aria-label`, `aria-labelledby`, `aria-describedby`, and `title` attributes containing translatable text must be processed by the i18n system (framework-agnostic requirement; the React mechanism is TBD — see Section 3.2).
 *   [ ] Text alternatives for images (`alt` text) must be translatable.
 *   [ ] Ensure that changing language does not negatively impact keyboard navigation or focus management.
 
@@ -142,8 +115,8 @@ Refer to `test-spec.md` for overall testing strategy. i18n-specific tests should
 ## 6. Tooling
 
 *   **Backend (FastAPI):** `Babel`, `fastapi-babel`
-*   **Frontend (Angular):** `@angular/localize`, `ng extract-i18n`
-*   **Translation Management:** (Future) Consider tools like Weblate, Crowdin, or Transifex if manual `.xlf`/`.po` file management becomes cumbersome.
+*   **Frontend (React):** deferred in Milestone 1 (see the Section 1 status note); a message-catalog library plus `Intl` formatting to be selected when i18n is scheduled.
+*   **Translation Management:** (Future) Consider tools like Weblate, Crowdin, or Transifex if manual `.po`/message-catalog file management becomes cumbersome.
 
 ## 7. Future Considerations
 

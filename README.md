@@ -13,6 +13,8 @@ There's only one way to find out!
 
 ## Screenshot (WIP 2025-06-25)
 
+Angular-era screenshot; the React rebuild is in progress and does not yet have a published screenshot.
+
 ![Hangar Bay Screenshot](./design/assets/images/progress/frontend-contracts-20250625.png)
 
 ## Project Documentation
@@ -27,7 +29,7 @@ For a comprehensive understanding of the Hangar Bay project, please refer to the
 ## Core Technologies
 
 *   **Backend:** Python with FastAPI
-*   **Frontend:** Angular
+*   **Frontend:** React 19 (Vite, TypeScript, Tailwind CSS v4, TanStack Router/Query)
 *   **Database:** PostgreSQL
 *   **Caching:** Valkey
 *   **Authentication:** EVE Online SSO (OAuth 2.0)
@@ -43,8 +45,7 @@ This section guides you through setting up the Hangar Bay project for local deve
 *   **Git:** For version control.
 *   **Python:** Version 3.11 or newer for the backend.
 *   **PDM (Python Dependency Manager):** For managing backend dependencies. Install it via `pipx install pdm` or `pip install --user pdm`. Refer to [PDM's official documentation](https://pdm-project.org/latest/getting-started/installation/) for more options.
-*   **Node.js:** Version 20.19.0 or newer for the Angular frontend (includes npm). Refer to Angular's [version compatibility](https://angular.dev/reference/versions#actively-supported-versions) for more information.
-*   **Angular CLI:** Install globally using `npm install -g @angular/cli`.
+*   **Node.js:** Version 20.19.0 or newer for the React frontend (includes npm).
 
 ### 1. Clone the Repository
 
@@ -81,12 +82,14 @@ cd hangar-bay
     ```
     The FastAPI application should be available at `http://localhost:8000`.
 
-### 3. Frontend Setup (Angular)
+### 3. Frontend Setup (React)
+
+The React single-page app lives in `app/frontend/web` (Vite + React 19 + TypeScript + Tailwind CSS v4 + TanStack Router/Query).
 
 1.  **Navigate to the frontend directory:**
     ```bash
     # From the project root
-    cd app/frontend/angular
+    cd app/frontend/web
     ```
 
 2.  **Install dependencies:**
@@ -94,15 +97,17 @@ cd hangar-bay
     npm install
     ```
 
-3.  **Running Linters and Formatters:**
-    *   Lint: `npm run lint` (or `ng lint`)
-    *   Format: `npm run format` (runs Prettier)
-
-4.  **Running the Development Server:**
+3.  **Running the Development Server:**
     ```bash
-    ng serve
+    npm run dev
     ```
-    The Angular application should be available at `http://localhost:4200`.
+    The app is served at `http://localhost:5173`, and proxies `/api/v1` requests to the backend on `http://localhost:8000`.
+
+4.  **Regenerating the API client types (after backend schema changes):**
+    ```bash
+    cd app/backend && pdm run export-openapi    # writes app/frontend/web/openapi.json
+    cd app/frontend/web && npm run generate:api  # regenerates src/lib/api/schema.d.ts
+    ```
 
 ---
 
