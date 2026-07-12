@@ -69,7 +69,7 @@ notes and commit messages.
 |---|---|---|---|
 | 1 — Backend enablement fixes | ✅ Shipped | `598dd22`, `c854668`, `31f4a37`, `e10b109`, `c051add` | Tasks 1–3 shipped on `claude/hangar-bay-frontend-rebuild-2e4fe7`. Group review complete (≥3 rounds); 3 minor findings (plan bookkeeping staleness, TEST-1 system/station/is_bpc coverage gap, FASTAPI-2 inert-param schema markers) remediated in the follow-up `fix(task-gate)` commit `c051add` (inert-param schema markers, 5 new HTTP/pagination tests, re-exported `openapi.json`). |
 | 2 — Frontend scaffold | ✅ Shipped | `b17b24c`, `ec07568`, `7420c77`, `c9d1d2d`, `58a9df5`, `448dc53`, `528ca95`, `ecaf2fa`, `4fa9438` | Tasks 4–8 shipped; Fable gate approved after 3 fix rounds (negative-price URL sanitization, NaN-id no-request test, plan bookkeeping). Final: 29 frontend tests, lint + strict build green. |
-| 3 — Acceptance, teardown, docs | ✅ Shipped | `afbd1bf`, `54956dd`, `1e6c763`, `657e804`, `662a0ba`, `8f82036`, `d8a737a` | Tasks 9–11 shipped 2026-07-12. Task 9 acceptance PASSED against live data (fixes `afbd1bf` region stamp + `54956dd` blank-title label; record `1e6c763`). Task 10 Angular teardown (`657e804`, review fix `662a0ba`). Task 11 docs (`8f82036`, review fix `d8a737a`). Group review complete (this gate); findings remediated in the `fix(task-gate)` commit below. |
+| 3 — Acceptance, teardown, docs | ✅ Shipped | `afbd1bf`, `54956dd`, `1e6c763`, `657e804`, `662a0ba`, `8f82036`, `d8a737a`, `7882b8d` | Tasks 9–11 shipped 2026-07-12. Task 9 acceptance PASSED against live data (fixes `afbd1bf` region stamp + `54956dd` blank-title label; record `1e6c763`). Task 10 Angular teardown (`657e804`, review fix `662a0ba`). Task 11 docs (`8f82036`, review fix `d8a737a`). Group review complete (this gate); round-1 findings remediated in `7882b8d` (which also shipped CONTRIBUTING.md content fixes — env block + eight repointed links), round-2 findings (detail-page blank-title fix, Discovery undercount, this backfill) in the follow-up `fix(task-gate)` commit — its SHA is backfilled at milestone exit. |
 
 ### Discoveries
 
@@ -89,10 +89,16 @@ notes and commit messages.
 - **Real-data nuance:** ingested contracts include non-ship contracts (`is_ship_contract: false`)
   and items with unresolved `type_name`; the M1 UI displays them as-is. Worth a product decision
   (default ship-only filter?) during the /impeccable phase — F001/F002 center on ship contracts.
-- **Residual Angular-as-current guidance survives in three specs outside Task 11's file scope**
-  (found during the Phase 3 gate; the milestone's docs pass was scoped by the M1 spec's Teardown
-  list to only test/accessibility/i18n-spec.md, so these were deliberately not edited — a
-  follow-up docs pass is needed before the /impeccable phase leans on them):
+- **Residual Angular-as-current guidance survives across five specs the pre-/impeccable
+  follow-up docs pass must cover** (found during the Phase 3 gate; extended at the round-2 gate
+  after the prescribed case-insensitive scan turned up two more files the original list of three
+  undercounted). Three are wholly outside Task 11's file scope; security-spec.md is likewise
+  outside it; accessibility-spec.md was in the docs-pass scope (the milestone's pass was scoped by
+  the M1 spec's Teardown list to only test/accessibility/i18n-spec.md and got its §3.4/§3.5
+  React-idiom note), yet two Angular residuals inside it survived — Task 11 Deviation 4 logged
+  them as "incidental phrasing", which understates a full Angular Forms code block. Run the
+  case-insensitive `grep -rin '\bangular\b'` across all of `design/specifications/` to confirm the
+  full list before the /impeccable phase leans on any of them:
   - `design/specifications/design-spec.md` — presents Angular as the current frontend framework at
     lines ~57, 121, 156–157, 164, 167, 256, 263, 269, 327, 339 (`@angular/localize`,
     Angular Material/CDK, RxJS, "Leverage Angular's Capabilities").
@@ -107,6 +113,18 @@ notes and commit messages.
     capital-A `Angular` tokens with no lowercase `angular`/"Angular CLI" match. A follow-up docs
     pass should use a case-insensitive scan (`grep -rin '\bangular\b'`) across all of
     `design/specifications/`.
+  - `design/specifications/security-spec.md` — presents Angular as the current frontend at §3.2
+    "Output Encoding (Frontend - Angular)" (lines 163–169, `DomSanitizer`/`bypassSecurityTrustHtml`
+    patterns), the Angular `ErrorHandler` pattern (lines 211–212), and the `npm/Angular` dependency
+    bullets (lines 225–237, `npm audit` framed as the Angular toolchain). Flagged by the prescribed
+    case-insensitive scan; outside the M1 spec's Teardown scope, so left unedited this milestone.
+  - `design/specifications/accessibility-spec.md` — retains a literal Angular Forms code sample at
+    §3.3 "AI Implementation Pattern (Input Assistance - Angular Forms)" (lines 100–105, with
+    `*ngIf`/`[formControl]`/`[attr.aria-*]`) and Angular i18n AI-guidance at §3.5 (lines 116, 118,
+    `i18n-aria-label`/"Angular's localization"). Task 11 Deviation 4 recorded these as "incidental
+    phrasing", understating a full code block CONTRIBUTING.md tells AI agents to "pay close
+    attention to". Outside the M1 spec's Teardown scope for code-sample rewrites — the /impeccable
+    docs pass must replace them with React patterns.
 
 ---
 
@@ -2029,7 +2047,7 @@ design intentionally deferred to the /impeccable phase."
 
 ## Phase 3 — Acceptance, teardown, documentation
 
-**Execution Status:** ✅ SHIPPED 2026-07-12 — branch `claude/hangar-bay-frontend-rebuild-2e4fe7`. All three tasks executed and committed: Task 9 acceptance PASSED against live ESI data, requiring two fixes shipped during acceptance (`afbd1bf` ingestion region stamp, `54956dd` blank-title row label — both in Discoveries) plus the acceptance record (`1e6c763`); Task 10 Angular teardown (`657e804`, review fix `662a0ba`); Task 11 documentation (`8f82036`, review fix `d8a737a`). Full ship SHAs: `afbd1bf`, `54956dd`, `1e6c763`, `657e804`, `662a0ba`, `8f82036`, `d8a737a`. Group review complete (this gate); five findings remediated in the follow-up `fix(task-gate): address review findings` commit. Milestone exit (superpowers:finishing-a-development-branch) is the only remaining step.
+**Execution Status:** ✅ SHIPPED 2026-07-12 — branch `claude/hangar-bay-frontend-rebuild-2e4fe7`. All three tasks executed and committed: Task 9 acceptance PASSED against live ESI data, requiring two fixes shipped during acceptance (`afbd1bf` ingestion region stamp, `54956dd` blank-title row label — both in Discoveries) plus the acceptance record (`1e6c763`); Task 10 Angular teardown (`657e804`, review fix `662a0ba`); Task 11 documentation (`8f82036`, review fix `d8a737a`). Full ship SHAs: `afbd1bf`, `54956dd`, `1e6c763`, `657e804`, `662a0ba`, `8f82036`, `d8a737a`, `7882b8d`. Group review complete (this gate) across two remediation rounds: round-1's five findings landed in `7882b8d` (`fix(task-gate)`, which also shipped CONTRIBUTING.md content fixes — env block + eight repointed links); round-2's three findings (ContractDetailPage blank-title `??` fix + regression test, the residual-Angular Discovery undercount, and this SHA backfill) land in the follow-up `fix(task-gate)` commit, whose own SHA is backfilled into this banner and the table row at milestone exit (no self-reference regress — `7882b8d` is now fixed). Milestone exit (superpowers:finishing-a-development-branch) is the only remaining step.
 
 ### Task 9: End-to-end acceptance against the real backend
 

@@ -31,7 +31,10 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
       <Link to="/contracts" className="underline">
         ← All contracts
       </Link>
-      <h1 className="my-2 text-xl font-bold">{data.title ?? `Contract ${data.contract_id}`}</h1>
+      {/* Real ESI titles are often "" (not null), which ?? passes through —
+          the heading would render empty. Treat blank titles as absent, matching
+          ContractsPage's primaryLabel (found live during Task 9 acceptance). */}
+      <h1 className="my-2 text-xl font-bold">{data.title?.trim() || `Contract ${data.contract_id}`}</h1>
       <dl className="grid max-w-xl grid-cols-2 gap-1">
         <dt className="font-semibold">Type</dt>
         <dd>{data.type}</dd>

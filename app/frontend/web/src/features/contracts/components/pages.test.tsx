@@ -146,6 +146,18 @@ describe('ContractDetailPage', () => {
     expect(screen.getByText(/jita/i)).toBeInTheDocument()
   })
 
+  it('falls back to "Contract <id>" in the heading when the title is empty', async () => {
+    // Same real-ESI trap as the list row (title is "" not null): ?? passes the
+    // empty string through and the <h1> renders blank. The detail heading must
+    // apply the same trim-or-fallback as ContractsPage's primaryLabel.
+    const untitled = { ...CONTRACT, contract_id: 777, title: '' }
+    stubFetch(() => jsonResponse(untitled))
+
+    renderApp('/contracts/777')
+
+    expect(await screen.findByRole('heading', { name: 'Contract 777' })).toBeInTheDocument()
+  })
+
   it('shows not-found for a 404', async () => {
     stubFetch(() => jsonResponse({ detail: 'Contract not found' }, 404))
 
