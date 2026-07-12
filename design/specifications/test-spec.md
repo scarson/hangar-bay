@@ -25,25 +25,25 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
                 *   Input validation errors (422 Unprocessable Entity).
                 *   Authentication/Authorization errors (401/403).
                 *   Mocking of service layer dependencies using `mocker` fixture from `pytest-mock`.
-    *   **Frontend (Angular):** Test individual components, services, pipes, and directives.
+    *   **Frontend (React):** Test individual components, hooks, and utility functions in isolation.
 
-        *   **AI Implementation Pattern (Angular Unit Tests - Jasmine/Karma):**
-            *   When generating a new Angular component/service, AI should also generate a `.spec.ts` file with:
-                *   Basic setup (`TestBed.configureTestingModule`, component fixture creation).
-                *   A test for component creation (`expect(component).toBeTruthy();`).
-                *   Placeholders or simple tests for public methods and key interactions.
-                *   Mocks for service dependencies using `jasmine.createSpyObj`.
+        *   **AI Implementation Pattern (React Unit/Component Tests - Vitest + React Testing Library):**
+            *   When generating a new React component or hook, AI should also generate a co-located `*.test.tsx` file with:
+                *   Rendering via React Testing Library (`render` for components, `renderHook` for hooks; wrap query-dependent code in a `QueryClientProvider`).
+                *   A smoke assertion that the component renders its key content (e.g. `expect(screen.getByRole(...)).toBeInTheDocument();`).
+                *   Simple tests for user interactions (via `@testing-library/user-event`) and for the key states of a hook.
+                *   Mocks for network/service dependencies using `vi.stubGlobal('fetch', …)` or `vi.mock()` / `vi.fn()`.
 
 ### 3.2. Integration Tests
 *   **Scope:** Test interactions between components or modules.
 *   **Backend:** Test API endpoints with a real (test) database, interactions with the caching layer (Valkey), and potentially mocked ESI interactions to verify request/response handling.
     *   **Frontend:** Test component interactions, service integrations, and routing.
 
-        *   **AI Actionable Checklist (Angular Integration Tests):**
-            *   [ ] Test that a parent component correctly passes data to a child component via `@Input()`.
-            *   [ ] Test that a parent component correctly listens to events from a child component via `@Output()`.
-            *   [ ] Test that a service method is called when a component action is performed.
-            *   [ ] Test basic routing scenarios (e.g., navigating to a page displays the correct component).
+        *   **AI Actionable Checklist (React Integration Tests):**
+            *   [ ] Test that a parent component correctly passes data to a child component via props.
+            *   [ ] Test that a parent component responds to callbacks/events raised by a child component.
+            *   [ ] Test that an API/service call is issued (or the relevant hook is invoked) when a component action is performed.
+            *   [ ] Test basic routing scenarios (e.g., navigating to a route renders the correct page — see the `renderApp` test helper).
 
 ### 3.3. End-to-End (E2E) Tests
 *   **Scope:** Test complete user flows through the deployed application (frontend through backend to database/cache).
@@ -60,7 +60,7 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 *   **Scope:** Evaluate application responsiveness, scalability, and stability under various load conditions, ensuring adherence to the targets and guidelines defined in `performance-spec.md`.
 *   **Key Areas (refer to `performance-spec.md` for details):
     *   API endpoint response times (FastAPI).
-    *   Frontend load and interaction times (Angular - FCP, LCP, TTI, INP).
+    *   Frontend load and interaction times (React - FCP, LCP, TTI, INP).
     *   Database query efficiency (PostgreSQL).
     *   Caching strategy effectiveness (Valkey).
     *   Resource utilization (CPU, memory) under load.
@@ -154,7 +154,7 @@ This document outlines the testing strategy and plan for the Hangar Bay applicat
 
         *   **AI Actionable Checklist (Security Test Integration):**
             *   [ ] When setting up CI, instruct AI to include SAST tools (e.g., `bandit run -r . -ll` for Python).
-            *   [ ] Instruct AI to include dependency vulnerability scanning (e.g., `pip-audit` for Python, `npm audit --audit-level=high` for Angular) in CI scripts.
+            *   [ ] Instruct AI to include dependency vulnerability scanning (e.g., `pip-audit` for Python, `npm audit --audit-level=high` for the React frontend) in CI scripts.
 
 ## 8. Test Plan by Feature
 
