@@ -180,19 +180,19 @@ Every commit message MUST follow [Conventional Commits](https://www.conventional
 
 **Full reference:** `docs/git-strategy.md` (invariants, day-one workflow, recovery steps, multi-agent rules, red flags). The rules below are the short form. <!-- If docs/git-strategy.md does not exist in this project, run the `git-strategy-init` skill to install it. -->
 
-- **No direct commits to local `main`.** Feature work happens in worktrees on dedicated branches (`fix/*`, `feat/*`, `chore/*`, `docs/*`). Local `main` should mirror `origin/main` at all times — advance it only by fetching and resetting, never by committing.
+- **No direct commits to local `dev`.** Feature work happens in worktrees on dedicated branches (`fix/*`, `feat/*`, `chore/*`, `docs/*`; agent sessions use the `claude/*` namespace). Local `dev` should mirror `origin/dev` at all times — advance it only by fetching and resetting, never by committing. `dev` is the integration branch (all feature/fix/docs PRs target it); `main` is the **release branch**, advanced only by `dev` → `main` publication PRs (see `docs/git-strategy.md` §Release branch).
 - **Worktrees live at `.claude/worktrees/<slug>` inside the repo, NOT as siblings of the repo directory.** The path is gitignored by the convention this skill family assumes. `git worktree add .claude/worktrees/<slug> -b <branch-name>` creates both in one step. Using `../<repo>-<slug>` pollutes the parent directory and scatters state across multiple locations.
-- **Do NOT click "Sync" in VS Code (or any GUI pull) on local `main`.** Sync performs `git pull`, which creates a merge commit when local and remote histories have diverged. Use the terminal instead.
-- **Realign local `main` with a reset, not a merge.** The canonical safe sequence when local `main` has drifted:
+- **Do NOT click "Sync" in VS Code (or any GUI pull) on local `dev`.** Sync performs `git pull`, which creates a merge commit when local and remote histories have diverged. Use the terminal instead.
+- **Realign local `dev` with a reset, not a merge.** The canonical safe sequence when local `dev` has drifted:
   ```bash
   # If local has commits you want to keep, save them first:
   git branch wip/<descriptive-name> HEAD
   # Then realign:
-  git fetch origin main
-  git reset --hard origin/main
+  git fetch origin dev
+  git reset --hard origin/dev
   ```
   `git reflog` keeps recent HEAD movements recoverable for 30-90 days regardless, but an explicit WIP branch is cleaner and signals intent.
-- **Fetch before comparing.** When scripts or agents compare against `main`, always use `origin/main` after a `git fetch origin main` — never the local `main` ref.
+- **Fetch before comparing.** When scripts or agents compare against `dev`, always use `origin/dev` after a `git fetch origin dev` — never the local `dev` ref.
 - **Agents auto-merge by default; Sam merges only when a Review trigger applies.** Review triggers split into two kinds: **domain** (security-sensitive code — auth, secrets, crypto, SSRF/injection guards; data-integrity paths; architecture changes like public interfaces, serialization contracts, schema, external APIs) and **discovery** (agent classifies `Escalate` because CI investigation surfaced a design issue, a merge conflict is substantive, scope drifted, or something else needs judgment). Everything else → `Routine`; the agent merges their own PR on green CI. When CI fails on Routine, the agent investigates and fixes — lint/build/test errors are the agent's responsibility, not a classification escalation (up to 3 attempts on the same failure before escalating). When the PR hits conflicts, rebase in the worktree (not GitHub UI), `git push --force-with-lease` (never plain `--force`). Every PR body must include a `## Merge classification` heading (`Routine` / `Review — <trigger>` / `Escalate — <concern>`); missing defaults to `Review`. Wait for CI with a dedicated monitoring tool, not bash sleep+poll. Always `gh pr merge --merge --delete-branch` — never `--squash`, never `--rebase`. Full rules + mechanics (including §Handling CI failures, §Handling merge conflicts) in `docs/git-strategy.md` §Merge authority.
 
 ## Testing
