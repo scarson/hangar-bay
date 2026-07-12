@@ -53,6 +53,23 @@ describe('ContractsPage', () => {
     expect(screen.getByText(/1,000,000/)).toBeInTheDocument()
   })
 
+  it('falls back to "Contract <id>" when the title is empty and no item name resolves', async () => {
+    // Real ESI data: title is "" (not null) and non-ship contracts often have
+    // no resolvable type_name — ?? alone leaves an empty, unclickable-looking
+    // link (found live during Task 9 acceptance).
+    const untitled = {
+      ...CONTRACT,
+      contract_id: 555,
+      title: '',
+      items: [{ ...CONTRACT.items[0], type_name: null }],
+    }
+    stubFetch(() => jsonResponse({ total: 1, page: 1, size: 50, items: [untitled] }))
+
+    renderApp('/contracts')
+
+    expect(await screen.findByRole('link', { name: 'Contract 555' })).toBeInTheDocument()
+  })
+
   it('shows the empty state for zero results', async () => {
     stubFetch(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] }))
 

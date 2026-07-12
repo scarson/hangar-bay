@@ -205,5 +205,7 @@ export function ContractsPage({
 
 function primaryLabel(contract: Contract): string {
   const included = contract.items.find((item) => item.is_included && item.type_name)
-  return included?.type_name ?? contract.title ?? `Contract ${contract.contract_id}`
+  // Real ESI titles are often "" (not null), which ?? passes through — the
+  // row link would render empty. Treat blank titles as absent.
+  return included?.type_name ?? (contract.title?.trim() || `Contract ${contract.contract_id}`)
 }
