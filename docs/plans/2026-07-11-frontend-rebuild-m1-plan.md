@@ -1074,7 +1074,7 @@ git commit -m "feat(frontend): generated OpenAPI types + typed api client with r
 
 **Context:** URL search params are the single source of truth for filter state. `parseContractSearch` is the route's `validateSearch` — it must accept arbitrary junk from the address bar and always return a well-formed object (bad values fall back to defaults, never throw). `toApiQuery` gates `search` below the backend's `min_length=3` (a 1–2-char search stays in the URL while the user types, but is never sent — the backend would 422). Hooks live under `features/contracts/hooks/` and must not import any component (mobile-shareable seam, per spec). ME/TE and the other deferred filters are deliberately absent — do NOT add params the M1 UI doesn't ship (spec: "Milestone-1 minimum filter surface").
 
-- [ ] **Step 7.1: Write failing tests for the filter model**
+- [x] **Step 7.1: Write failing tests for the filter model**
 
 `src/features/contracts/filters.test.ts`:
 
@@ -1166,12 +1166,12 @@ describe('toApiQuery', () => {
 })
 ```
 
-- [ ] **Step 7.2: Run to verify failure**
+- [x] **Step 7.2: Run to verify failure**
 
 Run: `npm run test -- src/features/contracts/filters`
 Expected: FAIL — `./filters` module not found.
 
-- [ ] **Step 7.3: Implement the filter model**
+- [x] **Step 7.3: Implement the filter model**
 
 `src/features/contracts/filters.ts`:
 
@@ -1272,7 +1272,7 @@ export function toApiQuery(s: ContractSearch) {
 
 Run: `npm run test -- src/features/contracts/filters` — Expected: PASS.
 
-- [ ] **Step 7.4: Write failing hook tests**
+- [x] **Step 7.4: Write failing hook tests**
 
 `src/features/contracts/hooks/hooks.test.tsx` — stubs global fetch (pitfall TEST-5); asserts rendered outcome AND the request URL:
 
@@ -1386,7 +1386,7 @@ describe('useContract', () => {
 
 Run: `npm run test -- src/features/contracts/hooks` — Expected: FAIL (hook modules not found).
 
-- [ ] **Step 7.5: Implement the hooks**
+- [x] **Step 7.5: Implement the hooks**
 
 `src/features/contracts/hooks/useContracts.ts`:
 
@@ -1432,7 +1432,7 @@ export function useContract(contractId: number) {
 }
 ```
 
-- [ ] **Step 7.6: Run all frontend tests, typecheck, commit**
+- [x] **Step 7.6: Run all frontend tests, typecheck, commit**
 
 Run: `npm run test` — Expected: PASS (routes + client + filters + hooks).
 Run: `npm run build` — Expected: green.
