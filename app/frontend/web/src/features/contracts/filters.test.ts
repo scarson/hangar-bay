@@ -43,6 +43,14 @@ describe('parseContractSearch', () => {
     expect(parsed.sort_direction).toBe('desc')
   })
 
+  it('drops negative min_price/max_price (backend schema minimum is 0, would 422)', () => {
+    expect(parseContractSearch({ min_price: -5 }).min_price).toBeUndefined()
+    expect(parseContractSearch({ max_price: -0.01 }).max_price).toBeUndefined()
+    expect(parseContractSearch({ min_price: '-5' }).min_price).toBeUndefined()
+    expect(parseContractSearch({ min_price: 0 }).min_price).toBe(0)
+    expect(parseContractSearch({ max_price: '2500000' }).max_price).toBe(2_500_000)
+  })
+
   it('keeps valid values', () => {
     const parsed = parseContractSearch({
       search: 'Tristan',

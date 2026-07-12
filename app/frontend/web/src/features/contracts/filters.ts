@@ -35,6 +35,17 @@ function toNumber(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
+/**
+ * Price bounds mirror the backend's `min_price`/`max_price` schema minimum of 0:
+ * negative values (typeable past the inputs' `min="0"`, or hand-edited into a
+ * shared URL) 422 the request, so they fall back to undefined here — the same
+ * junk-tolerance contract toIdArray applies to the ID lists.
+ */
+function toNonNegativeNumber(value: unknown): number | undefined {
+  const n = toNumber(value)
+  return n !== undefined && n >= 0 ? n : undefined
+}
+
 function toBoundedInt(value: unknown, min: number, max: number, fallback: number): number {
   const n = toNumber(value)
   return n !== undefined && Number.isInteger(n) && n >= min && n <= max ? n : fallback
@@ -56,8 +67,8 @@ function toIdArray(value: unknown): number[] | undefined {
 export function parseContractSearch(raw: Record<string, unknown>): ContractSearch {
   return {
     search: typeof raw.search === 'string' && raw.search.length > 0 ? raw.search : undefined,
-    min_price: toNumber(raw.min_price),
-    max_price: toNumber(raw.max_price),
+    min_price: toNonNegativeNumber(raw.min_price),
+    max_price: toNonNegativeNumber(raw.max_price),
     region_ids: toIdArray(raw.region_ids),
     is_bpc: typeof raw.is_bpc === 'boolean' ? raw.is_bpc : undefined,
     page: toBoundedInt(raw.page, 1, Number.MAX_SAFE_INTEGER, DEFAULT_PAGE),

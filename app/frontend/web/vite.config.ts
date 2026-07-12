@@ -21,8 +21,5 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
-    // Task 4 ships no tests yet (they arrive in Task 5); keep `npm run test`
-    // green until then. Once tests exist this is a no-op.
-    passWithNoTests: true,
   },
 })
