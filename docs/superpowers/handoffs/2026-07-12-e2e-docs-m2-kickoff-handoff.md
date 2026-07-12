@@ -8,9 +8,12 @@ Supersedes [`2026-07-12-design-phase-handoff.md`](./2026-07-12-design-phase-hand
 - **Branch:** `claude/hangar-bay-frontend-rebuild-2e4fe7`, worktree at
   `.claude/worktrees/hangar-bay-frontend-rebuild-2e4fe7`. Tip `7c19f1e` + this handoff
   commit, **pushed**. Working tree clean apart from this handoff's files at write time.
-- **PR:** [#22](https://github.com/scarson/hangar-bay/pull/22) now carries M1 + design phase
-  + this session's three commits (below). **Unmerged; merge is Sam's decision** — do not merge
-  without his say-so.
+- **PR #22 is MERGED** ([#22](https://github.com/scarson/hangar-bay/pull/22), merge commit
+  `27ec57d`, 2026-07-12 07:18Z, by Sam, true merge): **`main` now contains everything through
+  `7c19f1e`** — M1, design phase, EVE-cyan rebrand, E2E suite, docs sweep. GitHub auto-deleted
+  the head branch on merge; this handoff's push re-created it carrying only the handoff
+  commit(s), which go to main via a small docs PR. **M2 starts from a FRESH branch/worktree
+  off `main`** — do not continue feature work on this worktree's branch.
 - **Suites at tip:** backend 53 pytest; frontend 47 vitest + **37 Playwright E2E** (fixture
   lane = 64 executions across desktop/mobile projects, green twice consecutively; live lane
   3/3 vs the real stack). `eslint .` and strict `tsc -b`/Vite build green.
@@ -98,7 +101,6 @@ Currently INSIDE the superpowers:brainstorming flow (re-invoke that skill on res
 
 ## Deferred / not started (unblock condition + pointer)
 
-- **PR #22 merge** — Sam's decision; everything proceeds on the branch either way.
 - **Closing-gate nits (all pre-existing, none block):** singular "1 contracts" live region
   (`ContractsPage.tsx`; E2E deliberately matches `/contracts? match/` loosely so a fix won't
   break it); price Min/Max 14px-vs-13px drift; aggregation-lock TTL watchdog; theoretical
@@ -143,10 +145,11 @@ Currently INSIDE the superpowers:brainstorming flow (re-invoke that skill on res
 
 ## Priority queue (suggested)
 
-1. Sam: PR #22 merge decision (independent of everything below).
-2. Resume M2 brainstorm at §M2's remaining questions → approaches → design → spec →
-   Sam review → Fable adversarial spec review → `/writing-plans-enhanced` →
-   plan-review-cycle → execute.
+1. Merge the small docs PR carrying this handoff into `main` (Sam's click), so the next
+   session reads it from `main`.
+2. Resume M2 brainstorm — on a fresh worktree/branch off `main` (≥ `27ec57d`) — at §M2's
+   remaining questions → approaches → design → spec → Sam review → Fable adversarial spec
+   review → `/writing-plans-enhanced` → plan-review-cycle → execute.
 3. During M2 backend work, batch in: Settings consolidation (if the design adopts it),
    the four closing-gate nits worth doing, debug-print cleanup.
 4. After M2: F005+ (scope-bearing features), frontend CI (unlocks E2E + a11y gating),
@@ -154,8 +157,12 @@ Currently INSIDE the superpowers:brainstorming flow (re-invoke that skill on res
 
 ## Runbook (fresh session, cold machine)
 
+Post-merge note: run this from whatever checkout hosts the work (for M2, the NEW worktree
+off `main`). The main-repo `.claude/launch.json`'s `cwd` points at the OLD M1 worktree —
+**update it to the new worktree's `app/frontend/web` before `preview_start`**.
+
 ```bash
-cd /Users/sam/Code/hangar-bay/.claude/worktrees/hangar-bay-frontend-rebuild-2e4fe7
+cd <your-worktree>   # M1 archive: .claude/worktrees/hangar-bay-frontend-rebuild-2e4fe7
 docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.dependencies.yml up -d --wait postgres_db valkey_cache
 export PATH="$HOME/.local/bin:$PATH"      # pdm lives here (uv tool install)
 docker exec hangar_bay_valkey valkey-cli DEL "hangar-bay:aggregation:lock"
@@ -173,27 +180,32 @@ Backend env: `app/backend/src/.env` (untracked; ENV-1 format rules). Test DB
 ## Continuation prompt (paste into a fresh session)
 
 ```markdown
-# Hangar Bay — resume M2 EVE SSO brainstorm (post-E2E/docs session)
+# Hangar Bay — start M2 EVE SSO from main (post-merge of PR #22)
 
-Work in the worktree `/Users/sam/Code/hangar-bay/.claude/worktrees/hangar-bay-frontend-rebuild-2e4fe7`
-(branch `claude/hangar-bay-frontend-rebuild-2e4fe7`, tip = the 2026-07-12 handoff commit, pushed).
+PR #22 is MERGED (true merge `27ec57d`): `main` contains M1, the design phase, the EVE-cyan
+rebrand, the Playwright E2E suite, and the docs sweep. Start by pulling `main` in
+`/Users/sam/Code/hangar-bay` (the local checkout may be behind), then create a FRESH worktree
++ branch off `main` for M2 (superpowers:using-git-worktrees; e.g. `claude/m2-eve-sso-<suffix>`).
+Do not reuse the old M1 worktree branch (`claude/hangar-bay-frontend-rebuild-2e4fe7`) for
+feature work.
 
-**Read first (in order):**
+**Read first (in order, paths relative to your checkout):**
 1. `docs/superpowers/handoffs/2026-07-12-e2e-docs-m2-kickoff-handoff.md` — full state,
-   M2 brainstorm resume point, discoveries, guardrails, runbook
+   M2 brainstorm resume point, discoveries, guardrails, runbook (if it's not on main yet,
+   it's on the old branch / its docs PR)
 2. `design/features/F004-User-Authentication-SSO.md` — the SSO feature spec (most decisions
    pre-made and marked [DECIDED])
 3. `PRODUCT.md` + `DESIGN.md` — product register + token rules (brand is now EVE cyan #5CCBCB)
 4. `docs/pitfalls/implementation-pitfalls.md` (ENV-1/2/3) and `docs/pitfalls/testing-pitfalls.md`
    (esp. TEST-1, TEST-6, TEST-7)
 
-**Context:** M1, the /impeccable design phase, the Playwright E2E suite (37 tests, fixture +
-live-smoke lanes), the docs residue sweep, and an EVE-cyan brand retune are ALL complete,
-verified, and pushed to PR #22 (https://github.com/scarson/hangar-bay/pull/22). Suites:
-47 vitest + 37 Playwright frontend, 53 pytest backend; lint + strict build green. Do NOT
-merge PR #22 — that's my decision. The dev environment is likely DOWN (session-bound
-processes); the handoff's Runbook has the exact bring-up, and the untracked backend .env
-already sets AGGREGATION_DEV_CONTRACT_LIMIT=1000 (the default 100 samples zero ships).
+**Context:** Suites at main: 47 vitest + 37 Playwright frontend (`npx playwright test`;
+live lane `E2E_LIVE=1 … --project=live-smoke`), 53 pytest backend; lint + strict build green.
+The dev environment is likely DOWN (session-bound processes); the handoff's Runbook has the
+exact bring-up. Two machine-local gotchas: the untracked `app/backend/src/.env` already sets
+AGGREGATION_DEV_CONTRACT_LIMIT=1000 (the default 100 samples zero ships — oldest-first ESI
+page), and the main repo's `.claude/launch.json` `cwd` still points at the OLD M1 worktree —
+repoint it at your new worktree's `app/frontend/web` before using preview_start.
 
 **Task: resume the M2 (EVE SSO, F004) brainstorm mid-flight** — re-invoke
 superpowers:brainstorming and pick up at clarifying questions. Already settled (do not re-ask):
@@ -263,4 +275,12 @@ Ultracode is enabled - don't go crazy - tens of agents are okay, hundreds are no
   which appeared in three sections with drifting wording — now §Context findings owns the
   detail and other sections point at it; fixed the continuation prompt's read-order to put
   the handoff first, F004 second — it had drifted during edits).
-- Final full pass (all seven rounds re-run): zero material findings.
+- Round 8 — **post-merge reality check** (session-specific: Sam merged PR #22 *between this
+  doc's first commit and its push* — the push's `[new branch]` output was the tell): 6
+  findings applied (headline PR bullet rewritten to merged state + fresh-branch-off-main
+  directive; "PR #22 merge" removed from Deferred; priority queue re-anchored on the docs
+  PR + fresh M2 worktree; continuation prompt rewritten — pull main, new worktree, stale
+  `launch.json` cwd warning, "do not merge" instruction deleted; runbook gained the
+  which-checkout note; memory files updated to merged state). Lesson recorded here: verify
+  remote/PR state at handoff time, not from session memory — the world moves mid-session.
+- Final full pass (all eight rounds re-run): zero material findings.
