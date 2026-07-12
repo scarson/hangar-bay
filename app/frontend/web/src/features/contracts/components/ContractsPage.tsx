@@ -16,8 +16,13 @@ export function ContractsPage({
   const navigate = useNavigate({ from })
   const { data, isPending, isError, refetch } = useContracts(search)
 
-  const update = (patch: Partial<ContractSearch>) =>
-    navigate({ search: (prev) => ({ ...prev, page: 1, ...patch }) })
+  // Text inputs (search, min/max price) fire on every keystroke, so they
+  // navigate with { replace: true } to avoid one history entry per character
+  // (a back button that walks the search box char-by-char). Discrete controls
+  // (region select, BPC toggle, sort, pagination) keep the default push so
+  // each is an undoable step.
+  const update = (patch: Partial<ContractSearch>, options?: { replace?: boolean }) =>
+    navigate({ search: (prev) => ({ ...prev, page: 1, ...patch }), ...options })
 
   return (
     <main className="p-4">
@@ -34,7 +39,7 @@ export function ContractsPage({
             type="search"
             className="border p-1"
             value={search.search ?? ''}
-            onChange={(e) => update({ search: e.target.value || undefined })}
+            onChange={(e) => update({ search: e.target.value || undefined }, { replace: true })}
           />
         </label>
         <label className="flex flex-col">
@@ -45,7 +50,10 @@ export function ContractsPage({
             className="border p-1"
             value={search.min_price ?? ''}
             onChange={(e) =>
-              update({ min_price: e.target.value === '' ? undefined : Number(e.target.value) })
+              update(
+                { min_price: e.target.value === '' ? undefined : Number(e.target.value) },
+                { replace: true },
+              )
             }
           />
         </label>
@@ -57,7 +65,10 @@ export function ContractsPage({
             className="border p-1"
             value={search.max_price ?? ''}
             onChange={(e) =>
-              update({ max_price: e.target.value === '' ? undefined : Number(e.target.value) })
+              update(
+                { max_price: e.target.value === '' ? undefined : Number(e.target.value) },
+                { replace: true },
+              )
             }
           />
         </label>

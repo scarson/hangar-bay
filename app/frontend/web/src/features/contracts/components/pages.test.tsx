@@ -83,6 +83,19 @@ describe('ContractsPage', () => {
     expect(calls[0]).toContain('sort_by=price')
   })
 
+  it('carries a repeated region_ids URL through to repeated API params (shareable-URL contract)', async () => {
+    // Drives the full multi-value inbound seam end-to-end: TanStack Router's
+    // qss decode of ?region_ids=…&region_ids=… -> parseContractSearch array
+    // coercion -> toApiQuery -> openapi-fetch's repeated-array serializer.
+    // Guards the two-repeat case that single-value URL tests can't (TEST-5).
+    const calls = stubFetch(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] }))
+
+    renderApp('/contracts?region_ids=10000002&region_ids=10000020')
+
+    await screen.findByText(/no contracts match/i)
+    expect(calls[0]).toContain('region_ids=10000002&region_ids=10000020')
+  })
+
   it('resets to page 1 when a filter changes', async () => {
     const calls = stubFetch(() =>
       jsonResponse({ total: 200, page: 3, size: 50, items: [CONTRACT] }),
