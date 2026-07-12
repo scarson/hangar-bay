@@ -69,7 +69,7 @@ The core components are:
         *   Interacts with the Caching Layer to improve performance.
 
 *   **Database (Persistence Layer):**
-    *   **Technology:** PostgreSQL (Production), SQLite (Development).
+    *   **Technology:** PostgreSQL (all environments — production, local development, and the test suite; SQLite is not used).
     *   **Responsibilities:** Stores aggregated public contract data (F001), cached ESI type details (ships, items), market group information, and potentially user-specific data such as saved searches (F005) and watchlists (F006) once authentication is implemented.
     *   **Access:** Primarily accessed by the Backend API via an ORM (SQLAlchemy).
 
@@ -146,11 +146,11 @@ Specific versions for the initially chosen technologies will be determined at th
     *   **Production: Gunicorn with Uvicorn workers.**
     *   **Reasoning:** Uvicorn provides high-speed ASGI request handling. Gunicorn offers robust process management, worker scaling, and resilience suitable for production environments.
     *   **Alternatives Considered:** Hypercorn (another capable ASGI server).
-*   **Database: PostgreSQL (Production) / SQLite (Development)**
-    *   **Reasoning:** PostgreSQL offers robustness, scalability, and advanced features for production. SQLite provides ease of use for local development.
+*   **Database: PostgreSQL (all environments)**
+    *   **Reasoning:** PostgreSQL offers robustness, scalability, and advanced features for production. Local development and the test suite run against PostgreSQL as well (no SQLite), so behavior matches production and Postgres-specific features (e.g., native JSONB) are exercised everywhere. The test suite drops and recreates a scratch database via `DATABASE_URL_TESTS` on each run.
     *   **ORM Requirement:** An Object-Relational Mapper (ORM), such as SQLAlchemy for Python, MUST be used to interact with the database. This abstracts database-specific SQL, facilitates easier schema management, and aids in maintaining compatibility if the underlying database engine were to change (though the primary goal here is PostgreSQL).
     *   **Schema Design:** Database schemas and queries will be designed with PostgreSQL's capabilities and best practices in mind from the outset.
-    *   **Data Population:** Production database will be populated with fresh data from ESI and other relevant sources; migration of data from development SQLite instances will not be required.
+    *   **Data Population:** The production database will be populated with fresh data from ESI and other relevant sources; local/development data is disposable and is not migrated to production.
 *   **Caching Layer: Valkey**
     *   **Reasoning:** A community-driven fork of Redis, offering high performance in-memory caching suitable for ESI responses and frequently accessed data. Chosen for its open-source governance and compatibility with Redis clients.
 *   **Frontend Framework: React 19 (with TypeScript, strict mode)**

@@ -6,7 +6,7 @@
 # Key Fixture:
 #
 # - `db_session: AsyncSession`: Provided by `conftest.py`, this fixture gives
-#   each test function a clean, isolated, in-memory SQLite database session.
+#   each test function a clean, isolated, PostgreSQL test-database session (the dedicated `hangar_bay_test` DB via `DATABASE_URL_TESTS`).
 #   It handles the creation and teardown of the database schema, ensuring
 #   tests do not interfere with each other and can run in parallel safely.
 #

@@ -31,7 +31,7 @@ Risks can be categorized by the primary area they affect, such as:
     2.  **Update Parent Packages:** The primary way to resolve this is to update the direct dependencies that rely on `inflight`. As these parent packages are updated, they will hopefully transition to newer versions of their own dependencies that no longer use the problematic `inflight` version or use a fixed version.
     3.  **Monitor `npm audit`:** While `npm audit` currently reports 0 vulnerabilities, monitor its output after package updates.
 *   **Current Status & Reason if Unaddressed:**
-    *   Currently unaddressed directly because `inflight` is a transitive dependency. We cannot remove or replace it without changes to the packages that depend on it.
+    *   **Resolved (2026-07):** the Angular frontend (and its npm tree at `app/frontend/angular`, where `inflight` lived) was deleted in the React rebuild. `npm ls inflight` in the replacement app (`app/frontend/web`) is empty. The description above is retained as history.
 *   **Suggested Future Actions:**
     *   Regularly update direct frontend dependencies (`npm update`).
     *   If development environment performance degrades significantly, investigate `inflight`'s impact more deeply using Node.js memory profiling tools on the dev server process.

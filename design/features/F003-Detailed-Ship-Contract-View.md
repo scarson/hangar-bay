@@ -60,7 +60,7 @@
 *   Include field names, data types, and brief descriptions.
 *   **AI Assistant Guidance:** If any model fields store user-facing text that might require translation (e.g., descriptions, names not from a fixed external source like ESI), ensure they are designed with internationalization in mind. Consult `../i18n-spec.md` for strategies. For F003, this applies to frontend state holding the detailed contract view and any UI-specific labels/section titles.
 *   Primarily consumes data models defined in F001 (`contracts`, `contract_items`, `esi_type_cache`).
-*   Frontend state (e.g., in an Angular service or component) to manage the currently viewed contract's comprehensive data, including resolved ship attributes and descriptions.
+*   Frontend state (via a TanStack Query hook, e.g. `useContract`) to manage the currently viewed contract's comprehensive data, including resolved ship attributes and descriptions.
 
 ## 6. API Endpoints Involved (Optional)
 ### 6.1. Consumed ESI API Endpoints
@@ -95,7 +95,7 @@
 *   Responsive design.
 *   A distinct section should clearly list any 'Additional Included Items' if present, separate from the primary ship(s) details.
 *   [NEEDS_DESIGN: Mockups/wireframes for the detailed contract view page.]
-*   **AI Assistant Guidance:** When generating UI components, ensure all display strings are prepared for localization using Angular's i18n mechanisms (e.g., `i18n` attribute, `$localize` tagged messages) as detailed in `../i18n-spec.md`. Ensure components are designed with accessibility in mind (keyboard navigation, ARIA attributes, semantic HTML for data sections) as per `../accessibility-spec.md`.
+*   **AI Assistant Guidance:** When generating UI components, ensure all display strings are prepared for localization via the project's frontend i18n layer as detailed in `../i18n-spec.md` (frontend i18n is deferred in Milestone 1 — strings are currently hardcoded English). Ensure components are designed with accessibility in mind (keyboard navigation, ARIA attributes, semantic HTML for data sections) as per `../accessibility-spec.md`.
 
 ## 9. Error Handling & Edge Cases (Required)
 *   Contract ID not found (e.g., invalid URL, contract expired and cleaned up): Display a 404-like page or clear error message.
@@ -127,14 +127,14 @@
     *   Dates (e.g., `date_issued`, `date_expired`) must be formatted according to the user's locale.
     *   Numbers (e.g., `price`, `volume`, ship attribute values if numeric) must be formatted according to the user's locale.
 *   ESI-sourced data (ship names, descriptions, attribute names) will typically be in the default language fetched by F001 (e.g., English).
-*   Refer to `../i18n-spec.md` for specific Angular i18n patterns.
-*   **AI Assistant Guidance:** "Ensure all static user-facing strings in Angular components are externalized or marked for translation using Angular's `@angular/localize`. Use Angular's `DatePipe`, `CurrencyPipe`, `DecimalPipe` for locale-aware formatting of dates and numbers. Attribute names sourced from ESI can be displayed as-is, but UI labels for these attributes or their groupings should be translatable."
+*   Refer to `../i18n-spec.md` for the frontend i18n approach (deferred; to be defined for the React stack).
+*   **AI Assistant Guidance:** "Ensure all static user-facing strings in React components are externalized or marked for translation via the chosen message-catalog library (to be defined for the React stack). Use locale-aware `Intl` formatting (`Intl.DateTimeFormat`/`Intl.NumberFormat`) for dates and numbers. Attribute names sourced from ESI can be displayed as-is, but UI labels for these attributes or their groupings should be translatable."
 
 ## 14. Dependencies (Optional)
 *   [F001 (Public Contract Aggregation & Display)](./F001-Public-Contract-Aggregation-Display.md): Provides all underlying data.
 *   [F002 (Ship Browsing & Advanced Search/Filtering)](./F002-Ship-Browsing-Advanced-Search-Filtering.md): Provides the entry point to this view.
 *   Backend API.
-*   Frontend framework (Angular).
+*   Frontend framework (React).
 
 ## 15. Notes / Open Questions (Optional)
 *   **Displaying Ship Attributes (`dogma_attributes`)**: A curated list of 'Key Ship Attributes' (e.g., resistances, EHP, capacitor, targeting, slots) will be displayed prominently. An option (e.g., 'All Attributes' toggle/tab) will allow users to view all other attributes. Attributes should be grouped logically (e.g., 'Tank', 'Capacitor').
@@ -156,10 +156,10 @@
 *   Backend (FastAPI):
     *   [e.g., SQLAlchemy for joining `contracts`, `contract_items`, and `esi_type_cache` to build the detailed response.]
     *   [e.g., Pydantic for defining the `DetailedShipContract` response model.]
-*   Frontend (Angular):
-    *   [e.g., `ActivatedRoute` to get `contract_id` from URL, `HttpClientModule` for API calls, Angular Material components for layout and presentation (cards, lists, tables).]
-    *   [e.g., Angular service to fetch detailed contract data.]
-    *   [e.g., `@angular/localize` for i18n.]
+*   Frontend (React):
+    *   [e.g., TanStack Router route params to get `contract_id` from the URL; the generated `openapi-fetch` typed client for API calls; hand-rolled components in `src/components/` styled with Tailwind v4 for layout and presentation (cards, lists, tables).]
+    *   [e.g., a TanStack Query hook (e.g., `useContract`) to fetch detailed contract data.]
+    *   [e.g., the chosen React message-catalog library for i18n — deferred, see `../i18n-spec.md`.]
 
 ### 16.2. Critical Logic Points for AI Focus
 *   [e.g., Frontend: Correctly extracting `contract_id` from the route and triggering data fetch.]
@@ -173,7 +173,7 @@
 *   [e.g., Frontend: Gracefully handle cases where some optional data might be missing from the API response (though the API should aim to be comprehensive).]
 
 ### 16.4. Test Cases for AI to Consider Generating
-*   [e.g., Frontend (Angular - Component Tests): Test rendering of all key contract details, ship attributes, ship description, and images.]
+*   [e.g., Frontend (React - Component Tests via Testing Library + Vitest): Test rendering of all key contract details, ship attributes, ship description, and images.]
 *   [e.g., Frontend: Test display of 'Additional Included Items' section when present.]
 *   [e.g., Frontend: Test navigation back to search results.]
 *   [e.g., Frontend: Test error handling if API returns 404 for a contract ID.]
@@ -181,9 +181,9 @@
 *   [e.g., Backend: Test endpoint with an invalid/non-existent `contract_id` (expect 404).]
 
 ### 16.5. Specific AI Prompts or Instructions
-*   [e.g., "Generate an Angular component (`ContractDetailViewComponent`) that takes a `contract_id` (e.g., via route parameter), fetches data using a service, and displays all contract and ship details as specified. Use Angular Material components for layout."]
-*   [e.g., "Create an Angular service method `getContractDetails(contractId: number): Observable<DetailedShipContract>` to call the backend API endpoint."]
+*   [e.g., "Generate a React component (`ContractDetailPage`) that takes a `contract_id` from the route params, fetches data via a TanStack Query hook, and displays all contract and ship details as specified."]
+*   [e.g., "Create a TanStack Query hook (e.g., `useContract(contractId: number)`) that calls the backend API endpoint via the typed `openapi-fetch` client and returns the `DetailedShipContract`."]
 *   [e.g., "On the backend, implement the FastAPI route `/api/v1/contracts/ships/{contract_id}`. This route should fetch the contract, its items, and for each item, its full details from `esi_type_cache` (including `name`, `description`, `dogma_attributes`, `dogma_effects`). Construct image URLs for renders and icons. Return a `DetailedShipContract` Pydantic model."]
 *   [e.g., "Develop a sub-component or template section for displaying ship attributes. It should take the `dogma_attributes` JSON from `esi_type_cache` and render them in a user-friendly, grouped manner. Include logic for a 'Key Attributes' summary and an 'All Attributes' view as per notes."]
-*   [e.g., "Ensure all user-facing labels and section titles in the Angular component use `i18n` attributes or `$localize` for translation. Provide example .xlf entries."]
+*   [e.g., "Ensure all user-facing labels and section titles in the React component are routed through the i18n layer. Provide an example message-catalog entry for new strings (deferred — see `../i18n-spec.md`)."]
 *   [e.g., "When displaying ship renders, use `https://images.evetech.net/types/{type_id}/render?size=512` and for icons `https://images.evetech.net/types/{type_id}/icon?size=64`. Ensure `alt` text is provided for accessibility."]

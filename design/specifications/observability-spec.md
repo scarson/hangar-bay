@@ -40,7 +40,7 @@ This document outlines the observability strategy for the Hangar Bay application
     *   Cache performance: hit/miss ratio, latency.
     *   Task queue metrics (for alerts): queue length, task processing time, error rate.
     *   *Note: Refer to `performance-spec.md` for specific target values for latencies and processing times.*
-*   **Frontend Metrics (Angular):**
+*   **Frontend Metrics (React):**
     *   Page load times, component interaction times.
     *   Client-side error rates.
     *   API call latency from client perspective.
@@ -56,14 +56,14 @@ This document outlines the observability strategy for the Hangar Bay application
         *   For custom metrics (e.g., ESI call latency): `my_custom_metric = Summary('my_metric_seconds', 'Description of my metric'); @my_custom_metric.time() def my_function(): ...`
         *   AI should add relevant labels (e.g., ESI endpoint path) to custom metrics.
 
-    *   **AI Implementation Pattern (Frontend Metrics - Angular with OpenTelemetry):**
+    *   **AI Implementation Pattern (Frontend Metrics - React with OpenTelemetry):** *(No frontend telemetry is wired into the React app yet — this remains a target to be defined for the React stack.)*
         *   If using OpenTelemetry for tracing, it can also collect basic frontend performance metrics.
-        *   For custom metrics (e.g., component interaction time), AI can be prompted to use OpenTelemetry Metrics API or a simple custom solution sending data to a backend endpoint for aggregation if OpenTelemetry is not fully set up on frontend.
-        *   Example prompt: "Instrument Angular `HttpClient` calls using OpenTelemetry to capture client-side API call latency."
+        *   For custom metrics (e.g., component interaction time), AI can be prompted to use the OpenTelemetry Metrics API or a simple custom solution sending data to a backend endpoint for aggregation if OpenTelemetry is not fully set up on the frontend.
+        *   Example prompt: "Instrument the `openapi-fetch` API client (`src/lib/api/client.ts`) — or wrap TanStack Query's `fetch` — using OpenTelemetry to capture client-side API call latency."
 
 ### 2.3. Tracing (Distributed Tracing - OpenTelemetry Preferred)
 *   **Goal:** To visualize the entire lifecycle of a request as it flows through different components of the application (e.g., frontend -> backend API -> ESI API -> database -> cache).
-*   **Implementation:** Strongly prefer and prioritize the use of OpenTelemetry SDKs and APIs for instrumenting code and propagating trace context across all services (Python backend, Angular frontend if applicable).
+*   **Implementation:** Strongly prefer and prioritize the use of OpenTelemetry SDKs and APIs for instrumenting code and propagating trace context across all services (Python backend, React frontend if applicable).
 *   **Benefits:** Pinpoint bottlenecks, understand service dependencies, debug complex issues in a distributed environment.
 
     *   **AI Implementation Pattern (Tracing - FastAPI with OpenTelemetry):**
@@ -73,11 +73,11 @@ This document outlines the observability strategy for the Hangar Bay application
         *   AI should ensure trace context is propagated correctly.
         *   Example prompt: "Set up OpenTelemetry for a FastAPI application, instrumenting FastAPI, HTTPX, and SQLAlchemy. Configure an OTLP exporter."
 
-    *   **AI Implementation Pattern (Tracing - Angular with OpenTelemetry):**
-        *   Instruct AI to use `@opentelemetry/instrumentation-xml-http-request` and `@opentelemetry/instrumentation-fetch` for automatic tracing of API calls.
+    *   **AI Implementation Pattern (Tracing - React with OpenTelemetry):** *(Not yet wired into the React app — a target to be defined for the React stack. The browser instrumentation packages below are framework-agnostic and apply as-is.)*
+        *   Instruct AI to use `@opentelemetry/instrumentation-fetch` (the app uses `fetch` via `openapi-fetch`) for automatic tracing of API calls.
         *   Use `@opentelemetry/instrumentation-document-load` for page load traces.
         *   Configure trace context propagation (e.g., `W3CTraceContextPropagator`).
-        *   Example prompt: "Set up OpenTelemetry for an Angular application to trace HTTP requests and page loads. Ensure trace context is propagated to the backend."
+        *   Example prompt: "Set up OpenTelemetry for a React (Vite) application to trace `fetch` requests and page loads. Ensure trace context is propagated to the backend."
 
 ### 2.4. Error Tracking & Alerting (Operational)
 *   **Centralized Error Aggregation:** Collect and aggregate exceptions and errors from both backend and frontend in a centralized system.
@@ -101,7 +101,7 @@ This document outlines the observability strategy for the Hangar Bay application
             *   [ ] AI should ensure FastAPI app exposes a `/metrics` endpoint for Prometheus scraping.
             *   [ ] When AI defines Grafana dashboards (e.g., via IaC), ensure queries match exposed Prometheus metrics.
 *   **Distributed Tracing:**
-    *   **Instrumentation:** OpenTelemetry SDKs for Python (FastAPI) and JavaScript (Angular) are the primary choice.
+    *   **Instrumentation:** OpenTelemetry SDKs for Python (FastAPI) and JavaScript/TypeScript (React) are the primary choice.
     *   **Backend Collector/Storage:** An OpenTelemetry Collector is highly recommended for receiving, processing, and exporting telemetry data. Backends like Jaeger, Zipkin, Prometheus, or managed cloud services (e.g., AWS X-Ray, Google Cloud Trace, Azure Monitor) that support OpenTelemetry are preferred.
 
         *   **AI Actionable Checklist (Tracing Tooling):**

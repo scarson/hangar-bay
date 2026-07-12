@@ -212,8 +212,8 @@
     *   UI Labels: "Notifications", "Mark all as read", "Settings", "Enable Watchlist Alerts", "Enable Saved Search Alerts", specific notification type descriptions (e.g., "New item matching your watchlist criteria").
     *   Notification Messages: These are dynamic. Use a system of message template keys and localized parameters (e.g., `notifications.watchlist_match_message_key = "A {ship_name} is available for {price}!"`). Parameters like ship names come from ESI (localized there if possible) or are user data.
     *   Dates/Times in notifications should be localized.
-*   Refer to `../i18n-spec.md` for specific Angular i18n patterns and backend message generation strategies.
-*   **AI Assistant Guidance:** "For backend, design notification generation to use i18n keys and parameters. Store the key and params in the `notifications` table, and render the message in the user's locale when retrieved via API or just before sending (if push/email were in scope). For frontend, ensure all static UI text in notification components and settings is externalized. Use Angular's date pipe for localized dates."
+*   Refer to `../i18n-spec.md` for the frontend i18n approach (deferred; to be defined for the React stack) and backend message generation strategies.
+*   **AI Assistant Guidance:** "For backend, design notification generation to use i18n keys and parameters. Store the key and params in the `notifications` table, and render the message in the user's locale when retrieved via API or just before sending (if push/email were in scope). For frontend, ensure all static UI text in notification components and settings is externalized. Use locale-aware `Intl.DateTimeFormat` for localized dates."
 
 ## 14. Dependencies (Optional)
 *   F001 (Public Contract Aggregation & Display): Provides contract data to match against.
@@ -240,12 +240,12 @@
     *   Pydantic for request/response models.
     *   Celery (or similar, e.g., `arq`, `FastAPI BackgroundTasks` for simpler cases) for scheduled tasks (checking watchlists/searches).
     *   Mechanism for i18n key-based message templating.
-*   Frontend (Angular):
-    *   `HttpClientModule` for API calls.
-    *   Services for managing notifications and settings.
+*   Frontend (React):
+    *   The generated `openapi-fetch` typed client for API calls.
+    *   TanStack Query hooks (queries + mutations) for managing notifications and settings.
     *   Components for notification display (bell icon, panel/list) and settings page.
-    *   Polling mechanism for new notifications (or WebSockets if chosen later for real-time).
-    *   Angular's i18n tools for UI text and date/number formatting.
+    *   Polling via TanStack Query `refetchInterval` for new notifications (or WebSockets if chosen later for real-time).
+    *   The frontend i18n layer for UI text and locale-aware `Intl` date/number formatting (deferred — see `../i18n-spec.md`).
 
 ### 16.2. Critical Logic Points for AI Focus
 *   **Backend (Scheduled Tasks - Celery):**
@@ -280,8 +280,8 @@
     *   Test marking notifications as read (single, all).
     *   Test getting and updating notification settings.
     *   Test all endpoints for user ownership and authentication.
-*   **Frontend (Angular - Component/Service Tests):**
-    *   Test notification service polling and unread count updates.
+*   **Frontend (React - Component/Hook Tests via Testing Library + Vitest):**
+    *   Test notification hook polling and unread count updates.
     *   Test display of notifications in panel/list.
     *   Test interaction with notifications (mark read, navigation).
     *   Test notification settings page functionality.
@@ -293,9 +293,9 @@
     *   (Future Enhancement for F005 alerts) "Develop a Celery task for saved search alerts..."
 *   **Backend (API):**
     *   "Implement FastAPI endpoints for `/api/v1/me/notifications` (GET, POST for mark-read) and `/api/v1/me/notification-settings` (GET, PUT) as detailed in Section 6.2. Ensure all require authentication and enforce user ownership."
-*   **Frontend (Angular):**
-    *   "Create an Angular `NotificationService` that polls `GET /api/v1/me/notifications` for unread notifications, manages a list of notifications, and provides methods to mark notifications as read."
-    *   "Create an Angular `NotificationIconComponent` that displays an icon (e.g., bell) and an unread notification count from `NotificationService`."
-    *   "Create an Angular `NotificationPanelComponent` that displays a list of notifications, allowing users to click them (to navigate to `related_item_url`) and mark them as read."
-    *   "Create an Angular `NotificationSettingsComponent` to manage user preferences by calling the settings API endpoints."
+*   **Frontend (React):**
+    *   "Create a React notifications hook using TanStack Query that polls `GET /api/v1/me/notifications` (via `refetchInterval`) for unread notifications and exposes a mutation to mark notifications as read."
+    *   "Create a React `NotificationIcon` component that displays an icon (e.g., bell) and an unread notification count from the notifications hook."
+    *   "Create a React `NotificationPanel` component that displays a list of notifications, allowing users to click them (to navigate to `related_item_url`) and mark them as read."
+    *   "Create a React `NotificationSettings` component to manage user preferences by calling the settings API endpoints."
     *   "Ensure all UI text is internationalized and dates/times are localized."

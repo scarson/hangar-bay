@@ -26,5 +26,12 @@ npm run test         # vitest run
 npm run generate:api # regenerate src/lib/api/schema.d.ts from openapi.json
 ```
 
-> This README is a scaffold stub. A fuller README (setup, architecture, contribution notes)
-> is written at milestone end per the project spec.
+## Layout
+
+- `src/components/` — hand-rolled UI primitives (`Badge`, `Button`, `Checkbox`, `Input`) styled with the Tailwind v4 design tokens in `src/index.css`.
+- `src/features/contracts/` — the contract browsing feature: list and detail views (`components/`), TanStack Query hooks (`hooks/`), and the URL-search/filter, formatting, and region helpers.
+- `src/lib/api/` — the typed `openapi-fetch` client and the `schema.d.ts` types generated from `openapi.json`.
+- `src/routes/` — TanStack Router file-based routes (`__root`, `contracts.index`, `contracts.$contractId`); `routeTree.gen.ts` is generated.
+- `src/test/` — Vitest/Testing Library setup and helpers.
+
+Tests live next to the code they cover (`*.test.ts`/`*.test.tsx`), including `vitest-axe` accessibility checks on the list and detail views.

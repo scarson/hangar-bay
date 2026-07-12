@@ -11,11 +11,11 @@ This project aims to shows how detailed, AI-focused specifications can steer cod
 [1]: "I can see where GPT could be useful for code snippets, but I can't imagine it's able to deliver any sort of comprehensive outcome. If I say, "write me an ecommerce site for selling ships in eve online" theres no way it's going to do that right? It's going to give me some template code about a shopping cart or something and thats it. Right?"
 There's only one way to find out! 
 
-## Screenshot (WIP 2025-06-25)
+## Screenshot (2026-07-12)
 
-Angular-era screenshot; the React rebuild is in progress and does not yet have a published screenshot.
+The React rebuild's contract list — ships-only default view against live ESI data.
 
-![Hangar Bay Screenshot](./design/assets/images/progress/frontend-contracts-20250625.png)
+![Hangar Bay Screenshot](./design/assets/images/progress/frontend-contracts-20260712.png)
 
 ## Project Documentation
 
@@ -35,6 +35,14 @@ For a comprehensive understanding of the Hangar Bay project, please refer to the
 *   **Authentication:** EVE Online SSO (OAuth 2.0)
 
 ## Implementation Status
+
+**Milestone 1 (frontend rebuild) — shipped.** The Angular frontend was removed and replaced with a React 19 single-page app (Vite, TypeScript strict, Tailwind CSS v4, TanStack Router/Query) in `app/frontend/web`. Live against the FastAPI backend:
+
+*   **F001 (Public Contract Aggregation):** backend aggregation pipeline ingests public ship contracts from ESI into PostgreSQL.
+*   **F002 (Ship Browsing & Advanced Search/Filtering):** contract list view with URL-driven filtering, sorting, and pagination.
+*   **F003 (Detailed Ship/Contract View):** per-contract detail view.
+
+The React SPA landed on a milestone branch and is pending merge in PR #22. Authentication (F004) and the account features that depend on it (F005 Saved Searches, F006 Watchlists, F007 Alerts) are deferred to a later milestone.
 
 ## Development Setup
 

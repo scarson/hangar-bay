@@ -171,7 +171,7 @@
 *   Intuitive controls for editing price and removing items.
 *   A dedicated page for managing the watchlist.
 *   [NEEDS_DESIGN: Mockups for watchlist page and add-to-watchlist interactions.] *(AI Note: This item is a reminder for the design phase. Detailed mockups will be developed by the design team.)*
-*   **AI Assistant Guidance:** When generating UI components, ensure all display strings (button labels like "Add to Watchlist", "Edit", "Remove"; form labels for "Max Price", "Notes"; titles like "My Watchlist"; confirmation messages) are prepared for localization using Angular's i18n mechanisms as detailed in `../i18n-spec.md`. Ensure forms for adding/editing watchlist items and lists of these items are accessible as per `../accessibility-spec.md`.
+*   **AI Assistant Guidance:** When generating UI components, ensure all display strings (button labels like "Add to Watchlist", "Edit", "Remove"; form labels for "Max Price", "Notes"; titles like "My Watchlist"; confirmation messages) are prepared for localization via the project's frontend i18n layer as detailed in `../i18n-spec.md` (frontend i18n is deferred in Milestone 1 — strings are currently hardcoded English). Ensure forms for adding/editing watchlist items and lists of these items are accessible as per `../accessibility-spec.md`.
 
 ## 9. Error Handling & Edge Cases (Required)
 *   Attempting to add a non-ship item or invalid `type_id`: API should validate `type_id` against known ship types (e.g., check categoryID from `esi_type_cache`).
@@ -205,8 +205,8 @@
     *   Prompts & Messages: "Enter max price (optional):", "Enter notes (optional):", "Item added to watchlist.", "Error: This ship is already on your watchlist."
 *   Ship names (derived from `type_id`) should be fetched from ESI in the user's selected language if supported by ESI, otherwise fallback to `en-us` (see memory 723f19ed).
 *   User-provided `notes` are data and should not be translated.
-*   Refer to `../i18n-spec.md` for specific Angular i18n patterns.
-*   **AI Assistant Guidance:** "Ensure all static user-facing strings in Angular components for managing watchlist items are externalized or marked for translation. This includes button texts, modal titles, form labels, and confirmation messages. For ship names, ensure the service fetching ESI data requests appropriate language headers."
+*   Refer to `../i18n-spec.md` for the frontend i18n approach (deferred; to be defined for the React stack).
+*   **AI Assistant Guidance:** "Ensure all static user-facing strings in React components for managing watchlist items are externalized or marked for translation. This includes button texts, modal titles, form labels, and confirmation messages. For ship names, ensure the service fetching ESI data requests appropriate language headers."
 
 ## 14. Dependencies (Optional)
 *   F001 (Public Contract Aggregation & Display): For `esi_type_cache` to resolve ship names/details.
@@ -228,10 +228,10 @@
     *   Pydantic for request/response models (`WatchlistItemCreate`, `WatchlistItemUpdate`, `WatchlistItemDisplay`).
     *   FastAPI `Depends` for authentication.
     *   A shared service/cache for EVE Online `type_id` to `type_name` resolution (leveraging `esi_type_cache` from F001).
-*   Frontend (Angular):
-    *   `HttpClientModule` for API calls.
-    *   `FormsModule` or `ReactiveFormsModule` for input fields (max price, notes).
-    *   Services to encapsulate watchlist logic and API interactions.
+*   Frontend (React):
+    *   The generated `openapi-fetch` typed client for API calls.
+    *   Controlled React inputs for input fields (max price, notes).
+    *   TanStack Query hooks (queries + mutations) to encapsulate watchlist logic and API interactions.
     *   Components to display the watchlist and manage items.
     *   Mechanism to select/input `type_id` (e.g., a type-ahead search component for ship names that resolves to `type_id`, or context from F002/F003).
 
@@ -245,7 +245,7 @@
 *   **Frontend:**
     *   Providing a user-friendly way to specify the `type_id` to watch (e.g., search by ship name, add from contract view).
     *   Displaying the watchlist with resolved ship names and user-set data.
-    *   Handling CRUD operations via the Angular service.
+    *   Handling CRUD operations via TanStack Query mutations.
     *   Forms for adding/editing `max_price` and `notes`.
 
 ### 16.3. Data Validation and Sanitization
@@ -261,7 +261,7 @@
     *   Test `PUT /api/v1/me/watchlist-items/{item_id}`: update price/notes, test ownership.
     *   Test `DELETE /api/v1/me/watchlist-items/{item_id}`: delete item, test ownership.
     *   Test all endpoints for unauthenticated access and access by other users.
-*   **Frontend (Angular - Component/Service Tests):**
+*   **Frontend (React - Component/Hook Tests via Testing Library + Vitest):**
     *   Test adding a ship to the watchlist (mocking `type_id` selection).
     *   Test displaying the list of watchlist items, including ship names, prices, and notes.
     *   Test updating the `max_price` or `notes` for an item.
@@ -272,8 +272,8 @@
     *   "Create SQLAlchemy model `WatchlistItem` and Pydantic schemas `WatchlistItemCreate`, `WatchlistItemUpdate`, `WatchlistItemDisplay`. Include `user_id` (FK), `type_id` (integer), `max_price` (Decimal), and `notes` (Text). Enforce unique constraint on `(user_id, type_id)`."
     *   "Implement FastAPI CRUD endpoints for `/api/v1/me/watchlist-items`. All endpoints require authentication and must ensure user ownership. The GET endpoints should include a resolved `type_name` for each `type_id` by querying a cached ESI type information source."
     *   "Add validation to the POST endpoint to ensure `type_id` is a valid EVE Online ship type ID."
-*   **Frontend (Angular):**
-    *   "Create an Angular `WatchlistService` with methods for CRUD operations on watchlist items. GET methods should expect `type_name` in the response."
-    *   "Create an Angular component to display the user's watchlist. Each item should show ship name, max price, notes, and allow editing price/notes and removing the item."
+*   **Frontend (React):**
+    *   "Create React data hooks for watchlist items using TanStack Query queries + mutations for CRUD, calling the backend via the typed `openapi-fetch` client. GET hooks should expect `type_name` in the response."
+    *   "Create a React component to display the user's watchlist. Each item should show ship name, max price, notes, and allow editing price/notes and removing the item."
     *   "Develop a mechanism for users to add items to their watchlist. This could be a modal with a ship name search that resolves to `type_id`, or buttons on F002/F003 views."
     *   "Ensure all user-facing text is internationalized. Ship names will be provided by the backend already localized if possible."

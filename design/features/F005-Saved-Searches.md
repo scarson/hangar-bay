@@ -165,7 +165,7 @@
 *   Clear options to apply, rename, and delete each saved search in the list.
 *   Confirmation before deleting a saved search.
 *   [NEEDS_DESIGN: Mockups for saved search interactions.] *(AI Note: This item is a reminder for the design phase. Detailed mockups will be developed by the design team.)*
-*   **AI Assistant Guidance:** When generating UI components, ensure all display strings (button labels like "Save Search", "Rename", "Delete"; prompts like "Enter a name for your search"; confirmation messages; list titles like "My Saved Searches") are prepared for localization using Angular's i18n mechanisms as detailed in `../i18n-spec.md`. Ensure forms for naming/renaming and lists of saved searches are accessible as per `../accessibility-spec.md`.
+*   **AI Assistant Guidance:** When generating UI components, ensure all display strings (button labels like "Save Search", "Rename", "Delete"; prompts like "Enter a name for your search"; confirmation messages; list titles like "My Saved Searches") are prepared for localization via the project's frontend i18n layer as detailed in `../i18n-spec.md` (frontend i18n is deferred in Milestone 1 — strings are currently hardcoded English). Ensure forms for naming/renaming and lists of saved searches are accessible as per `../accessibility-spec.md`.
 
 ## 9. Error Handling & Edge Cases (Required)
 *   Attempting to save a search without a name: Prompt user for a name.
@@ -200,8 +200,8 @@
     *   Prompts & Messages: "Enter a name for this search:", "Search saved successfully.", "Error: Search name already exists.", "Are you sure you want to delete this saved search?"
 *   User-provided saved search names are data and should not be translated.
 *   The `search_parameters` are internal filter identifiers and values, not typically translated.
-*   Refer to `../i18n-spec.md` for specific Angular i18n patterns.
-*   **AI Assistant Guidance:** "Ensure all static user-facing strings in Angular components for managing saved searches are externalized or marked for translation. This includes button texts, modal titles, labels, and confirmation messages."
+*   Refer to `../i18n-spec.md` for the frontend i18n approach (deferred; to be defined for the React stack).
+*   **AI Assistant Guidance:** "Ensure all static user-facing strings in React components for managing saved searches are externalized or marked for translation. This includes button texts, modal titles, labels, and confirmation messages."
 
 ## 14. Dependencies (Optional)
 *   [F002 (Ship Browsing & Advanced Search/Filtering)](./F002-Ship-Browsing-Advanced-Search-Filtering.md): Provides the search criteria to be saved.
@@ -222,10 +222,10 @@
     *   SQLAlchemy for DB interaction with `saved_searches` table.
     *   Pydantic for request/response models (`SavedSearchCreate`, `SavedSearchUpdate`, `SavedSearch`).
     *   FastAPI `Depends` for authentication and user identification.
-*   Frontend (Angular):
-    *   `HttpClientModule` for API calls.
-    *   `FormsModule` or `ReactiveFormsModule` for the 'name search' input.
-    *   Services to encapsulate saved search logic and API interactions.
+*   Frontend (React):
+    *   The generated `openapi-fetch` typed client for API calls.
+    *   Controlled React inputs for the 'name search' input.
+    *   TanStack Query hooks (queries + mutations) to encapsulate saved-search logic and API interactions.
     *   Components to display the list of saved searches and the 'save search' UI.
 
 ### 16.2. Critical Logic Points for AI Focus
@@ -253,7 +253,7 @@
     *   Test `DELETE /api/v1/me/saved-searches/{search_id}`: delete search, test ownership.
     *   Test all endpoints for unauthenticated access (expect 401).
     *   Test creating a search with a duplicate name for the same user (expect 409 if uniqueness is enforced).
-*   **Frontend (Angular - Component/Service Tests):**
+*   **Frontend (React - Component/Hook Tests via Testing Library + Vitest):**
     *   Test 'Save Search' button captures current filters and prompts for name.
     *   Test saving a search calls the correct service method and updates UI (e.g., adds to list).
     *   Test displaying the list of saved searches.
@@ -265,9 +265,9 @@
 *   **Backend (FastAPI):**
     *   "Create SQLAlchemy model `SavedSearch` and Pydantic schemas `SavedSearchCreate`, `SavedSearchUpdate`, `SavedSearchDisplay` for saved searches. Include `user_id` (FK to User), `name`, and `search_parameters` (JSONB). Enforce unique constraint on `(user_id, name)`."
     *   "Implement FastAPI CRUD endpoints for `/api/v1/me/saved-searches`. All endpoints require authentication and must ensure operations are performed only on the authenticated user's own saved searches."
-*   **Frontend (Angular):**
-    *   "Create an Angular `SavedSearchService` with methods to: `createSavedSearch(name: string, params: any)`, `getSavedSearches()`, `getSavedSearchById(id: number)`, `updateSavedSearch(id: number, name: string)`, `deleteSavedSearch(id: number)`."
-    *   "Create an Angular component to display a list of saved searches. Each item should allow applying, renaming, and deleting the search."
+*   **Frontend (React):**
+    *   "Create React data hooks for saved searches: TanStack Query queries (`useSavedSearches()`, `useSavedSearch(id)`) and mutations (`useCreateSavedSearch(name, params)`, `useUpdateSavedSearch(id, name)`, `useDeleteSavedSearch(id)`), all calling the backend via the typed `openapi-fetch` client."
+    *   "Create a React component to display a list of saved searches. Each item should allow applying, renaming, and deleting the search."
     *   "Integrate a 'Save Search' button into the F002 feature's UI. On click, it should capture current filter parameters from F002's state, prompt for a name, and call `SavedSearchService.createSavedSearch()`."
     *   "When a saved search is 'applied', populate the filter controls of F002 with its `search_parameters` and trigger a new search."
     *   "Ensure all user-facing text (buttons, prompts, etc.) is internationalized."

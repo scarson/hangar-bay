@@ -36,12 +36,12 @@ Information and user interface components must be presentable to users in ways t
 *   **Adaptable (WCAG 1.3):**
     *   Create content that can be presented in different ways (e.g., simpler layout) without losing information or structure.
     *   **Semantic HTML:** Use HTML5 elements according to their semantic meaning (`<nav>`, `<main>`, `<article>`, `<aside>`, `<header>`, `<footer>`, `<button>`, `<a>` for navigation vs. actions, etc.).
-    *   **ARIA Roles & Attributes:** Use Accessible Rich Internet Applications (ARIA) roles and attributes to define UI components (e.g., `role="dialog"`, `aria-label`, `aria-describedby`, `aria-expanded`, `aria-hidden`) when semantic HTML alone is insufficient, especially for dynamic content and custom Angular components.
+    *   **ARIA Roles & Attributes:** Use Accessible Rich Internet Applications (ARIA) roles and attributes to define UI components (e.g., `role="dialog"`, `aria-label`, `aria-describedby`, `aria-expanded`, `aria-hidden`) when semantic HTML alone is insufficient, especially for dynamic content and custom components.
         *   AI Guidance: For custom components, prompt for necessary ARIA attributes based on the component's function and state.
 
         *   **AI Implementation Pattern (Semantic HTML & ARIA):**
             *   Prioritize standard HTML elements: `<button>`, `<nav>`, `<a>`, `<input>`, etc.
-            *   When creating custom Angular components that mimic standard controls (e.g., a custom dropdown), ensure appropriate `role` (e.g., `role="combobox"`, `role="listbox"`) and necessary ARIA states/properties (`aria-expanded`, `aria-selected`, `aria-owns`) are applied and dynamically updated.
+            *   When creating custom components that mimic standard controls (e.g., a custom dropdown), ensure appropriate `role` (e.g., `role="combobox"`, `role="listbox"`) and necessary ARIA states/properties (`aria-expanded`, `aria-selected`, `aria-owns`) are applied and dynamically updated.
     *   **Meaningful Sequence:** Ensure reading and navigation order is logical and intuitive.
 *   **Distinguishable (WCAG 1.4):**
     *   Make it easier for users to see and hear content including separating foreground from background.
@@ -97,12 +97,18 @@ Information and the operation of user interface must be understandable.
     *   **Labels or Instructions:** Provide labels or instructions for user inputs.
     *   **Error Prevention:** For sensitive actions (e.g., deletions), provide confirmation steps.
 
-        *   **AI Implementation Pattern (Input Assistance - Angular Forms):**
+        *   **AI Implementation Pattern (Input Assistance - React Forms):**
             *   Associate error messages with form controls using `aria-describedby`.
-            *   Set `aria-invalid="true"` on controls with errors.
+            *   Set `aria-invalid` on controls with errors.
             *   Provide clear, textual error messages next to the invalid field or in a summary.
-            *   Example: `<input [formControl]="myControl" [attr.aria-describedby]="myControlError ? 'myControlErrorId' : null" [attr.aria-invalid]="myControl.invalid && myControl.touched">
-                      <div id="myControlErrorId" *ngIf="myControl.invalid && myControl.touched">Error message here</div>`
+            *   Example (JSX):
+                ```jsx
+                <input
+                  aria-describedby={error ? 'field-error' : undefined}
+                  aria-invalid={error ? true : undefined}
+                />
+                {error && <p id="field-error">Error message here</p>}
+                ```
 
 ### 3.4. Robust
 
@@ -113,14 +119,14 @@ Content must be robust enough that it can be interpreted reliably by a wide vari
 Accessibility and internationalization are closely related. Ensuring that accessible features are also localizable is critical for a global audience. Refer to `i18n-spec.md` for comprehensive internationalization guidelines.
 
 *   **Translatable Accessibility Strings:** All text used for accessibility purposes (e.g., `aria-label`, `aria-labelledby`, `aria-describedby`, `title` attributes, `alt` text for images) MUST be processed through the internationalization system to ensure they can be translated.
-    *   *AI Guidance:* When generating elements with these attributes, ensure the content is marked for translation (e.g., using `i18n-aria-label` in Angular).
+    *   *AI Guidance:* When generating elements with these attributes, route the content through the frontend i18n layer so it can be translated. (Frontend i18n is deferred in Milestone 1 — the app currently ships hardcoded English strings; the message-catalog approach is to be defined for the React stack, see `i18n-spec.md`.)
 *   **Page Language (`lang` attribute):** The `<html>` element's `lang` attribute MUST be dynamically updated to reflect the current page language. This is critical for screen readers to use the correct pronunciation and for browser translation tools.
-    *   *AI Guidance:* This is typically handled by the frontend framework's i18n module (e.g., Angular's localization).
+    *   *AI Guidance:* Once frontend i18n is adopted, the active locale must drive a dynamically-set `<html lang>`; today the app sets `lang="en"` statically in `index.html`. (Frontend i18n is deferred in Milestone 1 — see `i18n-spec.md`.)
 *   **Layout Adaptability:** Ensure that changing languages (which can alter text length significantly) does not break accessible layouts or cause focus management issues.
 *   **Culturally Appropriate Icons/Symbols:** While not strictly an i18n-spec item, be mindful that icons or symbols used for accessibility cues should be universally understood or have translatable text alternatives.
 
 *   **Parsing (WCAG 4.1):** Ensure HTML is well-formed with complete start/end tags, nested correctly, and no duplicate IDs.
-*   **Name, Role, Value (WCAG 4.1.2):** For all UI components (including custom Angular components), their name and role can be programmatically determined; states, properties, and values that can be set by the user can be programmatically set; and notification of changes is available to assistive technologies.
+*   **Name, Role, Value (WCAG 4.1.2):** For all UI components (including custom components), their name and role can be programmatically determined; states, properties, and values that can be set by the user can be programmatically set; and notification of changes is available to assistive technologies.
 
     *   **AI Actionable Checklist (Name, Role, Value):**
         *   [ ] For custom interactive components, ensure `role` is appropriate (e.g., `button`, `checkbox`, `tab`).

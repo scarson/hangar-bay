@@ -271,7 +271,7 @@ Hangar Bay is an EVE Online in-game asset marketplace, focusing initially on shi
 **Core Technologies:**
 *   **Backend:** Python with FastAPI
 *   **Frontend:** React 19 (Vite, TypeScript, Tailwind CSS v4, TanStack Router/Query)
-*   **Database:** PostgreSQL (with SQLite for local development/testing)
+*   **Database:** PostgreSQL (local development **and** the test suite both use PostgreSQL — SQLite is not used anywhere; the test suite drops/recreates the `hangar_bay_test` database via `DATABASE_URL_TESTS`)
 *   **Caching:** Valkey
 *   **Authentication:** EVE SSO (OAuth 2.0)
 
