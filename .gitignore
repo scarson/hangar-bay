@@ -33,6 +33,12 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# The Python-packaging `lib/` rule above (no leading slash, matches at any
+# depth) unintentionally shadows the frontend's src/lib/ (e.g.
+# app/frontend/web/src/lib/api/client.ts). Un-ignore it explicitly.
+!app/frontend/web/src/lib/
+!app/frontend/web/src/lib/**
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.

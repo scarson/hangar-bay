@@ -916,12 +916,12 @@ git commit -m "feat(frontend): file-based TanStack Router + Query providers with
 
 **Context:** `openapi.json` was exported in Task 3 (regenerate any time with `cd app/backend && pdm run export-openapi`). openapi-fetch's default query serializer emits repeated array params (`region_ids=1&region_ids=2`) — exactly what FastAPI expects post-Task-1; the test locks that invariant (pitfall TEST-5). The client's `baseUrl` owns the `/api/v1` prefix and all calls use schema paths verbatim including trailing slashes (pitfall PROXY-1).
 
-- [ ] **Step 6.1: Generate types**
+- [x] **Step 6.1: Generate types**
 
 Run: `npm run generate:api`
 Expected: `src/lib/api/schema.d.ts` created; it contains `'/contracts/'` and `'/contracts/{contract_id}'` path keys and a `PaginatedResponse_ContractSchema_` component.
 
-- [ ] **Step 6.2: Write the failing test**
+- [x] **Step 6.2: Write the failing test**
 
 `src/lib/api/client.test.ts`:
 
@@ -998,12 +998,14 @@ export function jsonResponse(body: unknown, status = 200): Response {
 }
 ```
 
-- [ ] **Step 6.3: Run to verify failure**
+- [x] **Step 6.3: Run to verify failure**
 
 Run: `npm run test -- src/lib/api`
 Expected: FAIL — vitest cannot resolve `./client` (the module doesn't exist until Step 6.4).
 
-- [ ] **Step 6.4: Write the client**
+> **Execution note:** Confirmed — vitest failed with `Failed to resolve import "./client" from "src/lib/api/client.test.ts". Does the file exist?`, exactly the stated reason.
+
+- [x] **Step 6.4: Write the client**
 
 `src/lib/api/client.ts`:
 
@@ -1039,10 +1041,26 @@ export const api = createClient<paths>({
 })
 ```
 
-- [ ] **Step 6.5: Run tests, typecheck, commit**
+> **Deviation (TS toolchain, forced by reality):** The current create-vite template's `tsconfig.app.json` (already present from Task 4) sets `"erasableSyntaxOnly": true`, a TypeScript 5.8+ flag not anticipated by the plan. It rejects parameter-property constructor shorthand (`constructor(public status: number)`) with `error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.` — confirmed via `npm run build`. Fixed by expanding to an explicit field declaration + assignment, identical runtime behavior and public API (`error.status` still works, verified by the `ApiError` test):
+> ```ts
+> export class ApiError extends Error {
+>   status: number
+>
+>   constructor(status: number) {
+>     super(`API request failed with status ${status}`)
+>     this.name = 'ApiError'
+>     this.status = status
+>   }
+> }
+> ```
+> The baseUrl/fetch construction below the class was transcribed verbatim, comments included, per the task guardrail — this deviation is scoped only to the constructor syntax, not that block.
+
+- [x] **Step 6.5: Run tests, typecheck, commit**
 
 Run: `npm run test -- src/lib/api` — Expected: PASS (3 tests).
 Run: `npm run build` — Expected: green.
+
+> **Execution note:** The test file as written contains 4 `it(...)` cases (3 under `describe('api client request contract')` + 1 under `describe('ApiError')`), so the actual passing count is 4, not the 3 the plan's expected-output line states — a plan documentation miscount, not a test change. All 4 passed on the first run after the `ApiError` deviation fix above; no assertion was altered or weakened. Full suite (`npm run test`): 2 files, 6 tests, all green. `npm run build` and `npm run lint` both exit 0.
 
 ```bash
 git add app/frontend/web/src/lib/api app/frontend/web/src/test app/frontend/web/openapi.json
