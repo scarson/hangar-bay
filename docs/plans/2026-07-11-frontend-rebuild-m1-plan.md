@@ -2064,7 +2064,7 @@ TTL-bounded, so this self-heals in production.
 **Files:**
 - Delete: `app/frontend/angular/` (entire tree), `design/angular/` (entire tree)
 
-- [ ] **Step 10.1: Delete and verify nothing depends on the removed trees**
+- [x] **Step 10.1: Delete and verify nothing depends on the removed trees**
 
 ```bash
 git rm -r --quiet app/frontend/angular design/angular
@@ -2075,7 +2075,9 @@ git grep -n "frontend/angular\|design/angular" -- ':!docs/plans' ':!docs/superpo
 
 Expected: roughly 20 hits, ALL in prose/historical documents — `README.md` and `CONTRIBUTING.md` (rewritten in Task 11), `plans/implementation/**` (the 2025 MVP plans), `design/reviews/**`, `design/meta/**` (design-log, memory-index, risks), `design/chat-prompts.txt`. These are historical records: leave every one of them untouched (editing them is scope creep). The pass criterion is: **zero hits in code or config** (anything under `app/`, or any `.json`/`.toml`/`.yml`/`.ts`/`.py` file outside those doc trees). If such a hit appears, resolve it before committing.
 
-- [ ] **Step 10.2: Commit**
+> **Deviation (hit-count estimate, not the pass criterion):** actual count was 126 hits, not "roughly 20" — but every one of the 23 matching files falls exactly within the plan's named categories (`README.md`, `CONTRIBUTING.md`, `plans/implementation/**`, `design/reviews/**` (pre-mortems + post-mortems + the perf-audit slice plan), `design/meta/{design-log,memory-index,risks}.md`, `design/chat-prompts.txt`). All are `.md`/`.txt` prose/historical records; none are under `app/` or `.json`/`.toml`/`.yml`/`.ts`/`.py`. A repo-wide follow-up check (`git grep` restricted to `app/` plus `*.json|*.toml|*.yml|*.yaml|*.ts|*.py` globs, no doc-tree exclusions) returned zero matches, confirming the actual pass criterion — zero hits in code or config — holds. Left every doc hit untouched per the instruction not to edit historical records (Task 11 handles README.md/CONTRIBUTING.md separately).
+
+- [x] **Step 10.2: Commit**
 
 ```bash
 git commit -m "chore: remove abandoned Angular frontend and Angular-specific design docs
