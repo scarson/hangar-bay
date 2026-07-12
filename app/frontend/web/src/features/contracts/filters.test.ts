@@ -15,11 +15,20 @@ describe('parseContractSearch', () => {
       max_price: undefined,
       region_ids: undefined,
       is_bpc: undefined,
+      ships_only: true,
       page: DEFAULT_PAGE,
       size: DEFAULT_SIZE,
       sort_by: 'date_issued',
       sort_direction: 'desc',
     })
+  })
+
+  it('defaults to ships-only (F002 Criterion 1.1); only explicit false widens', () => {
+    expect(parseContractSearch({}).ships_only).toBe(true)
+    expect(parseContractSearch({ ships_only: true }).ships_only).toBe(true)
+    expect(parseContractSearch({ ships_only: false }).ships_only).toBe(false)
+    // Junk never widens the default view
+    expect(parseContractSearch({ ships_only: 'false' }).ships_only).toBe(true)
   })
 
   it('coerces a lone region id into an array and drops junk entries', () => {
@@ -89,5 +98,10 @@ describe('toApiQuery', () => {
     expect(query.size).toBe(DEFAULT_SIZE)
     expect(query.sort_by).toBe('date_issued')
     expect(query.sort_direction).toBe('desc')
+  })
+
+  it('maps ships_only to is_ship_contract=true, omitted entirely when widened', () => {
+    expect(toApiQuery(parseContractSearch({})).is_ship_contract).toBe(true)
+    expect(toApiQuery(parseContractSearch({ ships_only: false })).is_ship_contract).toBeUndefined()
   })
 })

@@ -1,1 +1,157 @@
 @import 'tailwindcss';
+
+/*
+ * Hangar Bay design tokens — dark-first market instrument.
+ * OKLCH throughout. Neutrals tint toward the brand hue (~180) at low chroma;
+ * depth comes from surface lightness, not shadows (dark-theme rule).
+ * Brand primary: oxidized teal, hue 172 (palette seed 170 ±10).
+ * Counter-accent: copper (hue 55) — reserved for price emphasis.
+ * Light mode is intentionally absent (dark-first by decree); tokens are
+ * semantic so a courtesy theme could later redefine this layer only.
+ */
+@theme {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Ground & surfaces (elevation = lightness) */
+  --color-void: oklch(0.115 0.008 180);
+  --color-surface: oklch(0.155 0.01 180);
+  --color-raised: oklch(0.2 0.012 180);
+  --color-overlay: oklch(0.24 0.014 180);
+
+  /* Lines */
+  --color-line: oklch(0.28 0.012 180);
+  /* ≥3:1 against void — interactive component boundaries (WCAG 1.4.11) */
+  --color-line-strong: oklch(0.49 0.016 180);
+
+  /* Ink */
+  --color-ink: oklch(0.93 0.006 180);
+  --color-ink-body: oklch(0.85 0.008 180);
+  --color-ink-dim: oklch(0.71 0.01 180);
+  --color-ink-faint: oklch(0.62 0.012 180);
+
+  /* Brand — oxidized teal */
+  --color-brand: oklch(0.8 0.125 172);
+  --color-brand-bright: oklch(0.87 0.1 172);
+  --color-brand-dim: oklch(0.55 0.09 172);
+  --color-brand-ink: oklch(0.15 0.03 172);
+  --color-brand-wash: oklch(0.21 0.03 180);
+
+  /* Copper counter-accent — price emphasis only */
+  --color-copper: oklch(0.78 0.115 55);
+
+  /* Semantic states */
+  --color-danger: oklch(0.72 0.16 25);
+  --color-danger-wash: oklch(0.2 0.04 25);
+  --color-warn: oklch(0.82 0.13 85);
+  --color-ok: oklch(0.78 0.14 145);
+
+  /* Radii — machined edges */
+  --radius-sm: 0.1875rem;
+  --radius-md: 0.375rem;
+
+  /* Motion */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+}
+
+/* Semantic z-scale (never arbitrary values) */
+:root {
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-modal-backdrop: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+  --z-tooltip: 60;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-void);
+    color: var(--color-ink-body);
+    font-family: var(--font-sans);
+    /* Light-on-dark compensation: slightly open leading + tracking */
+    line-height: 1.55;
+    letter-spacing: 0.011em;
+    font-kerning: normal;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: var(--color-ink);
+    text-wrap: balance;
+    line-height: 1.2;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-dim);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Data cells: mono, tabular, sized for density */
+  .text-data {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8125rem;
+  }
+
+  /* Short all-caps labels need opened tracking */
+  .text-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-dim);
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-raised);
+    border-radius: var(--radius-sm);
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, oklch(0.3 0.014 180 / 0.5), transparent);
+    animation: skeleton-sweep 1.4s var(--ease-out-quart) infinite;
+  }
+  @keyframes skeleton-sweep {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton::after {
+      animation: none;
+      background: oklch(0.3 0.014 180 / 0.25);
+    }
+  }
+}

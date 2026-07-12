@@ -1,211 +1,133 @@
-// Mechanical scaffold UI: correct data flow and states only.
-// Presentation is redesigned wholesale in the /impeccable phase.
-import { Link, useNavigate } from '@tanstack/react-router'
-import type { Contract } from '../../../lib/api/client'
-import { MIN_SEARCH_LENGTH, SORT_FIELDS, type ContractSearch } from '../filters'
-import { REGIONS } from '../regions'
+import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { Button } from '../../../components/Button'
+import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
 import { useContracts } from '../hooks/useContracts'
+import { ContractTable, ContractTableSkeleton } from './ContractTable'
+import { FilterRail } from './FilterRail'
+import { Pagination } from './Pagination'
 
-export function ContractsPage({
-  search,
-  from,
-}: {
-  search: ContractSearch
-  from: '/contracts/'
-}) {
+/** New sort field starts in its most useful direction: newest/soonest for dates, cheap-first for ISK. */
+const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
+  date_issued: 'desc',
+  date_expired: 'asc',
+  price: 'asc',
+  collateral: 'asc',
+  ship_name: 'asc',
+  volume: 'desc',
+}
+
+export function ContractsPage({ search, from }: { search: ContractSearch; from: '/contracts/' }) {
   const navigate = useNavigate({ from })
-  const { data, isPending, isError, refetch } = useContracts(search)
+  const { data, isPending, isError, isFetching, refetch } = useContracts(search)
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   // Text inputs (search, min/max price) fire on every keystroke, so they
   // navigate with { replace: true } to avoid one history entry per character
   // (a back button that walks the search box char-by-char). Discrete controls
-  // (region select, BPC toggle, sort, pagination) keep the default push so
+  // (region toggles, checkboxes, sort, pagination) keep the default push so
   // each is an undoable step.
   const update = (patch: Partial<ContractSearch>, options?: { replace?: boolean }) =>
     navigate({ search: (prev) => ({ ...prev, page: 1, ...patch }), ...options })
 
+  const goToPage = (page: number) => navigate({ search: (prev) => ({ ...prev, page }) })
+
+  const resetFilters = () =>
+    navigate({
+      search: (prev) => ({
+        ships_only: true,
+        page: DEFAULT_PAGE,
+        size: prev.size,
+        sort_by: prev.sort_by,
+        sort_direction: prev.sort_direction,
+      }),
+    })
+
+  const handleSort = (field: SortField) =>
+    update({
+      sort_by: field,
+      sort_direction:
+        search.sort_by === field
+          ? search.sort_direction === 'asc'
+            ? 'desc'
+            : 'asc'
+          : DEFAULT_DIRECTION[field],
+    })
+
   return (
-    <main className="p-4">
-      <h1 className="text-xl font-bold">Hangar Bay — Ship Contracts</h1>
-
-      <form
-        role="search"
-        onSubmit={(event) => event.preventDefault()}
-        className="my-4 flex flex-wrap items-end gap-4"
+    <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)] lg:gap-8">
+      {/* One FilterRail instance: a static column on desktop, toggled by the
+          Filters button below lg. Single instance keeps labels unique in the
+          accessibility tree; filter state lives in the URL either way. */}
+      <button
+        className="mb-3 inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border border-line-strong px-3 text-sm text-ink-body transition-colors duration-150 hover:bg-raised lg:hidden"
+        aria-expanded={filtersOpen}
+        aria-controls="filter-rail"
+        onClick={() => setFiltersOpen((open) => !open)}
       >
-        <label className="flex flex-col">
-          Search (min {MIN_SEARCH_LENGTH} chars)
-          <input
-            type="search"
-            className="border p-1"
-            value={search.search ?? ''}
-            onChange={(e) => update({ search: e.target.value || undefined }, { replace: true })}
-          />
-        </label>
-        <label className="flex flex-col">
-          Min price
-          <input
-            type="number"
-            min="0"
-            className="border p-1"
-            value={search.min_price ?? ''}
-            onChange={(e) =>
-              update(
-                { min_price: e.target.value === '' ? undefined : Number(e.target.value) },
-                { replace: true },
-              )
-            }
-          />
-        </label>
-        <label className="flex flex-col">
-          Max price
-          <input
-            type="number"
-            min="0"
-            className="border p-1"
-            value={search.max_price ?? ''}
-            onChange={(e) =>
-              update(
-                { max_price: e.target.value === '' ? undefined : Number(e.target.value) },
-                { replace: true },
-              )
-            }
-          />
-        </label>
-        <label className="flex flex-col">
-          Regions
-          <select
-            multiple
-            className="border p-1"
-            size={4}
-            value={(search.region_ids ?? []).map(String)}
-            onChange={(e) => {
-              const ids = Array.from(e.target.selectedOptions, (o) => Number(o.value))
-              update({ region_ids: ids.length > 0 ? ids : undefined })
-            }}
-          >
-            {REGIONS.map((region) => (
-              <option key={region.id} value={region.id}>
-                {region.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-1">
-          <input
-            type="checkbox"
-            checked={search.is_bpc === true}
-            onChange={(e) => update({ is_bpc: e.target.checked ? true : undefined })}
-          />
-          Blueprint copies only
-        </label>
-        <label className="flex flex-col">
-          Sort by
-          <select
-            className="border p-1"
-            value={search.sort_by}
-            onChange={(e) => update({ sort_by: e.target.value as ContractSearch['sort_by'] })}
-          >
-            {SORT_FIELDS.map((field) => (
-              <option key={field} value={field}>
-                {field}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col">
-          Direction
-          <select
-            className="border p-1"
-            value={search.sort_direction}
-            onChange={(e) =>
-              update({ sort_direction: e.target.value as ContractSearch['sort_direction'] })
-            }
-          >
-            <option value="desc">desc</option>
-            <option value="asc">asc</option>
-          </select>
-        </label>
-      </form>
+        Filters
+        <span aria-hidden="true" className="font-mono text-xs text-ink-dim">
+          {filtersOpen ? '▲' : '▼'}
+        </span>
+      </button>
+      <aside
+        id="filter-rail"
+        aria-label="Contract filters"
+        className={`${filtersOpen ? 'mb-5 block' : 'hidden'} rounded-md border border-line bg-surface p-4 lg:mb-0 lg:block lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0`}
+      >
+        <FilterRail search={search} onUpdate={update} onReset={resetFilters} />
+      </aside>
 
-      {isPending ? (
-        <p>Loading contracts…</p>
-      ) : isError ? (
-        <p role="alert">
-          Failed to load contracts.{' '}
-          <button className="underline" onClick={() => refetch()}>
-            Retry
-          </button>
-        </p>
-      ) : data.items.length === 0 ? (
-        <p>No contracts match these filters.</p>
-      ) : (
-        <>
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="border-b">
-                <th className="p-2">Ship / Title</th>
-                <th className="p-2">Type</th>
-                <th className="p-2">Price (ISK)</th>
-                <th className="p-2">Location</th>
-                <th className="p-2">Issued</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((contract) => (
-                <tr key={contract.contract_id} className="border-b">
-                  <td className="p-2">
-                    <Link
-                      to="/contracts/$contractId"
-                      params={{ contractId: String(contract.contract_id) }}
-                      className="underline"
-                    >
-                      {primaryLabel(contract)}
-                    </Link>
-                  </td>
-                  <td className="p-2">{contract.type}</td>
-                  <td className="p-2">
-                    {/* Fixed locale: M1 is explicitly English-only (spec Non-goals),
-                        and tests assert the formatted value (pitfall TEST-3). */}
-                    {contract.price != null ? contract.price.toLocaleString('en-US') : '—'}
-                  </td>
-                  <td className="p-2">
-                    {contract.start_location_name ?? contract.start_location_id}
-                  </td>
-                  <td className="p-2">{new Date(contract.date_issued).toLocaleDateString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <nav aria-label="Pagination" className="my-4 flex items-center gap-4">
-            <button
-              className="border px-2 disabled:opacity-50"
-              disabled={search.page <= 1}
-              onClick={() => navigate({ search: (prev) => ({ ...prev, page: search.page - 1 }) })}
-            >
-              Previous
-            </button>
-            <span>
-              Page {data.page} of {Math.max(1, Math.ceil(data.total / data.size))} ({data.total}{' '}
-              contracts)
-            </span>
-            <button
-              className="border px-2 disabled:opacity-50"
-              disabled={search.page * data.size >= data.total}
-              onClick={() => navigate({ search: (prev) => ({ ...prev, page: search.page + 1 }) })}
-            >
-              Next
-            </button>
-          </nav>
-        </>
-      )}
-    </main>
+      <section aria-label="Contract results" className="flex min-w-0 flex-col gap-4">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-[1.375rem] font-semibold">
+            {search.ships_only ? 'Ship Contracts' : 'All Contracts'}
+          </h1>
+          {data !== undefined ? (
+            <p className="text-data text-ink-dim">
+              {data.total.toLocaleString('en-US')} matching
+            </p>
+          ) : null}
+        </div>
+
+        {isPending ? (
+          <ContractTableSkeleton />
+        ) : isError ? (
+          <div
+            role="alert"
+            className="flex flex-col items-start gap-3 rounded-md border border-danger/40 bg-danger-wash px-4 py-4"
+          >
+            <p className="text-sm text-ink">
+              Failed to load contracts. The market data service may be unreachable.
+            </p>
+            <Button onClick={() => refetch()}>Retry</Button>
+          </div>
+        ) : data.items.length === 0 ? (
+          <div className="flex flex-col items-start gap-3 rounded-md border border-line bg-surface px-5 py-8">
+            <h2 className="text-base font-medium text-ink">No contracts match these filters</h2>
+            <p className="max-w-[52ch] text-sm text-ink-dim">
+              Loosen a price bound, widen the region selection, or clear everything to see the
+              full market.
+            </p>
+            <Button onClick={resetFilters}>Clear filters</Button>
+          </div>
+        ) : (
+          <>
+            <ContractTable
+              contracts={data.items}
+              search={search}
+              onSort={handleSort}
+              isRefreshing={isFetching}
+            />
+            <Pagination
+              page={search.page}
+              size={data.size ?? DEFAULT_SIZE}
+              total={data.total}
+              onPage={goToPage}
+            />
+          </>
+        )}
+      </section>
+    </div>
   )
-}
-
-function primaryLabel(contract: Contract): string {
-  const included = contract.items.find((item) => item.is_included && item.type_name)
-  // Real ESI titles are often "" (not null), which ?? passes through — the
-  // row link would render empty. Treat blank titles as absent.
-  return included?.type_name ?? (contract.title?.trim() || `Contract ${contract.contract_id}`)
 }

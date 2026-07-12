@@ -23,6 +23,8 @@ export interface ContractSearch {
   max_price?: number
   region_ids?: number[]
   is_bpc?: boolean
+  /** F002 Criterion 1.1: the default view is ship contracts only. */
+  ships_only: boolean
   page: number
   size: number
   sort_by: SortField
@@ -71,6 +73,8 @@ export function parseContractSearch(raw: Record<string, unknown>): ContractSearc
     max_price: toNonNegativeNumber(raw.max_price),
     region_ids: toIdArray(raw.region_ids),
     is_bpc: typeof raw.is_bpc === 'boolean' ? raw.is_bpc : undefined,
+    // Default ON; only an explicit false in the URL widens to all contracts.
+    ships_only: raw.ships_only !== false,
     page: toBoundedInt(raw.page, 1, Number.MAX_SAFE_INTEGER, DEFAULT_PAGE),
     size: toBoundedInt(raw.size, 1, MAX_SIZE, DEFAULT_SIZE),
     sort_by: SORT_FIELDS.includes(raw.sort_by as SortField)
@@ -95,6 +99,7 @@ export function toApiQuery(s: ContractSearch) {
     max_price: s.max_price,
     region_ids: s.region_ids,
     is_bpc: s.is_bpc,
+    is_ship_contract: s.ships_only ? true : undefined,
     page: s.page,
     size: s.size,
     sort_by: s.sort_by,

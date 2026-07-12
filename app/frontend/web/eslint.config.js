@@ -19,5 +19,9 @@ export default tseslint.config(
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // Labels wrapping our design-system Input count as associated controls.
+      'jsx-a11y/label-has-associated-control': ['error', { controlComponents: ['Input'] }],
+    },
   },
 )

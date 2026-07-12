@@ -1,7 +1,35 @@
-// Mechanical scaffold UI — redesigned in the /impeccable phase.
 import { Link } from '@tanstack/react-router'
+import { Badge } from '../../../components/Badge'
+import { Button } from '../../../components/Button'
 import { ApiError } from '../../../lib/api/client'
+import { formatIsk, timeRemaining } from '../format'
 import { useContract } from '../hooks/useContract'
+
+const DATETIME = new Intl.DateTimeFormat('en-US', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+  timeZone: 'UTC',
+})
+
+function BackLink() {
+  return (
+    <Link
+      to="/contracts"
+      className="text-sm text-ink-dim transition-colors duration-150 hover:text-brand"
+    >
+      ← All contracts
+    </Link>
+  )
+}
+
+function Field({ label, children, mono = true }: { label: string; children: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-b-0">
+      <dt className="text-sm text-ink-dim">{label}</dt>
+      <dd className={`text-right ${mono ? 'text-data' : 'text-sm'} text-ink`}>{children}</dd>
+    </div>
+  )
+}
 
 export function ContractDetailPage({ contractId }: { contractId: number }) {
   const { data, isPending, isError, error, refetch } = useContract(contractId)
@@ -10,68 +38,142 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
     return <NotFound />
   }
   if (isPending) {
-    return <main className="p-4">Loading contract…</main>
+    return (
+      <div className="mx-auto max-w-3xl" role="status" aria-label="Loading contract">
+        <span className="skeleton block h-4 w-28" />
+        <span className="skeleton mt-4 block h-7 w-64" />
+        <span className="skeleton mt-6 block h-40 w-full" />
+        <span className="sr-only">Loading contract…</span>
+      </div>
+    )
   }
   if (isError) {
     if (error instanceof ApiError && error.status === 404) return <NotFound />
     return (
-      <main className="p-4">
-        <p role="alert">
-          Failed to load this contract.{' '}
-          <button className="underline" onClick={() => refetch()}>
-            Retry
-          </button>
-        </p>
-      </main>
+      <div className="mx-auto max-w-3xl">
+        <BackLink />
+        <div
+          role="alert"
+          className="mt-4 flex flex-col items-start gap-3 rounded-md border border-danger/40 bg-danger-wash px-4 py-4"
+        >
+          <p className="text-sm text-ink">Failed to load this contract.</p>
+          <Button onClick={() => refetch()}>Retry</Button>
+        </div>
+      </div>
     )
   }
 
+  const isBpc = data.items.some((item) => item.is_included && item.is_blueprint_copy)
+  const expiry = timeRemaining(data.date_expired)
+
   return (
-    <main className="p-4">
-      <Link to="/contracts" className="underline">
-        ← All contracts
-      </Link>
-      {/* Real ESI titles are often "" (not null), which ?? passes through —
-          the heading would render empty. Treat blank titles as absent, matching
-          ContractsPage's primaryLabel (found live during Task 9 acceptance). */}
-      <h1 className="my-2 text-xl font-bold">{data.title?.trim() || `Contract ${data.contract_id}`}</h1>
-      <dl className="grid max-w-xl grid-cols-2 gap-1">
-        <dt className="font-semibold">Type</dt>
-        <dd>{data.type}</dd>
-        <dt className="font-semibold">Status</dt>
-        <dd>{data.status}</dd>
-        <dt className="font-semibold">Price (ISK)</dt>
-        <dd>{data.price != null ? data.price.toLocaleString('en-US') : '—'}</dd>
-        <dt className="font-semibold">Location</dt>
-        <dd>{data.start_location_name ?? data.start_location_id}</dd>
-        <dt className="font-semibold">Issuer</dt>
-        <dd>{data.issuer_name ?? data.issuer_id}</dd>
-        <dt className="font-semibold">Issued</dt>
-        <dd>{new Date(data.date_issued).toLocaleString()}</dd>
-        <dt className="font-semibold">Expires</dt>
-        <dd>{new Date(data.date_expired).toLocaleString()}</dd>
-      </dl>
-      <h2 className="mt-4 font-semibold">Items</h2>
-      <ul className="list-disc pl-6">
-        {data.items.map((item) => (
-          <li key={item.record_id}>
-            {item.quantity}× {item.type_name ?? `Type ${item.type_id}`}
-            {item.is_blueprint_copy ? ' (BPC)' : ''}
-            {item.is_included ? '' : ' — asked for, not included'}
-          </li>
-        ))}
-      </ul>
-    </main>
+    <div className="mx-auto max-w-3xl">
+      <BackLink />
+      <header className="mt-3 mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
+        {/* Real ESI titles are often "" (not null), which ?? passes through —
+            treat blank titles as absent, matching primaryLabel (M1 acceptance
+            discovery). */}
+        <h1 className="text-[1.375rem] font-semibold">
+          {data.title?.trim() || `Contract ${data.contract_id}`}
+        </h1>
+        <span className="inline-flex gap-1.5">
+          <Badge tone={data.type === 'auction' ? 'brand' : 'neutral'}>
+            {data.type === 'auction' ? 'Auction' : 'Exchange'}
+          </Badge>
+          {isBpc ? <Badge tone="copper">BPC</Badge> : null}
+          {expiry === 'Expired' ? <Badge tone="neutral">Expired</Badge> : null}
+        </span>
+      </header>
+
+      <div className="grid gap-x-10 gap-y-6 md:grid-cols-2">
+        <section aria-labelledby="economics-heading">
+          <h2 id="economics-heading" className="text-label mb-1">
+            Economics
+          </h2>
+          <dl>
+            <div className="flex items-baseline justify-between gap-4 border-b border-line py-2">
+              <dt className="text-sm text-ink-dim">Price</dt>
+              <dd className="text-data text-right !text-base font-medium text-(--color-copper)">
+                {formatIsk(data.price)} ISK
+              </dd>
+            </div>
+            {data.reward != null && data.reward > 0 ? (
+              <Field label="Reward">{formatIsk(data.reward)} ISK</Field>
+            ) : null}
+            <Field label="Volume">
+              {data.volume != null ? `${data.volume.toLocaleString('en-US')} m³` : '—'}
+            </Field>
+            <Field label="For corporation" mono={false}>
+              {data.for_corporation ? 'Yes' : 'No'}
+            </Field>
+          </dl>
+        </section>
+
+        <section aria-labelledby="identification-heading">
+          <h2 id="identification-heading" className="text-label mb-1">
+            Identification
+          </h2>
+          <dl>
+            <Field label="Issuer" mono={false}>
+              {data.issuer_name ?? `Character ${data.issuer_id}`}
+            </Field>
+            <Field label="Corporation" mono={false}>
+              {data.issuer_corporation_name ?? `Corporation ${data.issuer_corporation_id}`}
+            </Field>
+            <Field label="Location" mono={false}>
+              {data.start_location_name ?? `Location ${data.start_location_id}`}
+            </Field>
+            <Field label="Issued">{DATETIME.format(new Date(data.date_issued))}</Field>
+            <Field label="Expires">
+              {DATETIME.format(new Date(data.date_expired))}
+              {expiry !== 'Expired' ? (
+                <span className="ml-2 text-ink-dim">({expiry})</span>
+              ) : null}
+            </Field>
+          </dl>
+        </section>
+      </div>
+
+      <section aria-labelledby="contents-heading" className="mt-8">
+        <h2 id="contents-heading" className="text-label mb-2">
+          Contents · {data.items.length.toLocaleString('en-US')}
+        </h2>
+        {data.items.length === 0 ? (
+          <p className="rounded-md border border-line bg-surface px-4 py-3 text-sm text-ink-dim">
+            No item data recorded for this contract.
+          </p>
+        ) : (
+          <ul className="rounded-md border border-line">
+            {data.items.map((item) => (
+              <li
+                key={item.record_id}
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-4 py-2 last:border-b-0"
+              >
+                <span className="text-data text-ink">
+                  {item.quantity.toLocaleString('en-US')}×{' '}
+                  {item.type_name ?? `Type ${item.type_id}`}
+                </span>
+                {item.is_blueprint_copy ? <Badge tone="copper">BPC</Badge> : null}
+                {!item.is_included ? (
+                  <span className="text-xs text-warn">asked for, not included</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
   )
 }
 
 function NotFound() {
   return (
-    <main className="p-4">
-      <p>Contract not found.</p>
-      <Link to="/contracts" className="underline">
-        ← All contracts
-      </Link>
-    </main>
+    <div className="mx-auto flex max-w-3xl flex-col items-start gap-3">
+      <h1 className="text-[1.375rem] font-semibold">Contract not found.</h1>
+      <p className="text-sm text-ink-dim">
+        It may have expired, been claimed, or never existed in this dataset.
+      </p>
+      <BackLink />
+    </div>
   )
 }
