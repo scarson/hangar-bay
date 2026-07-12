@@ -337,7 +337,16 @@ class ContractAggregationService:
         type_info: dict[int, dict] = {}
         for type_id in {item["type_id"] for item in item_values}:
             try:
-                type_info[type_id] = await self.esi_client.get_universe_type(type_id)
+                info = await self.esi_client.get_universe_type(type_id)
+                # Shape guard: a surprise payload must degrade this one type,
+                # never kill the aggregation run (this happened live when the
+                # list-shaped ETag helper flattened object payloads into keys).
+                if isinstance(info, dict):
+                    type_info[type_id] = info
+                else:
+                    logger.warning(
+                        f"Unexpected type payload shape for {type_id}: {type(info).__name__}"
+                    )
             except Exception as e:
                 logger.warning(f"Type resolution failed for type {type_id}: {e}")
 
@@ -347,7 +356,13 @@ class ContractAggregationService:
         group_info: dict[int, dict] = {}
         for group_id in group_ids:
             try:
-                group_info[group_id] = await self.esi_client.get_universe_group(group_id)
+                group = await self.esi_client.get_universe_group(group_id)
+                if isinstance(group, dict):
+                    group_info[group_id] = group
+                else:
+                    logger.warning(
+                        f"Unexpected group payload shape for {group_id}: {type(group).__name__}"
+                    )
             except Exception as e:
                 logger.warning(f"Group resolution failed for group {group_id}: {e}")
 
