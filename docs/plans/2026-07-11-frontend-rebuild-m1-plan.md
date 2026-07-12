@@ -63,13 +63,13 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** 🚧 In progress — Phases 1–2 shipped and gate-reviewed; Phase 3 (acceptance/teardown/docs) underway.
+**Overall:** ✅ All three phases shipped and gate-reviewed; milestone exit (superpowers:finishing-a-development-branch) is the only remaining step. The follow-on phase is `/impeccable`.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 1 — Backend enablement fixes | ✅ Shipped | `598dd22`, `c854668`, `31f4a37`, `e10b109`, `c051add` | Tasks 1–3 shipped on `claude/hangar-bay-frontend-rebuild-2e4fe7`. Group review complete (≥3 rounds); 3 minor findings (plan bookkeeping staleness, TEST-1 system/station/is_bpc coverage gap, FASTAPI-2 inert-param schema markers) remediated in the follow-up `fix(task-gate)` commit `c051add` (inert-param schema markers, 5 new HTTP/pagination tests, re-exported `openapi.json`). |
 | 2 — Frontend scaffold | ✅ Shipped | `b17b24c`, `ec07568`, `7420c77`, `c9d1d2d`, `58a9df5`, `448dc53`, `528ca95`, `ecaf2fa`, `4fa9438` | Tasks 4–8 shipped; Fable gate approved after 3 fix rounds (negative-price URL sanitization, NaN-id no-request test, plan bookkeeping). Final: 29 frontend tests, lint + strict build green. |
-| 3 — Acceptance, teardown, docs | 🚧 In progress | `afbd1bf` (Task 9 fix) | Task 9 claimed 2026-07-12T00:20Z, driven inline by the orchestrator against the live backend + browser. |
+| 3 — Acceptance, teardown, docs | ✅ Shipped | `afbd1bf`, `54956dd`, `1e6c763`, `657e804`, `662a0ba`, `8f82036`, `d8a737a` | Tasks 9–11 shipped 2026-07-12. Task 9 acceptance PASSED against live data (fixes `afbd1bf` region stamp + `54956dd` blank-title label; record `1e6c763`). Task 10 Angular teardown (`657e804`, review fix `662a0ba`). Task 11 docs (`8f82036`, review fix `d8a737a`). Group review complete (this gate); findings remediated in the `fix(task-gate)` commit below. |
 
 ### Discoveries
 
@@ -89,6 +89,24 @@ notes and commit messages.
 - **Real-data nuance:** ingested contracts include non-ship contracts (`is_ship_contract: false`)
   and items with unresolved `type_name`; the M1 UI displays them as-is. Worth a product decision
   (default ship-only filter?) during the /impeccable phase — F001/F002 center on ship contracts.
+- **Residual Angular-as-current guidance survives in three specs outside Task 11's file scope**
+  (found during the Phase 3 gate; the milestone's docs pass was scoped by the M1 spec's Teardown
+  list to only test/accessibility/i18n-spec.md, so these were deliberately not edited — a
+  follow-up docs pass is needed before the /impeccable phase leans on them):
+  - `design/specifications/design-spec.md` — presents Angular as the current frontend framework at
+    lines ~57, 121, 156–157, 164, 167, 256, 263, 269, 327, 339 (`@angular/localize`,
+    Angular Material/CDK, RxJS, "Leverage Angular's Capabilities").
+  - `design/specifications/performance-spec.md` — §2.2 (Frontend Load & Interaction Times
+    (Angular)), §3.2 (Frontend (Angular): lazy-loaded Angular modules, Angular CLI build
+    optimizations, `@angular/cdk/scrolling`, Angular Material), and the checklist line ~165
+    ("When generating Angular components, use `OnPush`, `trackBy`…").
+  - `design/specifications/observability-spec.md` — §frontend metrics/tracing at lines 43, 59, 62,
+    66, 76, 104 (Angular `HttpClient`/OpenTelemetry instrumentation patterns). **This file was
+    missed by the plan's Step 11.5 grep even when run repo-wide** because that grep is
+    case-sensitive (`ng serve\|Angular CLI\|angular`) and observability-spec.md carries only
+    capital-A `Angular` tokens with no lowercase `angular`/"Angular CLI" match. A follow-up docs
+    pass should use a case-insensitive scan (`grep -rin '\bangular\b'`) across all of
+    `design/specifications/`.
 
 ---
 
@@ -572,7 +590,7 @@ git commit -m "feat(backend): add OpenAPI export script for frontend codegen"
 
 ## Phase 2 — Frontend scaffold
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-11T23:40Z (branch `claude/hangar-bay-frontend-rebuild-2e4fe7`, workflow-harness execution, Tasks 4–8 sequential)
+**Execution Status:** ✅ SHIPPED 2026-07-12 — branch `claude/hangar-bay-frontend-rebuild-2e4fe7`. Tasks 4–8 shipped: Task 4 scaffold (`b17b24c`, + review fixups `ec07568`), Task 5 router + Query providers (`7420c77`), Task 6 generated API client (`c9d1d2d`), Task 7 URL filter model + query hooks (`58a9df5`), Task 8 static region map + list/detail pages (`448dc53`). Group review complete (≥3 rounds); it surfaced 3 minor findings — stale plan bookkeeping, a TEST-5 multi-value URL round-trip coverage gap, and back/forward history granularity on text inputs — all remediated in the follow-up `fix(task-gate): address review findings` commits `528ca95`/`ecaf2fa`/`4fa9438`. Final: 29 frontend tests, lint + strict build green.
 
 All commands run from `app/frontend/web/` unless stated otherwise. Node ≥ 20.19 required (`node --version`).
 
@@ -2000,8 +2018,8 @@ design intentionally deferred to the /impeccable phase."
 
 ### Phase 2 group review
 
-- [ ] Review Phase 2 commits from ≥3 perspectives (URL-state correctness incl. back/forward behavior; test rigor per TEST-5 — outcomes AND request URLs asserted; spec fidelity — M1 minimum surface exactly, no ME/TE, no design investment). Minimum 3 rounds; continue until clean.
-- [ ] Update the Phase 2 banner and Execution Status table.
+- [x] Review Phase 2 commits from ≥3 perspectives (URL-state correctness incl. back/forward behavior; test rigor per TEST-5 — outcomes AND request URLs asserted; spec fidelity — M1 minimum surface exactly, no ME/TE, no design investment). Minimum 3 rounds; continue until clean. **Outcome:** URL-as-source-of-truth is correct including multi-value params; spec surface is the M1 minimum with no ME/TE and no design investment. Three minor findings were raised and fixed (see remediation below); a final round found nothing further.
+- [x] Update the Phase 2 banner and Execution Status table. *(Done in the `fix(task-gate)` remediation commit — banner flipped to ✅ SHIPPED, top table row already ✅ Shipped.)*
 - **Finding remediation (`fix(task-gate)` commit — three minor findings):**
   - Plan bookkeeping (finding 1): Step 4.5 deviation note #2 now records that `passWithNoTests: true` was removed from `vite.config.ts` in commit `528ca95` once the suite had real tests, per the Living Document Contract (previously the note still described the option as present).
   - TEST-5 coverage gap (finding 2): added `pages.test.tsx` route-level test "carries a repeated region_ids URL through to repeated API params" — renders `/contracts?region_ids=10000002&region_ids=10000020` and asserts `calls[0]` contains `region_ids=10000002&region_ids=10000020`, exercising the full multi-value inbound seam (TanStack Router qss decode → `parseContractSearch` array coercion → `toApiQuery` → openapi-fetch repeated-array serializer) that prior single-value tests left uncovered. Pure addition; no existing assertion weakened.
@@ -2011,7 +2029,7 @@ design intentionally deferred to the /impeccable phase."
 
 ## Phase 3 — Acceptance, teardown, documentation
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED 2026-07-12 — branch `claude/hangar-bay-frontend-rebuild-2e4fe7`. All three tasks executed and committed: Task 9 acceptance PASSED against live ESI data, requiring two fixes shipped during acceptance (`afbd1bf` ingestion region stamp, `54956dd` blank-title row label — both in Discoveries) plus the acceptance record (`1e6c763`); Task 10 Angular teardown (`657e804`, review fix `662a0ba`); Task 11 documentation (`8f82036`, review fix `d8a737a`). Full ship SHAs: `afbd1bf`, `54956dd`, `1e6c763`, `657e804`, `662a0ba`, `8f82036`, `d8a737a`. Group review complete (this gate); five findings remediated in the follow-up `fix(task-gate): address review findings` commit. Milestone exit (superpowers:finishing-a-development-branch) is the only remaining step.
 
 ### Task 9: End-to-end acceptance against the real backend
 
@@ -2145,6 +2163,6 @@ spec notes the explicit M1 English-only deferral."
 
 ### Phase 3 group review
 
-- [ ] Review Phase 3 from ≥3 perspectives (acceptance checklist honesty — every box actually observed; teardown completeness; docs accuracy against what was really built). Minimum 3 rounds; continue until clean.
-- [ ] Update all banners and the Execution Status table; fill Deviations/Discoveries.
-- [ ] Milestone exit: invoke superpowers:finishing-a-development-branch. The follow-on phase is `/impeccable` (design system + full F002/F003 interface build) per the spec's Process section.
+- [x] Review Phase 3 from ≥3 perspectives (acceptance checklist honesty — every box actually observed; teardown completeness; docs accuracy against what was really built). Minimum 3 rounds; continue until clean. **Outcome:** the Task 9 acceptance record is honest (each box carries the live observation that backed it, including the two real-data fixes it forced); the Angular teardown is complete (zero code/config hits; the one stale prose comment corrected in `662a0ba`); the docs were audited against what shipped. Five findings were raised and fixed in the `fix(task-gate)` commit below — two major plan-bookkeeping (Phase 2/3 banners + table + checkboxes stale despite the work being done) and three minor docs-accuracy items (a top-of-plan Discovery for the residual Angular specs, and CONTRIBUTING.md env-var/Docker + design-doc link-path corrections). A final round found nothing further.
+- [x] Update all banners and the Execution Status table; fill Deviations/Discoveries. *(Done in the `fix(task-gate)` remediation commit — Phase 2 and Phase 3 banners flipped to ✅ SHIPPED, the Overall line and Phase 3 table row updated, and the residual-Angular-specs Discovery added.)*
+- [ ] Milestone exit: invoke superpowers:finishing-a-development-branch. **Pending — the one remaining step after this gate;** the orchestrator runs it once the `fix(task-gate)` commit lands. Left unticked deliberately: the ritual has not been invoked yet, and a ticked box here would falsely tell followers the branch was already merged/PR'd. The follow-on phase is `/impeccable` (design system + full F002/F003 interface build) per the spec's Process section.

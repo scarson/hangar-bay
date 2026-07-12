@@ -72,23 +72,9 @@ This section outlines the steps to set up the development environment for Hangar
     PDM automatically uses the project's virtual environment when you use `pdm run`. However, if your IDE or other tools need the environment to be explicitly activated, you can find the activation scripts within `app/backend/.venv/` (e.g., `app/backend/.venv/Scripts/activate` on Windows PowerShell/CMD, or `source app/backend/.venv/bin/activate` on Linux/macOS).
 
 4.  **Set up Environment Variables:**
-    *   Create a `.env` file in the `app/backend` directory (this file is ignored by Git).
-    *   Populate it with necessary configurations (e.g., database URLs, API keys, ESI client ID/secret). Refer to `app/backend/src/config.py` for how these environment variables are loaded and used.
-    *   Example `.env` structure:
-        ```env
-        DATABASE_URL="postgresql+asyncpg://user:password@host:port/database"
-        VALKEY_URL="valkey://localhost:6379/0"
-        # ESI Configuration
-        ESI_CLIENT_ID="YOUR_ESI_CLIENT_ID"
-        ESI_SECRET_KEY="YOUR_ESI_SECRET_KEY"
-        ESI_CALLBACK_URL="http://localhost:4200/auth/callback" # Or your frontend dev callback
-        # JWT Configuration
-        JWT_SECRET_KEY="YOUR_VERY_STRONG_JWT_SECRET_KEY" # Should be a long, random string
-        JWT_ALGORITHM="HS256"
-        JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
-        JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
-        # ... other application secrets
-        ```
+    *   The backend reads its environment from **`app/backend/src/.env`** (this location, not next to the code — Git ignores it). See the [Backend Dev Prerequisites (Local Run & Tests)](#backend-dev-prerequisites-local-run--tests) section below for the exact variables required for a local run and for the test suite (`DATABASE_URL`, `DATABASE_URL_TESTS`, `CACHE_URL`, `ESI_USER_AGENT`, and the JSON-list `AGGREGATION_REGION_IDS`).
+    *   How these are loaded is defined in `app/backend/src/fastapi_app/config.py` and `app/backend/src/fastapi_app/core/config.py`.
+    *   EVE SSO / JWT variables (`ESI_CLIENT_ID`, `ESI_SECRET_KEY`, `JWT_*`) are **not required for M1** (public contract browsing); they land with the SSO milestone (M2). Do not set them yet.
 
 5.  **Database Migrations (Alembic):**
     *(These commands assume Alembic is set up in `app/backend/src/alembic/`)*
@@ -176,7 +162,7 @@ The React single-page app lives in `app/frontend/web` (Vite + React 19 + TypeScr
 
 ### Using Docker for Services (Optional but Recommended)
 
-If you have Docker installed, you can use it to run PostgreSQL and Valkey. A `docker-compose.yml` file is provided in `app/backend/docker/compose.yml` to simplify running these services. To use it, navigate to the `app/backend/docker/` directory and run `docker compose up -d`. Ensure your `.env` file in `app/backend` has the correct `DATABASE_URL` and `VALKEY_URL` to connect to these Docker containers (usually `localhost` or `127.0.0.1` with standard ports).
+If you have Docker installed, you can use it to run PostgreSQL and Valkey. A compose file is provided at `app/backend/docker/compose.yml` to simplify running these services. To use it, navigate to the `app/backend/docker/` directory and run `docker compose up -d`. Ensure your `app/backend/src/.env` file has the correct `DATABASE_URL` and `CACHE_URL` (Valkey/Redis) to connect to these Docker containers (usually `localhost` or `127.0.0.1` with standard ports).
 
 ---
 
@@ -194,8 +180,8 @@ If you have Docker installed, you can use it to run PostgreSQL and Valkey. A `do
     *   Follow the conventions enforced by ESLint (flat config) + Prettier.
     *   Use strong typing (TypeScript strict mode); avoid `any` where possible.
     *   Structure components and hooks logically; keep server state in TanStack Query and URL/filter state in TanStack Router search params.
-*   **Security:** Strictly adhere to the guidelines in [`design/security-spec.md`](design/security-spec.md).
-*   **Accessibility:** Implement frontend components following [`design/accessibility-spec.md`](design/accessibility-spec.md).
+*   **Security:** Strictly adhere to the guidelines in [`design/specifications/security-spec.md`](design/specifications/security-spec.md).
+*   **Accessibility:** Implement frontend components following [`design/specifications/accessibility-spec.md`](design/specifications/accessibility-spec.md).
 
 ## Version Control Workflow
 
@@ -231,7 +217,7 @@ If you have Docker installed, you can use it to run PostgreSQL and Valkey. A `do
 
 ## Testing
 
-*   Adhere to the testing strategies outlined in [`design/test-spec.md`](design/test-spec.md).
+*   Adhere to the testing strategies outlined in [`design/specifications/test-spec.md`](design/specifications/test-spec.md).
 *   **Unit Tests:** All new functions, methods, and components should have corresponding unit tests.
 *   **Integration Tests:** Write integration tests for interactions between components or services, especially for API endpoints.
 *   **End-to-End (E2E) Tests:** (To be implemented) For critical user flows.
@@ -240,7 +226,7 @@ If you have Docker installed, you can use it to run PostgreSQL and Valkey. A `do
 
 ## Dependency Management
 
-This project follows a strict dependency version pinning policy to ensure reproducible and stable builds. The full policy statement and rationale can be found in [`design/design-spec.md`](design/design-spec.md) (Section 6.0). All developers and AI assistants MUST adhere to the following practices:
+This project follows a strict dependency version pinning policy to ensure reproducible and stable builds. The full policy statement and rationale can be found in [`design/specifications/design-spec.md`](design/specifications/design-spec.md) (Section 6.0). All developers and AI assistants MUST adhere to the following practices:
 
 *   **Python (Backend):**
     *   Dependencies are managed by **PDM** via the `pyproject.toml` file.
@@ -293,18 +279,18 @@ Hangar Bay is an EVE Online in-game asset marketplace, focusing initially on shi
 
 The [`design/`](design/) directory is your primary source of truth for requirements and implementation details. Key documents include:
 
-*   [`design-spec.md`](design/design-spec.md): Overall architecture, features, and technology choices. Contains AI notes for high-level understanding.
+*   [`design-spec.md`](design/specifications/design-spec.md): Overall architecture, features, and technology choices. Contains AI notes for high-level understanding.
 *   [`features/`](design/features/): Individual feature specifications (e.g., `F001-*.md`, `F002-*.md`).
     *   These files detail specific application functionalities.
     *   **Key Structure:** Each feature spec now consistently includes a "0. Authoritative ESI & EVE SSO References" section at the beginning and AI actionable checklists for all defined ESI, EVE SSO, and Hangar Bay API endpoints.
     *   The `00-feature-spec-template.md` shows the overall template, including how data models, API endpoints, and general AI implementation guidance are structured. Use this template as a base when creating entirely new features.
-*   [`security-spec.md`](design/security-spec.md): Detailed security requirements with AI actionable checklists and implementation patterns. Prioritize these strictly.
-*   [`accessibility-spec.md`](design/accessibility-spec.md): Accessibility (WCAG 2.1 AA) requirements with AI actionable checklists and React-specific patterns.
-*   [`test-spec.md`](design/test-spec.md): Testing strategy, including unit, integration, E2E, security, and accessibility testing, with AI patterns for test generation.
-*   [`observability-spec.md`](design/observability-spec.md): Logging, metrics, and tracing strategy, emphasizing OpenTelemetry, with AI patterns for instrumentation.
-*   [`i18n-spec.md`](design/i18n-spec.md): Internationalization strategy, including guidance for localizing FastAPI and the React frontend, and AI patterns for generating translatable content (frontend i18n is deferred in Milestone 1 — see that spec).
-*   [`performance-spec.md`](design/performance-spec.md): Performance targets, design principles, testing methodologies, and AI guidance for backend (FastAPI, Valkey, PostgreSQL) and frontend (React) development.
-*   [`ai-system-procedures.md`](design/ai-system-procedures.md): Documents "AI System Procedures" (AISPs) – significant, recurring operational patterns for AI execution or participation.
+*   [`security-spec.md`](design/specifications/security-spec.md): Detailed security requirements with AI actionable checklists and implementation patterns. Prioritize these strictly.
+*   [`accessibility-spec.md`](design/specifications/accessibility-spec.md): Accessibility (WCAG 2.1 AA) requirements with AI actionable checklists and React-specific patterns.
+*   [`test-spec.md`](design/specifications/test-spec.md): Testing strategy, including unit, integration, E2E, security, and accessibility testing, with AI patterns for test generation.
+*   [`observability-spec.md`](design/specifications/observability-spec.md): Logging, metrics, and tracing strategy, emphasizing OpenTelemetry, with AI patterns for instrumentation.
+*   [`i18n-spec.md`](design/specifications/i18n-spec.md): Internationalization strategy, including guidance for localizing FastAPI and the React frontend, and AI patterns for generating translatable content (frontend i18n is deferred in Milestone 1 — see that spec).
+*   [`performance-spec.md`](design/specifications/performance-spec.md): Performance targets, design principles, testing methodologies, and AI guidance for backend (FastAPI, Valkey, PostgreSQL) and frontend (React) development.
+*   [`ai-system-procedures.md`](design/meta/ai-system-procedures.md): Documents "AI System Procedures" (AISPs) – significant, recurring operational patterns for AI execution or participation.
     *   **Purpose:** AISPs provide a human-readable design record, detailing the problem, rationale, trigger conditions, AI execution steps, expected outcomes, and supporting details for complex or critical AI-involved workflows.
     *   **Usage:** While operational logic might be stored in AI memories, AISPs offer deeper context and step-by-step guidance. Refer to them to understand the 'why' and 'how' of these procedures. The document includes an `[AISP-000] AISP Entry Template` to guide the creation of new AISP entries.
 
