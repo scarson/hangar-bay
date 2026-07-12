@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "generate:api": "openapi-typescript openapi.json -o src/lib/api/schema.d.ts"
+    "generate:api": "openapi-typescript openapi.json -o src/lib/api/schema.d.ts",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "5.2.7",
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
+    "@playwright/test": "1.61.1",
     "@tanstack/router-plugin": "1.168.19",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
