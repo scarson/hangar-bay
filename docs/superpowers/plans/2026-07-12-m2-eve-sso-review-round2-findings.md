@@ -2,8 +2,10 @@
 
 Source: plan-review-cycle round 2, four independent Fable cold-read reviewers
 (phases 0-3, 4-6, 7-9, cross-cutting) against the plan + spec + pitfalls, 2026-07-12.
-Severity: blocking / substantive / minor. These are PENDING application to the plan
-(round 2 of the plan-review-cycle; runner applies, then rounds continue to zero).
+Severity: blocking / substantive / minor. **STATUS: ALL 43 APPLIED** in round 3 of the
+plan-review-cycle (runner application pass, 2026-07-12), together with the three
+design deltas from the plan's `### Discoveries`. Kept as the round-2 record;
+duplicated findings (same issue surfaced by multiple reviewers) were applied once.
 
 ```
 ================== p03 — 9 findings
