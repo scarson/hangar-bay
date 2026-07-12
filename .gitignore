@@ -196,3 +196,6 @@ pids
 
 # PDM local project config (harness-created; venv.in_project)
 app/backend/pdm.toml
+
+# Git worktrees — see docs/git-strategy.md
+.claude/worktrees/
