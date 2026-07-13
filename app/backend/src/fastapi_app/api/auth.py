@@ -86,7 +86,15 @@ def _clear_state_cookie(resp: Response) -> None:
 
 
 # --- routes ---
-@router.get("/login", dependencies=[Depends(require_sso_configured)])
+@router.get(
+    "/login",
+    dependencies=[Depends(require_sso_configured)],
+    # login always redirects (302 to EVE's authorize endpoint); it never returns
+    # 200 application/json. Without this the generated OpenAPI schema (and the
+    # typed frontend client built from it) mis-declares the response shape.
+    status_code=status.HTTP_302_FOUND,
+    response_class=RedirectResponse,
+)
 async def login(request: Request, next: str = "/", redis: Redis = Depends(get_cache)):
     s = get_settings()
     validated_next = validate_next(next)
@@ -162,7 +170,20 @@ async def _finalize_login(db: AsyncSession, redis: Redis, identity, tokens: dict
         return None
 
 
-@router.get("/callback")
+@router.get(
+    "/callback",
+    # callback's success path redirects (302 to FRONTEND_ORIGIN); it never
+    # returns 200 application/json. Without this the generated OpenAPI schema
+    # (and the typed frontend client built from it) mis-declares the response
+    # shape. The two hard-error exits (§ (C) binding mismatch, and the shared
+    # not-configured guard) are documented explicitly since they're real,
+    # reachable alternate outcomes, not just the redirect-based ones.
+    status_code=status.HTTP_302_FOUND,
+    responses={
+        400: {"description": "SSO state/browser-binding mismatch."},
+        503: {"description": "EVE SSO is not configured."},
+    },
+)
 async def callback(
     request: Request,
     state: Optional[str] = None,

@@ -458,13 +458,16 @@
           }
         ],
         "responses": {
-          "200": {
+          "302": {
             "content": {
               "application/json": {
                 "schema": {}
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "description": "SSO state/browser-binding mismatch."
           },
           "422": {
             "content": {
@@ -475,6 +478,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "description": "EVE SSO is not configured."
           }
         },
         "summary": "Callback",
@@ -499,12 +505,7 @@
           }
         ],
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
+          "302": {
             "description": "Successful Response"
           },
           "422": {
