@@ -281,6 +281,16 @@ export interface components {
             /** Character Name */
             character_name: string;
         };
+        /**
+         * ErrorDetail
+         * @description The FastAPI HTTPException / JSONResponse error body shape ({"detail": ...}),
+         *     declared so the login/callback 400 and 503 responses carry their real JSON
+         *     body in the OpenAPI contract instead of an empty one.
+         */
+        ErrorDetail: {
+            /** Detail */
+            detail: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -383,7 +393,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -399,7 +411,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
             };
         };
     };
@@ -428,6 +442,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description EVE SSO is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
         };

@@ -20,7 +20,7 @@ from ..core.logging import get_logger, log_key_event
 from ..core.session import create_session, destroy_session, get_current_session
 from ..core.token_cipher import is_token_cipher_configured
 from ..db import get_db
-from ..schemas.auth import CurrentUserSchema
+from ..schemas.auth import CurrentUserSchema, ErrorDetail
 from ..services import auth_service, sso
 
 logger = get_logger(__name__)
@@ -94,6 +94,9 @@ def _clear_state_cookie(resp: Response) -> None:
     # typed frontend client built from it) mis-declares the response shape.
     status_code=status.HTTP_302_FOUND,
     response_class=RedirectResponse,
+    responses={
+        503: {"model": ErrorDetail, "description": "EVE SSO is not configured."},
+    },
 )
 async def login(request: Request, next: str = "/", redis: Redis = Depends(get_cache)):
     s = get_settings()
@@ -190,8 +193,8 @@ async def _finalize_login(db: AsyncSession, redis: Redis, identity, tokens: dict
     status_code=status.HTTP_302_FOUND,
     response_class=RedirectResponse,
     responses={
-        400: {"description": "SSO state/browser-binding mismatch."},
-        503: {"description": "EVE SSO is not configured."},
+        400: {"model": ErrorDetail, "description": "SSO state/browser-binding mismatch."},
+        503: {"model": ErrorDetail, "description": "EVE SSO is not configured."},
     },
 )
 async def callback(

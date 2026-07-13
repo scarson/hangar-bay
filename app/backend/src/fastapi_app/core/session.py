@@ -69,9 +69,13 @@ async def create_session(
 
 async def read_session(redis: Redis, sid: str, *, now: Optional[int] = None) -> Optional[dict]:
     s = get_settings()
-    now = int(time.time()) if now is None else now
     key = _session_key(sid)
     raw = await redis.getex(key, ex=s.SESSION_IDLE_TTL_SECONDS)  # atomic read + idle renew (D4)
+    # Capture the clock AFTER the GETEX round-trip (not before), so the deadline check
+    # and the absolute EXPIREAT below reflect the time the renewal actually landed —
+    # never a pre-await `now` that command latency could have left stale. An injected
+    # `now` (tests) is used verbatim for determinism.
+    now = int(time.time()) if now is None else now
     if raw is None:
         return None
     payload = _parse_session_payload(raw)

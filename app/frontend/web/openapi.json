@@ -277,6 +277,20 @@
         "title": "CurrentUserSchema",
         "type": "object"
       },
+      "ErrorDetail": {
+        "description": "The FastAPI HTTPException / JSONResponse error body shape ({\"detail\": ...}),\ndeclared so the login/callback 400 and 503 responses carry their real JSON\nbody in the OpenAPI contract instead of an empty one.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -462,6 +476,13 @@
             "description": "Successful Response"
           },
           "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "SSO state/browser-binding mismatch."
           },
           "422": {
@@ -475,6 +496,13 @@
             "description": "Validation Error"
           },
           "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "EVE SSO is not configured."
           }
         },
@@ -512,6 +540,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "EVE SSO is not configured."
           }
         },
         "summary": "Login",
