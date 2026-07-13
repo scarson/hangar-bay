@@ -109,7 +109,7 @@ The React single-page app lives in `app/frontend/web` (Vite + React 19 + TypeScr
     ```bash
     npm run dev
     ```
-    The app is served at `http://localhost:5173`, and proxies `/api/v1` requests to the backend on `http://localhost:8000`.
+    The app is served at `https://localhost:5173` (Vite serves dev over HTTPS via `@vitejs/plugin-basic-ssl` so the origin matches the registered EVE SSO callback — accept the one-time self-signed-certificate warning), and proxies `/api/v1` requests to the backend on `http://localhost:8000` (the backend never sees TLS in dev).
 
 4.  **Regenerating the API client types (after backend schema changes):**
     ```bash
