@@ -39,9 +39,17 @@ async function jsonFulfill(route: import('@playwright/test').Route, body: unknow
  * takes no accessible name from its text content, so it can't be selected by name;
  * once data has rendered (not pending) it is the only status node on the page, so
  * a bare getByRole('status') is unambiguous — same selector the exemplar uses.
+ * BUT the loading skeleton is ALSO a status node (named "Loading contracts"), so
+ * any live-region assertion that can poll while the fetch is in flight must first
+ * wait for the skeleton to unmount (strict-mode race otherwise — TEST-2:
+ * deterministic synchronization, not retries).
  */
 function liveRegion(page: Page) {
   return page.getByRole('status')
+}
+
+async function waitForDataRendered(page: Page) {
+  await expect(page.getByRole('status', { name: 'Loading contracts' })).toHaveCount(0)
 }
 
 test.describe('states', () => {
@@ -92,6 +100,7 @@ test.describe('states', () => {
     await expect(rowLinks(page)).toHaveCount(0)
 
     // Live region reports the zero count (wording is always plural — match loosely).
+    await waitForDataRendered(page)
     await expect(liveRegion(page)).toHaveText(/0 contracts? match/)
   })
 
@@ -137,11 +146,13 @@ test.describe('states', () => {
 
     await page.goto('/contracts')
     await expect(page.getByRole('heading', { level: 1, name: 'Ship Contracts' })).toBeVisible()
+    await waitForDataRendered(page)
     await expect(liveRegion(page)).toHaveText(/7 contracts? match/)
 
     await openFiltersIfCollapsed(page)
     await page.getByLabel('Blueprint copies only').check()
 
+    await waitForDataRendered(page)
     await expect(liveRegion(page)).toHaveText(/2 contracts? match/)
 
     // TEST-5: the wire carried the filter AND the render/announcement changed.
