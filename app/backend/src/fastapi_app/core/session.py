@@ -94,6 +94,17 @@ async def read_session(redis: Redis, sid: str, *, now: Optional[int] = None) -> 
     # absolute timestamp is immune to that latency: it caps at `deadline` when near
     # it, and slides at `now + idle_ttl` otherwise, so the key can never be
     # scheduled to outlive the 30-day deadline regardless of command latency.
+    #
+    # ACCEPTED TRADEOFF (spec §4.2 / D4, sanctioned two-command read): GETEX and this
+    # EXPIREAT are two separate commands, not one atomic op — a single capped-renew is
+    # impossible because the cap needs `created_at`, which lives inside the value being
+    # read. So two bounded, non-security edges remain: (a) a crash/cancel between GETEX
+    # and EXPIREAT can leave the key stored up to idle_ttl past `deadline`, and
+    # (b) concurrent reads can move the idle expiry a few seconds. NEITHER serves an
+    # over-cap session — the `now >= deadline` check above (keyed on `created_at`) is the
+    # authoritative boundary and rejects+deletes any expired session on read, whatever
+    # the physical key TTL. Closing these fully needs a Lua/EVAL atomic read-and-capped-
+    # renew; deferred to M3 as a session-store enhancement, out of scope for M2.
     await redis.expireat(key, min(now + s.SESSION_IDLE_TTL_SECONDS, deadline))
     return payload
 
