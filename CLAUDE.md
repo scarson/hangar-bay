@@ -345,7 +345,7 @@ After a backend schema change, regenerate the client end-to-end: `pdm run export
 
 | Layer | Backend | Frontend |
 |---|---|---|
-| Language | Python 3.11+ | TypeScript |
+| Language | Python 3.14+ | TypeScript |
 | Framework | FastAPI 0.139 | React 19 + Vite |
 | Data/state | SQLAlchemy 2.0 (async) + asyncpg → PostgreSQL; Valkey (redis-py) cache | TanStack Router + TanStack Query |
 | Scheduling | APScheduler (ESI ingestion) | — |
