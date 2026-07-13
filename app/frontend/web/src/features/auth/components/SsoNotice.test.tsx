@@ -50,4 +50,41 @@ describe('SsoNotice', () => {
     await screen.findByRole('link', { name: /log in with eve/i })
     expect(screen.queryByText(/cancelled|went wrong/i)).not.toBeInTheDocument()
   })
+
+  it('dismiss on a contract detail page stays on that page (does not fall back to the list)', async () => {
+    // The notice is mounted at root, so an SSO redirect can land on ANY route, not just
+    // the list. A previous bug resolved dismiss against a hard-coded `from: '/contracts/'`,
+    // which discarded the detail segment: /contracts/123?sso=error&foo=bar -> /contracts?foo=bar.
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse({ detail: 'unauthenticated' }, 401)
+      if (/\/api\/v1\/contracts\/123$/.test(url)) {
+        return jsonResponse({
+          contract_id: 123,
+          issuer_id: 1,
+          issuer_corporation_id: 101,
+          start_location_id: 60003760,
+          type: 'item_exchange',
+          status: 'outstanding',
+          title: 'Tristan for Sale',
+          for_corporation: false,
+          date_issued: '2026-07-01T00:00:00Z',
+          date_expired: '2026-07-08T00:00:00Z',
+          price: 1000000,
+          is_ship_contract: true,
+          items: [],
+        })
+      }
+      return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
+    })
+    const { router } = renderApp('/contracts/123?sso=error&foo=bar#items')
+    const notice = await screen.findByText(/went wrong/i)
+    expect(notice).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+    await waitFor(() => expect((router.state.location.search as Record<string, unknown>).sso).toBeUndefined())
+    expect(router.state.location.pathname).toBe('/contracts/123')
+    expect((router.state.location.search as Record<string, unknown>).foo).toBe('bar')
+    expect(router.state.location.hash).toBe('items')   // deep-linked #anchor survives dismiss
+    expect(screen.queryByText(/went wrong/i)).not.toBeInTheDocument()
+  })
 })
