@@ -281,6 +281,16 @@ export interface components {
             /** Character Name */
             character_name: string;
         };
+        /**
+         * ErrorDetail
+         * @description The FastAPI HTTPException / JSONResponse error body shape ({"detail": ...}),
+         *     declared so the login/callback 400 and 503 responses carry their real JSON
+         *     body in the OpenAPI contract instead of an empty one.
+         */
+        ErrorDetail: {
+            /** Detail */
+            detail: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -372,12 +382,19 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SSO state/browser-binding mismatch. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
             /** @description Validation Error */
@@ -387,6 +404,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description EVE SSO is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
         };
@@ -403,13 +429,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            302: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": unknown;
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -418,6 +442,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description EVE SSO is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
         };

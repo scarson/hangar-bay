@@ -129,9 +129,19 @@ async def create_db_tables():
     """
     Drops and recreates database tables to keep the dev schema current (ENV-2).
     Development-only: production schema management is future migrations work (M2 SSO design spec §8, future work).
+
+    Fail-closed gate (P1): two independent conditions, and ENVIRONMENT is
+    secure-by-default. An OMITTED ENVIRONMENT resolves to "production" (see
+    core/config.py), so an operator who forgets to set it never trips this path
+    even if DB_RECREATE_ON_STARTUP was inherited/copied as true. Recreate requires
+    BOTH ENVIRONMENT == "development" AND DB_RECREATE_ON_STARTUP true, set
+    explicitly — .env.example sets both, preserving the dev workflow.
     """
-    if settings.ENVIRONMENT != "development":
-        logger.info("Skipping destructive create_db_tables (ENVIRONMENT=%s).", settings.ENVIRONMENT)
+    if settings.ENVIRONMENT != "development" or not settings.DB_RECREATE_ON_STARTUP:
+        logger.info(
+            "Skipping destructive create_db_tables (ENVIRONMENT=%s, DB_RECREATE_ON_STARTUP=%s).",
+            settings.ENVIRONMENT, settings.DB_RECREATE_ON_STARTUP,
+        )
         return
     logger.info("Dropping and recreating database tables...")
     async with async_engine.begin() as conn:
@@ -145,8 +155,12 @@ def warn_if_sso_unconfigured() -> None:
     if settings.ENVIRONMENT != "development":
         return
     if not settings.ESI_CLIENT_ID or not is_token_cipher_configured():
+        # Only login and callback are guarded (require_sso_configured) — logout
+        # stays operational (204) regardless, so the message must name the two
+        # affected routes rather than claim the whole /auth/sso/* family 503s.
         logger.warning(
-            "EVE SSO is not configured (ESI_CLIENT_ID/TOKEN_CIPHER_KEYS empty); /auth/sso/* returns 503."
+            "EVE SSO is not configured (ESI_CLIENT_ID/TOKEN_CIPHER_KEYS empty); "
+            "/auth/sso/login and /auth/sso/callback return 503."
         )
 
 

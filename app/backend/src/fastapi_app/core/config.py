@@ -12,8 +12,20 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables and app/backend/src/.env."""
 
     # General
-    ENVIRONMENT: Literal["development", "production", "test"] = "development"
+    # Secure-by-default: an OMITTED ENVIRONMENT resolves to "production", never
+    # "development" (P1). Every dev-only branch keyed on ENVIRONMENT == "development"
+    # — the destructive create_db_tables recreate, SQL echo (db.py), the
+    # cookie Secure flag (api/auth.py), and the SSO-unconfigured startup warning —
+    # therefore takes its safe/off setting when the var is unset. .env.example
+    # sets ENVIRONMENT=development, so copying it preserves the dev workflow.
+    ENVIRONMENT: Literal["development", "production", "test"] = "production"
     LOG_LEVEL: str = "INFO"
+    # Fail-closed opt-in for the destructive dev-only drop_all/create_all recreate
+    # cycle at startup (see main.create_db_tables). Requires BOTH this flag true
+    # AND ENVIRONMENT == "development"; with ENVIRONMENT secure-by-default to
+    # "production" (above), an unset environment never recreates even if this
+    # flag was inherited/copied as true.
+    DB_RECREATE_ON_STARTUP: bool = False
 
     # ESI data API
     ESI_BASE_URL: str = "https://esi.evetech.net"
