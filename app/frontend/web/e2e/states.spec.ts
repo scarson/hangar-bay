@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { SEVEN_SHIPS, makeContract, makeShipItem, pageOf } from './fixtures/contracts'
-import { interceptContractDetail, interceptContractList } from './helpers/api'
+import { interceptContractDetail, interceptContractList, interceptCurrentUser } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
 /**
@@ -56,6 +56,7 @@ test.describe('states', () => {
   test('loading skeleton shows while the list request is in flight, then rows replace it', async ({
     page,
   }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const { opened, release } = gate()
     await page.route(LIST_URL, async (route) => {
       await opened
@@ -88,6 +89,7 @@ test.describe('states', () => {
   test('empty result shows the no-match card, Clear filters, and announces zero', async ({
     page,
   }) => {
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf([]))
 
     await page.goto('/contracts')
@@ -109,6 +111,7 @@ test.describe('states', () => {
     // before surfacing an error — failing only call 0 would auto-recover on call 1
     // and never reach the alert. Fail both initial attempts, then let the manual
     // Retry (call 2) succeed.
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (_params, call) =>
       call < 2 ? { status: 500 } : pageOf(SEVEN_SHIPS),
     )
@@ -140,6 +143,7 @@ test.describe('states', () => {
     // Responder keyed on the wire param: is_bpc=true narrows to two rows. This is a
     // synthetic narrowing to exercise the announcement, not a product claim about
     // ship/BPC overlap; the fixture lane is authoritative for what comes back.
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (params) =>
       pageOf(params.get('is_bpc') === 'true' ? SEVEN_SHIPS.slice(0, 2) : SEVEN_SHIPS),
     )
@@ -165,6 +169,7 @@ test.describe('states', () => {
       contract_id: 232_100_001,
       items: [makeShipItem('Revelation')],
     })
+    await interceptCurrentUser(page, { status: 401 })
     const { opened, release } = gate()
     await page.route(DETAIL_URL, async (route) => {
       await opened
@@ -185,6 +190,7 @@ test.describe('states', () => {
   test('detail page shows its error alert + Retry when the request fails', async ({ page }) => {
     // useContract retries non-404s once, so a persistent 500 makes two attempts and
     // then renders the error branch (not the 404 NotFound branch).
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractDetail(page, { status: 500 })
 
     await page.goto('/contracts/232100001')

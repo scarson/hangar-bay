@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import { axe } from 'vitest-axe'
 import * as matchers from 'vitest-axe/matchers'
-import { jsonResponse } from '../../../test/http'
+import { anonymousMe, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 
 expect.extend(matchers)
@@ -50,7 +50,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('accessibility (axe)', () => {
   it('contract list view has no violations', async () => {
-    stubFetch(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] }))
+    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] })))
     const { container } = renderApp('/contracts')
     await screen.findByText('Tristan')
 
@@ -58,7 +58,7 @@ describe('accessibility (axe)', () => {
   })
 
   it('contract detail view has no violations', async () => {
-    stubFetch(() => jsonResponse(CONTRACT))
+    stubFetch(anonymousMe(() => jsonResponse(CONTRACT)))
     const { container } = renderApp('/contracts/101')
     await screen.findByRole('heading', { name: 'Tristan' })
 
@@ -66,13 +66,13 @@ describe('accessibility (axe)', () => {
   })
 
   it('empty and error states have no violations', async () => {
-    stubFetch(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] }))
+    stubFetch(anonymousMe(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] })))
     const empty = renderApp('/contracts')
     await screen.findByText(/no contracts match/i)
     expect(await axe(empty.container)).toHaveNoViolations()
     empty.unmount()
 
-    stubFetch(() => jsonResponse({ detail: 'boom' }, 500))
+    stubFetch(anonymousMe(() => jsonResponse({ detail: 'boom' }, 500)))
     const errored = renderApp('/contracts?search=xyz')
     await screen.findByRole('alert')
     expect(await axe(errored.container)).toHaveNoViolations()

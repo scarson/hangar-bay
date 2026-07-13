@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { BPC_CONTRACTS, SEVEN_SHIPS, makeContract, makeShipItem, pageOf } from './fixtures/contracts'
-import { interceptContractDetail, interceptContractList } from './helpers/api'
+import { interceptContractDetail, interceptContractList, interceptCurrentUser } from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
 /**
@@ -24,6 +24,7 @@ test.describe('responsive filter-rail disclosure', () => {
     page,
   }) => {
     test.skip(!isMobile(), 'the Filters disclosure only exists below the lg breakpoint')
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf(SEVEN_SHIPS))
 
     await page.goto('/contracts')
@@ -45,6 +46,7 @@ test.describe('responsive filter-rail disclosure', () => {
     page,
   }) => {
     test.skip(!isMobile(), 'the Filters disclosure only exists below the lg breakpoint')
+    await interceptCurrentUser(page, { status: 401 })
     // Keyed responder: is_bpc=true serves the blueprint set, otherwise the ships.
     const calls = await interceptContractList(page, (params) =>
       pageOf(params.get('is_bpc') === 'true' ? BPC_CONTRACTS : SEVEN_SHIPS),
@@ -93,6 +95,7 @@ test.describe('responsive filter-rail disclosure', () => {
     page,
   }) => {
     test.skip(!isMobile(), 'the Filters disclosure only exists below the lg breakpoint')
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, (params) =>
       pageOf(params.get('is_bpc') === 'true' ? BPC_CONTRACTS : SEVEN_SHIPS),
     )
@@ -125,6 +128,7 @@ test.describe('responsive filter-rail disclosure', () => {
     page,
   }) => {
     test.skip(isMobile(), 'above lg the rail is always visible — there is no disclosure to test')
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf(SEVEN_SHIPS))
 
     await page.goto('/contracts')
@@ -143,6 +147,7 @@ test.describe('responsive filter-rail disclosure', () => {
   test('both: a results row link opens the detail view and browser-back returns to the list', async ({
     page,
   }) => {
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf(SEVEN_SHIPS))
     await interceptContractDetail(page, (contractId) =>
       makeContract({ contract_id: contractId, items: [makeShipItem('Revelation')] }),
