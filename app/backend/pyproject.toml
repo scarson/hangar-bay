@@ -32,6 +32,14 @@ markers = [
     "esi_live: marks tests that hit the live ESI API (to be used with VCR)",
 ]
 asyncio_mode = "strict"
+filterwarnings = [
+    # PyJWT warns when signing HS256 with a short key. test_sso.py's HS256-reject
+    # test deliberately signs with a short shared secret purely to build a token
+    # our validator must reject for using the wrong algorithm family — the key
+    # length itself is irrelevant to what the test proves, and HS256 is never
+    # used to sign anything in production code.
+    "ignore::jwt.warnings.InsecureKeyLengthWarning",
+]
 
 [tool.pdm.scripts]
 lint = "flake8 ."
