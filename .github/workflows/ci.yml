@@ -63,14 +63,13 @@ jobs:
       TOKEN_CIPHER_KEYS: 1ENT-BXzxzKxMdnIhMN-Q-_LVIGorE-Stwjy1-FECkA=
     steps:
       - uses: actions/checkout@v7
-      # Both python-version pins below MUST move together (they will flip to 3.14
-      # when the FastAPI 0.115 hold lifts — see implementation-pitfalls ENV-5).
+      # Both python-version pins below MUST stay in sync (setup-python + setup-pdm).
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - uses: pdm-project/setup-pdm@v4
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - name: Create the tests database
         run: PGPASSWORD=hangar psql -h localhost -U hangar -d hangar_bay -c 'CREATE DATABASE hangar_bay_test;'
       - name: Install backend deps

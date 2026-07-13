@@ -332,6 +332,10 @@ export interface components {
         SortableContractFields: "date_issued" | "date_expired" | "price" | "collateral" | "ship_name" | "volume";
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
