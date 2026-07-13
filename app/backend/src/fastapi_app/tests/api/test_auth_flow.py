@@ -230,6 +230,92 @@ async def test_callback_never_yields_protocol_relative_location(auth_client, con
 
 
 @pytest.mark.asyncio
+async def test_callback_malformed_state_json_redirects_sso_error_not_500(auth_client, configured_sso):
+    # Finding 8a: a truncated/undecodable stored state value must not 500 the
+    # callback — it must fall through the same path as a missing/expired state.
+    await auth_client.fake_redis.set("sso_state:STATE123", "{not valid json", ex=600)
+    auth_client.cookies.set("hb_sso_state", "STATE123")
+    resp = await auth_client.get("/auth/sso/callback", params={"state": "STATE123", "code": "CODE"}, follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == f"{settings.FRONTEND_ORIGIN}/?sso=error"
+    state_clear = next(c for c in resp.headers.get_list("set-cookie") if c.startswith("hb_sso_state="))
+    assert "max-age=0" in state_clear.lower() or "expires=" in state_clear.lower()
+
+
+@pytest.mark.asyncio
+async def test_callback_state_payload_not_object_redirects_sso_error_not_500(auth_client, configured_sso):
+    await auth_client.fake_redis.set("sso_state:STATE123", json.dumps(["not", "an", "object"]), ex=600)
+    auth_client.cookies.set("hb_sso_state", "STATE123")
+    resp = await auth_client.get("/auth/sso/callback", params={"state": "STATE123", "code": "CODE"}, follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == f"{settings.FRONTEND_ORIGIN}/?sso=error"
+
+
+@pytest.mark.asyncio
+async def test_callback_state_payload_missing_next_redirects_sso_error_not_500(auth_client, configured_sso):
+    await auth_client.fake_redis.set("sso_state:STATE123", json.dumps({"foo": "bar"}), ex=600)
+    auth_client.cookies.set("hb_sso_state", "STATE123")
+    resp = await auth_client.get("/auth/sso/callback", params={"state": "STATE123", "code": "CODE"}, follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == f"{settings.FRONTEND_ORIGIN}/?sso=error"
+
+
+@pytest.mark.asyncio
+async def test_callback_denial_with_malformed_state_payload_falls_back_to_root(auth_client, configured_sso):
+    # Exit (A) also indexes stored["next"] — a malformed-but-present state payload
+    # must fall back to "/" rather than 500 on the denial path too.
+    await auth_client.fake_redis.set("sso_state:STATE123", json.dumps({"foo": "bar"}), ex=600)
+    auth_client.cookies.set("hb_sso_state", "STATE123")
+    resp = await auth_client.get("/auth/sso/callback", params={"state": "STATE123", "error": "access_denied"}, follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == f"{settings.FRONTEND_ORIGIN}/?sso=denied"
+
+
+@pytest.mark.asyncio
+async def test_callback_upsert_user_failure_redirects_sso_error_not_500(
+    auth_client, configured_sso, httpx_mock, rsa_keypair, monkeypatch
+):
+    # Finding 8b: exit F (upsert_user) must never 500 the callback — any error
+    # there takes the same sso=error redirect as the earlier exchange/JWT exits.
+    from fastapi_app.api import auth as auth_api
+    priv, pub = rsa_keypair
+    _inject_jwks(monkeypatch, pub)
+    httpx_mock.add_response(
+        url=TOKEN_URL, json={"access_token": _sign_access_token(priv), "expires_in": 1200, "token_type": "Bearer"}
+    )
+    await _seed_state(auth_client, next_="/contracts")
+    auth_client.cookies.set("hb_sso_state", "STATE123")
+
+    async def _boom(db, identity, tokens):
+        raise RuntimeError("db exploded")
+
+    monkeypatch.setattr(auth_api.auth_service, "upsert_user", _boom)
+
+    resp = await auth_client.get("/auth/sso/callback", params={"state": "STATE123", "code": "CODE"}, follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == f"{settings.FRONTEND_ORIGIN}/contracts?sso=error"
+    assert "hb_session=" not in resp.headers.get("set-cookie", "")
+
+
+@pytest.mark.asyncio
+async def test_callback_503_not_configured_clears_state_cookie(auth_client, monkeypatch):
+    # Finding 8c: the shared not-configured guard runs before the callback body,
+    # so it must clear hb_sso_state itself (defense-in-depth — the state is
+    # unconsumed on a 503, but the cookie shouldn't be left stale on the browser).
+    from pydantic import SecretStr
+    monkeypatch.setattr(settings, "ESI_CLIENT_ID", "test-client")
+    monkeypatch.setattr(settings, "TOKEN_CIPHER_KEYS", SecretStr("   "))
+    auth_client.cookies.set("hb_sso_state", "STATE123")
+    resp = await auth_client.get("/auth/sso/callback", params={"state": "STATE123", "code": "C"}, follow_redirects=False)
+    assert resp.status_code == 503
+    state_clear = next(
+        (c for c in resp.headers.get_list("set-cookie") if c.startswith("hb_sso_state=")), None
+    )
+    assert state_clear is not None
+    assert "max-age=0" in state_clear.lower() or "expires=" in state_clear.lower()
+
+
+@pytest.mark.asyncio
 async def test_callback_owner_hash_transfer(auth_client, configured_sso, httpx_mock, rsa_keypair, monkeypatch, db_session):
     from sqlalchemy import select
     from fastapi_app.models import User

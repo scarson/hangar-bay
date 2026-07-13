@@ -50,9 +50,27 @@ def validate_next(value: Optional[str]) -> str:
     return value
 
 
+def _parse_state_payload(raw: str) -> Optional[dict]:
+    """Decode + shape-validate a GETDEL'd state payload. Returns None for anything
+    undecodable or malformed (non-JSON, a non-object document, or one missing/
+    mistyping "next") so the caller folds it into the same "state missing" path
+    (exit B) as an expired/absent state, instead of 500ing on stored["next"]."""
+    try:
+        candidate = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(candidate, dict) or not isinstance(candidate.get("next"), str):
+        return None
+    return candidate
+
+
 def build_redirect(frontend_origin: str, next_path: str, flag: Optional[str]) -> str:
     split = urlsplit(next_path)
-    query = parse_qsl(split.query, keep_blank_values=True)
+    # Strip any existing sso param first: a retry landing back on e.g.
+    # /contracts?sso=error must not accumulate a second sso param — the
+    # frontend's URLSearchParams.get('sso') reads only the first value, so a
+    # stale leftover would silently win over the one we're about to append.
+    query = [(k, v) for k, v in parse_qsl(split.query, keep_blank_values=True) if k != "sso"]
     if flag is not None:
         query.append(("sso", flag))
     rebuilt = urlunsplit(("", "", split.path or "/", urlencode(query), split.fragment))
@@ -96,7 +114,55 @@ def _signing_key_provider() -> jwt.PyJWKClient:
     return jwt.PyJWKClient(get_settings().ESI_SSO_JWKS_URI)
 
 
-@router.get("/callback", dependencies=[Depends(require_sso_configured)])
+async def _sso_configured_guard_response() -> Optional[Response]:
+    """503 (with hb_sso_state cleared) if SSO isn't configured, else None.
+    Called inline rather than via the declarative `dependencies=` list used on
+    /login, so the 503 exit can still clear the cookie — a dependency-raised
+    HTTPException never reaches the response built in the route body, so it
+    would otherwise leave a stale cookie on the browser."""
+    try:
+        await require_sso_configured()
+    except HTTPException as exc:
+        resp = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        _clear_state_cookie(resp)
+        return resp
+    return None
+
+
+async def _resolve_stored_state(redis: Redis, state: Optional[str]) -> Optional[dict]:
+    """GETDEL + shape-validate the stored state payload (single-use consume).
+    None if state is falsy, the key was already gone, or the payload is
+    undecodable/malformed."""
+    if not state:
+        return None
+    raw = await redis.getdel(f"sso_state:{state}")
+    if raw is None:
+        return None
+    return _parse_state_payload(raw)
+
+
+def _sso_flagged_redirect(frontend_origin: str, next_path: str, flag: str) -> RedirectResponse:
+    resp = RedirectResponse(build_redirect(frontend_origin, next_path, flag), status_code=status.HTTP_302_FOUND)
+    _clear_state_cookie(resp)
+    return resp
+
+
+async def _finalize_login(db: AsyncSession, redis: Redis, identity, tokens: dict) -> Optional[str]:
+    """Exit F: upsert the user + mint a session. Returns the new session id, or
+    None on ANY failure (DB, cache, etc.) — by this point the code has already
+    been spent at EVE's token endpoint (a single-use authorization_code), so
+    there is no safe way to retry the exchange; the caller redirects sso=error
+    and the user retries login from scratch."""
+    try:
+        user = await auth_service.upsert_user(db, identity, tokens)
+        return await create_session(
+            redis, user_id=user.id, character_id=identity.character_id, character_name=identity.character_name
+        )
+    except Exception:
+        return None
+
+
+@router.get("/callback")
 async def callback(
     request: Request,
     state: Optional[str] = None,
@@ -107,13 +173,13 @@ async def callback(
     db: AsyncSession = Depends(get_db),
 ):
     s = get_settings()
+    guard_resp = await _sso_configured_guard_response()
+    if guard_resp is not None:
+        return guard_resp
+
     started = time.perf_counter()
     cookie_state = request.cookies.get(_STATE_COOKIE)
-    stored = None
-    if state:
-        raw = await redis.getdel(f"sso_state:{state}")   # single-use consume
-        if raw is not None:
-            stored = json.loads(raw)
+    stored = await _resolve_stored_state(redis, state)
 
     # (A) EVE-side denial — no session, redirect with sso=denied.
     # Sanctioned ordering (plan-review round 2): the denial exit precedes the binding
@@ -121,15 +187,11 @@ async def callback(
     # redirect) wins over the hard 400; a pinning test covers denial+cookie-mismatch.
     if error is not None:
         nxt = validate_next(stored["next"]) if stored else "/"
-        resp = RedirectResponse(build_redirect(s.FRONTEND_ORIGIN, nxt, "denied"), status_code=status.HTTP_302_FOUND)
-        _clear_state_cookie(resp)
-        return resp
+        return _sso_flagged_redirect(s.FRONTEND_ORIGIN, nxt, "denied")
 
-    # (B) State missing/expired (GETDEL miss) — innocent, redirect with sso=error.
+    # (B) State missing/expired (GETDEL miss, or an undecodable/malformed payload) — innocent, redirect with sso=error.
     if stored is None:
-        resp = RedirectResponse(build_redirect(s.FRONTEND_ORIGIN, "/", "error"), status_code=status.HTTP_302_FOUND)
-        _clear_state_cookie(resp)
-        return resp
+        return _sso_flagged_redirect(s.FRONTEND_ORIGIN, "/", "error")
 
     # (C) State live but browser binding fails — the only hard-400 exit (callback doesn't match this browser's login).
     if cookie_state is None or cookie_state != state:
@@ -150,9 +212,7 @@ async def callback(
         log_key_event(logger, "sso_callback", success=False,
                       duration_ms=(time.perf_counter() - started) * 1000,
                       outcome="token_exchange_failed")
-        resp = RedirectResponse(build_redirect(s.FRONTEND_ORIGIN, validated_next, "error"), status_code=status.HTTP_302_FOUND)
-        _clear_state_cookie(resp)
-        return resp
+        return _sso_flagged_redirect(s.FRONTEND_ORIGIN, validated_next, "error")
 
     # (E) Validate JWT — the JWKS fetch inside is synchronous urllib, so run the whole
     # validation off the event loop (§3.2). Failure → sso=error redirect.
@@ -166,13 +226,15 @@ async def callback(
         log_key_event(logger, "sso_callback", success=False,
                       duration_ms=(time.perf_counter() - started) * 1000,
                       outcome="jwt_validation_failed")
-        resp = RedirectResponse(build_redirect(s.FRONTEND_ORIGIN, validated_next, "error"), status_code=status.HTTP_302_FOUND)
-        _clear_state_cookie(resp)
-        return resp
+        return _sso_flagged_redirect(s.FRONTEND_ORIGIN, validated_next, "error")
 
-    # (F) Upsert + session.
-    user = await auth_service.upsert_user(db, identity, tokens)
-    sid = await create_session(redis, user_id=user.id, character_id=identity.character_id, character_name=identity.character_name)
+    # (F) Upsert + session — see _finalize_login for why any failure there is sso=error, never a 500.
+    sid = await _finalize_login(db, redis, identity, tokens)
+    if sid is None:
+        log_key_event(logger, "sso_callback", success=False,
+                      duration_ms=(time.perf_counter() - started) * 1000,
+                      outcome="user_store_failed")
+        return _sso_flagged_redirect(s.FRONTEND_ORIGIN, validated_next, "error")
     log_key_event(logger, "sso_callback", success=True,
                   duration_ms=(time.perf_counter() - started) * 1000,
                   outcome="login", character_id=identity.character_id)
