@@ -51,7 +51,7 @@ async def test_exchange_code_uses_basic_auth_and_form_body(httpx_mock):
 
 
 @pytest.mark.asyncio
-async def test_refresh_grant_persists_returned_rotated_token(httpx_mock):
+async def test_refresh_grant_returns_rotated_token(httpx_mock):
     import httpx
     httpx_mock.add_response(
         url="https://login.eveonline.com/v2/oauth/token",
@@ -96,6 +96,37 @@ async def test_exchange_code_transport_error_raises_with_no_status(httpx_mock):
                 client_id="cid", client_secret="secret",
             )
     assert exc.value.status_code is None   # transport failure: no HTTP status to blame
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_200_with_non_json_body_raises(httpx_mock):
+    import httpx
+    httpx_mock.add_response(
+        url="https://login.eveonline.com/v2/oauth/token",
+        text="<!doctype html><html>gateway error page</html>",
+    )
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(sso.SsoTokenError) as exc:
+            await sso.exchange_code(
+                client, code="C",
+                token_url="https://login.eveonline.com/v2/oauth/token",
+                client_id="cid", client_secret="secret",
+            )
+    assert exc.value.status_code == 200   # the body was malformed, not the HTTP layer
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_200_with_non_object_json_raises(httpx_mock):
+    import httpx
+    httpx_mock.add_response(url="https://login.eveonline.com/v2/oauth/token", json="just-a-string")
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(sso.SsoTokenError) as exc:
+            await sso.exchange_code(
+                client, code="C",
+                token_url="https://login.eveonline.com/v2/oauth/token",
+                client_id="cid", client_secret="secret",
+            )
+    assert exc.value.status_code == 200
 
 
 import time
@@ -235,3 +266,21 @@ def test_unknown_kid_maps_to_sso_jwt_error(rsa_keypair, monkeypatch):
     monkeypatch.setattr(client, "fetch_data", lambda: _jwks_for(pub))
     with pytest.raises(sso.SsoJwtError):
         validate_access_token(_sign(priv, _claims(), kid="no-such-kid"), key_provider=client, client_id=CLIENT_ID)
+
+
+@pytest.mark.parametrize("id_part", ["-91000001", "9_1", " 91000001 ", "+91000001", "٩١"])
+def test_non_canonical_character_id_rejected(rsa_keypair, id_part):
+    # int() alone accepts sign/underscore/whitespace/non-ASCII-digit forms; only
+    # ASCII-digit character ids are canonical.
+    priv, pub = rsa_keypair
+    with pytest.raises(sso.SsoJwtError):
+        validate_access_token(
+            _sign(priv, _claims(sub=f"CHARACTER:EVE:{id_part}")),
+            key_provider=_StaticKeyProvider(pub), client_id=CLIENT_ID,
+        )
+
+
+def test_non_string_name_claim_rejected(rsa_keypair):
+    priv, pub = rsa_keypair
+    with pytest.raises(sso.SsoJwtError):
+        validate_access_token(_sign(priv, _claims(name=5)), key_provider=_StaticKeyProvider(pub), client_id=CLIENT_ID)

@@ -1,5 +1,6 @@
 # ABOUTME: EVE SSO protocol — authorize URL, code exchange, refresh grant, local JWT validation.
-# ABOUTME: JWKS comes through an injectable key-provider seam so the validator runs for real in tests (§3.2).
+# ABOUTME: JWKS comes through an injectable key-provider seam so the validator runs for real in tests (m2-eve-sso design spec §3.2; §-refs below cite that spec).
+import re
 from dataclasses import dataclass
 from typing import Optional, Protocol
 from urllib.parse import urlencode
@@ -10,7 +11,7 @@ import jwt
 # EVE presents iss in two historical forms (§2.2); accept exactly these, reject all else.
 _VALID_ISSUERS = frozenset({"login.eveonline.com", "https://login.eveonline.com"})
 _ALGORITHMS = ["RS256", "ES256"]   # never HS256 (§2.5 — the id_token HS256 metadata is a red herring)
-_LEEWAY_SECONDS = 45               # clock-skew tolerance on exp/nbf (§3.2)
+_LEEWAY_SECONDS = 45               # clock-skew tolerance on exp/nbf/iat (§3.2)
 
 
 class SsoTokenError(Exception):
@@ -65,7 +66,13 @@ async def _post_token(client: httpx.AsyncClient, *, token_url: str, client_id: s
     if resp.status_code != 200:
         # No token material in the log — status only (§7).
         raise SsoTokenError(f"token endpoint returned {resp.status_code}", status_code=resp.status_code)
-    return resp.json()
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise SsoTokenError("token endpoint returned a non-JSON body", status_code=resp.status_code) from exc
+    if not isinstance(payload, dict):
+        raise SsoTokenError("token endpoint returned a non-object body", status_code=resp.status_code)
+    return payload
 
 
 async def exchange_code(client: httpx.AsyncClient, *, code: str, token_url: str, client_id: str, client_secret: str) -> dict:
@@ -91,7 +98,7 @@ def validate_access_token(token: str, *, key_provider: SigningKeyProvider, clien
             signing_key.key,
             algorithms=_ALGORITHMS,         # kid-selected RS256/ES256; HS256 excluded
             audience=client_id,             # PyJWT requires client_id to be IN the aud array (§2.3)
-            leeway=_LEEWAY_SECONDS,         # exp/nbf skew tolerance (§3.2)
+            leeway=_LEEWAY_SECONDS,         # exp/nbf/iat skew tolerance (§3.2)
             options={"verify_iss": False, "require": ["exp", "sub", "aud"]},
         )
     except (jwt.InvalidTokenError, jwt.exceptions.PyJWKClientError) as exc:
@@ -107,13 +114,14 @@ def validate_access_token(token: str, *, key_provider: SigningKeyProvider, clien
     prefix = "CHARACTER:EVE:"
     if not sub.startswith(prefix):
         raise SsoJwtError(f"unexpected sub shape: {sub!r}")
-    try:
-        character_id = int(sub[len(prefix):])
-    except ValueError as exc:
-        raise SsoJwtError(f"non-integer character id in sub: {sub!r}") from exc
+    id_part = sub[len(prefix):]
+    # ASCII digits only — int() alone accepts sign/underscore/whitespace/non-ASCII digits.
+    if not re.fullmatch(r"[0-9]+", id_part):
+        raise SsoJwtError(f"non-canonical character id in sub: {sub!r}")
+    character_id = int(id_part)
 
     name = claims.get("name")
     owner = claims.get("owner")
-    if not name or not owner:
-        raise SsoJwtError("missing name/owner claim")
+    if not isinstance(name, str) or not isinstance(owner, str) or not name or not owner:
+        raise SsoJwtError("missing or non-string name/owner claim")
     return VerifiedIdentity(character_id=character_id, character_name=name, owner_hash=owner)
