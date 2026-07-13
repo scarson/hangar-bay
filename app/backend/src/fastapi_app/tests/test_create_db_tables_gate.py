@@ -137,3 +137,21 @@ def test_sso_unconfigured_startup_warning(monkeypatch, caplog, env, client_id, k
         main_mod.warn_if_sso_unconfigured()
     warnings = [r for r in caplog.records if "EVE SSO is not configured" in r.getMessage()]
     assert len(warnings) == (1 if expect_warning else 0)
+
+
+def test_sso_unconfigured_startup_warning_names_only_login_and_callback(monkeypatch, caplog):
+    # Finding 11: the message previously claimed every /auth/sso/* route 503s,
+    # but logout stays operational (204, not guarded) — the warning must name
+    # login and callback specifically, not the whole route family.
+    monkeypatch.setattr(main_mod.settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(main_mod.settings, "ESI_CLIENT_ID", "")
+    from pydantic import SecretStr
+    monkeypatch.setattr(main_mod.settings, "TOKEN_CIPHER_KEYS", SecretStr(""))
+    with caplog.at_level(logging.WARNING):
+        main_mod.warn_if_sso_unconfigured()
+    messages = [r.getMessage() for r in caplog.records if "EVE SSO is not configured" in r.getMessage()]
+    assert len(messages) == 1
+    assert "/auth/sso/login" in messages[0]
+    assert "/auth/sso/callback" in messages[0]
+    assert "/auth/sso/*" not in messages[0]   # the over-broad claim must be gone
+    assert "/auth/sso/logout" not in messages[0]   # logout is never guarded (§4.4)

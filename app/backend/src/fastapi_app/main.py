@@ -156,8 +156,12 @@ def warn_if_sso_unconfigured() -> None:
     if settings.ENVIRONMENT != "development":
         return
     if not settings.ESI_CLIENT_ID or not is_token_cipher_configured():
+        # Only login and callback are guarded (require_sso_configured) — logout
+        # stays operational (204) regardless, so the message must name the two
+        # affected routes rather than claim the whole /auth/sso/* family 503s.
         logger.warning(
-            "EVE SSO is not configured (ESI_CLIENT_ID/TOKEN_CIPHER_KEYS empty); /auth/sso/* returns 503."
+            "EVE SSO is not configured (ESI_CLIENT_ID/TOKEN_CIPHER_KEYS empty); "
+            "/auth/sso/login and /auth/sso/callback return 503."
         )
 
 
