@@ -82,13 +82,15 @@ async def read_session(redis: Redis, sid: str, *, now: Optional[int] = None) -> 
     if now >= deadline:
         await redis.delete(key)   # over the 30-day cap: delete in the same request
         return None
-    if deadline - now < s.SESSION_IDLE_TTL_SECONDS:
-        # Absolute EXPIREAT(deadline), not a relative EXPIRE(deadline-now): the
-        # `now` above was captured before the GETEX await, so a relative EXPIRE
-        # computed against it and applied after further latency can land past
-        # the real 30-day deadline. EXPIREAT is race-free — it lands at exactly
-        # `deadline` regardless of how much wall time elapsed in between (§7).
-        await redis.expireat(key, deadline)
+    # Always apply an ABSOLUTE EXPIREAT at min(sliding idle window, deadline), never
+    # a conditional relative EXPIRE. The GETEX above renewed the key RELATIVE to the
+    # command's own (server-side) execution time, which can be later than the `now`
+    # captured before the await; a cap gated on that stale `now` can be skipped even
+    # though the renewal actually lands past the deadline (§7). EXPIREAT at an
+    # absolute timestamp is immune to that latency: it caps at `deadline` when near
+    # it, and slides at `now + idle_ttl` otherwise, so the key can never be
+    # scheduled to outlive the 30-day deadline regardless of command latency.
+    await redis.expireat(key, min(now + s.SESSION_IDLE_TTL_SECONDS, deadline))
     return payload
 
 

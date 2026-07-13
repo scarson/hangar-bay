@@ -14,8 +14,14 @@ ABSOLUTE = settings.SESSION_ABSOLUTE_TTL_SECONDS  # 2592000
 
 @pytest.mark.asyncio
 async def test_create_then_read_renews_idle_window():
-    r = FakeRedis()
+    # Injected clock in lockstep with the business timestamps: read_session now
+    # applies an ABSOLUTE EXPIREAT(min(now + idle_ttl, deadline)), so the fake's
+    # own clock must share the timeline of `now`/`created` for the renewal to land
+    # where expected (a real-wall-clock fake with a 1970-era injected now would put
+    # the absolute deadline in the distant past and purge the key immediately).
     now = 1_000_000
+    clock = {"t": float(now)}
+    r = FakeRedis(clock=lambda: clock["t"])
     sid = await sess.create_session(r, user_id=1, character_id=91, character_name="X", now=now)
     key = f"session:{sid}"
     assert r.ttl_for(key) == IDLE
@@ -23,10 +29,11 @@ async def test_create_then_read_renews_idle_window():
     # itself — straight after create it would hold even if read never renewed.
     await r.expire(key, 123)
     assert r.ttl_for(key) == 123
+    clock["t"] = float(now + 100)
     payload = await sess.read_session(r, sid, now=now + 100)
     assert payload["character_id"] == 91
     assert payload["created_at"] == now
-    assert r.ttl_for(key) == IDLE            # GETEX renewed the idle window
+    assert r.ttl_for(key) == IDLE            # read renewed the idle window (min(now+idle, deadline) == now+idle)
 
 
 @pytest.mark.asyncio
@@ -246,6 +253,37 @@ async def test_read_caps_ttl_with_absolute_expireat_immune_to_command_latency():
     assert payload is not None
     deadline = created + ABSOLUTE
     assert r.expires_at[key] == deadline   # exact — not deadline + LATENCY
+
+
+@pytest.mark.asyncio
+async def test_read_idle_renewal_cannot_outlive_deadline_under_latency():
+    # Finding 3: the EXPIREAT cap was CONDITIONAL on the stale pre-GETEX `now`.
+    # When the session is not near its deadline at that captured `now`
+    # (deadline - now >= idle_ttl, so the old `< idle_ttl` branch was skipped),
+    # GETEX's RELATIVE idle renewal still lands at getex_time + idle_ttl — which,
+    # under command latency (getex_time > captured now), can cross the 30-day
+    # absolute deadline with no cap ever applied. The key must NEVER be scheduled
+    # to expire after the absolute deadline, regardless of latency.
+    clock = {"t": 0.0}
+    r = FakeRedis(clock=lambda: clock["t"])
+    created = 1_000_000
+    clock["t"] = float(created)
+    sid = await sess.create_session(r, user_id=1, character_id=91, character_name="X", now=created)
+    key = f"session:{sid}"
+    deadline = created + ABSOLUTE
+
+    # Captured now EXACTLY idle_ttl before the deadline: deadline - now == idle_ttl,
+    # so the old conditional `deadline - now < idle_ttl` is False and skips the cap.
+    now = deadline - IDLE
+    LATENCY = 30
+    # Pin the key freshly-renewed so it is still alive at read time (a real session
+    # this close to its deadline has been renewed on every prior request).
+    r.expires_at[key] = now + LATENCY + 1000
+    # GETEX executes LATENCY seconds after the captured `now`.
+    clock["t"] = now + LATENCY
+    payload = await sess.read_session(r, sid, now=now)
+    assert payload is not None
+    assert r.expires_at[key] <= deadline   # capped — not (now+LATENCY)+IDLE == deadline+LATENCY
 
 
 @pytest.mark.asyncio
