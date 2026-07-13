@@ -160,13 +160,21 @@ async def _finalize_login(db: AsyncSession, redis: Redis, identity, tokens: dict
     None on ANY failure (DB, cache, etc.) — by this point the code has already
     been spent at EVE's token endpoint (a single-use authorization_code), so
     there is no safe way to retry the exchange; the caller redirects sso=error
-    and the user retries login from scratch."""
+    and the user retries login from scratch.
+
+    A failing flush (e.g. the concurrent first-login race: two same-character
+    callbacks both insert character_id -> IntegrityError) leaves the DB
+    transaction poisoned. Roll it back before returning, otherwise get_db's
+    post-request commit raises PendingRollbackError and turns the intended
+    sso=error redirect into a 500. The rollback is the graceful handling of
+    that race — it degrades to sso=error and the user simply retries."""
     try:
         user = await auth_service.upsert_user(db, identity, tokens)
         return await create_session(
             redis, user_id=user.id, character_id=identity.character_id, character_name=identity.character_name
         )
     except Exception:
+        await db.rollback()
         return None
 
 

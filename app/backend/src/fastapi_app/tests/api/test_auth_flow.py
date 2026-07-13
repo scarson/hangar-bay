@@ -298,6 +298,74 @@ async def test_callback_upsert_user_failure_redirects_sso_error_not_500(
 
 
 @pytest.mark.asyncio
+async def test_callback_upsert_integrity_error_rolls_back_not_500(
+    auth_client, configured_sso, httpx_mock, rsa_keypair, monkeypatch, db_session
+):
+    # Finding 2: a failing flush at exit F poisons the DB transaction. Without a
+    # rollback in the exception handler the session stays poisoned, so get_db's
+    # post-request commit() raises PendingRollbackError and turns the intended
+    # sso=error redirect into a 500. This is the M2-reachable first-login race in
+    # miniature: two concurrent same-character callbacks both insert character_id
+    # -> IntegrityError.
+    #
+    # auth_client's default get_db override returns the begin()-wrapped db_session,
+    # which never runs get_db's post-yield commit — the exact step that 500s. So
+    # model production get_db faithfully here: a plain session (no begin() wrapper)
+    # that commits after the request and rolls back + re-raises on error, on the
+    # same test engine (tables already created by the db_session fixture).
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from fastapi_app.api import auth as auth_api
+    from fastapi_app.db import get_db
+    from fastapi_app.main import app as real_app
+    from fastapi_app.models import User
+
+    # Own async engine against the test DB (tables already created + committed by
+    # the db_session fixture, so a separate connection sees them).
+    engine = create_async_engine(str(settings.DATABASE_URL_TESTS), echo=False)
+    maker = async_sessionmaker(bind=engine, expire_on_commit=False)
+
+    async def _production_get_db():
+        async with maker() as s:
+            try:
+                yield s
+                await s.commit()
+            except Exception:
+                await s.rollback()
+                raise
+
+    real_app.dependency_overrides[get_db] = _production_get_db
+
+    priv, pub = rsa_keypair
+    _inject_jwks(monkeypatch, pub)
+    httpx_mock.add_response(
+        url=TOKEN_URL, json={"access_token": _sign_access_token(priv), "expires_in": 1200, "token_type": "Bearer"}
+    )
+    await _seed_state(auth_client, next_="/contracts")
+    auth_client.cookies.set("hb_sso_state", "STATE123")
+
+    async def _racing_upsert(db, identity, tokens):
+        db.add(User(character_id=identity.character_id))
+        await db.flush()                       # first insert lands
+        db.add(User(character_id=identity.character_id))
+        await db.flush()                       # duplicate character_id -> IntegrityError, poisons the session
+
+    monkeypatch.setattr(auth_api.auth_service, "upsert_user", _racing_upsert)
+
+    resp = await auth_client.get("/auth/sso/callback", params={"state": "STATE123", "code": "CODE"}, follow_redirects=False)
+    assert resp.status_code == 302     # not a 500 from get_db committing a poisoned transaction
+    assert resp.headers["location"] == f"{settings.FRONTEND_ORIGIN}/contracts?sso=error"
+    assert "hb_session=" not in resp.headers.get("set-cookie", "")
+
+    # The rollback undid the poisoned insert: a fresh session sees no rows, proving
+    # both that the transaction was recovered and that nothing partial persisted.
+    async with maker() as verify:
+        rows = (await verify.execute(select(User))).scalars().all()
+    assert rows == []
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_callback_503_not_configured_clears_state_cookie(auth_client, monkeypatch):
     # Finding 8c: the shared not-configured guard runs before the callback body,
     # so it must clear hb_sso_state itself (defense-in-depth — the state is
