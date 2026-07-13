@@ -4,10 +4,12 @@ import { useLocation, useNavigate } from '@tanstack/react-router'
 
 export function SsoNotice() {
   const location = useLocation()
-  // `from` is a type hint only (the notice is dismissed only from /contracts —
-  // spec §4.1's SSO redirects always land there): without it, useNavigate()'s
-  // search-reducer type resolves against the untyped root route ("never"),
-  // and `tsc -b` rejects the reducer regardless of the runtime-safe cast below.
+  // `from` scopes the navigation to /contracts, which is where the notice is always
+  // shown (spec §4.1's SSO redirects always land there). It is also required for the
+  // types: without it, useNavigate()'s search-reducer resolves against the untyped
+  // root route ("never") and `tsc -b` rejects the reducer regardless of the
+  // runtime-safe cast below. Since dismiss only ever fires on /contracts, the
+  // resolved-path behavior `from` drives matches the current route either way.
   const navigate = useNavigate({ from: '/contracts/' })
   const sso = new URLSearchParams(location.searchStr).get('sso')
   if (sso !== 'denied' && sso !== 'error') return null
