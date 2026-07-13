@@ -125,7 +125,7 @@ async def health_check():
 async def create_db_tables():
     """
     Drops and recreates database tables to keep the dev schema current (ENV-2).
-    Development-only: production schema management is future migrations work (§8).
+    Development-only: production schema management is future migrations work (M2 SSO design spec §8, future work).
     """
     if settings.ENVIRONMENT != "development":
         logger.info("Skipping destructive create_db_tables (ENVIRONMENT=%s).", settings.ENVIRONMENT)

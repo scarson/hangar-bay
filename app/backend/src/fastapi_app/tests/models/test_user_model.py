@@ -21,6 +21,7 @@ def test_user_has_token_vault_columns_all_nullable():
     assert cols["character_name"].nullable is False
     assert cols["owner_hash"].nullable is False
     assert cols["owner_hash"].index is True
+    assert all(cols[n].type.timezone for n in ("esi_access_token_expires_at", "last_login_at", "created_at", "updated_at"))
 
 
 def test_legacy_user_columns_are_gone():
@@ -31,6 +32,6 @@ def test_legacy_user_columns_are_gone():
 
 def test_user_defaults_instantiate():
     u = User(character_id=91_000_001, character_name="Sesta Hound", owner_hash="abc")
-    assert isinstance(u.character_id, int)
+    assert "esi_" not in repr(u) and "owner_hash" not in repr(u)
     assert u.esi_access_token is None
     # created_at/updated_at are server defaults — they fill at flush, not at construction.

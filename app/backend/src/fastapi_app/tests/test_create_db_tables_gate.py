@@ -1,6 +1,7 @@
 # ABOUTME: create_db_tables() must be a no-op outside development (prod-safety rider).
 # ABOUTME: Environment-gated main-module startup behavior, driven via module-global monkeypatching.
 import logging
+from types import SimpleNamespace
 
 import pytest
 
@@ -9,8 +10,6 @@ from fastapi_app import main as main_mod
 
 @pytest.mark.asyncio
 async def test_create_db_tables_skips_outside_development(monkeypatch, caplog):
-    from types import SimpleNamespace
-
     monkeypatch.setattr(main_mod.settings, "ENVIRONMENT", "production")
     called = {"drop_or_create": False}
 
@@ -36,8 +35,6 @@ async def test_create_db_tables_runs_in_development(monkeypatch):
     # Mirror direction (testing-pitfalls §6 Boundary): development must still reach
     # engine.begin()/drop_all/create_all — a gate that no-ops everywhere would pass
     # the skip test above while silently killing dev table creation (ENV-2).
-    from types import SimpleNamespace
-
     from fastapi_app.db import Base
 
     monkeypatch.setattr(main_mod.settings, "ENVIRONMENT", "development")
