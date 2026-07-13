@@ -16,6 +16,36 @@ def _session_key(sid: str) -> str:
     return f"session:{sid}"
 
 
+def _is_plain_int(value: object) -> bool:
+    """True ints only — bool is an int subclass in Python and JSON true/false
+    must not silently pass as a timestamp/id."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _parse_session_payload(raw: str) -> Optional[dict]:
+    """Decode + shape-validate a stored session payload. Returns None for anything
+    undecodable or malformed — truncated JSON, a non-object document, or one
+    missing/mistyping the fields read_session and downstream consumers (get_
+    current_session, /me) rely on — so the caller can treat it as an absent
+    session (DEL + None) instead of a raw exception reaching the callback/route
+    as a 500."""
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if not _is_plain_int(payload.get("created_at")):
+        return None
+    if not _is_plain_int(payload.get("user_id")):
+        return None
+    if not _is_plain_int(payload.get("character_id")):
+        return None
+    if not isinstance(payload.get("character_name"), str):
+        return None
+    return payload
+
+
 async def create_session(
     redis: Redis,
     *,
@@ -44,14 +74,21 @@ async def read_session(redis: Redis, sid: str, *, now: Optional[int] = None) -> 
     raw = await redis.getex(key, ex=s.SESSION_IDLE_TTL_SECONDS)  # atomic read + idle renew (D4)
     if raw is None:
         return None
-    payload = json.loads(raw)
+    payload = _parse_session_payload(raw)
+    if payload is None:
+        await redis.delete(key)   # corrupt/malformed payload: treat as absent, never 500
+        return None
     deadline = payload["created_at"] + s.SESSION_ABSOLUTE_TTL_SECONDS
     if now >= deadline:
         await redis.delete(key)   # over the 30-day cap: delete in the same request
         return None
-    remaining = deadline - now
-    if remaining < s.SESSION_IDLE_TTL_SECONDS:
-        await redis.expire(key, remaining)  # never outlive the absolute cap
+    if deadline - now < s.SESSION_IDLE_TTL_SECONDS:
+        # Absolute EXPIREAT(deadline), not a relative EXPIRE(deadline-now): the
+        # `now` above was captured before the GETEX await, so a relative EXPIRE
+        # computed against it and applied after further latency can land past
+        # the real 30-day deadline. EXPIREAT is race-free — it lands at exactly
+        # `deadline` regardless of how much wall time elapsed in between (§7).
+        await redis.expireat(key, deadline)
     return payload
 
 
