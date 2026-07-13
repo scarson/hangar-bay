@@ -30,6 +30,30 @@ describe('HeaderIdentity', () => {
     expect(expectedNext).toContain('is_bpc%3Dtrue')
   })
 
+  it('strips a stale ?sso flag out of the encoded next', async () => {
+    // A transient ?sso=error|denied on the current URL must not survive into `next` —
+    // otherwise a successful login round-trips the user right back to the stale
+    // error/denied notice. Derive the expectation from the router's own resolved
+    // location (same non-vacuous pattern as the test above), stripped of sso, so this
+    // doesn't degrade into a hand-rolled string that could pass for the wrong reason.
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse({ detail: 'unauthenticated' }, 401)
+      return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
+    })
+    const { router } = renderApp('/contracts?sso=error&is_bpc=true')
+    const link = await screen.findByRole('link', { name: /log in with eve/i })
+    const params = new URLSearchParams(router.state.location.searchStr)
+    params.delete('sso')
+    const strippedSearch = params.toString()
+    const expectedNext = encodeURIComponent(
+      router.state.location.pathname + (strippedSearch ? `?${strippedSearch}` : ''),
+    )
+    expect(link).toHaveAttribute('href', `/api/v1/auth/sso/login?next=${expectedNext}`)
+    expect(expectedNext).toContain('is_bpc%3Dtrue')
+    expect(expectedNext).not.toContain('sso')
+  })
+
   it('renders portrait + name + logout when authenticated', async () => {
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : (input as Request).url
