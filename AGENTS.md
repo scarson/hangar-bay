@@ -363,7 +363,7 @@ CI/CD: none yet.
 - **API layer.** Routers are mounted **bare** (their `APIRouter(prefix="/contracts")` etc., no `/api/v1`). The `/api/v1` prefix is owned by the Vite dev proxy and the deploy edge, which strip it before the request reaches FastAPI — **PROXY-1**. There is **no CORS** config: the frontend is same-origin with the backend through that proxy.
 - **Schemas & client.** Request/response models are Pydantic v2 in `fastapi_app/schemas/`. The OpenAPI schema is exported (`pdm run export-openapi`) and codegen'd into a typed TS client (`openapi-typescript` → `schema.d.ts`, consumed via `openapi-fetch`).
 - **Dev-destructive startup.** Every backend boot drops+recreates all tables and re-ingests — **ENV-2/ENV-3**. An empty contract list right after startup is expected, not a bug; data appears a few minutes in.
-- **Two Settings classes trap.** There are currently two `Settings(BaseSettings)` definitions — `fastapi_app/config.py` and `fastapi_app/core/config.py` — **ENV-1**. Consolidation is planned in M2; until then, be sure you're editing the one actually loaded by the code path you're touching.
+- **Settings consolidated in M2.** There is now a single `Settings(BaseSettings)` definition, `fastapi_app/core/config.py` (the legacy `fastapi_app/config.py` duplicate was deleted). It sets `extra="ignore"` so unknown keys in the `.env` FILE don't abort construction — **ENV-4**. The JSON-decoding-of-complex-fields trap is still live — **ENV-1**.
 
 ## Conventions
 
