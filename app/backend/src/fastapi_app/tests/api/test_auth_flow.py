@@ -340,3 +340,31 @@ async def test_callback_503_when_cipher_unconfigured_not_500(auth_client, monkey
     monkeypatch.setattr(settings, "TOKEN_CIPHER_KEYS", SecretStr("   "))   # whitespace ⇒ not configured
     resp = await auth_client.get("/auth/sso/callback", params={"state": "X", "code": "C"}, follow_redirects=False)
     assert resp.status_code == 503     # guard fires before any cipher/exchange — never a 500 from MultiFernet([])
+
+
+@pytest.mark.asyncio
+async def test_logout_works_when_sso_not_configured(auth_client, monkeypatch):
+    # §4.4: logout is intentionally NOT behind the not-configured guard, so an existing
+    # session can always be cleared even when the SSO credentials are absent.
+    from pydantic import SecretStr
+    monkeypatch.setattr(settings, "ESI_CLIENT_ID", "")
+    monkeypatch.setattr(settings, "TOKEN_CIPHER_KEYS", SecretStr(""))
+    sid = await sess.create_session(auth_client.fake_redis, user_id=1, character_id=91000001, character_name="X")
+    auth_client.cookies.set(settings.SESSION_COOKIE_NAME, sid)
+    resp = await auth_client.post("/auth/sso/logout")
+    assert resp.status_code == 204
+    assert await auth_client.fake_redis.exists(f"session:{sid}") == 0
+
+
+@pytest.mark.asyncio
+async def test_me_works_when_sso_not_configured(auth_client, monkeypatch):
+    # §4.4: /me reads only the session payload and is NOT behind the not-configured guard,
+    # so an already-authenticated identity survives SSO being unconfigured.
+    from pydantic import SecretStr
+    monkeypatch.setattr(settings, "ESI_CLIENT_ID", "")
+    monkeypatch.setattr(settings, "TOKEN_CIPHER_KEYS", SecretStr(""))
+    sid = await sess.create_session(auth_client.fake_redis, user_id=1, character_id=91000001, character_name="Sesta Hound")
+    auth_client.cookies.set(settings.SESSION_COOKIE_NAME, sid)
+    resp = await auth_client.get("/me")
+    assert resp.status_code == 200
+    assert resp.json() == {"character_id": 91000001, "character_name": "Sesta Hound"}
