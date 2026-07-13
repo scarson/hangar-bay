@@ -176,13 +176,7 @@ async def auth_client(db_session, httpx_mock):
     ASGITransport client is a different transport class and is unaffected.) Tests
     that need token responses request httpx_mock themselves and get the same instance."""
     from fastapi_app.main import app as real_app
-    from fastapi_app.api import auth as auth_api
     from fastapi_app.db import get_db as get_db_dep
-
-    n_routes = len(real_app.router.routes)
-    real_app.include_router(auth_api.router)
-    real_app.include_router(auth_api.me_router)
-    real_app.openapi_schema = None
 
     fake = FakeRedis()
     real_app.state.redis = fake
@@ -198,8 +192,6 @@ async def auth_client(db_session, httpx_mock):
     del real_app.state.redis
     del real_app.state.http_client
     real_app.dependency_overrides.clear()
-    del real_app.router.routes[n_routes:]   # restore routes — main.py stays unmounted (D2)
-    real_app.openapi_schema = None
 
 
 @pytest.fixture
