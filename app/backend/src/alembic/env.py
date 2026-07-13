@@ -28,9 +28,9 @@ from fastapi_app.core.config import get_settings
 from fastapi_app.db import Base
 # Ensure all models are registered with Base.metadata
 # Import the modules first to ensure their top-level code runs
-from fastapi_app.models import common_models, contracts # noqa: F401
+from fastapi_app.models import user, contracts # noqa: F401
 # Then, explicitly import the model classes themselves
-from fastapi_app.models.common_models import User # noqa: F401
+from fastapi_app.models.user import User # noqa: F401
 from fastapi_app.models.contracts import Contract, ContractItem, EsiMarketGroupCache # noqa: F401
 
 settings = get_settings()

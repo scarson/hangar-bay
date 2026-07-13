@@ -124,9 +124,12 @@ async def health_check():
 
 async def create_db_tables():
     """
-    Drops and recreates database tables to ensure the schema is up-to-date.
-    NOTE: This is a destructive operation suitable for development.
+    Drops and recreates database tables to keep the dev schema current (ENV-2).
+    Development-only: production schema management is future migrations work (M2 SSO design spec §8, future work).
     """
+    if settings.ENVIRONMENT != "development":
+        logger.info("Skipping destructive create_db_tables (ENVIRONMENT=%s).", settings.ENVIRONMENT)
+        return
     logger.info("Dropping and recreating database tables...")
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
