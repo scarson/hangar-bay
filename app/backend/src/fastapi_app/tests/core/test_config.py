@@ -88,7 +88,8 @@ def test_reconciled_non_sso_defaults(monkeypatch):
     assert s.ESI_TIMEOUT == 20.0
     assert s.AGGREGATION_REGION_IDS == [10000002]
     assert s.AGGREGATION_DEV_CONTRACT_LIMIT == 100
-    assert s.ENVIRONMENT == "development"
+    assert s.ENVIRONMENT == "production"   # secure-by-default: unset ENVIRONMENT is prod, never dev (P1)
+    assert s.DB_RECREATE_ON_STARTUP is False   # destructive recreate is opt-in and off by default
 
 
 def test_region_ids_validator_direct_construction_forms(monkeypatch):

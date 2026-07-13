@@ -30,14 +30,15 @@ async def test_create_db_tables_skips_outside_development(monkeypatch, caplog):
     assert "Skipping" in caplog.text
 
 
+@pytest.mark.parametrize("recreate_flag", [False, True])
 @pytest.mark.asyncio
-async def test_create_db_tables_skips_when_environment_unset(monkeypatch):
-    # P1: Settings.ENVIRONMENT defaults to "development" when the env var is simply
-    # omitted (e.g. a production deploy that forgot to set it) — indistinguishable,
-    # by value alone, from someone explicitly opting into the dev workflow. A fresh
-    # Settings instance built with no ENVIRONMENT source (mirrors test_reconciled_
-    # non_sso_defaults in test_config.py) must NOT trigger the destructive recreate;
-    # only an explicit second opt-in may.
+async def test_create_db_tables_skips_when_environment_unset(monkeypatch, recreate_flag):
+    # P1 (fully closed): when ENVIRONMENT is simply omitted, a fresh Settings must
+    # NOT resolve to "development" — otherwise DB_RECREATE_ON_STARTUP=true (easily
+    # inherited/copied into a prod env that omits ENVIRONMENT) satisfies BOTH gate
+    # conditions and drops every table. Secure-by-default: unset ENVIRONMENT is
+    # "production", so the destructive recreate never runs regardless of the flag.
+    # Parametrized over the flag so the flag=True case (the missed one) is pinned.
     from fastapi_app.core.config import Settings
 
     fresh_settings = Settings(
@@ -45,8 +46,9 @@ async def test_create_db_tables_skips_when_environment_unset(monkeypatch):
         DATABASE_URL="postgresql+asyncpg://u:p@localhost/x",
         CACHE_URL="redis://localhost:6379/9",
         ESI_USER_AGENT="test",
+        DB_RECREATE_ON_STARTUP=recreate_flag,
     )
-    assert fresh_settings.ENVIRONMENT == "development"  # the fail-open trap
+    assert fresh_settings.ENVIRONMENT == "production"  # secure-by-default, never dev when unset
     monkeypatch.setattr(main_mod, "settings", fresh_settings)
 
     called = {"drop_or_create": False}
@@ -54,7 +56,7 @@ async def test_create_db_tables_skips_when_environment_unset(monkeypatch):
     class _Boom:
         async def __aenter__(self):
             called["drop_or_create"] = True
-            raise AssertionError("engine.begin() must not run with no explicit opt-in")
+            raise AssertionError("engine.begin() must not run with an unset ENVIRONMENT")
 
         async def __aexit__(self, *a):
             return False
