@@ -88,7 +88,7 @@ This section provides a detailed breakdown of the backend project structure. The
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── contracts.py      # SQLAlchemy ORM models for `Contract` and `ContractItem`, defining the database table schemas.
-│   │   └── common_models.py  # Shared/common models, like `EsiMarketGroupCache`.
+│   │   └── user.py           # SQLAlchemy ORM model for the EVE-SSO user (encrypted token vault).
 │   │
 │   ├── schemas/
 │   │   ├── __init__.py
