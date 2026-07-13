@@ -6,15 +6,26 @@ on:
   push:
     branches: [dev, main]
   # No branches filter on pull_request: that filter matches the PR's BASE branch,
-  # and the stacked phase PRs (Standing Orders §Phase sequencing) are based on the
-  # previous phase's claude/* branch — a [dev, main] filter would leave every
-  # stacked PR with no CI run at all (and a base retarget fires only an `edited`
-  # event, which the default activity types don't run on).
+  # and the stacked M2 phase PRs (the plan's Standing Orders §Phase sequencing —
+  # docs/superpowers/plans/2026-07-12-m2-eve-sso.md) are based on the previous
+  # phase's claude/* branch — a [dev, main] filter would leave every stacked PR
+  # with no CI run at all (and a base retarget fires only an `edited` event,
+  # which the default activity types don't run on).
   pull_request:
+
+# Nothing here uses the token — pin it to read-only.
+permissions:
+  contents: read
+
+# Rapid pushes to the same ref (stacked-PR rebases) supersede in-flight runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: app/backend
@@ -51,8 +62,10 @@ jobs:
       #   python -c "import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
       TOKEN_CIPHER_KEYS: 1ENT-BXzxzKxMdnIhMN-Q-_LVIGorE-Stwjy1-FECkA=
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      # Both python-version pins below MUST move together (they will flip to 3.14
+      # when the FastAPI 0.115 hold lifts — see implementation-pitfalls ENV-5).
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - uses: pdm-project/setup-pdm@v4
@@ -67,12 +80,13 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: app/frontend/web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
@@ -86,7 +100,7 @@ jobs:
       - name: Unit tests
         run: npm run test
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
@@ -99,3 +113,13 @@ jobs:
         run: npx playwright install-deps chromium
       - name: E2E (fixture lane)
         run: npm run e2e
+      # playwright.config.ts sets trace: retain-on-failure — keep those traces
+      # when the lane fails, or they die with the runner.
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: app/frontend/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
