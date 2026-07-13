@@ -1,104 +1,88 @@
-from typing import List, Optional
-from pydantic.networks import PostgresDsn, AnyUrl
+# ABOUTME: The single application Settings class + get_settings(); loads app/backend/src/.env.
+# ABOUTME: Consolidates the former fastapi_app/config.py and core/config.py (ENV-1 trap).
+from pathlib import Path
+from typing import Any, List, Literal, Optional
 
-from pydantic import Field, field_validator, version
-from typing import Any # Import Any for type hinting in validator
+from pydantic import Field, SecretStr, field_validator
+from pydantic.networks import AnyUrl, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Application settings loaded from environment variables and app/backend/src/.env."""
 
-    # General App Configuration
-    ENVIRONMENT: str = "development"
-    LOG_LEVEL: str = Field(
-        default="INFO",
-        description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"
-    )
+    # General
+    ENVIRONMENT: Literal["development", "production", "test"] = "development"
+    LOG_LEVEL: str = "INFO"
 
-    # ESI Configuration
+    # ESI data API
     ESI_BASE_URL: str = "https://esi.evetech.net"
     ESI_USER_AGENT: str = Field(..., description="User-Agent header for ESI requests.")
-    ESI_TIMEOUT: float = Field(
-        default=20.0, description="Default timeout in seconds for ESI requests."
-    )
+    ESI_TIMEOUT: float = 20.0
 
-    # Aggregation Service Configuration
+    # EVE SSO (OAuth) — empty client id / cipher keys ⇒ SSO routes 503 "not configured"
+    ESI_CLIENT_ID: str = ""
+    ESI_CLIENT_SECRET: SecretStr = SecretStr("")
+    ESI_SSO_AUTHORIZE_URL: str = "https://login.eveonline.com/v2/oauth/authorize"
+    ESI_SSO_TOKEN_URL: str = "https://login.eveonline.com/v2/oauth/token"
+    ESI_SSO_JWKS_URI: str = "https://login.eveonline.com/oauth/jwks"
+    # Registered EVE callback — must match the dev-portal registration char-for-char.
+    # Dev rides the Vite proxy over HTTPS; the proxy strips /api/v1 (PROXY-1, D-DELTA-1).
+    ESI_SSO_CALLBACK_URL: str = "https://localhost:5173/api/v1/auth/sso/callback"
+    FRONTEND_ORIGIN: str = "https://localhost:5173"
+
+    # Server-side sessions + token vault
+    SESSION_COOKIE_NAME: str = "hb_session"
+    SESSION_IDLE_TTL_SECONDS: int = 604_800       # 7 days (sliding)
+    SESSION_ABSOLUTE_TTL_SECONDS: int = 2_592_000  # 30 days (hard cap)
+    TOKEN_CIPHER_KEYS: SecretStr = SecretStr("")   # comma-separated Fernet keys, first=primary
+
+    # Aggregation
     AGGREGATION_SCHEDULER_INTERVAL_SECONDS: int = 3600
-    AGGREGATION_REGION_IDS: List[int] = Field(
-        default_factory=lambda: [10000002], # Use default_factory for mutable default
-        description="List of integer region IDs to scan for contracts. Parsed from env var."
-    )
-    AGGREGATION_DEV_CONTRACT_LIMIT: int | None = Field( # DO NOT REMOVE UNLESS INSTRUCTED BY USER
+    AGGREGATION_REGION_IDS: List[int] = Field(default_factory=lambda: [10000002])
+    AGGREGATION_DEV_CONTRACT_LIMIT: int | None = Field(  # DO NOT REMOVE UNLESS INSTRUCTED BY USER
         default=100,
-        description="For dev, limit the number of contracts processed. Set to None or 0 to disable."
+        description="For dev, limit the number of contracts processed. Set to None or 0 to disable.",
     )
 
-    # Database and Cache Configuration
+    # Database + cache
     DATABASE_URL: str = Field(..., description="SQLAlchemy database connection string.")
-    CACHE_URL: str = Field(..., description="Redis cache connection string.")
+    CACHE_URL: str = Field(..., description="Redis/Valkey cache connection string.")
+    DATABASE_URL_TESTS: Optional[PostgresDsn] = None   # conftest requires this
+    CACHE_URL_TESTS: Optional[AnyUrl] = None
 
     @field_validator("AGGREGATION_REGION_IDS", mode="before")
     @classmethod
     def parse_aggregation_region_ids(cls, value: Any) -> List[int]:
-        """Parses AGGREGATION_REGION_IDS from a comma-separated string or list of strings/ints to a list of ints."""
-        # DEBUG: Validator for AGGREGATION_REGION_IDS - raw value
-        print(f"VALIDATOR_AGG_IDS: Received raw value: {value!r} (type: {type(value)})", flush=True)
+        """Normalize AGGREGATION_REGION_IDS to a list of ints (ENV-1): env/dotenv sources
+        JSON-decode complex fields before mode="before" validators run, so through real
+        env sources only the JSON-list form reaches this code. The comma-separated-string
+        and plain-list branches apply on direct construction (tests).
+        """
         if isinstance(value, str):
             if not value.strip():
                 return []
-            # Attempt to parse as JSON list first (e.g., "[10000002, 10000003]")
-            if value.startswith('[') and value.endswith(']'):
+            if value.startswith("[") and value.endswith("]"):
+                import json
                 try:
-                    import json
-                    parsed_list = json.loads(value)
-                    if not isinstance(parsed_list, list):
-                        raise ValueError("JSON string did not parse to a list.")
-                    # Ensure all elements are integers
-                    int_list = [int(item) for item in parsed_list]
-                    # DEBUG: Validator for AGGREGATION_REGION_IDS - parsed JSON string to list
-                    print(f"VALIDATOR_AGG_IDS: Parsed JSON string to list: {int_list}. Returning.", flush=True)
-                    return int_list
-                except (json.JSONDecodeError, ValueError, TypeError) as e:
-                    # DEBUG: Validator for AGGREGATION_REGION_IDS - JSON parsing failed, fallback to comma-separated
-                    print(f"VALIDATOR_AGG_IDS: JSON parsing failed ('{e}'), falling back to comma-separated for: {value!r}", flush=True)
-                    # Fall through to comma-separated parsing if JSON parsing fails or it's not a valid list of ints
-            
-            # Fallback to comma-separated string (e.g., "10000002,10000003")
-            try:
-                parsed_list = [int(rid.strip()) for rid in value.split(',') if rid.strip()]
-                # DEBUG: Validator for AGGREGATION_REGION_IDS - parsed comma-separated string to list
-                print(f"VALIDATOR_AGG_IDS: Parsed comma-separated string to list: {parsed_list}. Returning.", flush=True)
-                return parsed_list
-            except ValueError as e:
-                raise ValueError(f"Invalid format for AGGREGATION_REGION_IDS. Could not parse '{value}' as comma-separated integers: {e}")
-        elif isinstance(value, list):
-            # If it's already a list, ensure all elements are integers (or can be converted)
-            try:
-                int_list = [int(item) for item in value]
-                # DEBUG: Validator for AGGREGATION_REGION_IDS - received list (all ints)
-                print(f"VALIDATOR_AGG_IDS: Received list (all ints): {int_list}. Returning as is.", flush=True)
-                return int_list
-            except (ValueError, TypeError) as e:
-                raise ValueError(f"Invalid list for AGGREGATION_REGION_IDS. All items must be convertible to integers: {e}")
-        
-        # DEBUG: Validator for AGGREGATION_REGION_IDS - unhandled type
-        print(f"VALIDATOR_AGG_IDS: Unhandled type for value: {type(value)}. Raising ValueError.", flush=True)
-        raise ValueError(
-            f"AGGREGATION_REGION_IDS must be a comma-separated string of integers, a JSON string representing a list of integers, or a list of integers. Got: {type(value)}"
-        )
+                    return [int(item) for item in json.loads(value)]
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    pass  # fall through to comma-separated parsing
+            return [int(rid.strip()) for rid in value.split(",") if rid.strip()]
+        if isinstance(value, list):
+            return [int(item) for item in value]
+        raise ValueError(f"Invalid type for AGGREGATION_REGION_IDS: {type(value)}")
 
-    DATABASE_URL_TESTS: Optional[PostgresDsn] = None # For test environment
-    CACHE_URL_TESTS: Optional[AnyUrl] = None # For test environment
-
-    model_config = SettingsConfigDict(env_file="src/.env", env_file_encoding='utf-8')
+    model_config = SettingsConfigDict(
+        env_file=Path(__file__).resolve().parents[2] / ".env",  # -> app/backend/src/.env
+        env_file_encoding="utf-8",
+        extra="ignore",  # unknown .env keys must not crash boot (token-cipher finding)
+    )
 
 
-# Instantiate settings
 settings = Settings()
-# DEBUG: Pydantic version check. Note: 'version' was imported from pydantic above.
-print(f"PYDANTIC_VERSION_CHECK_PRINT: {version.VERSION}", flush=True)
-# DEBUG: Global settings AGGREGATION_REGION_IDS value in config.py
-print(f"CONFIG_PY_INIT_DEBUG: settings.AGGREGATION_REGION_IDS = {settings.AGGREGATION_REGION_IDS} (type: {type(settings.AGGREGATION_REGION_IDS)})", flush=True)
-# DEBUG: Global settings object ID in config.py
-print(f"CONFIG_PY_GLOBAL_SETTINGS_ID: id(settings)={id(settings)}, id(settings.AGGREGATION_REGION_IDS)={id(settings.AGGREGATION_REGION_IDS)}", flush=True)
+
+
+def get_settings() -> Settings:
+    """Return the process-wide Settings singleton (DI-friendly seam)."""
+    return settings

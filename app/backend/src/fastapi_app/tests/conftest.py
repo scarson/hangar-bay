@@ -22,7 +22,7 @@ from fastapi_app.db import get_db
 from fastapi_app.db import Base
 from datetime import datetime, timedelta, timezone
 
-from fastapi_app.config import settings
+from fastapi_app.core.config import settings
 from fastapi_app.models.contracts import Contract, ContractItem
 
 # Use a separate, real Postgres database for testing to match production.

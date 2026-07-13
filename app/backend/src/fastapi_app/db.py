@@ -3,16 +3,13 @@ from sqlalchemy.orm import declarative_base
 from typing import Callable
 from contextlib import AbstractAsyncContextManager
 
+from .core.config import get_settings
+
 Base = declarative_base()
-
-from .config import get_settings
-
 settings = get_settings()
 
 async_engine = create_async_engine(
-    str(
-        settings.DATABASE_URL
-    ),  # Pydantic DSN types need to be cast to str for SQLAlchemy
+    settings.DATABASE_URL,
     echo=settings.ENVIRONMENT == "development",  # Log SQL queries in development
     future=True,  # Use SQLAlchemy 2.0 style
 )
@@ -24,20 +21,9 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
-Base = declarative_base()
-
 
 async def get_db_session_factory() -> Callable[..., AbstractAsyncContextManager[AsyncSession]]:
-    """
-    FastAPI dependency that provides the async session factory.
-    """
-    return AsyncSessionLocal
-
-
-async def get_db_session_factory() -> Callable[..., AbstractAsyncContextManager[AsyncSession]]:
-    """
-    FastAPI dependency that provides the async session factory.
-    """
+    """FastAPI dependency that provides the async session factory."""
     return AsyncSessionLocal
 
 

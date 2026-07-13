@@ -4,7 +4,7 @@ import httpx
 from fastapi import Depends, HTTPException, Request, status
 from redis.asyncio import Redis
 
-from .config import Settings, settings
+from .config import Settings, get_settings
 from .esi_client_class import ESIClient
 
 
@@ -34,13 +34,6 @@ async def get_http_client(request: Request) -> httpx.AsyncClient:
             detail="HTTP client is not available.",
         )
     return http_client
-
-
-def get_settings() -> Settings:
-    """
-    FastAPI dependency to get the globally configured Settings object.
-    """
-    return settings
 
 
 async def get_esi_client(
