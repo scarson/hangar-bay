@@ -154,6 +154,8 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ### ENV-5: The backend venv/CI pin Python 3.12 until the FastAPI 0.115 hold lifts
 
+> **SUPERSEDED (2026-07-13):** Hold lifted — no longer applicable. The FastAPI-current / Python-3.14 chore migrated the backend to FastAPI 0.139 / Starlette 1.3.1 and moved the venv and both CI `python-version` pins to 3.14. FastAPI 0.139 precomputes `Dependant.is_coroutine_callable` at route registration and no longer calls the 3.14-deprecated `asyncio.iscoroutinefunction`, so the 16 DeprecationWarnings are gone at the source (never a filter mask). The spike that "broke 19 tests" traced to `prometheus-fastapi-instrumentator` 7.1.0, whose middleware crashes in `_get_route_name` against Starlette 0.52.x despite its `starlette<1.0` pin; reaching current Starlette required bumping it to 8.0.2 (`starlette>=1.0`). The pydantic-relock context below stays true; original content preserved for history.
+
 **The Flaw:** The default machine `python3` is CPython 3.14. The pydantic stack is relocked with cp314 wheels (pydantic 2.13 / pydantic-core 2.46), so 3.14 installs and passes — but FastAPI is deliberately held at 0.115 (`fastapi>=0.115.12,<0.116` in pyproject): its internals call `asyncio.iscoroutinefunction`, which 3.14 deprecates, emitting a DeprecationWarning block in every test run and violating the pristine-test-output gate. The unheld resolve (FastAPI 0.139 / Starlette 0.52) broke 19 tests on first contact — a real migration, not a version bump.
 
 **The Fix:** Keep the backend venv and CI on Python 3.12 (`actions/setup-python` + `setup-pdm` with `python-version: '3.12'`) until a dedicated FastAPI/Starlette migration lands; then flip the pins to 3.14 and delete this entry. Never mask the warnings with a filter, and do not "fix" application code for other interpreter versions.
@@ -180,7 +182,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 - [ ] **Empty data after a backend (re)start is not diagnosed as a frontend bug** — startup drops/recreates tables and re-ingests; give ingestion time before concluding a data bug (ENV-2)
 - [ ] **After backend edits, run one clean cycle** — clear the Valkey aggregation lock, `touch main.py` once, hand off until ingestion completes; run dev servers as tracked background tasks with visible logs (ENV-3)
 - [ ] **`Settings.model_config` keeps `extra="ignore"`** — any new config field is also documented in `.env.example` (ENV-4)
-- [ ] **Backend venv/CI stay pinned to Python 3.12** until the FastAPI 0.115 hold is lifted by a dedicated migration — no interpreter-version bump, no warning-filter mask (ENV-5)
+- [ ] **Backend venv/CI run Python 3.14** — the FastAPI 0.115 / Python-3.12 hold is resolved (ENV-5, superseded); keep the two CI `python-version` pins in sync and never mask interpreter warnings with a filter (migrate off the deprecated API instead)
 - [ ] **Deleting a debug print/function also drops any module-level import it orphaned** — flake8 ignores F401 here so it won't catch it, but F811 will trip on an unrelated function (ENV-6)
 
 ---
@@ -208,6 +210,11 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 ---
 
 # Appendix A: Historical Changelog
+
+## 2026-07-13 — ENV-5 superseded: FastAPI-current / Python-3.14 migration
+
+- Lifted the FastAPI 0.115 hold: migrated the backend to FastAPI 0.139 / Starlette 1.3.1 (+ `prometheus-fastapi-instrumentator` 8.0.2, required for Starlette ≥1.0 — its 7.1.0 middleware crashes against Starlette 0.52.x despite a `starlette<1.0` pin). FastAPI 0.139 precomputes the dependant coroutine flag and no longer calls the 3.14-deprecated `asyncio.iscoroutinefunction`, eliminating the 16 DeprecationWarnings at the source (no filter mask). Flipped the backend venv and both CI `python-version` pins 3.12 → 3.14.
+- Marked ENV-5 `SUPERSEDED` (kept its original body + the pydantic-relock context as history); rewrote the §3.C checklist item to the current 3.14 invariant and updated the Appendix B status row.
 
 ## 2026-07-12 — M2 additions: ENV-4, ENV-5, ENV-6; ENV-1 two-Settings text retired
 
@@ -242,7 +249,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ENV-2 | Backend restart wipes and re-ingests all data | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-3 | --reload + ingestion + Valkey lock interact badly in dev | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-4 | pydantic-settings rejects unknown .env keys unless extra="ignore" | MEDIUM | VALIDATED | Environment & Dev Loop |
-| ENV-5 | Backend venv/CI pin Python 3.12 until the FastAPI 0.115 hold lifts | LOW | VALIDATED | Environment & Dev Loop |
+| ENV-5 | FastAPI 0.115 / Python-3.12 hold (resolved 2026-07-13: FastAPI 0.139 + Python 3.14) | LOW | SUPERSEDED | Environment & Dev Loop |
 | ENV-6 | F811 cascade when removing debug prints/functions | LOW | VALIDATED | Environment & Dev Loop |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
