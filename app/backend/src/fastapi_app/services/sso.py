@@ -1,5 +1,6 @@
 # ABOUTME: EVE SSO protocol — authorize URL, code exchange, refresh grant, local JWT validation.
 # ABOUTME: JWKS comes through an injectable key-provider seam so the validator runs for real in tests (m2-eve-sso design spec §3.2; §-refs below cite that spec).
+import math
 import re
 from dataclasses import dataclass
 from typing import Optional, Protocol
@@ -65,9 +66,14 @@ def _validate_token_body(payload: dict, *, status_code: int) -> None:
     expires_in = payload.get("expires_in")
     if expires_in is None or isinstance(expires_in, bool):
         raise SsoTokenError("token endpoint response missing expires_in", status_code=status_code)
+    # Reject non-finite floats (JSON "Infinity"/"NaN", e.g. expires_in: 1e309) up
+    # front: int(inf) raises OverflowError, which is neither ValueError nor
+    # TypeError — caught here too so it maps to SsoTokenError rather than 500ing.
+    if isinstance(expires_in, float) and not math.isfinite(expires_in):
+        raise SsoTokenError("token endpoint response has non-finite expires_in", status_code=status_code)
     try:
         int(expires_in)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise SsoTokenError(
             "token endpoint response has non-numeric expires_in", status_code=status_code
         ) from exc
@@ -126,11 +132,16 @@ def validate_access_token(token: str, *, key_provider: SigningKeyProvider, clien
         jwt.InvalidTokenError,
         jwt.exceptions.PyJWKClientError,
         jwt.exceptions.PyJWKSetError,
+        TypeError,
+        OverflowError,
     ) as exc:
         # PyJWKClientError (kid miss / JWKS fetch failure) and PyJWKSetError (an
         # empty/keyless JWKS document) are NOT InvalidTokenError subclasses — and
-        # PyJWKSetError is not even a PyJWKClientError subclass — without this
-        # clause either escapes as a 500 at the callback instead of SsoJwtError.
+        # PyJWKSetError is not even a PyJWKClientError subclass. TypeError and
+        # OverflowError come from PyJWT's own NumericDate handling on a malformed
+        # exp/nbf/iat claim (e.g. exp: {} -> TypeError, exp: 1e309 -> int(inf)
+        # OverflowError), also not InvalidTokenError subclasses. Without this
+        # clause any of them escapes as a 500 at the callback instead of SsoJwtError.
         raise SsoJwtError(f"jwt validation failed: {exc}") from exc
 
     iss = claims.get("iss")

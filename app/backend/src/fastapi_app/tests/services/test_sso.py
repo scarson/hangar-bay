@@ -208,6 +208,29 @@ async def test_exchange_code_200_null_expires_in_raises_sso_token_error(httpx_mo
             )
 
 
+@pytest.mark.asyncio
+async def test_exchange_code_200_non_finite_expires_in_raises_sso_token_error(httpx_mock):
+    # Finding 4: a body whose expires_in is out-of-range (1e309) parses to float
+    # inf via resp.json(); int(inf) raises OverflowError, which is neither
+    # ValueError nor TypeError, so it would escape _validate_token_body and 500
+    # the callback instead of taking the sso=error path. Sent as raw text (the
+    # wire form a real endpoint could emit) because strict JSON serialization
+    # refuses to encode inf.
+    import httpx
+    httpx_mock.add_response(
+        url="https://login.eveonline.com/v2/oauth/token",
+        text='{"access_token": "AT", "expires_in": 1e309}',
+        headers={"content-type": "application/json"},
+    )
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(sso.SsoTokenError):
+            await sso.exchange_code(
+                client, code="C",
+                token_url="https://login.eveonline.com/v2/oauth/token",
+                client_id="cid", client_secret="secret",
+            )
+
+
 import time
 
 import jwt
@@ -317,6 +340,26 @@ def test_nbf_in_future_beyond_leeway_rejected(rsa_keypair):
     now = int(time.time())
     with pytest.raises(sso.SsoJwtError):
         validate_access_token(_sign(priv, _claims(nbf=now + 3600)), key_provider=_StaticKeyProvider(pub), client_id=CLIENT_ID)
+
+
+@pytest.mark.parametrize("bad_exp", [{}, 1e309])
+def test_malformed_numericdate_exp_rejected_not_typeerror_or_overflow(rsa_keypair, bad_exp):
+    # Finding 5: a NumericDate claim of the wrong shape makes PyJWT raise a raw
+    # TypeError (exp: {}) or OverflowError (exp: 1e309 -> inf), neither of which
+    # is an InvalidTokenError subclass — so without broadening the decode except
+    # they escape validate_access_token and 500 the callback. Must map to
+    # SsoJwtError. (jwt.encode passes these through unvalidated; jwt.decode is
+    # where the raw error surfaces.)
+    priv, pub = rsa_keypair
+    with pytest.raises(sso.SsoJwtError):
+        validate_access_token(_sign(priv, _claims(exp=bad_exp)), key_provider=_StaticKeyProvider(pub), client_id=CLIENT_ID)
+
+
+def test_malformed_numericdate_iat_rejected_not_typeerror(rsa_keypair):
+    # Same class of defect on another NumericDate claim (iat), for coverage breadth.
+    priv, pub = rsa_keypair
+    with pytest.raises(sso.SsoJwtError):
+        validate_access_token(_sign(priv, _claims(iat={})), key_provider=_StaticKeyProvider(pub), client_id=CLIENT_ID)
 
 
 def _jwks_for(pub, kid="JWT-Signature-Key"):
