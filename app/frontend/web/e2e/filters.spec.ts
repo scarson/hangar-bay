@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { BPC_CONTRACTS, SEVEN_SHIPS, bigDataset, pageOf, paginate } from './fixtures/contracts'
-import { interceptContractList } from './helpers/api'
+import { interceptContractList, interceptCurrentUser } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
 /**
@@ -21,6 +21,7 @@ test.describe('contract filters', () => {
     // char value produces the SAME toApiQuery output as empty, so useContracts'
     // query key is unchanged and NO new request fires — the value only lives in
     // the URL while the user is mid-typing.
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (params) =>
       pageOf(params.get('search') === 'abc' ? SEVEN_SHIPS.slice(0, 1) : SEVEN_SHIPS),
     )
@@ -52,6 +53,7 @@ test.describe('contract filters', () => {
   })
 
   test('price bounds: min/max reach the URL and the wire, and the rows update', async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const priced = SEVEN_SHIPS.slice(2, 5) // Maelstrom, Purifier, Hound
     const calls = await interceptContractList(page, (params) =>
       pageOf(params.has('min_price') || params.has('max_price') ? priced : SEVEN_SHIPS),
@@ -77,6 +79,7 @@ test.describe('contract filters', () => {
   test('region multi-select: filter the list, pick two, wire carries repeated region_ids', async ({
     page,
   }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const regional = SEVEN_SHIPS.slice(0, 2) // Revelation, Raven
     const calls = await interceptContractList(page, (params) =>
       pageOf(params.has('region_ids') ? regional : SEVEN_SHIPS),
@@ -111,6 +114,7 @@ test.describe('contract filters', () => {
   test('blueprint-copies toggle: is_bpc reaches URL + wire and rows show the BPC badge', async ({
     page,
   }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (params) =>
       pageOf(params.get('is_bpc') === 'true' ? BPC_CONTRACTS : SEVEN_SHIPS),
     )
@@ -132,6 +136,7 @@ test.describe('contract filters', () => {
   })
 
   test('clear filters resets the URL + controls and the button removes itself', async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
     // The responder narrows to 2 rows whenever a search is sent, so the return to
     // 7 rows after Clear is a deterministic sync point proving the reset re-fetched.
     const calls = await interceptContractList(page, (params) =>
@@ -181,6 +186,7 @@ test.describe('contract filters', () => {
   })
 
   test('applying a filter resets pagination to page 1', async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const all = bigDataset(60)
     const calls = await interceptContractList(page, (params) =>
       paginate(all, Number(params.get('page') ?? 1), Number(params.get('size') ?? 50)),

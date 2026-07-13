@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test'
 import { makeBpcItem, makeContract, makeShipItem, pageOf } from './fixtures/contracts'
-import { failUnexpectedApiCalls, interceptContractDetail, interceptContractList } from './helpers/api'
+import {
+  failUnexpectedApiCalls,
+  interceptContractDetail,
+  interceptContractList,
+  interceptCurrentUser,
+} from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
 /**
@@ -31,6 +36,7 @@ test.describe('contract detail (F003)', () => {
     page,
   }) => {
     const contract = detailContract()
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf([contract]))
     const detailCalls = await interceptContractDetail(page, contract)
 
@@ -71,6 +77,7 @@ test.describe('contract detail (F003)', () => {
     page,
   }) => {
     const contract = detailContract()
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf([contract]))
     await interceptContractDetail(page, contract)
 
@@ -94,8 +101,12 @@ test.describe('contract detail (F003)', () => {
   })
 
   test('cold deep link renders fully and the back control is a link to the list', async ({ page }) => {
-    // Prove ONLY the detail endpoint is hit on a cold load: abort anything else.
+    // Prove ONLY the detail endpoint is hit on a cold load: abort anything else —
+    // except the header's own /me, which is expected on every page and answered
+    // 401 by the intercept registered below (page.route runs last-registered-first,
+    // so the more specific /me intercept must come AFTER this catch-all to win).
     await failUnexpectedApiCalls(page)
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractDetail(page, detailContract())
 
     await page.goto(`/contracts/${CONTRACT_ID}`)
@@ -115,6 +126,7 @@ test.describe('contract detail (F003)', () => {
   test('404 shows the not-found heading and the back control still returns to the list', async ({
     page,
   }) => {
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf([detailContract()]))
     await interceptContractDetail(page, { status: 404 })
 
@@ -129,7 +141,11 @@ test.describe('contract detail (F003)', () => {
   })
 
   test('document title becomes "<hull> — Hangar Bay"', async ({ page }) => {
+    // Same last-registered-first ordering as the cold-deep-link test above: the
+    // catch-all must be registered before the /me intercept so the specific
+    // route still wins.
     await failUnexpectedApiCalls(page)
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractDetail(page, detailContract())
 
     await page.goto(`/contracts/${CONTRACT_ID}`)

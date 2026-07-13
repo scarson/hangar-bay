@@ -101,7 +101,7 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
             label to avoid a double read. */}
         <p className="sr-only" role="status" aria-live="polite">
           {data !== undefined
-            ? `${data.total.toLocaleString('en-US')} contracts match your filters`
+            ? `${data.total.toLocaleString('en-US')} ${data.total === 1 ? 'contract matches' : 'contracts match'} your filters`
             : ''}
         </p>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

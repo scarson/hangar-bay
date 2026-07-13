@@ -8,15 +8,14 @@ const variants: Record<Variant, string> = {
   ghost: 'border border-line-strong text-ink-body hover:bg-raised active:bg-overlay',
 }
 
+export function buttonClasses(variant: Variant = 'ghost', className = ''): string {
+  return `inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-sm transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${variants[variant]} ${className}`
+}
+
 export function Button({
   variant = 'ghost',
   className = '',
   ...props
 }: { variant?: Variant } & ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-sm transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${variants[variant]} ${className}`}
-      {...props}
-    />
-  )
+  return <button className={buttonClasses(variant, className)} {...props} />
 }
