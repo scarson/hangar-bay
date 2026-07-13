@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     # General
     ENVIRONMENT: Literal["development", "production", "test"] = "development"
     LOG_LEVEL: str = "INFO"
+    # Fail-closed opt-in for the destructive dev-only drop_all/create_all recreate
+    # cycle at startup (see main.create_db_tables). ENVIRONMENT alone is NOT
+    # sufficient — it defaults to "development" when simply omitted, so a
+    # production deploy that forgot to set ENVIRONMENT must not also need to
+    # forget this flag before its schema is safe. Both must be explicit.
+    DB_RECREATE_ON_STARTUP: bool = False
 
     # ESI data API
     ESI_BASE_URL: str = "https://esi.evetech.net"

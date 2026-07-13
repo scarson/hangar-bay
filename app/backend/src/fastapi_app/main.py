@@ -129,9 +129,20 @@ async def create_db_tables():
     """
     Drops and recreates database tables to keep the dev schema current (ENV-2).
     Development-only: production schema management is future migrations work (M2 SSO design spec §8, future work).
+
+    Fail-closed gate (P1): ENVIRONMENT alone is not a sufficient guard, because it
+    defaults to "development" when the env var is simply omitted — an operator who
+    forgets to set ENVIRONMENT in a production deploy would otherwise still trip
+    this destructive path. DB_RECREATE_ON_STARTUP is a second, independently-defaulted-
+    False flag that must ALSO be explicitly set, so an omitted/unknown environment
+    never recreates regardless of the flag, and the flag never fires outside
+    development regardless of how it's set.
     """
-    if settings.ENVIRONMENT != "development":
-        logger.info("Skipping destructive create_db_tables (ENVIRONMENT=%s).", settings.ENVIRONMENT)
+    if settings.ENVIRONMENT != "development" or not settings.DB_RECREATE_ON_STARTUP:
+        logger.info(
+            "Skipping destructive create_db_tables (ENVIRONMENT=%s, DB_RECREATE_ON_STARTUP=%s).",
+            settings.ENVIRONMENT, settings.DB_RECREATE_ON_STARTUP,
+        )
         return
     logger.info("Dropping and recreating database tables...")
     async with async_engine.begin() as conn:
