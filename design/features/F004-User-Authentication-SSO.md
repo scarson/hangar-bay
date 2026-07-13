@@ -2,8 +2,20 @@
 
 **Feature ID:** F004
 **Creation Date:** 2025-06-05
-**Last Updated:** 2025-06-06
-**Status:** Draft
+**Last Updated:** 2026-07-13
+**Status:** Implemented with corrections (Milestone 2) — see the note below
+
+> **Implemented-with-corrections (Milestone 2, 2026-07-13).** F004 is implemented, but several details below were superseded during implementation after verification against the live EVE SSO service. The authoritative corrections are recorded in [docs/superpowers/specs/2026-07-12-m2-eve-sso-design.md](../../docs/superpowers/specs/2026-07-12-m2-eve-sso-design.md) §2; the key overrides:
+>
+> *   **There is no ID token.** EVE SSO is OAuth 2.0, not OIDC — the **access token itself is the JWT** validated against the JWKS. Everywhere below that says "ID token JWT" or references `GET /oauth/verify` (deprecated since 2021-11-01), read "JWT access token validated locally."
+> *   **`iss` is dual-valued:** both `login.eveonline.com` and `https://login.eveonline.com` are accepted; nothing else.
+> *   **`aud` is an array** containing the app's `client_id` and the literal string `"EVE Online"` — validation checks that `client_id` is present in the array, not an exact match.
+> *   **`sub` is `CHARACTER:EVE:<character_id>`** (character name is the `name` claim; owner hash is the `owner` claim).
+> *   **Zero scopes in Milestone 2.** F004 requests no ESI scopes, so EVE issues an access-token JWT for identity but **no `refresh_token`** — the encrypted token-vault refresh column stays NULL, and identity comes from validating the access-token JWT once at the callback. Anywhere below that treats `refresh_token` as a mandatory field of the token response is corrected: in M2 it is simply absent (the refresh mechanism ships tested-but-unexercised as an M3 foundation, since M3 adds the first scope).
+> *   **Access tokens live 20 minutes** (`expires_in: 1200`). When a scoped grant (M3) *does* return a refresh token, a refresh response **may** rotate it — the rotated token from the response is the one persisted; when the response omits a refresh token, the stored one is kept.
+> *   **Recorded deviation on refresh-failure handling (design spec §4.3):** the design spec calls for invalidating the user's Hangar Bay session when a refresh attempt gets an invalid-grant response. In Milestone 2, "mark for re-auth" concretely means nulling the `esi_access_token`, `esi_access_token_expires_at`, and `esi_refresh_token` columns only — per-user session invalidation is deferred to Milestone 3, which introduces the token-using caller and a user→session index to build it on.
+>
+> See the design spec for the full corrections list and rationale.
 
 ## 0. Authoritative ESI & EVE SSO References (Required Reading for ESI/SSO Integration)
 *   **EVE Online API (ESI) Swagger UI / OpenAPI Spec:** [https://esi.evetech.net/ui/](https://esi.evetech.net/ui/) - *Primary source for all ESI endpoint definitions, request/response schemas, and parameters.*

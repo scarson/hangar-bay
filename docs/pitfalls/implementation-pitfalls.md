@@ -28,7 +28,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 |---|---------|---------------------|---------|-----------|
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, PROXY-1 | §1.C |
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1 | §2.C |
-| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3 | §3.C |
+| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6 | §3.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -118,7 +118,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 **The Flaw:** A `List[int]` settings field only accepts a JSON list (`AGGREGATION_REGION_IDS=[10000002]`). A bare int or comma-separated string crashes at startup even if a field validator claims to handle it — pydantic-settings JSON-decodes complex types first.
 
-**Also note:** the backend loads env from `app/backend/src/.env` (not next to `.env.example`), requires `ESI_USER_AGENT`, and there are two divergent Settings classes (`fastapi_app/config.py` and `fastapi_app/core/config.py`) — setup docs must satisfy both.
+**Also note:** the backend loads env from `app/backend/src/.env` (not next to `.env.example`) and requires `ESI_USER_AGENT`. (Prior to the M2 settings consolidation there were two divergent Settings classes — `fastapi_app/config.py` and `fastapi_app/core/config.py` — that setup docs had to satisfy both; M2 consolidated them into the single `core/config.py` Settings, so this is now a single-class concern. See ENV-4 for the consolidated class's `extra="ignore"` requirement.)
 
 ---
 
@@ -140,11 +140,48 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### ENV-4: pydantic-settings rejects unknown .env keys unless extra="ignore"
+
+**The Flaw:** The consolidated `Settings` reads the whole `app/backend/src/.env` file. Without `extra="ignore"` in `model_config`, any key present in `.env` that is NOT a declared field aborts construction at import — crashing boot.
+
+**Why It Matters:** During M2, adding `TOKEN_CIPHER_KEYS` to `.env` before the field existed on the class crashed the baseline app at startup. Unknown ENV VARS are ignored (pydantic-settings only reads env vars matching fields), but unknown `.env`-FILE keys are not — this trap is `.env`-file-specific.
+
+**The Fix:** Keep `extra="ignore"` on the consolidated `Settings.model_config` (`core/config.py`). New config always adds the field AND documents it in `.env.example`.
+
+**Where It Bit Us:** M2 settings consolidation (2026-07-12).
+
+---
+
+### ENV-5: The backend venv/CI pin Python 3.12 until the FastAPI 0.115 hold lifts
+
+**The Flaw:** The default machine `python3` is CPython 3.14. The pydantic stack is relocked with cp314 wheels (pydantic 2.13 / pydantic-core 2.46), so 3.14 installs and passes — but FastAPI is deliberately held at 0.115 (`fastapi>=0.115.12,<0.116` in pyproject): its internals call `asyncio.iscoroutinefunction`, which 3.14 deprecates, emitting a DeprecationWarning block in every test run and violating the pristine-test-output gate. The unheld resolve (FastAPI 0.139 / Starlette 0.52) broke 19 tests on first contact — a real migration, not a version bump.
+
+**The Fix:** Keep the backend venv and CI on Python 3.12 (`actions/setup-python` + `setup-pdm` with `python-version: '3.12'`) until a dedicated FastAPI/Starlette migration lands; then flip the pins to 3.14 and delete this entry. Never mask the warnings with a filter, and do not "fix" application code for other interpreter versions.
+
+**Where It Bit Us:** M2 CI bring-up + the pydantic relock spike (2026-07-12).
+
+---
+
+### ENV-6: F811 cascade when removing debug prints/functions
+
+**The Flaw:** The repo's flake8 config ignores `F401` (unused import) but NOT `F811` (redefinition). Deleting a debug print/function whose sole job consumed a module-level `settings` import leaves that import orphaned — invisible under the F401 ignore — and any same-named function parameter (e.g. a `settings` argument on some other function in the same module) then trips a live `F811` ("redefinition of unused `settings`").
+
+**Why It Matters:** Because F401 is silenced project-wide, an agent removing debug scaffolding gets no signal that the import is now dead; the failure only surfaces as an unrelated-looking F811 on a different function elsewhere in the file, which reads like a pre-existing lint bug rather than a consequence of the deletion just made.
+
+**The Fix:** When deleting a debug print/function, always check whether it was the last consumer of any module-level import it referenced, and drop the now-orphaned import (and any comment that falsified it) in the same edit — don't rely on flake8 to catch it, since F401 is ignored here.
+
+**Where It Bit Us:** M2 Phase 1 settings consolidation, twice (DISC-EXEC-2, 2026-07-12).
+
+---
+
 ### §3.C — Review Checklist
 
-- [ ] **Complex settings fields (e.g. `List[int]`) are supplied as JSON** — `AGGREGATION_REGION_IDS=[...]`; env is loaded from `app/backend/src/.env`; `ESI_USER_AGENT` is set; both `config.py` and `core/config.py` Settings classes are satisfied (ENV-1)
+- [ ] **Complex settings fields (e.g. `List[int]`) are supplied as JSON** — `AGGREGATION_REGION_IDS=[...]`; env is loaded from `app/backend/src/.env`; `ESI_USER_AGENT` is set; the single consolidated `core/config.py` Settings class is satisfied (ENV-1)
 - [ ] **Empty data after a backend (re)start is not diagnosed as a frontend bug** — startup drops/recreates tables and re-ingests; give ingestion time before concluding a data bug (ENV-2)
 - [ ] **After backend edits, run one clean cycle** — clear the Valkey aggregation lock, `touch main.py` once, hand off until ingestion completes; run dev servers as tracked background tasks with visible logs (ENV-3)
+- [ ] **`Settings.model_config` keeps `extra="ignore"`** — any new config field is also documented in `.env.example` (ENV-4)
+- [ ] **Backend venv/CI stay pinned to Python 3.12** until the FastAPI 0.115 hold is lifted by a dedicated migration — no interpreter-version bump, no warning-filter mask (ENV-5)
+- [ ] **Deleting a debug print/function also drops any module-level import it orphaned** — flake8 ignores F401 here so it won't catch it, but F811 will trip on an unrelated function (ENV-6)
 
 ---
 
@@ -172,6 +209,12 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
+## 2026-07-12 — M2 additions: ENV-4, ENV-5, ENV-6; ENV-1 two-Settings text retired
+
+- Added ENV-4 (pydantic-settings rejects unknown `.env` keys unless `extra="ignore"`) and ENV-5 (backend venv/CI pin Python 3.12 until the FastAPI 0.115 hold lifts) from the M2 EVE SSO plan (Phase 9, Task 9.2).
+- Added ENV-6 (F811 cascade when removing debug prints/functions whose sole job consumed a module-level import) — a trap discovered twice during M2 Phase 1 settings consolidation (DISC-EXEC-2).
+- Retired ENV-1's "two divergent Settings classes" claim (its "Also note" paragraph and the §3.C checklist line): M2 Phase 1 consolidated `fastapi_app/config.py` and `fastapi_app/core/config.py` into the single `core/config.py` Settings, so the setup-docs-must-satisfy-both text was false. ENV-1's JSON-decode trap itself is unchanged and remains live.
+
 ## 2026-07-12 — Restructured to the pitfalls-docs template
 
 - Migrated this file to the standard template shape: added §How to Use, Table of Contents, per-section Review Checklists, the Orchestration §ORCH-1 universal entry, and Appendices A/B/C (summary table + maintenance framework).
@@ -198,6 +241,9 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ENV-1 | pydantic-settings JSON-decodes complex env fields early | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-2 | Backend restart wipes and re-ingests all data | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-3 | --reload + ingestion + Valkey lock interact badly in dev | MEDIUM | VALIDATED | Environment & Dev Loop |
+| ENV-4 | pydantic-settings rejects unknown .env keys unless extra="ignore" | MEDIUM | VALIDATED | Environment & Dev Loop |
+| ENV-5 | Backend venv/CI pin Python 3.12 until the FastAPI 0.115 hold lifts | LOW | VALIDATED | Environment & Dev Loop |
+| ENV-6 | F811 cascade when removing debug prints/functions | LOW | VALIDATED | Environment & Dev Loop |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
 Severity levels: `CRITICAL` (production data loss / security), `HIGH` (correctness bug under predictable conditions), `MEDIUM` (correctness bug under edge cases), `LOW` (cleanliness / clarity / dev-loop hazard).

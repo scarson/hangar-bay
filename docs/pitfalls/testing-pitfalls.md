@@ -117,6 +117,12 @@ Disciplines discovered in *this* project's own history. Each is marked **🔥** 
 
 - [ ] **🔥 TEST-7 — Error-state tests must account for the QueryClient's retry policy.** The production QueryClient retries failed queries (retry: 1; `useContract` retries non-404s once), so an error state only renders after ALL attempts fail. A stub that fails only the first call auto-recovers on the retry and the error branch never shows — the test hangs or passes vacuously. **Do instead:** responders/stubs fail as many consecutive calls as the retry policy will issue (list: calls 0 AND 1), then let an explicit user Retry succeed; assert the alert appears before and the data after. **Bit us:** `states.spec.ts` error tests during the 2026-07-12 E2E build-out (caught by the author agent, never shipped red). Relates to §3 Error Path Coverage.
 
+- [ ] **🔥 TEST-8 — Two `role="status"` nodes coexist during list loading.** The loading skeleton (`ContractTable.tsx` `role="status"` named "Loading contracts") and the always-mounted results live region are both `role="status"` while a fetch is in flight, so a `getByRole('status')` assertion polling during load hits a Playwright strict-mode violation (multiple matching nodes). **Do instead:** synchronize on the skeleton unmounting (`waitForDataRendered` / skeleton count 0) before asserting on the results live region; never weaken the assertion to a `.first()`/`.all()` workaround that papers over the ambiguity. **Bit us:** DISC-EXEC-1, Phase 0 of the M2 EVE SSO plan (2026-07-12).
+
+- [ ] **🔥 TEST-9 — Every fixture-lane E2E spec must intercept `GET /me`.** Once the header issues a real `/me` identity request, any fixture-lane spec that does NOT stub `/me` leaks a live request into the mocked lane. **Do instead:** every fixture-lane spec calls `interceptCurrentUser` (401 by default) in every test, even ones that don't otherwise touch auth. **Bit us:** M2 Phase 8 frontend auth-header work (2026-07-12).
+
+- [ ] **🔥 TEST-10 — `ASGITransport` does not run lifespan; wire `app.state` manually in the fixture.** `httpx.ASGITransport` bypasses the app's lifespan startup, so any app-state set up in a `lifespan` handler (`app.state.redis`, `app.state.http_client`) is never populated for tests built on it. **Do instead:** the `auth_client` test fixture sets `app.state.redis` / `app.state.http_client` by hand, and depends on `httpx_mock` structurally so no auth test can reach the network. **Bit us:** M2 Phase 6 auth API route tests (2026-07-12).
+
 ---
 
 ## How to Add a Testing-Pitfall
