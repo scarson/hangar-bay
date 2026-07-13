@@ -1,5 +1,7 @@
 # ABOUTME: User upsert (create + owner-hash transfer), token encryption, invalid-grant nulling.
 # ABOUTME: Refresh-on-demand: rotation persistence, outages keep the vault, wrong-key/empty-vault re-auth.
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
@@ -37,7 +39,9 @@ async def test_upsert_creates_user_and_encrypts_tokens(db_session):
     assert user.esi_access_token != "AT"                      # ciphertext, not plaintext
     assert tc.decrypt_token(user.esi_access_token) == "AT"    # round-trips
     assert user.esi_refresh_token is None                     # zero scopes ⇒ no refresh token stored
-    assert user.esi_access_token_expires_at is not None
+    # expires_at is now + expires_in (1200s), not a sign-flipped past instant.
+    assert user.esi_access_token_expires_at > datetime.now(timezone.utc) + timedelta(seconds=1000)
+    assert user.esi_access_token_expires_at < datetime.now(timezone.utc) + timedelta(seconds=1300)
     assert user.last_login_at is not None
 
 
@@ -53,13 +57,15 @@ async def test_upsert_encrypts_refresh_token_when_present(db_session):
 @pytest.mark.asyncio
 async def test_upsert_transfers_owner_hash_on_mismatch(db_session):
     ident1 = VerifiedIdentity(character_id=91000001, character_name="Old Name", owner_hash="OWN1")
-    await auth_service.upsert_user(db_session, ident1, _tokens())
+    first = await auth_service.upsert_user(db_session, ident1, _tokens())
+    first_login_at = first.last_login_at
     ident2 = VerifiedIdentity(character_id=91000001, character_name="New Name", owner_hash="OWN2")
     user = await auth_service.upsert_user(db_session, ident2, {"access_token": "AT2", "expires_in": 1200})
     rows = (await db_session.execute(select(User).where(User.character_id == 91000001))).scalars().all()
     assert len(rows) == 1                          # updated in place, no duplicate row
     assert user.owner_hash == "OWN2"               # ownership transferred
     assert user.character_name == "New Name"
+    assert user.last_login_at > first_login_at     # re-login refreshes the timestamp in place
     assert tc.decrypt_token(user.esi_access_token) == "AT2"
 
 
@@ -77,7 +83,9 @@ async def test_mark_for_reauth_nulls_esi_columns(db_session):
 async def test_refresh_user_tokens_persists_rotated_refresh_token(db_session, httpx_mock):
     import httpx
     ident = VerifiedIdentity(character_id=91000001, character_name="Sesta Hound", owner_hash="OWN1")
-    user = await auth_service.upsert_user(db_session, ident, {"access_token": "AT", "refresh_token": "RT_OLD", "expires_in": 1200})
+    # Seed a near-immediate expiry so the post-refresh assertion below can only pass
+    # if the REFRESH advanced it — not by inheriting a long upsert-time expiry.
+    user = await auth_service.upsert_user(db_session, ident, {"access_token": "AT", "refresh_token": "RT_OLD", "expires_in": 1})
     httpx_mock.add_response(
         url=settings.ESI_SSO_TOKEN_URL,
         json={"access_token": "AT2", "refresh_token": "RT_ROTATED", "expires_in": 1200},
@@ -86,6 +94,8 @@ async def test_refresh_user_tokens_persists_rotated_refresh_token(db_session, ht
         await auth_service.refresh_user_tokens(db_session, client, user)
     assert tc.decrypt_token(user.esi_access_token) == "AT2"
     assert tc.decrypt_token(user.esi_refresh_token) == "RT_ROTATED"   # rotation persisted
+    # the refreshed access token carries a forward expiry, so M3's caller won't re-hit EVE every request.
+    assert user.esi_access_token_expires_at > datetime.now(timezone.utc) + timedelta(seconds=1000)
 
 
 @pytest.mark.asyncio
