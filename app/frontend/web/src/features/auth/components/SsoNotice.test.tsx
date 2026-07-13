@@ -77,13 +77,14 @@ describe('SsoNotice', () => {
       }
       return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
     })
-    const { router } = renderApp('/contracts/123?sso=error&foo=bar')
+    const { router } = renderApp('/contracts/123?sso=error&foo=bar#items')
     const notice = await screen.findByText(/went wrong/i)
     expect(notice).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /dismiss/i }))
     await waitFor(() => expect((router.state.location.search as Record<string, unknown>).sso).toBeUndefined())
     expect(router.state.location.pathname).toBe('/contracts/123')
     expect((router.state.location.search as Record<string, unknown>).foo).toBe('bar')
+    expect(router.state.location.hash).toBe('items')   // deep-linked #anchor survives dismiss
     expect(screen.queryByText(/went wrong/i)).not.toBeInTheDocument()
   })
 })

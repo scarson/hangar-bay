@@ -34,6 +34,9 @@ export function SsoNotice() {
         delete rest.sso
         return rest
       },
+      // Preserve any URL fragment (e.g. a deep-linked #anchor): TanStack Router
+      // clears the hash on navigate unless it is carried forward explicitly.
+      hash: true,
       replace: true,
     })
 
