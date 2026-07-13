@@ -181,12 +181,14 @@ async def _finalize_login(db: AsyncSession, redis: Redis, identity, tokens: dict
 @router.get(
     "/callback",
     # callback's success path redirects (302 to FRONTEND_ORIGIN); it never
-    # returns 200 application/json. Without this the generated OpenAPI schema
-    # (and the typed frontend client built from it) mis-declares the response
-    # shape. The two hard-error exits (§ (C) binding mismatch, and the shared
+    # returns 200 application/json. status_code + response_class together make
+    # the generated OpenAPI schema declare an empty 302 redirect (not a JSON
+    # body), so the typed frontend client doesn't mis-declare the response shape.
+    # The two hard-error exits (§ (C) binding mismatch, and the shared
     # not-configured guard) are documented explicitly since they're real,
     # reachable alternate outcomes, not just the redirect-based ones.
     status_code=status.HTTP_302_FOUND,
+    response_class=RedirectResponse,
     responses={
         400: {"description": "SSO state/browser-binding mismatch."},
         503: {"description": "EVE SSO is not configured."},

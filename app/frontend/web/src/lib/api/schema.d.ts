@@ -376,9 +376,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": unknown;
-                };
+                content?: never;
             };
             /** @description SSO state/browser-binding mismatch. */
             400: {

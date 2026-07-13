@@ -459,11 +459,6 @@
         ],
         "responses": {
           "302": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
             "description": "Successful Response"
           },
           "400": {
