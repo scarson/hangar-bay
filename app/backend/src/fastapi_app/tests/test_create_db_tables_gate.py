@@ -58,3 +58,25 @@ async def test_create_db_tables_runs_in_development(monkeypatch):
     await main_mod.create_db_tables()
     assert entered["value"] is True
     assert synced == [Base.metadata.drop_all, Base.metadata.create_all]
+
+
+@pytest.mark.parametrize(
+    "env,client_id,keys,expect_warning",
+    [
+        ("development", "", "", True),        # unconfigured in dev → exactly one warning
+        ("development", "cid", "some-key", False),  # configured in dev → silent
+        ("development", "cid", "", True),     # client id set, cipher unset → still warns (pins the OR)
+        ("development", "", "some-key", True),  # cipher set, client id unset → still warns (pins the OR)
+        ("production", "", "", False),        # never warns outside development
+    ],
+)
+def test_sso_unconfigured_startup_warning(monkeypatch, caplog, env, client_id, keys, expect_warning):
+    from pydantic import SecretStr
+
+    monkeypatch.setattr(main_mod.settings, "ENVIRONMENT", env)
+    monkeypatch.setattr(main_mod.settings, "ESI_CLIENT_ID", client_id)
+    monkeypatch.setattr(main_mod.settings, "TOKEN_CIPHER_KEYS", SecretStr(keys))
+    with caplog.at_level(logging.WARNING):
+        main_mod.warn_if_sso_unconfigured()
+    warnings = [r for r in caplog.records if "EVE SSO is not configured" in r.getMessage()]
+    assert len(warnings) == (1 if expect_warning else 0)
