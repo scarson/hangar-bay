@@ -180,7 +180,9 @@ def test_aud_array_with_client_id_accepted(rsa_keypair):
 
 def test_hs256_token_rejected(rsa_keypair):
     _, pub = rsa_keypair
-    hs = jwt.encode(_claims(), "shared-secret", algorithm="HS256", headers={"kid": "JWT-Signature-Key"})
+    # Full-length key so PyJWT emits no key-length warning — the rejection is
+    # driven by the RS256/ES256 allowlist, not the key.
+    hs = jwt.encode(_claims(), "shared-secret-padded-to-32-bytes!", algorithm="HS256", headers={"kid": "JWT-Signature-Key"})
     with pytest.raises(sso.SsoJwtError):
         validate_access_token(hs, key_provider=_StaticKeyProvider(pub), client_id=CLIENT_ID)
 
