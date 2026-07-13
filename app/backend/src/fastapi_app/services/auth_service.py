@@ -14,6 +14,15 @@ from .sso import VerifiedIdentity
 
 
 async def upsert_user(db: AsyncSession, identity: VerifiedIdentity, tokens: dict) -> User:
+    # TODO(M3): select-then-insert race — two simultaneous first logins for the
+    # same character_id can both see `user is None` and both attempt an insert;
+    # the loser's flush raises IntegrityError (character_id is unique) instead
+    # of being handled as "someone else just created this row, use it." A
+    # concurrency-safe upsert (catch IntegrityError + re-select, or an actual
+    # INSERT ... ON CONFLICT) is deferred — this is a narrow first-login-only
+    # window, not reachable from any M2 endpoint's normal single-request flow,
+    # and a clean concurrent-session integration test for it is nontrivial to
+    # keep non-flaky, so it's left for M3 rather than risked here.
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(seconds=int(tokens["expires_in"]))
     user = (
@@ -76,6 +85,13 @@ async def refresh_user_tokens(db: AsyncSession, http_client: "httpx.AsyncClient"
             client_id=s.ESI_CLIENT_ID, client_secret=s.ESI_CLIENT_SECRET.get_secret_value(),
         )
     except sso.SsoTokenError as exc:
+        # TODO(M3): not every 400 here is actually invalid_grant (EVE can 400 for
+        # other request-shape reasons too) — this should discriminate on the
+        # response body's error field, not status_code alone. Also: concurrent
+        # callers refreshing the same user's tokens can race on this read-modify-
+        # write (no row lock / optimistic version check); needs a concurrency-safe
+        # rotation strategy. Deferred: no M2 endpoint calls refresh_user_tokens —
+        # it's M3 foundation only.
         if exc.status_code == 400:   # invalid-grant shape: the grant itself is dead
             await mark_for_reauth(db, user)
             return
