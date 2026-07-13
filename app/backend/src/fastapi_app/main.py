@@ -18,6 +18,7 @@ from .core.http_client import init_http_client, close_http_client
 from .core.scheduler import add_aggregation_job, create_scheduler
 from .core.dependencies import get_cache
 from .core.logging import setup_logging, RequestIDMiddleware
+from .core.token_cipher import is_token_cipher_configured
 from .db import AsyncSessionLocal, async_engine, Base
 from .core.esi_client_class import ESIClient # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService # For manual service creation
@@ -39,7 +40,8 @@ async def lifespan(app: FastAPI):
     # Startup logic
     # Setup structured logging first
     setup_logging(settings)
-    
+    warn_if_sso_unconfigured()
+
     await create_db_tables()
     init_http_client(app)
     await init_cache(app)
@@ -138,6 +140,14 @@ async def create_db_tables():
     logger.info("Database tables successfully recreated.")
 
 
+def warn_if_sso_unconfigured() -> None:
+    """Development-only startup notice (spec §4.4): SSO routes 503 until .env is filled."""
+    if settings.ENVIRONMENT != "development":
+        return
+    if not settings.ESI_CLIENT_ID or not is_token_cipher_configured():
+        logger.warning(
+            "EVE SSO is not configured (ESI_CLIENT_ID/TOKEN_CIPHER_KEYS empty); /auth/sso/* returns 503."
+        )
 
 
 
