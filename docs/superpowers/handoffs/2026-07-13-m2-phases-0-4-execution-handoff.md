@@ -10,7 +10,7 @@
 - **Current branch:** `claude/m2-phase4-sso-service` (the stack head), pushed; working tree has plan/handoff doc edits being committed with this handoff.
 - **The PR stack (all target-chained, all OPEN, none merged):**
   `dev` ← [#25](https://github.com/scarson/hangar-bay/pull/25) Phase 0 (`claude/m2-phase0-ci`) ← [#26](https://github.com/scarson/hangar-bay/pull/26) Phase 1 (`claude/m2-phase1-settings`) ← [#27](https://github.com/scarson/hangar-bay/pull/27) Phase 2 (`claude/m2-phase2-model`) ← [#28](https://github.com/scarson/hangar-bay/pull/28) Phase 3 (`claude/m2-phase3-cipher-session`) ← [#29](https://github.com/scarson/hangar-bay/pull/29) Phase 4 (`claude/m2-phase4-sso-service`).
-  #25–#28 are CI-green. **#29's CI was still pending at handoff — verifying it is the resuming agent's first action.** Note #25 carries the whole stack base: plan/spec finalization docs + the pydantic relock (`cdc38b7`) + the CI workflow itself.
+  **All five PRs are CI-green** (#29 went green during handoff finalization — verified `gh pr checks 29`: backend pass, frontend pass). Note #25 carries the whole stack base: plan/spec finalization docs + the pydantic relock (`cdc38b7`) + the CI workflow itself.
 - **Merge-gate overlay in force:** every PR stays OPEN for Sam's `/codex` gate (codex CLI auth expired; only Sam can `codex login`). Do NOT self-merge anything. When Sam merges a parent with `--delete-branch`, GitHub retargets the child to the parent's base (`dev` for this chain); rebase the child onto `origin/dev` + `--force-with-lease` only if the retargeted PR shows conflicts/replayed commits.
 - **Backend at stack head:** 109 pytest green, pristine (zero warnings, no filters), Python 3.12 venv, lint baseline unchanged. Frontend: 47 vitest, e2e green (with the DISC-EXEC-1 flake fix).
 - **Credentials:** Sam got the go-ahead after Phase 1 to place `ESI_CLIENT_ID`/`ESI_CLIENT_SECRET`/`TOKEN_CIPHER_KEYS` in `app/backend/src/.env` himself. **Unknown whether he has yet — never read or print that file's values.** Tests don't depend on it either way (isolated-instance + delenv patterns).
@@ -28,17 +28,16 @@ For each remaining phase: branch `claude/m2-phase<N>-<slug>` off the previous ph
 
 ## Ready to dispatch (priority queue)
 
-1. **Verify PR #29 CI** (`gh pr checks 29`). If the run shows zero jobs + "workflow file issue", it's the known transient GitHub startup failure — `gh run rerun <id>` fixes it (happened once on #26).
-2. **Phase 5 — Auth service + schemas** (`Review — domain (security: token vault/auth service)`). Grep the plan for `^## Phase 5` to get current bounds. Note: the plan's Task 5.3 `refresh_user_tokens` block already matches the shipped sso.py semantics (`status_code == 400` discrimination); DISC-EXEC-5's deltas don't change any Phase 5 code.
-3. **Phase 6 — Auth API routes** (`Review — domain (security)`). The fake Valkey's SET/EXPIRE semantics were deliberately tightened to real-Redis behavior for this phase's SSO state store; the auth_client fixture depends on httpx_mock STRUCTURALLY (no network possible).
-4. **Phase 7 — wiring + codegen** (`Review — domain (public interface)`; includes Task 7.3 startup warning; codegen chain `pdm run export-openapi` → `npm run generate:api`, both artifacts committed together).
-5. **Phase 8 — Frontend** (`Routine`; Task 8.0 FIRST — Vite HTTPS + Playwright config; then hooks/header/notice/sweeps/E2E).
-6. **Phase 9 — Docs** (`Routine`) — the coordinator-supplied traps to hand it: DISC-EXEC-1's two-status-nodes testing trap (→ `testing-pitfalls.md` §8) and DISC-EXEC-2's F811 cascade (judgment call: implementation-pitfalls or skip; it's recorded in Discoveries either way). ENV-4/ENV-5 texts are pre-written in the plan (ENV-5's rewritten form is already in the plan post-relock).
-7. **FastAPI migration chore — dispatch to an OPUS subagent whenever it makes sense in the task order** (it's post-M2 by design, but slot it opportunistically — e.g. while waiting on long CI runs after Phase 9, or immediately if Sam says so). Task text verbatim:
+1. **Phase 5 — Auth service + schemas** (`Review — domain (security: token vault/auth service)`). Grep the plan for `^## Phase 5` to get current bounds. Note: the plan's Task 5.3 `refresh_user_tokens` block already matches the shipped sso.py semantics (`status_code == 400` discrimination); DISC-EXEC-5's deltas don't change any Phase 5 code.
+2. **Phase 6 — Auth API routes** (`Review — domain (security)`). The fake Valkey's SET/EXPIRE semantics were deliberately tightened to real-Redis behavior for this phase's SSO state store; the auth_client fixture depends on httpx_mock STRUCTURALLY (no network possible).
+3. **Phase 7 — wiring + codegen** (`Review — domain (public interface)`; includes Task 7.3 startup warning; codegen chain `pdm run export-openapi` → `npm run generate:api`, both artifacts committed together).
+4. **Phase 8 — Frontend** (`Routine`; Task 8.0 FIRST — Vite HTTPS + Playwright config; then hooks/header/notice/sweeps/E2E).
+5. **Phase 9 — Docs** (`Routine`) — the coordinator-supplied traps to hand it: DISC-EXEC-1's two-status-nodes testing trap (→ `testing-pitfalls.md` §8) and DISC-EXEC-2's F811 cascade (judgment call: implementation-pitfalls or skip; it's recorded in Discoveries either way). ENV-4/ENV-5 texts are pre-written in the plan (ENV-5's rewritten form is already in the plan post-relock).
+6. **FastAPI migration chore — dispatch to an OPUS subagent whenever it makes sense in the task order** (it's post-M2 by design, but slot it opportunistically — e.g. while waiting on long CI runs after Phase 9, or immediately if Sam says so). Task text verbatim:
    > Migrate FastAPI 0.115 to current and flip Python to 3.14
    > Post-M2 chore for Hangar Bay (repo /Users/sam/Code/hangar-bay, integration branch dev). The backend at app/backend holds FastAPI at 0.115 via fastapi>=0.115.12,<0.116 in pyproject.toml (commit cdc38b7 explains why). Job: (1) lift the hold and migrate to current FastAPI/Starlette — a first attempt at FastAPI 0.139 / Starlette 0.52 broke 19 of 53 pytest tests, so expect behavior changes to investigate methodically (systematic-debugging, root cause per failure class, no symptom patches); (2) once green, flip the backend venv and the CI workflow (.github/workflows/ci.yml, python-version fields) from 3.12 to 3.14 and confirm the pytest warnings summary is empty (FastAPI 0.115's asyncio.iscoroutinefunction deprecation was the reason 3.14 was blocked); (3) delete/rewrite the ENV-5 entry in docs/pitfalls/implementation-pitfalls.md per its Appendix C framework. The pydantic stack (2.13.4/2.46.4) already has cp314 wheels — do not touch it unless the FastAPI resolve requires it. Verify with pdm run pytest (expect the full suite green, pristine output) and the frontend E2E lane unaffected.
    Note: a background-task chip for this (task_2d16b979) may still be pending in Sam's UI; if the chore is done in-session, that chip is superseded.
-8. **After M2:** live login test (needs creds in `.env` + Phases 7/8 landed + `npm run dev` over HTTPS), then a `dev` → `main` publication PR.
+7. **After M2:** live login test (needs creds in `.env` + Phases 7/8 landed + `npm run dev` over HTTPS), then a `dev` → `main` publication PR.
 
 ## Deferred / outstanding small items
 
@@ -84,15 +83,13 @@ READ FIRST:
    them (grep headings for bounds — line numbers drift)
 
 YOUR JOB, in order:
-A) Verify PR #29's CI (gh pr checks 29). Zero-jobs "workflow file issue" =
-   known transient; gh run rerun fixes it.
-B) Execute Phases 5→9 with the session's per-phase pipeline (handoff §pipeline):
+A) Execute Phases 5→9 with the session's per-phase pipeline (handoff §pipeline):
    Sonnet implementer → spec-compliance reviewer → strongest-model quality
    reviewer (mutation/empirical probes encouraged) → fix rounds → stacked PR
    (base = previous phase's branch) → CI monitor → claim next phase. One PR
    per phase, all left OPEN. TDD red-first throughout; plan blocks are
    verbatim-authoritative except the DISC-EXEC-5 deltas already in sso.py.
-C) Dispatch an OPUS subagent for the FastAPI-migration chore whenever it makes
+B) Dispatch an OPUS subagent for the FastAPI-migration chore whenever it makes
    sense in the task order (post-M2 by design; opportunistic slotting fine):
    "Migrate FastAPI 0.115 to current and flip Python to 3.14 — Post-M2 chore
    for Hangar Bay (repo /Users/sam/Code/hangar-bay, integration branch dev).
