@@ -65,6 +65,8 @@ async def test_create_db_tables_runs_in_development(monkeypatch):
     [
         ("development", "", "", True),        # unconfigured in dev → exactly one warning
         ("development", "cid", "some-key", False),  # configured in dev → silent
+        ("development", "cid", "", True),     # client id set, cipher unset → still warns (pins the OR)
+        ("development", "", "some-key", True),  # cipher set, client id unset → still warns (pins the OR)
         ("production", "", "", False),        # never warns outside development
     ],
 )
