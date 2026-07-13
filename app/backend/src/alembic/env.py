@@ -24,7 +24,7 @@ from alembic import context
 # Import your application's settings and Base model
 # Ensure your application's path is discoverable by Alembic.
 # The `prepend_sys_path = .` in alembic.ini should handle this if running alembic from app/backend/src
-from fastapi_app.config import get_settings
+from fastapi_app.core.config import get_settings
 from fastapi_app.db import Base
 # Ensure all models are registered with Base.metadata
 # Import the modules first to ensure their top-level code runs

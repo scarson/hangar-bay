@@ -1,12 +1,9 @@
 import logging
-import pydantic
 import structlog
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# Print Pydantic version right at the start for immediate visibility
-print(f"PYDANTIC_VERSION_CHECK_PRINT: {pydantic.__version__}", flush=True)
 logger = logging.getLogger(__name__)
 
 
