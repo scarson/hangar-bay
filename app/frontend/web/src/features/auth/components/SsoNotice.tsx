@@ -1,16 +1,10 @@
 // ABOUTME: Dismissible ?sso=denied|error notice under the header (polite live region).
 // ABOUTME: Reads the RAW search (typed validateSearch drops sso); dismiss replace-strips only that param.
-import { useLocation, useNavigate } from '@tanstack/react-router'
+import { useLocation, useRouter } from '@tanstack/react-router'
 
 export function SsoNotice() {
   const location = useLocation()
-  // `from` scopes the navigation to /contracts, which is where the notice is always
-  // shown (spec §4.1's SSO redirects always land there). It is also required for the
-  // types: without it, useNavigate()'s search-reducer resolves against the untyped
-  // root route ("never") and `tsc -b` rejects the reducer regardless of the
-  // runtime-safe cast below. Since dismiss only ever fires on /contracts, the
-  // resolved-path behavior `from` drives matches the current route either way.
-  const navigate = useNavigate({ from: '/contracts/' })
+  const router = useRouter()
   const sso = new URLSearchParams(location.searchStr).get('sso')
   if (sso !== 'denied' && sso !== 'error') return null
 
@@ -20,7 +14,17 @@ export function SsoNotice() {
       : 'Something went wrong signing in with EVE. Please try again.'
 
   const dismiss = () =>
-    navigate({
+    router.navigate({
+      // The notice is mounted at root, so an SSO redirect (and therefore a dismiss) can
+      // land on ANY route — the list, a contract detail page, wherever. `to` is the
+      // CURRENT pathname (not a hard-coded route) so dismiss stays put instead of
+      // falling back to some fixed location. `router.navigate` (not the typed
+      // `useNavigate({ from })`) is used deliberately: a hard-coded `from` resolves the
+      // search-reducer against ONE route, which silently drops the path segment on any
+      // other route (e.g. /contracts/123 -> /contracts). `to: location.pathname` is a
+      // plain string, not a literal from the generated route union, so it isn't subject
+      // to that per-route resolution at all.
+      to: location.pathname,
       // Strip only sso; preserve the rest of the query. Replace so refresh/back
       // and copied links don't re-show the notice (§5). Written delete-style, not
       // rest-destructuring: the repo eslint config reports an unused rest-sibling
