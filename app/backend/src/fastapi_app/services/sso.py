@@ -53,6 +53,26 @@ def build_authorize_url(*, state: str, client_id: str, redirect_uri: str, author
     return f"{authorize_url}?{urlencode(params)}"
 
 
+def _validate_token_body(payload: dict, *, status_code: int) -> None:
+    """A 200 with a malformed success body (missing/wrong-typed access_token or
+    expires_in) must fail here — SsoTokenError is _post_token's declared contract —
+    rather than let downstream callers (upsert_user, refresh_token_pair) raise a raw
+    KeyError/ValueError and turn the callback into a 500 instead of taking the
+    sso=error path."""
+    access_token = payload.get("access_token")
+    if not isinstance(access_token, str) or not access_token:
+        raise SsoTokenError("token endpoint response missing access_token", status_code=status_code)
+    expires_in = payload.get("expires_in")
+    if expires_in is None or isinstance(expires_in, bool):
+        raise SsoTokenError("token endpoint response missing expires_in", status_code=status_code)
+    try:
+        int(expires_in)
+    except (TypeError, ValueError) as exc:
+        raise SsoTokenError(
+            "token endpoint response has non-numeric expires_in", status_code=status_code
+        ) from exc
+
+
 async def _post_token(client: httpx.AsyncClient, *, token_url: str, client_id: str, client_secret: str, form: dict) -> dict:
     try:
         resp = await client.post(
@@ -72,6 +92,7 @@ async def _post_token(client: httpx.AsyncClient, *, token_url: str, client_id: s
         raise SsoTokenError("token endpoint returned a non-JSON body", status_code=resp.status_code) from exc
     if not isinstance(payload, dict):
         raise SsoTokenError("token endpoint returned a non-object body", status_code=resp.status_code)
+    _validate_token_body(payload, status_code=resp.status_code)
     return payload
 
 
@@ -101,13 +122,22 @@ def validate_access_token(token: str, *, key_provider: SigningKeyProvider, clien
             leeway=_LEEWAY_SECONDS,         # exp/nbf/iat skew tolerance (§3.2)
             options={"verify_iss": False, "require": ["exp", "sub", "aud"]},
         )
-    except (jwt.InvalidTokenError, jwt.exceptions.PyJWKClientError) as exc:
-        # PyJWKClientError (kid miss / JWKS fetch failure) is NOT an InvalidTokenError
-        # subclass — without this clause a kid miss escapes as a 500 at the callback.
+    except (
+        jwt.InvalidTokenError,
+        jwt.exceptions.PyJWKClientError,
+        jwt.exceptions.PyJWKSetError,
+    ) as exc:
+        # PyJWKClientError (kid miss / JWKS fetch failure) and PyJWKSetError (an
+        # empty/keyless JWKS document) are NOT InvalidTokenError subclasses — and
+        # PyJWKSetError is not even a PyJWKClientError subclass — without this
+        # clause either escapes as a 500 at the callback instead of SsoJwtError.
         raise SsoJwtError(f"jwt validation failed: {exc}") from exc
 
     iss = claims.get("iss")
-    if iss not in _VALID_ISSUERS:            # dual-iss allowlist checked explicitly (§2.2)
+    # iss must be a string to be checked for allowlist membership at all — a
+    # list/dict iss is unhashable and would raise a raw TypeError from the
+    # frozenset `in` check below rather than the declared SsoJwtError contract.
+    if not isinstance(iss, str) or iss not in _VALID_ISSUERS:  # dual-iss allowlist (§2.2)
         raise SsoJwtError(f"unexpected iss: {iss!r}")
 
     sub = claims.get("sub", "")
@@ -116,7 +146,10 @@ def validate_access_token(token: str, *, key_provider: SigningKeyProvider, clien
         raise SsoJwtError(f"unexpected sub shape: {sub!r}")
     id_part = sub[len(prefix):]
     # ASCII digits only — int() alone accepts sign/underscore/whitespace/non-ASCII digits.
-    if not re.fullmatch(r"[0-9]+", id_part):
+    # Also bound the length: int() rejects digit strings past Python's integer-string
+    # conversion limit (sys.int_info.default_max_str_digits, ~4300) with a raw
+    # ValueError, and no real EVE character id is anywhere near that long.
+    if not re.fullmatch(r"[0-9]+", id_part) or len(id_part) > 20:
         raise SsoJwtError(f"non-canonical character id in sub: {sub!r}")
     character_id = int(id_part)
 

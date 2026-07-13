@@ -129,6 +129,85 @@ async def test_exchange_code_200_with_non_object_json_raises(httpx_mock):
     assert exc.value.status_code == 200
 
 
+# --- finding 2: a 200 body that lacks/malforms access_token or expires_in must raise
+# SsoTokenError (its declared contract) here, not KeyError/ValueError downstream in
+# upsert_user/refresh_token_pair, which would 500 the callback instead of sso=error. ---
+
+@pytest.mark.asyncio
+async def test_exchange_code_200_missing_access_token_raises_sso_token_error(httpx_mock):
+    import httpx
+    httpx_mock.add_response(url="https://login.eveonline.com/v2/oauth/token", json={"expires_in": 1200})
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(sso.SsoTokenError) as exc:
+            await sso.exchange_code(
+                client, code="C",
+                token_url="https://login.eveonline.com/v2/oauth/token",
+                client_id="cid", client_secret="secret",
+            )
+    assert exc.value.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_200_non_string_access_token_raises_sso_token_error(httpx_mock):
+    import httpx
+    httpx_mock.add_response(
+        url="https://login.eveonline.com/v2/oauth/token",
+        json={"access_token": 12345, "expires_in": 1200},
+    )
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(sso.SsoTokenError):
+            await sso.exchange_code(
+                client, code="C",
+                token_url="https://login.eveonline.com/v2/oauth/token",
+                client_id="cid", client_secret="secret",
+            )
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_200_missing_expires_in_raises_sso_token_error(httpx_mock):
+    import httpx
+    httpx_mock.add_response(url="https://login.eveonline.com/v2/oauth/token", json={"access_token": "AT"})
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(sso.SsoTokenError):
+            await sso.exchange_code(
+                client, code="C",
+                token_url="https://login.eveonline.com/v2/oauth/token",
+                client_id="cid", client_secret="secret",
+            )
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_200_non_numeric_expires_in_raises_sso_token_error(httpx_mock):
+    import httpx
+    httpx_mock.add_response(
+        url="https://login.eveonline.com/v2/oauth/token",
+        json={"access_token": "AT", "expires_in": "not-a-number"},
+    )
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(sso.SsoTokenError):
+            await sso.exchange_code(
+                client, code="C",
+                token_url="https://login.eveonline.com/v2/oauth/token",
+                client_id="cid", client_secret="secret",
+            )
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_200_null_expires_in_raises_sso_token_error(httpx_mock):
+    import httpx
+    httpx_mock.add_response(
+        url="https://login.eveonline.com/v2/oauth/token",
+        json={"access_token": "AT", "expires_in": None},
+    )
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(sso.SsoTokenError):
+            await sso.exchange_code(
+                client, code="C",
+                token_url="https://login.eveonline.com/v2/oauth/token",
+                client_id="cid", client_secret="secret",
+            )
+
+
 import time
 
 import jwt
@@ -284,3 +363,57 @@ def test_non_string_name_claim_rejected(rsa_keypair):
     priv, pub = rsa_keypair
     with pytest.raises(sso.SsoJwtError):
         validate_access_token(_sign(priv, _claims(name=5)), key_provider=_StaticKeyProvider(pub), client_id=CLIENT_ID)
+
+
+def _sign_raw_claims(priv, claims, *, alg="RS256", kid="JWT-Signature-Key"):
+    """Like _sign, but bypasses PyJWT encode()'s own claim validation (e.g. its
+    str-only check on iss, added for PyJWT issue #1039) by signing pre-serialized
+    JSON bytes directly through the lower-level PyJWS. Used to reproduce claim
+    shapes that a real signer external to this codebase's PyJWT version could
+    still emit, or that a corrupted/forged token could carry."""
+    import json as json_mod
+    from jwt.api_jws import PyJWS
+    payload_bytes = json_mod.dumps(claims).encode()
+    return PyJWS().encode(payload_bytes, priv, algorithm=alg, headers={"kid": kid})
+
+
+def test_non_string_iss_rejected_not_typeerror(rsa_keypair):
+    # A signed token carrying iss as a list/dict must map to SsoJwtError, not an
+    # unhandled TypeError from the frozenset membership check (`iss not in
+    # _VALID_ISSUERS`) when iss is unhashable.
+    priv, pub = rsa_keypair
+    token = _sign_raw_claims(priv, _claims(iss=[]))
+    with pytest.raises(sso.SsoJwtError):
+        validate_access_token(token, key_provider=_StaticKeyProvider(pub), client_id=CLIENT_ID)
+
+
+def test_non_string_iss_dict_rejected_not_typeerror(rsa_keypair):
+    priv, pub = rsa_keypair
+    token = _sign_raw_claims(priv, _claims(iss={}))
+    with pytest.raises(sso.SsoJwtError):
+        validate_access_token(token, key_provider=_StaticKeyProvider(pub), client_id=CLIENT_ID)
+
+
+def test_oversized_digit_sub_rejected_not_valueerror(rsa_keypair):
+    # int() rejects integer strings over Python's digit-conversion limit
+    # (sys.int_info.default_max_str_digits, ~4300) with a raw ValueError; a
+    # character id substring that is all ASCII digits but absurdly long must
+    # still map to SsoJwtError, not escape as a 500.
+    priv, pub = rsa_keypair
+    huge_digits = "9" * 4301
+    with pytest.raises(sso.SsoJwtError):
+        validate_access_token(
+            _sign(priv, _claims(sub=f"CHARACTER:EVE:{huge_digits}")),
+            key_provider=_StaticKeyProvider(pub), client_id=CLIENT_ID,
+        )
+
+
+def test_empty_jwks_key_set_rejected_not_pyjwksseterror(rsa_keypair, monkeypatch):
+    # PyJWKSetError (raised by PyJWKClient when the JWKS has zero keys) is NOT a
+    # subclass of PyJWKClientError — the current except clause misses it, so an
+    # empty/keyless JWKS document would escape validate_access_token uncaught.
+    priv, pub = rsa_keypair
+    client = jwt.PyJWKClient("https://login.eveonline.com/oauth/jwks")
+    monkeypatch.setattr(client, "fetch_data", lambda: {"keys": []})
+    with pytest.raises(sso.SsoJwtError):
+        validate_access_token(_sign(priv, _claims()), key_provider=client, client_id=CLIENT_ID)
