@@ -1,6 +1,8 @@
 // Regenerates src/features/contracts/regions.ts from ESI (public, no auth).
 // Run: node scripts/generate-regions.mjs
-const ESI = 'https://esi.evetech.net/latest'
+// Pin an explicit ESI route version (matches the backend ESIClient convention);
+// /latest is soft-deprecated and unversioned aliases are what ESI's spring-cleaning removes.
+const ESI = 'https://esi.evetech.net/v1'
 
 const ids = await (await fetch(`${ESI}/universe/regions/`)).json()
 // K-space regions only: wormhole (11xxxxxx) and abyssal (12xxxxxx+) regions
