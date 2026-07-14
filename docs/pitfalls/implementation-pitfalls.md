@@ -29,6 +29,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, PROXY-1 | §1.C |
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6 | §3.C |
+| 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, upstream status | ESI-1 | §4.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -187,6 +188,36 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+# Section 4: External Integrations (ESI)
+
+> **Reader context:** I'm adding or changing a call to EVE Online's ESI API — a data route, the SSO/JWT path, or an upstream health check.
+>
+> ESI removes legacy and unversioned routes on published dates. Code that names a specific version survives these removals; code that leans on `/latest` or legacy meta-routes breaks on the removal date with no change on our side.
+
+---
+
+### ESI-1: Pin explicit ESI route versions; avoid removed legacy/meta routes
+
+**The Flaw:** ESI periodically retires unversioned and legacy routes. The "Spring Cleaning" removal (24 March 2026) dropped `/status.json`, `/swagger.json` (plus `/dev/`, `/_dev/`, `/legacy/`, `/_legacy/` variants), `/diff`, `/versions`, and `/headers`, and began redirecting `/verify` to `https://login.eveonline.com/v2/oauth/verify` (the redirect itself removed 28 April 2026). The `/latest/*` alias is soft-deprecated — its `swagger.json` is frozen and new routes appear only in the OpenAPI specs.
+
+**Why It Matters:** A request built on any of these routes keeps working until the removal date, then fails with no code change on our side — the hardest kind of breakage to anticipate.
+
+**The Fix:**
+*   Pin an explicit version prefix on every ESI request (`/v1`, `/v3`, …), matching the `ESIClient` convention (`core/esi_client_class.py`). Never `/latest`.
+*   For upstream health, use `/meta/status` (values `OK` / `Degraded` / `Down` / `Recovering`) — never the removed `/status.json`. See `design/specifications/observability-spec.md` §2.5.
+*   Validate SSO JWTs offline against JWKS (`services/sso.py`), not by calling `/verify`.
+*   Consume ESI data from the OpenAPI specs, not the removed legacy `swagger.json`.
+
+**Where It Stands:** The backend already complies — every data route pins `/v1`/`/v3` and JWTs are validated offline, so Hangar Bay was unaffected by the 24 March 2026 removals. The lone `/latest` usage, the `generate-regions.mjs` build script, was pinned to `/v1`. References: "Spring Cleaning: legacy routes removed 24 March 2026" (https://developers.eveonline.com/blog/spring-cleaning-legacy-routes-removed-24-march-2026) and "A better view on status: improving ESI health monitoring" (https://developers.eveonline.com/blog/a-better-view-on-status-improving-esi-health-monitoring).
+
+### §4.C — Review Checklist
+
+- [ ] **Every ESI request names an explicit version prefix** (`/v1`, `/v3`, …), not `/latest` (ESI-1)
+- [ ] **Upstream status checks target `/meta/status`, not the removed `/status.json`** (ESI-1)
+- [ ] **SSO JWT validation is offline against JWKS, not a `/verify` round-trip** (ESI-1)
+
+---
+
 ## Orchestration
 
 Pitfalls that arise when a session dispatches parallel subagents and consolidates their output. The canonical rules live in `docs/git-strategy.md` → §Multi-agent coordination → Output persistence. This section is the discovery hook for plan writers who arrive here via the `writing-plans-enhanced` (or equivalent) mandated-read path — it does NOT restate the rules in full.
@@ -251,6 +282,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ENV-4 | pydantic-settings rejects unknown .env keys unless extra="ignore" | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-5 | FastAPI 0.115 / Python-3.12 hold (resolved 2026-07-13: FastAPI 0.139 + Python 3.14) | LOW | SUPERSEDED | Environment & Dev Loop |
 | ENV-6 | F811 cascade when removing debug prints/functions | LOW | VALIDATED | Environment & Dev Loop |
+| ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
 Severity levels: `CRITICAL` (production data loss / security), `HIGH` (correctness bug under predictable conditions), `MEDIUM` (correctness bug under edge cases), `LOW` (cleanliness / clarity / dev-loop hazard).
