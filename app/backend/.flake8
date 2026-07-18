@@ -1,5 +1,5 @@
 [flake8]
-ignore = E203, E266, E501, W503, F401, F403, F405
+ignore = E203, E266, E501, W503, F401, F403, F405, B950
 # E203: whitespace before ':'
 # E266: too many leading '#' for block comment
 # E501: line too long (we'll use Black for line length)
@@ -7,6 +7,13 @@ ignore = E203, E266, E501, W503, F401, F403, F405
 # F401: module imported but unused
 # F403: 'from module import *' used; unable to detect undefined names
 # F405: name may be undefined, or defined from star imports
+# B950: line too long at limit+10% — off until line length is enforced by a
+#       formatter run (Black adoption is an open decision); ~176 lines exceed
+#       97 chars today and hand-wrapping them would churn ahead of that call
+# FastAPI's DI idiom evaluates Depends() at definition time by design, so it is
+# exempt from B008. Deliberately ONLY Depends: a Query()/Path() call in a
+# default should still trip B008, nudging toward Annotated style (FASTAPI-1).
+extend-immutable-calls = Depends, fastapi.Depends
 max-line-length = 88
 max-complexity = 10
 select = C,E,F,W,B,B950

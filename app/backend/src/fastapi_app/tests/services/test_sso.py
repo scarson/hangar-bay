@@ -460,3 +460,11 @@ def test_empty_jwks_key_set_rejected_not_pyjwksseterror(rsa_keypair, monkeypatch
     monkeypatch.setattr(client, "fetch_data", lambda: {"keys": []})
     with pytest.raises(sso.SsoJwtError):
         validate_access_token(_sign(priv, _claims()), key_provider=client, client_id=CLIENT_ID)
+
+
+def test_sso_token_error_pickle_round_trip_keeps_status_code():
+    import pickle
+    exc = sso.SsoTokenError("invalid_grant", status_code=400)
+    clone = pickle.loads(pickle.dumps(exc))
+    assert clone.status_code == 400   # 400-vs-outage discrimination (§4.3) must survive a round-trip
+    assert str(clone) == "invalid_grant"

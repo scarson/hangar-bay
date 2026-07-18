@@ -8,7 +8,12 @@ class ESIRequestFailedError(ESIException):
     def __init__(self, status_code: int = 0, message: str = ""):
         self.status_code = status_code
         self.message = message
-        super().__init__(f"ESI request failed with status {status_code}: {message}")
+        # All ctor args go to BaseException verbatim so pickle/copy can
+        # reconstruct via cls(*args) without corrupting attributes (B042).
+        super().__init__(status_code, message)
+
+    def __str__(self):
+        return f"ESI request failed with status {self.status_code}: {self.message}"
 
 
 class ESINotModifiedError(ESIException):
