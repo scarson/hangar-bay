@@ -75,7 +75,7 @@ notes and commit messages.
 | 2 — F005 Saved Searches backend | ✅ Shipped | `c4c1dab` | CRUD + full HTTP/schema matrix; backend 257 passed |
 | 3 — F006 Watchlist backend | ✅ Shipped | `bd3aa68` | ESIClient.resolve_names + watchlist CRUD add pipeline; backend 285 passed |
 | 4 — F007 Notifications backend + matcher | ✅ Shipped | `b6d1e13` | notifications API + `WatchlistMatcherService` + scheduler/lifespan wiring; backend 319 passed |
-| 5 — Codegen | ⬜ Not started | — | — |
+| 5 — Codegen | ✅ Shipped | `6e64674` | openapi.json + schema.d.ts regenerated for F005/F006/F007; `npx tsc -b` clean |
 | 6 — Frontend F005 | ⬜ Not started | — | — |
 | 7 — Frontend F006 | ⬜ Not started | — | — |
 | 8 — Frontend F007 | ⬜ Not started | — | — |
@@ -3475,7 +3475,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 5 — Codegen: regenerate the typed client for the M3 account endpoints
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `6e64674` on 2026-07-18
 
 Goal: after ALL backend account endpoints exist (F005 saved-searches from the earlier section, plus
 this section's F006 watchlist + F007 notifications), regenerate `openapi.json` and `schema.d.ts` and
@@ -3487,12 +3487,12 @@ apply to generated code).
 - Modify (generated): `app/frontend/web/openapi.json`.
 - Modify (generated): `app/frontend/web/src/lib/api/schema.d.ts`.
 
-- [ ] **Step 1: Export the OpenAPI schema from the live app.**
+- [x] **Step 1: Export the OpenAPI schema from the live app.**
   `cd app/backend && pdm run export-openapi`
   Expected stdout: `OpenAPI schema written to ../frontend/web/openapi.json (<N> paths)` where `<N>` has
   grown by the M3 routes.
 
-- [ ] **Step 2: Verify the new paths landed in `openapi.json`.** From the repo root:
+- [x] **Step 2: Verify the new paths landed in `openapi.json`.** From the repo root:
   `grep -c '/me/saved-searches/' app/frontend/web/openapi.json` → non-zero (F005 sentinel, earlier
   section), and:
   `grep -c '/me/watchlist-items/' app/frontend/web/openapi.json` → non-zero, and
@@ -3501,16 +3501,16 @@ apply to generated code).
   backend schema). If any expected path is missing, STOP — a router was not mounted; do not hand-edit
   the generated file, fix the mount and re-export.
 
-- [ ] **Step 3: Regenerate the typed TS client.**
+- [x] **Step 3: Regenerate the typed TS client.**
   `cd app/frontend/web && npm run generate:api`
   This overwrites `src/lib/api/schema.d.ts` from `openapi.json`.
 
-- [ ] **Step 4: Confirm the frontend still typechecks against the regenerated schema.**
+- [x] **Step 4: Confirm the frontend still typechecks against the regenerated schema.**
   `cd app/frontend/web && npx tsc -b`
   Expected: clean (no consumers of the new paths exist yet — the frontend feature work is a later
   section — so this only proves the generated types are well-formed).
 
-- [ ] **Step 5: Commit both generated artifacts together.**
+- [x] **Step 5: Commit both generated artifacts together.**
   `git add app/frontend/web/openapi.json app/frontend/web/src/lib/api/schema.d.ts`
   ```
   chore(api): regenerate client for M3 account endpoints
