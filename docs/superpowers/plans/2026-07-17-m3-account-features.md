@@ -64,7 +64,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phases 0-6 shipped (backend + codegen complete; frontend F005 Saved Searches done); frontend F006/F007 + E2E + docs next.
+**Overall:** Phases 0-7 shipped (backend + codegen complete; frontend F005 Saved Searches + F006 Watchlists done); frontend F007 + E2E + docs next.
 
 **Baseline (Phase 0, captured against `origin/dev` tip `27dac66`):** backend `pdm run pytest -q` → `220 passed`; frontend `npx vitest run --reporter=dot` → `Test Files 12 passed (12)`, `Tests 62 passed (62)`. Phase 1/2 backend work must never drop the pytest count below 220.
 
@@ -77,13 +77,15 @@ notes and commit messages.
 | 4 — F007 Notifications backend + matcher | ✅ Shipped | `b6d1e13` | notifications API + `WatchlistMatcherService` + scheduler/lifespan wiring; backend 319 passed |
 | 5 — Codegen | ✅ Shipped | `6e64674` | openapi.json + schema.d.ts regenerated for F005/F006/F007; `npx tsc -b` clean |
 | 6 — Frontend F005 | ✅ Shipped | `b2d3912` | `/saved-searches` route + page (Apply/Rename/two-step Delete) + `SaveSearchControl`; frontend 17 files / 89 tests passed |
-| 7 — Frontend F006 | ⬜ Not started | — | — |
+| 7 — Frontend F006 | ✅ Shipped | `6a0450b` | `/watchlist` route + page (add-by-name, inline edit, clear-to-null, two-step Remove) + `WatchButton`; frontend 21 files / 109 tests passed |
 | 8 — Frontend F007 | ⬜ Not started | — | — |
 | 9 — E2E | ⬜ Not started | — | — |
 | 10 — Docs, gates, PR | ⬜ Not started | — | — |
 
 ### Deviations
 - Task 1.4: the original executor performed the work in the wrong checkout (inherited session cwd) and committed there; recovered by cherry-picking `8638582` → `c0c341c` onto the campaign branch. Work verified green in-branch (12 passed incl. the two-session race test). Remaining executors carry an explicit cwd-guard.
+
+- **Task 7.3 — three defects in the plan's verbatim COMPLETE files, all fixed with intent preserved (ship `6a0450b`).** (1) *Impl bug:* the add-by-name `<form>` needed `noValidate`. The price `<Input type="number" min="0.01">` triggers native constraint validation that blocks form submit when a user enters `0`, so the JS guard that shows the friendly "Max price must be at least 0.01" message never ran (in a real browser the native bubble would preempt the designed message too). Verified empirically that jsdom drops the submit event on a min-violation; `noValidate` lets JS own the validation UX. (2) *Test-stub bug (`adds by name`):* GET (list) and POST (create) share the `/me/watchlist-items/` collection URL, and the stub returned the created object for both, so the list query received a non-array and `WatchlistBody` crashed on `data.map`. Fixed by branching the stub on `call.method` (array for GET, object for POST) — matches the real contract and the SavedSearches house pattern. (3) *Test-mechanics bug (`auto-disarms`):* the plan's test used `userEvent.setup({advanceTimers})` + `await user.click` under `vi.useFakeTimers()`, which deadlocks (userEvent's async event-flush awaits a real timer the fake clock never advances); switched the arming click to synchronous `fireEvent.click`, exactly as the already-shipped `SavedSearchesPage.test.tsx` auto-disarms test does (with the same documented rationale). All 8 page tests + 2 axe tests green; full frontend suite 21 files / 109 tests passed.
 
 - **Design §9.2 — backfilling real `users` rows into the `test_auth_flow` sessions "where trivial" — deliberately deferred.** No reduction in duplication materialized from the migration: the new `authed_user` fixture (Task 1.2) already covers the M3 tests that need a real `users` row, and the existing `test_auth_flow` tests keep their minted-session `user_id` values, which no longer FK anywhere they insert. Recorded here so the design and plan agree with an audit trail rather than a silent drop (round-2 review MINOR-7); mirror this line into the Task 10.2 PR-body deviation notes at ship time.
 
@@ -4610,7 +4612,7 @@ Push at the phase boundary: `git push -u origin claude/m3-account-features` (fir
 
 ## Phase 7 — Frontend F006: Watchlists
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `6a0450b` on 2026-07-18 (Task 7.3 fixed three defects in the plan's verbatim COMPLETE files — see Deviations)
 
 Delivers: the watchlist query + add/update/remove mutations with fetch-seam tests; the quick-watch button on contract-detail ship rows; and the `/watchlist` page with the add-by-name form and inline-editable rows (clear-to-null).
 
@@ -4627,7 +4629,7 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/features/watchlists/hooks/useWatchlist.ts`
 - Test: `app/frontend/web/src/features/watchlists/hooks/useWatchlist.test.tsx`
 
-- [ ] **Step 1: Write the failing hook tests.** Same seam discipline as 6.1: assert URL/method/body and invalidation. The critical extra assertion for F006 is the **clear-to-null PUT body** (`{ max_price: null }` must serialize as JSON `null`, not be dropped). COMPLETE file:
+- [x] **Step 1: Write the failing hook tests.** Same seam discipline as 6.1: assert URL/method/body and invalidation. The critical extra assertion for F006 is the **clear-to-null PUT body** (`{ max_price: null }` must serialize as JSON `null`, not be dropped). COMPLETE file:
 
 ```tsx
 // ABOUTME: useWatchlist hook contracts — list query + add/update/remove mutations at the fetch seam.
@@ -4737,9 +4739,9 @@ describe('useRemoveWatchlistItem', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/hooks/useWatchlist.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./useWatchlist"`.
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/hooks/useWatchlist.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./useWatchlist"`.
 
-- [ ] **Step 3: Implement `useWatchlist.ts`.** The clear-to-null contract depends on the caller passing an explicit `null` (a JS `null` serializes to JSON `null`; `undefined` would be dropped) — the update mutation forwards the body verbatim, and the WatchlistPage row (Task 7.3) is what maps an emptied input to `null`. COMPLETE file:
+- [x] **Step 3: Implement `useWatchlist.ts`.** The clear-to-null contract depends on the caller passing an explicit `null` (a JS `null` serializes to JSON `null`; `undefined` would be dropped) — the update mutation forwards the body verbatim, and the WatchlistPage row (Task 7.3) is what maps an emptied input to `null`. COMPLETE file:
 
 ```ts
 // ABOUTME: TanStack Query hooks for F006 watchlists — list query + add/update/remove mutations.
@@ -4804,9 +4806,9 @@ export function useRemoveWatchlistItem() {
 }
 ```
 
-- [ ] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/hooks/useWatchlist.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/watchlists` (green).
+- [x] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/hooks/useWatchlist.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/watchlists` (green).
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   `git add app/frontend/web/src/features/watchlists/hooks/useWatchlist.ts app/frontend/web/src/features/watchlists/hooks/useWatchlist.test.tsx`
   ```
   feat(web): add watchlist CRUD query hooks
@@ -4835,7 +4837,7 @@ Follow TDD: write failing test → implement → verify green.
 - Modify: `app/frontend/web/src/features/contracts/components/ContractDetailPage.tsx` (item `<li>`, lines 179–194)
 - Test: `app/frontend/web/src/features/watchlists/components/WatchButton.test.tsx`
 
-- [ ] **Step 1: Write the failing test.** Drives the detail page via `renderApp('/contracts/101')` with a ship-bearing contract; asserts: anonymous → no Watch button; authed → Watch button on the ship row; click → POST `{type_id}`; 409 → "already watching" inline. COMPLETE file:
+- [x] **Step 1: Write the failing test.** Drives the detail page via `renderApp('/contracts/101')` with a ship-bearing contract; asserts: anonymous → no Watch button; authed → Watch button on the ship row; click → POST `{type_id}`; 409 → "already watching" inline. COMPLETE file:
 
 ```tsx
 // ABOUTME: WatchButton over the real contract-detail route — authed-only, one-click add by type_id, 409 "already watching".
@@ -4904,9 +4906,9 @@ describe('WatchButton', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchButton.test.tsx --reporter=dot`. Expected: no Watch button (component not wired into the detail page).
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchButton.test.tsx --reporter=dot`. Expected: no Watch button (component not wired into the detail page).
 
-- [ ] **Step 3: Implement `WatchButton.tsx`.** COMPLETE file:
+- [x] **Step 3: Implement `WatchButton.tsx`.** COMPLETE file:
 
 ```tsx
 // ABOUTME: Quick-watch button for a listed ship on the contract-detail page — authed-only, one-click add by type_id, no price field.
@@ -4933,7 +4935,7 @@ export function WatchButton({ typeId }: { typeId: number }) {
 }
 ```
 
-- [ ] **Step 4: Wire `WatchButton` into ContractDetailPage.** Add `import { WatchButton } from '../../watchlists/components/WatchButton'` with the other imports, and inside the item `<li>` (after the existing badge/`asked for, not included` spans, still inside the `<li>`, ContractDetailPage.tsx ~line 192) add — gated on `category === 'ship'` and inclusion:
+- [x] **Step 4: Wire `WatchButton` into ContractDetailPage.** Add `import { WatchButton } from '../../watchlists/components/WatchButton'` with the other imports, and inside the item `<li>` (after the existing badge/`asked for, not included` spans, still inside the `<li>`, ContractDetailPage.tsx ~line 192) add — gated on `category === 'ship'` and inclusion:
 
 ```tsx
                 {item.is_included && item.category === 'ship' ? (
@@ -4945,9 +4947,9 @@ export function WatchButton({ typeId }: { typeId: number }) {
 
 `ml-auto` right-aligns the button within the flex row. `WatchButton` itself returns `null` when anonymous, so existing detail tests (which use `anonymousMe`) are unaffected.
 
-- [ ] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchButton.test.tsx --reporter=dot` (pass); then regression-check the detail suite: `npx vitest run src/features/contracts/components/pages.test.tsx src/features/contracts/components/a11y.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/features/watchlists src/features/contracts/components/ContractDetailPage.tsx` (green).
+- [x] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchButton.test.tsx --reporter=dot` (pass); then regression-check the detail suite: `npx vitest run src/features/contracts/components/pages.test.tsx src/features/contracts/components/a11y.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/features/watchlists src/features/contracts/components/ContractDetailPage.tsx` (green).
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
   `git add app/frontend/web/src/features/watchlists/components/WatchButton.tsx app/frontend/web/src/features/watchlists/components/WatchButton.test.tsx app/frontend/web/src/features/contracts/components/ContractDetailPage.tsx`
   ```
   feat(web): add quick-watch button to contract detail ship rows
@@ -4977,7 +4979,9 @@ Follow TDD: write failing test → implement → verify green.
 - Test: `app/frontend/web/src/features/watchlists/components/WatchlistPage.test.tsx`
 - Test: `app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx` (vitest-axe, design §6)
 
-- [ ] **Step 1: Write the failing page tests.** Cover: anonymous prompt; list render after skeleton unmount (TEST-8); empty state; add-by-name form posting `{type_name, max_price?, notes?}`; 400 unknown-name inline error; clear-to-null PUT body assertion; the max-price 0-boundary guard; two-step Remove (incl. the 5s timeout reset). Every authed stub answers the header bell's unread-count query (`GET /me/notifications/?is_read=false&size=1`) with `{ total: 0, page: 1, size: 1, items: [] }` — a bare `[]` would leave that count query erroring once Task 8.2 mounts the bell (NIT-9). COMPLETE file:
+> **Execution note (ship `6a0450b`):** three defects in the COMPLETE files below were corrected during execution, intent preserved — see the top-of-plan Deviations subsection. Summary: (1) `WatchlistPage.tsx` add `<form>` needs `noValidate` (Step 4) so native number-input `min` validation doesn't preempt the JS "max price ≥ 0.01" guard; (2) the `adds by name` test stub (Step 1) branches on `call.method` so the shared `/me/watchlist-items/` GET returns an array (not the POST's created object) — otherwise `WatchlistBody` crashes on `data.map`; (3) the `auto-disarms` test (Step 1) uses synchronous `fireEvent.click` for the arming click under fake timers (userEvent's async flush deadlocks the fake clock), mirroring the shipped `SavedSearchesPage` auto-disarms test.
+
+- [x] **Step 1: Write the failing page tests.** Cover: anonymous prompt; list render after skeleton unmount (TEST-8); empty state; add-by-name form posting `{type_name, max_price?, notes?}`; 400 unknown-name inline error; clear-to-null PUT body assertion; the max-price 0-boundary guard; two-step Remove (incl. the 5s timeout reset). Every authed stub answers the header bell's unread-count query (`GET /me/notifications/?is_read=false&size=1`) with `{ total: 0, page: 1, size: 1, items: [] }` — a bare `[]` would leave that count query erroring once Task 8.2 mounts the bell (NIT-9). COMPLETE file:
 
 ```tsx
 // ABOUTME: WatchlistPage tests over the real /watchlist route — auth branches, add-by-name form, clear-to-null edit, two-step remove.
@@ -5130,9 +5134,9 @@ describe('WatchlistPage', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchlistPage.test.tsx --reporter=dot`. Expected: route missing → sign-in heading not found.
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchlistPage.test.tsx --reporter=dot`. Expected: route missing → sign-in heading not found.
 
-- [ ] **Step 3: Create `src/routes/watchlist.tsx`.** COMPLETE file:
+- [x] **Step 3: Create `src/routes/watchlist.tsx`.** COMPLETE file:
 
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'
@@ -5147,7 +5151,7 @@ function RouteComponent() {
 }
 ```
 
-- [ ] **Step 4: Implement `WatchlistPage.tsx`.** The add form maps an empty max-price/notes input to an omitted key; each row's inline edit and "Clear max price" affordance map an emptied field to explicit `null` (clear). COMPLETE file:
+- [x] **Step 4: Implement `WatchlistPage.tsx`.** The add form maps an empty max-price/notes input to an omitted key; each row's inline edit and "Clear max price" affordance map an emptied field to explicit `null` (clear). COMPLETE file:
 
 ```tsx
 // ABOUTME: F006 watchlist page — add-by-name form (name + optional max price/notes) and inline-editable rows with clear-to-null and two-step remove.
@@ -5364,7 +5368,7 @@ function WatchlistRow({ item }: { item: WatchlistItem }) {
 }
 ```
 
-- [ ] **Step 5: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx`. COMPLETE file:
+- [x] **Step 5: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx`. COMPLETE file:
 
 ```tsx
 // ABOUTME: Automated axe accessibility checks for the watchlist page — authed-with-data and anonymous states.
@@ -5412,9 +5416,9 @@ describe('accessibility (axe) — watchlist', () => {
 })
 ```
 
-- [ ] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchlistPage.test.tsx src/features/watchlists/components/WatchlistPage.a11y.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 if the route isn't found). Then `npx tsc -b` and `npx eslint src/routes/watchlist.tsx src/features/watchlists` (green).
+- [x] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchlistPage.test.tsx src/features/watchlists/components/WatchlistPage.a11y.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 if the route isn't found). Then `npx tsc -b` and `npx eslint src/routes/watchlist.tsx src/features/watchlists` (green).
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/frontend/web/src/routes/watchlist.tsx app/frontend/web/src/routeTree.gen.ts app/frontend/web/src/features/watchlists/components/WatchlistPage.tsx app/frontend/web/src/features/watchlists/components/WatchlistPage.test.tsx app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx`
   ```
   feat(web): add watchlist page with add-by-name and inline editing
