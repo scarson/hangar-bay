@@ -1,12 +1,9 @@
 import logging
-import pydantic
 import structlog
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# Print Pydantic version right at the start for immediate visibility
-print(f"PYDANTIC_VERSION_CHECK_PRINT: {pydantic.__version__}", flush=True)
 logger = logging.getLogger(__name__)
 
 
@@ -21,10 +18,12 @@ from .core.http_client import init_http_client, close_http_client
 from .core.scheduler import add_aggregation_job, create_scheduler
 from .core.dependencies import get_cache
 from .core.logging import setup_logging, RequestIDMiddleware
+from .core.token_cipher import is_token_cipher_configured
 from .db import AsyncSessionLocal, async_engine, Base
 from .core.esi_client_class import ESIClient # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService # For manual service creation
 from .api import contracts as contracts_router
+from .api import auth as auth_router
 from .models import contracts # This import is crucial for Base.metadata to find the tables.
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -41,7 +40,8 @@ async def lifespan(app: FastAPI):
     # Startup logic
     # Setup structured logging first
     setup_logging(settings)
-    
+    warn_if_sso_unconfigured()
+
     await create_db_tables()
     init_http_client(app)
     await init_cache(app)
@@ -127,9 +127,22 @@ async def health_check():
 
 async def create_db_tables():
     """
-    Drops and recreates database tables to ensure the schema is up-to-date.
-    NOTE: This is a destructive operation suitable for development.
+    Drops and recreates database tables to keep the dev schema current (ENV-2).
+    Development-only: production schema management is future migrations work (M2 SSO design spec §8, future work).
+
+    Fail-closed gate (P1): two independent conditions, and ENVIRONMENT is
+    secure-by-default. An OMITTED ENVIRONMENT resolves to "production" (see
+    core/config.py), so an operator who forgets to set it never trips this path
+    even if DB_RECREATE_ON_STARTUP was inherited/copied as true. Recreate requires
+    BOTH ENVIRONMENT == "development" AND DB_RECREATE_ON_STARTUP true, set
+    explicitly — .env.example sets both, preserving the dev workflow.
     """
+    if settings.ENVIRONMENT != "development" or not settings.DB_RECREATE_ON_STARTUP:
+        logger.info(
+            "Skipping destructive create_db_tables (ENVIRONMENT=%s, DB_RECREATE_ON_STARTUP=%s).",
+            settings.ENVIRONMENT, settings.DB_RECREATE_ON_STARTUP,
+        )
+        return
     logger.info("Dropping and recreating database tables...")
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -137,6 +150,18 @@ async def create_db_tables():
     logger.info("Database tables successfully recreated.")
 
 
+def warn_if_sso_unconfigured() -> None:
+    """Development-only startup notice (spec §4.4): SSO routes 503 until .env is filled."""
+    if settings.ENVIRONMENT != "development":
+        return
+    if not settings.ESI_CLIENT_ID or not is_token_cipher_configured():
+        # Only login and callback are guarded (require_sso_configured) — logout
+        # stays operational (204) regardless, so the message must name the two
+        # affected routes rather than claim the whole /auth/sso/* family 503s.
+        logger.warning(
+            "EVE SSO is not configured (ESI_CLIENT_ID/TOKEN_CIPHER_KEYS empty); "
+            "/auth/sso/login and /auth/sso/callback return 503."
+        )
 
 
 
@@ -165,5 +190,7 @@ async def cache_test(rd: Optional[Redis] = Depends(get_cache)):
 # The /api/v1 prefix is handled by the frontend proxy configuration.
 # The router is included here without a prefix to match the incoming requests.
 app.include_router(contracts_router.router)
+app.include_router(auth_router.router)      # /auth/sso/login|callback|logout (bare, PROXY-1)
+app.include_router(auth_router.me_router)   # /me (bare)
 
 # Further application setup, routers, middleware, etc., will go here

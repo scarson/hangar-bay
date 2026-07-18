@@ -1,0 +1,124 @@
+# ABOUTME: CI for Hangar Bay — backend pytest + frontend lint/types/unit/e2e-fixture.
+# ABOUTME: Green CI is the merge gate the git-strategy merge-authority policy assumes.
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  # No branches filter on pull_request: that filter matches the PR's BASE branch,
+  # and the stacked M2 phase PRs (the plan's Standing Orders §Phase sequencing —
+  # docs/superpowers/plans/2026-07-12-m2-eve-sso.md) are based on the previous
+  # phase's claude/* branch — a [dev, main] filter would leave every stacked PR
+  # with no CI run at all (and a base retarget fires only an `edited` event,
+  # which the default activity types don't run on).
+  pull_request:
+
+# Nothing here uses the token — pin it to read-only.
+permissions:
+  contents: read
+
+# Rapid pushes to the same ref (stacked-PR rebases) supersede in-flight runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app/backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hangar
+          POSTGRES_PASSWORD: hangar
+          POSTGRES_DB: hangar_bay
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hangar"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      valkey:
+        image: valkey/valkey:7.2
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://hangar:hangar@localhost:5432/hangar_bay
+      DATABASE_URL_TESTS: postgresql+asyncpg://hangar:hangar@localhost:5432/hangar_bay_test
+      CACHE_URL: redis://localhost:6379/0
+      ESI_USER_AGENT: hangar-bay-ci (contact@example.com; CI)
+      # Required with NO default on the PRE-SSO legacy Settings that conftest still
+      # imports on this tree — must be JSON (ENV-1) or collection fails. Harmless after
+      # Phase 1 (the consolidated class defaults it to [10000002]).
+      AGGREGATION_REGION_IDS: "[10000002]"
+      # Throwaway Fernet key — encrypts only ephemeral tokens in a throwaway CI DB.
+      # Inert on the pre-SSO tree (unknown env vars are ignored by pydantic-settings;
+      # only unknown .env-FILE keys crash — and CI provides no .env). Declared as a
+      # real field from Phase 1 onward. Regenerate any time with:
+      #   python -c "import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+      TOKEN_CIPHER_KEYS: 1ENT-BXzxzKxMdnIhMN-Q-_LVIGorE-Stwjy1-FECkA=
+    steps:
+      - uses: actions/checkout@v7
+      # Both python-version pins below MUST stay in sync (setup-python + setup-pdm).
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: pdm-project/setup-pdm@v4
+        with:
+          python-version: '3.14'
+      - name: Create the tests database
+        run: PGPASSWORD=hangar psql -h localhost -U hangar -d hangar_bay -c 'CREATE DATABASE hangar_bay_test;'
+      - name: Install backend deps
+        run: pdm install -G dev
+      - name: Run backend tests
+        run: pdm run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app/frontend/web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/frontend/web/package-lock.json
+      - name: Install frontend deps
+        run: npm ci
+      - name: Lint
+        run: npx eslint .
+      - name: Typecheck
+        run: npx tsc -b
+      - name: Unit tests
+        run: npm run test
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('app/frontend/web/package-lock.json') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: E2E (fixture lane)
+        run: npm run e2e
+      # playwright.config.ts sets trace: retain-on-failure — keep those traces
+      # when the lane fails, or they die with the runner.
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: app/frontend/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

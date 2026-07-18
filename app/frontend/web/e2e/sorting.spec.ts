@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { makeContract, makeShipItem, paginate, type WireContract } from './fixtures/contracts'
-import { interceptContractList, type ListResponder } from './helpers/api'
+import { interceptContractList, interceptCurrentUser, type ListResponder } from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
 /**
@@ -93,6 +93,7 @@ const activeSortHeader = (page: import('@playwright/test').Page) => page.locator
 
 test.describe('column-header sorting', () => {
   test('default sort is Issued descending on the wire and in the header', async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, listResponder)
 
     await page.goto('/contracts')
@@ -118,6 +119,7 @@ test.describe('column-header sorting', () => {
   test('clicking Price (ISK) sorts price ascending, resets to page 1, renders server order', async ({
     page,
   }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, listResponder)
 
     // Start on page 2 so the reset-to-1 on sort is observable (5 items / size 3
@@ -151,6 +153,7 @@ test.describe('column-header sorting', () => {
   })
 
   test('re-clicking Price flips the direction asc↔desc everywhere', async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, listResponder)
 
     await page.goto('/contracts')
@@ -185,6 +188,7 @@ test.describe('column-header sorting', () => {
   })
 
   test('switching to a different header resets direction to that column initial', async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, listResponder)
 
     // Deep-link into price DESCENDING so the reset is unmistakable: switching
@@ -216,6 +220,7 @@ test.describe('column-header sorting', () => {
   })
 
   test('deep-link restores the sorted header and sends the params on first load', async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, listResponder)
 
     await page.goto('/contracts?sort_by=price&sort_direction=asc')

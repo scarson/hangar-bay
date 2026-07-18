@@ -36,13 +36,13 @@ For a comprehensive understanding of the Hangar Bay project, please refer to the
 
 ## Implementation Status
 
-**Milestone 1 (frontend rebuild) — shipped.** The Angular frontend was removed and replaced with a React 19 single-page app (Vite, TypeScript strict, Tailwind CSS v4, TanStack Router/Query) in `app/frontend/web`. Live against the FastAPI backend:
+**Milestone 1 (frontend rebuild) — shipped.** The Angular frontend was removed and replaced with a React 19 single-page app (Vite, TypeScript strict, Tailwind CSS v4, TanStack Router/Query) in `app/frontend/web`, merged in PR #22. Live against the FastAPI backend:
 
 *   **F001 (Public Contract Aggregation):** backend aggregation pipeline ingests public ship contracts from ESI into PostgreSQL.
 *   **F002 (Ship Browsing & Advanced Search/Filtering):** contract list view with URL-driven filtering, sorting, and pagination.
 *   **F003 (Detailed Ship/Contract View):** per-contract detail view.
 
-The React SPA landed on a milestone branch and is pending merge in PR #22. Authentication (F004) and the account features that depend on it (F005 Saved Searches, F006 Watchlists, F007 Alerts) are deferred to a later milestone.
+**Milestone 2 (EVE SSO) — implemented.** F004 (User Authentication via EVE Online SSO) is implemented: header login/identity (login button, character name and portrait, logout), server-side sessions backed by Valkey, an encrypted token vault for EVE SSO access/refresh tokens, and CI coverage. The live-lane SSO login test (a real EVE SSO round trip) is deferred pending EVE credentials landing in the local `.env` plus a live end-to-end verification pass. The account features that depend on authentication (F005 Saved Searches, F006 Watchlists, F007 Alerts) remain deferred, gated on Milestone 3.
 
 ## Development Setup
 
@@ -109,7 +109,7 @@ The React single-page app lives in `app/frontend/web` (Vite + React 19 + TypeScr
     ```bash
     npm run dev
     ```
-    The app is served at `http://localhost:5173`, and proxies `/api/v1` requests to the backend on `http://localhost:8000`.
+    The app is served at `https://localhost:5173` (Vite serves dev over HTTPS via `@vitejs/plugin-basic-ssl` so the origin matches the registered EVE SSO callback — accept the one-time self-signed-certificate warning), and proxies `/api/v1` requests to the backend on `http://localhost:8000` (the backend never sees TLS in dev).
 
 4.  **Regenerating the API client types (after backend schema changes):**
     ```bash

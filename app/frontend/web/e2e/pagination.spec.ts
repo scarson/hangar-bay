@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { bigDataset, paginate } from './fixtures/contracts'
-import { interceptContractList } from './helpers/api'
+import { interceptContractList, interceptCurrentUser } from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
 /**
@@ -22,6 +22,7 @@ test.describe('pagination', () => {
     // Hull labels are the row-link text (primaryLabel prefers the ship item);
     // derive the expected set from the fixture so it stays coupled to the builder.
     const expectedLabels = all.map((c) => c.items[0].type_name as string)
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (params) =>
       paginate(all, Number(params.get('page')), Number(params.get('size'))),
     )
@@ -69,6 +70,7 @@ test.describe('pagination', () => {
 
   test('Previous is disabled on the first page and Next on the last', async ({ page }) => {
     const all = bigDataset(120)
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, (params) =>
       paginate(all, Number(params.get('page')), Number(params.get('size'))),
     )
@@ -88,6 +90,7 @@ test.describe('pagination', () => {
     // Mechanism (confirmed in @tanstack/router-core scroll-restoration.js): on every
     // navigation's `onRendered`, resetScroll (default true) calls window.scrollTo(0,0).
     const all = bigDataset(120)
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, (params) =>
       paginate(all, Number(params.get('page')), Number(params.get('size'))),
     )
@@ -113,6 +116,7 @@ test.describe('pagination', () => {
     // replace to pageCount. The backend echoes {total>0, items:[]} for pages past
     // the end (paginate reproduces this), which triggers the self-heal.
     const all = bigDataset(120)
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (params) =>
       paginate(all, Number(params.get('page')), Number(params.get('size'))),
     )
@@ -131,6 +135,7 @@ test.describe('pagination', () => {
 
   test('deep-links straight to a middle page without walking from page 1', async ({ page }) => {
     const all = bigDataset(120)
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (params) =>
       paginate(all, Number(params.get('page')), Number(params.get('size'))),
     )

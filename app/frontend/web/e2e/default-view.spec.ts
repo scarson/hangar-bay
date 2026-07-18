@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { SEVEN_SHIPS, pageOf } from './fixtures/contracts'
-import { interceptContractList } from './helpers/api'
+import { interceptContractList, interceptCurrentUser } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
 /**
@@ -9,6 +9,7 @@ import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
  */
 test.describe('default view', () => {
   test('root redirects to /contracts and shows ships-only by default', async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, pageOf(SEVEN_SHIPS))
 
     await page.goto('/')
@@ -51,6 +52,7 @@ test.describe('default view', () => {
   })
 
   test('unchecking Ships only widens to All Contracts and drops the API filter', async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (params) =>
       pageOf(params.get('is_ship_contract') === 'true' ? SEVEN_SHIPS : SEVEN_SHIPS.slice(0, 2)),
     )

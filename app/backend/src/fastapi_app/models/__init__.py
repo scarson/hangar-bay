@@ -1,9 +1,8 @@
-from .common_models import User, UserType
+from .user import User
 from .contracts import Contract, ContractItem, EsiMarketGroupCache
 
 __all__ = [
     "User",
-    "UserType",
     "Contract",
     "ContractItem",
     "EsiMarketGroupCache",

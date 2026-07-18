@@ -11,17 +11,14 @@ from fastapi import Depends
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.dependencies import get_cache, get_esi_client, get_settings # Restored get_cache, added get_settings
-from ..core.config import settings, Settings # Settings instance and Settings type for hinting
+from ..core.dependencies import get_cache, get_esi_client, get_settings
+from ..core.config import Settings # Settings type for hinting
 from ..core.esi_client_class import ESIClient # ESIClient class for type hint
 from ..core.exceptions import ESINotModifiedError # Restored ESINotModifiedError
 
 from ..models.contracts import Contract, ContractItem # Models
 # Removed incorrect import: from ..services.esi_client import ESIClient as ESIClientService
 from .db_upsert import bulk_upsert # Upsert utility
-
-# DEBUG: Print for the module-level settings object, AFTER all necessary ..core imports
-print(f"BG_AGG_MODULE_SETTINGS_ID: id(settings)={id(settings)}, AGG_REGION_IDS_TYPE={type(settings.AGGREGATION_REGION_IDS)}, VALUE={settings.AGGREGATION_REGION_IDS!r}", flush=True)
 
 logger = logging.getLogger(__name__)
 
@@ -80,12 +77,6 @@ class ContractAggregationService:
         # self.cache = cache # Removed cache client attribute
         self.esi_client = esi_client
         self.settings = settings # Assign the injected settings
-        # DEBUG: Print for the settings object as seen by __init__
-        print(f"BG_AGG___INIT___SETTINGS_ARG_ID: id(settings)={id(settings)}, TYPE={type(settings.AGGREGATION_REGION_IDS)}, VAL={settings.AGGREGATION_REGION_IDS!r}", flush=True)
-        # DEBUG: The AGG_SERVICE_INIT prints are still useful for now to see the settings object ID
-        print(f"AGG_SERVICE_INIT_SETTINGS_ID: id(self.settings)={id(self.settings)}, id(self.settings.AGGREGATION_REGION_IDS)={id(self.settings.AGGREGATION_REGION_IDS)}", flush=True)
-        # DEBUG: Print for AGG_SERVICE_INIT_SETTINGS_VALUE
-        print(f"AGG_SERVICE_INIT_SETTINGS_VALUE: self.settings.AGGREGATION_REGION_IDS = {self.settings.AGGREGATION_REGION_IDS!r} (type: {type(self.settings.AGGREGATION_REGION_IDS)})", flush=True)
 
     @asynccontextmanager
     async def _concurrency_lock(self):
@@ -135,9 +126,7 @@ class ContractAggregationService:
         Runs the full public contract aggregation and ingestion process.
         Uses a database session from the session factory.
         """
-        print(f"AGG_RUN_SETTINGS_ID: id(self.settings)={id(self.settings)}, id(self.settings.AGGREGATION_REGION_IDS)={id(self.settings.AGGREGATION_REGION_IDS)}", flush=True)
         current_region_ids = self.settings.AGGREGATION_REGION_IDS
-        print(f"AGG_DEBUG: AGGREGATION_REGION_IDS from settings: {current_region_ids!r} (type: {type(current_region_ids)} )", flush=True)
 
         if not isinstance(current_region_ids, list) or not all(isinstance(x, int) for x in current_region_ids):
             logger.error(f"CRITICAL_ERROR_AGG_SERVICE: AGGREGATION_REGION_IDS is not a list of int: {current_region_ids!r} (type: {type(current_region_ids)}) Aborting aggregation.")
@@ -477,6 +466,5 @@ async def get_aggregation_service(
     The service manages its own database sessions for scheduled tasks.
     The global `settings` object from `..core.config` is used by default.
     """
-    # Uses the global `settings` imported at the top of the file for now.
     # If specific settings injection per request is needed later, that would require a `Depends(get_settings_func)`
     return ContractAggregationService(esi_client=esi_client, settings=settings)

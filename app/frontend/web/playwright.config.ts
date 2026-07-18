@@ -18,7 +18,8 @@ export default defineConfig({
   retries: 0,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'https://localhost:5173',
+    ignoreHTTPSErrors: true,
     trace: 'retain-on-failure',
   },
   projects: [
@@ -40,7 +41,8 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:5173',
+    url: 'https://localhost:5173',
+    ignoreHTTPSErrors: true,
     reuseExistingServer: true,
     timeout: 30_000,
   },

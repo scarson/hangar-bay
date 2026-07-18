@@ -1,6 +1,6 @@
 import httpx
 from fastapi import FastAPI
-from ..config import get_settings
+from .config import get_settings
 
 settings = get_settings()
 

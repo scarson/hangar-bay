@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { SEVEN_SHIPS, makeContract, makeShipItem, pageOf } from './fixtures/contracts'
-import { interceptContractDetail, interceptContractList } from './helpers/api'
+import { interceptContractDetail, interceptContractList, interceptCurrentUser } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
 /**
@@ -39,15 +39,24 @@ async function jsonFulfill(route: import('@playwright/test').Route, body: unknow
  * takes no accessible name from its text content, so it can't be selected by name;
  * once data has rendered (not pending) it is the only status node on the page, so
  * a bare getByRole('status') is unambiguous — same selector the exemplar uses.
+ * BUT the loading skeleton is ALSO a status node (named "Loading contracts"), so
+ * any live-region assertion that can poll while the fetch is in flight must first
+ * wait for the skeleton to unmount (strict-mode race otherwise — TEST-2:
+ * deterministic synchronization, not retries).
  */
 function liveRegion(page: Page) {
   return page.getByRole('status')
+}
+
+async function waitForDataRendered(page: Page) {
+  await expect(page.getByRole('status', { name: 'Loading contracts' })).toHaveCount(0)
 }
 
 test.describe('states', () => {
   test('loading skeleton shows while the list request is in flight, then rows replace it', async ({
     page,
   }) => {
+    await interceptCurrentUser(page, { status: 401 })
     const { opened, release } = gate()
     await page.route(LIST_URL, async (route) => {
       await opened
@@ -80,6 +89,7 @@ test.describe('states', () => {
   test('empty result shows the no-match card, Clear filters, and announces zero', async ({
     page,
   }) => {
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf([]))
 
     await page.goto('/contracts')
@@ -92,6 +102,7 @@ test.describe('states', () => {
     await expect(rowLinks(page)).toHaveCount(0)
 
     // Live region reports the zero count (wording is always plural — match loosely).
+    await waitForDataRendered(page)
     await expect(liveRegion(page)).toHaveText(/0 contracts? match/)
   })
 
@@ -100,6 +111,7 @@ test.describe('states', () => {
     // before surfacing an error — failing only call 0 would auto-recover on call 1
     // and never reach the alert. Fail both initial attempts, then let the manual
     // Retry (call 2) succeed.
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (_params, call) =>
       call < 2 ? { status: 500 } : pageOf(SEVEN_SHIPS),
     )
@@ -131,17 +143,20 @@ test.describe('states', () => {
     // Responder keyed on the wire param: is_bpc=true narrows to two rows. This is a
     // synthetic narrowing to exercise the announcement, not a product claim about
     // ship/BPC overlap; the fixture lane is authoritative for what comes back.
+    await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (params) =>
       pageOf(params.get('is_bpc') === 'true' ? SEVEN_SHIPS.slice(0, 2) : SEVEN_SHIPS),
     )
 
     await page.goto('/contracts')
     await expect(page.getByRole('heading', { level: 1, name: 'Ship Contracts' })).toBeVisible()
+    await waitForDataRendered(page)
     await expect(liveRegion(page)).toHaveText(/7 contracts? match/)
 
     await openFiltersIfCollapsed(page)
     await page.getByLabel('Blueprint copies only').check()
 
+    await waitForDataRendered(page)
     await expect(liveRegion(page)).toHaveText(/2 contracts? match/)
 
     // TEST-5: the wire carried the filter AND the render/announcement changed.
@@ -154,6 +169,7 @@ test.describe('states', () => {
       contract_id: 232_100_001,
       items: [makeShipItem('Revelation')],
     })
+    await interceptCurrentUser(page, { status: 401 })
     const { opened, release } = gate()
     await page.route(DETAIL_URL, async (route) => {
       await opened
@@ -174,6 +190,7 @@ test.describe('states', () => {
   test('detail page shows its error alert + Retry when the request fails', async ({ page }) => {
     // useContract retries non-404s once, so a persistent 500 makes two attempts and
     // then renders the error branch (not the 404 NotFound branch).
+    await interceptCurrentUser(page, { status: 401 })
     await interceptContractDetail(page, { status: 500 })
 
     await page.goto('/contracts/232100001')

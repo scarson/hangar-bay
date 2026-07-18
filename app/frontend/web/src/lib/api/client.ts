@@ -4,6 +4,7 @@ import type { components, paths } from './schema'
 export type Contract = components['schemas']['ContractSchema']
 export type ContractItem = components['schemas']['ContractItemSchema']
 export type PaginatedContracts = components['schemas']['PaginatedResponse_ContractSchema_']
+export type CurrentUser = components['schemas']['CurrentUserSchema']
 
 export class ApiError extends Error {
   status: number

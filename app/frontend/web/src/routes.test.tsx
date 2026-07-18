@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
-import { jsonResponse } from './test/http'
+import { anonymousMe, jsonResponse } from './test/http'
 import { renderApp } from './test/renderApp'
 
 function stubFetch(handler: (url: string) => Response) {
@@ -18,14 +18,14 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('route skeleton', () => {
   it('redirects / to /contracts', async () => {
-    stubFetch(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] }))
+    stubFetch(anonymousMe(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] })))
     const { router } = renderApp('/')
     await screen.findByRole('heading', { name: /ship contracts/i })
     expect(router.state.location.pathname).toBe('/contracts')
   })
 
   it('renders the contract detail route', async () => {
-    stubFetch(() => jsonResponse({ detail: 'Contract not found' }, 404))
+    stubFetch(anonymousMe(() => jsonResponse({ detail: 'Contract not found' }, 404)))
     renderApp('/contracts/12345')
     await screen.findByText(/not found/i)
   })

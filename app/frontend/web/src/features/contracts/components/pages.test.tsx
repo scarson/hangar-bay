@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../../test/http'
+import { anonymousMe, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 
 const CONTRACT = {
@@ -45,7 +45,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('ContractsPage', () => {
   it('renders fetched contracts in the table', async () => {
-    stubFetch(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] }))
+    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] })))
 
     renderApp('/contracts')
 
@@ -59,7 +59,7 @@ describe('ContractsPage', () => {
   })
 
   it('announces the result count in a polite status region (WCAG 4.1.3)', async () => {
-    stubFetch(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] }))
+    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] })))
 
     renderApp('/contracts')
 
@@ -68,7 +68,7 @@ describe('ContractsPage', () => {
     // without moving focus off a rail control.
     await screen.findByText('Tristan')
     const status = screen.getByRole('status')
-    expect(status).toHaveTextContent('1 contracts match your filters')
+    expect(status).toHaveTextContent('1 contract matches your filters')
     expect(status).toHaveAttribute('aria-live', 'polite')
   })
 
@@ -82,7 +82,7 @@ describe('ContractsPage', () => {
       title: '',
       items: [{ ...CONTRACT.items[0], type_name: null }],
     }
-    stubFetch(() => jsonResponse({ total: 1, page: 1, size: 50, items: [untitled] }))
+    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [untitled] })))
 
     renderApp('/contracts')
 
@@ -90,7 +90,7 @@ describe('ContractsPage', () => {
   })
 
   it('shows the empty state for zero results', async () => {
-    stubFetch(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] }))
+    stubFetch(anonymousMe(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] })))
 
     renderApp('/contracts')
 
@@ -98,7 +98,7 @@ describe('ContractsPage', () => {
   })
 
   it('shows the error state with a retry control on failure', async () => {
-    stubFetch(() => jsonResponse({ detail: 'boom' }, 500))
+    stubFetch(anonymousMe(() => jsonResponse({ detail: 'boom' }, 500)))
 
     renderApp('/contracts')
 
@@ -107,16 +107,19 @@ describe('ContractsPage', () => {
   })
 
   it('reads filters from the URL and sends them to the API', async () => {
-    const calls = stubFetch(() =>
-      jsonResponse({ total: 0, page: 1, size: 50, items: [] }),
+    const calls = stubFetch(
+      anonymousMe(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] })),
     )
 
     renderApp('/contracts?region_ids=10000002&is_bpc=true&sort_by=price&sort_direction=asc')
 
     await screen.findByText(/no contracts match/i)
-    expect(calls[0]).toContain('region_ids=10000002')
-    expect(calls[0]).toContain('is_bpc=true')
-    expect(calls[0]).toContain('sort_by=price')
+    // Order-independent: whether /me or the contracts query fires first is
+    // scheduling, not contract (the header now issues its own /me request).
+    const listCall = calls.find((u) => u.includes('/api/v1/contracts/'))!
+    expect(listCall).toContain('region_ids=10000002')
+    expect(listCall).toContain('is_bpc=true')
+    expect(listCall).toContain('sort_by=price')
   })
 
   it('carries a repeated region_ids URL through to repeated API params (shareable-URL contract)', async () => {
@@ -124,12 +127,16 @@ describe('ContractsPage', () => {
     // qss decode of ?region_ids=…&region_ids=… -> parseContractSearch array
     // coercion -> toApiQuery -> openapi-fetch's repeated-array serializer.
     // Guards the two-repeat case that single-value URL tests can't (TEST-5).
-    const calls = stubFetch(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] }))
+    const calls = stubFetch(
+      anonymousMe(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] })),
+    )
 
     renderApp('/contracts?region_ids=10000002&region_ids=10000020')
 
     await screen.findByText(/no contracts match/i)
-    expect(calls[0]).toContain('region_ids=10000002&region_ids=10000020')
+    // Order-independent: see the rationale above.
+    const listCall = calls.find((u) => u.includes('/api/v1/contracts/'))!
+    expect(listCall).toContain('region_ids=10000002&region_ids=10000020')
   })
 
   it('redirects an out-of-range page to the last page instead of a false empty state', async () => {
@@ -137,10 +144,12 @@ describe('ContractsPage', () => {
     // items:[]} without clamping. The app must navigate to the last valid page
     // and render the row — never the contradictory "no contracts match" card
     // (which the "30 matching" header would flatly contradict).
-    stubFetch((url) =>
-      url.includes('page=9')
-        ? jsonResponse({ total: 30, page: 9, size: 50, items: [] })
-        : jsonResponse({ total: 30, page: 1, size: 50, items: [CONTRACT] }),
+    stubFetch(
+      anonymousMe((url) =>
+        url.includes('page=9')
+          ? jsonResponse({ total: 30, page: 9, size: 50, items: [] })
+          : jsonResponse({ total: 30, page: 1, size: 50, items: [CONTRACT] }),
+      ),
     )
 
     const { router } = renderApp('/contracts?page=9')
@@ -151,8 +160,8 @@ describe('ContractsPage', () => {
   })
 
   it('resets to page 1 when a filter changes', async () => {
-    const calls = stubFetch(() =>
-      jsonResponse({ total: 200, page: 3, size: 50, items: [CONTRACT] }),
+    const calls = stubFetch(
+      anonymousMe(() => jsonResponse({ total: 200, page: 3, size: 50, items: [CONTRACT] })),
     )
 
     const { router } = renderApp('/contracts?page=3')
@@ -172,7 +181,7 @@ describe('ContractsPage', () => {
 
 describe('ContractDetailPage', () => {
   it('renders a contract with its items', async () => {
-    stubFetch(() => jsonResponse(CONTRACT))
+    stubFetch(anonymousMe(() => jsonResponse(CONTRACT)))
 
     renderApp('/contracts/101')
 
@@ -192,7 +201,7 @@ describe('ContractDetailPage', () => {
     // and the blank-"" ESI-title trap still falls through to the id when no
     // item name resolves (M1 acceptance discovery, preserved).
     const untitled = { ...CONTRACT, contract_id: 777, title: '' }
-    stubFetch(() => jsonResponse(untitled))
+    stubFetch(anonymousMe(() => jsonResponse(untitled)))
     const named = renderApp('/contracts/777')
     expect(await screen.findByRole('heading', { name: 'Tristan' })).toBeInTheDocument()
     named.unmount()
@@ -204,13 +213,13 @@ describe('ContractDetailPage', () => {
       title: '',
       items: [{ ...CONTRACT.items[0], type_name: null }],
     }
-    stubFetch(() => jsonResponse(bare))
+    stubFetch(anonymousMe(() => jsonResponse(bare)))
     renderApp('/contracts/778')
     expect(await screen.findByRole('heading', { name: 'Contract 778' })).toBeInTheDocument()
   })
 
   it('shows not-found for a 404', async () => {
-    stubFetch(() => jsonResponse({ detail: 'Contract not found' }, 404))
+    stubFetch(anonymousMe(() => jsonResponse({ detail: 'Contract not found' }, 404)))
 
     renderApp('/contracts/999')
 
@@ -225,12 +234,14 @@ describe('ContractDetailPage', () => {
     // no-wasted-request behavior — if the guard is reordered below the
     // isPending branch, the disabled query's isPending stays true forever and
     // this page would render an eternal "Loading contract…" instead.
-    const calls = stubFetch(() => jsonResponse(CONTRACT))
+    const calls = stubFetch(anonymousMe(() => jsonResponse(CONTRACT)))
 
     renderApp('/contracts/abc')
 
     expect(await screen.findByText(/not found/i)).toBeInTheDocument()
-    expect(calls).toHaveLength(0)
+    // The guarded behavior is "no CONTRACTS request" — the header's own /me
+    // request is expected and unrelated to the NaN-guard this test pins.
+    expect(calls.filter((u) => !u.includes('/api/v1/me'))).toHaveLength(0)
   })
 
   it('back link restores the exact list filter/sort state via history when navigated in-app', async () => {
@@ -238,10 +249,12 @@ describe('ContractDetailPage', () => {
     // that list with every URL param intact (PRODUCT #2: the URL is the
     // interface). It uses router.history.back() when the list is behind us,
     // rather than a bare to="/contracts" that would reset to defaults.
-    stubFetch((url) =>
-      /\/contracts\/\d+/.test(url)
-        ? jsonResponse(CONTRACT)
-        : jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] }),
+    stubFetch(
+      anonymousMe((url) =>
+        /\/contracts\/\d+/.test(url)
+          ? jsonResponse(CONTRACT)
+          : jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] }),
+      ),
     )
 
     const { router } = renderApp(
@@ -266,7 +279,7 @@ describe('ContractDetailPage', () => {
   it('back link falls back to the default list on a cold deep link (no in-app history)', async () => {
     // A shared /contracts/$id opened fresh has nothing behind it, so the back
     // control is a plain link to the list rather than a history button.
-    stubFetch(() => jsonResponse(CONTRACT))
+    stubFetch(anonymousMe(() => jsonResponse(CONTRACT)))
 
     renderApp('/contracts/101')
 

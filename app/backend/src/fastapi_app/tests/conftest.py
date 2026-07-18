@@ -22,7 +22,7 @@ from fastapi_app.db import get_db
 from fastapi_app.db import Base
 from datetime import datetime, timedelta, timezone
 
-from fastapi_app.config import settings
+from fastapi_app.core.config import settings
 from fastapi_app.models.contracts import Contract, ContractItem
 
 # Use a separate, real Postgres database for testing to match production.
@@ -156,3 +156,50 @@ async def setup_contracts(db_session: AsyncSession):
     db_session.add_all(contracts_data)
     await db_session.flush()  # Use flush to send data within the test's transaction
     return contracts_data
+
+
+import httpx
+import pytest_asyncio
+from pydantic import SecretStr
+from cryptography.fernet import Fernet
+
+from fastapi_app.tests.fake_redis import FakeRedis
+
+
+@pytest_asyncio.fixture(scope="function")
+async def auth_client(db_session, httpx_mock):
+    """HTTP client over real_app with the auth routers mounted, app.state wired, and get_db overridden.
+    Does NOT configure SSO settings — use the `configured_sso` fixture for happy-path flow tests.
+    Depends on httpx_mock STRUCTURALLY: pytest-httpx patches the async transport class,
+    so app.state.http_client can never reach the real network in ANY auth test — an
+    un-mocked token POST fails loudly instead of leaving the process. (The outer
+    ASGITransport client is a different transport class and is unaffected.) Tests
+    that need token responses request httpx_mock themselves and get the same instance."""
+    from fastapi_app.main import app as real_app
+    from fastapi_app.db import get_db as get_db_dep
+
+    fake = FakeRedis()
+    real_app.state.redis = fake
+    real_app.state.http_client = httpx.AsyncClient(base_url="http://sso.test")  # pytest-httpx intercepts this
+    real_app.dependency_overrides[get_db_dep] = lambda: db_session
+
+    transport = httpx.ASGITransport(app=real_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        client.fake_redis = fake     # expose to tests for state/session assertions
+        yield client
+
+    await real_app.state.http_client.aclose()
+    del real_app.state.redis
+    del real_app.state.http_client
+    real_app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def configured_sso(monkeypatch):
+    """Configure the settings singleton for a working SSO flow. (Plain pytest fixture —
+    it is synchronous; pytest_asyncio.fixture is reserved for the async auth_client.)"""
+    from fastapi_app.core.config import settings
+    monkeypatch.setattr(settings, "ESI_CLIENT_ID", "test-client")
+    monkeypatch.setattr(settings, "ESI_CLIENT_SECRET", SecretStr("test-secret"))
+    monkeypatch.setattr(settings, "TOKEN_CIPHER_KEYS", SecretStr(Fernet.generate_key().decode()))
+    return settings
