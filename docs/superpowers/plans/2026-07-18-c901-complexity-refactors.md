@@ -60,14 +60,16 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** In progress — Phase 1 claimed 2026-07-18.
+**Overall:** In progress — Phase 1 shipped; Phase 2 claimed 2026-07-18.
 
 **Baseline at Phase 1 claim** (branch point `bfaf495`, fresh `origin/dev`): `pdm run pytest` = **358 passed**; `pdm run lint` = exit 0; `grep -rn "noqa: C901" src/` = the 5 expected sites.
 
+**Baseline at Phase 2 claim** (branch point `e84aa8a`, `origin/dev` after Phase 1 merged): `pdm run pytest` = **362 passed**; `pdm run lint` = exit 0; 4 `# noqa: C901` sites remain.
+
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 1 — get_contracts | 🚧 PR open | `69b0112`, `3d4e61e`, `1ca0aa0` | branch `claude/c901-get-contracts`; complexity 20 → 7; suite 358 → 362 |
-| 2 — _process_contracts | ⬜ Not started | — | same file as Phase 3; run before it |
+| 1 — get_contracts | ✅ Merged | `69b0112`, `3d4e61e`, `1ca0aa0`, `7ae0576`, `63e5ddb`, `bca290b` → merge `e84aa8a` | PR #54, merged 2026-07-18; complexity 20 → 7; suite 358 → 362 |
+| 2 — _process_contracts | 🚧 PR open | `455f586`, `6bd9f63`, `8962daf` | branch `claude/c901-process-contracts`; complexity 18 → 7; suite 362 → 365; `Review — data-integrity`, Sam merges |
 | 3 — run_aggregation | ⬜ Not started | — | blocked by Phase 2 (same file) |
 | 4 — _get_esi_object + shared retry helper | ⬜ Not started | — | introduces `_get_with_transient_retry` |
 | 5 — get_esi_data_with_etag_caching | ⬜ Not started | — | blocked by Phase 4 (uses its helper); write its missing tests FIRST |
@@ -108,6 +110,17 @@ statement was moved verbatim and the loose annotation kept. No caller performs l
 operations. `_fetch_page_joined`'s annotation is honest — its position-restoration step builds a real
 `list` — so this applies to the simple path only.
 
+**Phase 2 — one test added beyond the plan's task spec (`8962daf`).** Task 2.2 converted
+`id_to_name_map` from a closure-captured local into an explicit parameter of the new module-level
+`_build_contract_rows(contracts, id_to_name_map)`. That created a call-site wiring seam the plan did
+not anticipate and no test covered: mutating the call site to pass `{}` left the ENTIRE suite green,
+so name denormalization could break silently. Phase 1's review found the same defect class (and the
+plan-review notes flag "orchestration wiring tests" as recurring), so it was closed rather than
+deferred: one test pins all three denormalized columns (`start_location_name`, `issuer_name`,
+`issuer_corporation_name`) through the full build-and-upsert path, mutation-verified to go red when
+the map is emptied. Note the adversarial review round REFUTED this finding as a pre-existing coverage
+gap; that is half right — the gap predates the diff, but the wiring error it now permits does not.
+
 ### Discoveries
 
 **Concurrent pytest runs clobber the shared test database.** `pdm run pytest` drops and recreates the
@@ -116,6 +129,20 @@ rollback. Two agents running the suite simultaneously produce spurious `Integrit
 failures that look like real test defects. Reviewers doing mutation testing must serialize, or point
 their own `DATABASE_URL_TESTS` at a scratch database. This bit the Phase 1 review round (2026-07-18)
 and cost one reviewer several confusing runs before it was diagnosed.
+
+**Contracts stranded at `PENDING_ITEMS` are never re-driven (Phase 2, latent design gap).** When a
+contract's item fetch raises, `_fetch_item_rows` isolates the failure and omits that contract from
+`processed_contract_ids`, so it is marked neither COMPLETED nor ENRICHMENT_INCOMPLETE and keeps the
+model default `PENDING_ITEMS` (`models/contracts.py`). Nothing in the codebase selects on
+`PENDING_ITEMS` to retry those contracts, so a transient ESI item-fetch failure leaves a contract
+un-enriched until its next full re-ingest happens to succeed. This is CURRENT behavior and is locked
+by `test_item_fetch_failure_for_one_contract_does_not_abort_batch`; recorded here, not fixed
+(ground rule 4). Worth a decision on whether a retry sweep is wanted.
+
+**Backend tests are excluded from flake8.** `app/backend/.flake8` line 24 carries
+`exclude = .venv,.git,__pycache__,docs,migrations,*/tests/*,src/alembic`,
+so `pdm run lint` does NOT cover test code. Style in test files is convention-enforced only; do not
+assume a green lint says anything about new tests.
 
 **`_apply_contract_filters` measures exactly 10 — at the C901 limit.** The plan's contingency
 (`_apply_location_filters`) was correctly NOT applied, since the plan says do not preemptively split
@@ -144,7 +171,7 @@ Whoever adds it should apply the documented contingency at that time.
 
 ## Phase 1 — `get_contracts` (complexity 20 → ≤ 10)
 
-**Execution Status:** 🚧 PR OPEN — branch `claude/c901-get-contracts`, claimed 2026-07-18T22:21Z.
+**Execution Status:** ✅ MERGED 2026-07-18 — PR #54, merge commit `e84aa8a`, branch `claude/c901-get-contracts`.
 Commits `69b0112` (characterization tests), `3d4e61e` (extraction), `1ca0aa0` (mutation-sensitivity fix
 for the tiebreaker fixture — see Deviations). Gates: red gate observed
 (`C901 'get_contracts' is too complex (20)`); after extraction `pdm run lint` exit 0,
@@ -283,7 +310,14 @@ async def _fetch_page_simple(db: AsyncSession, query, filters, sort_column, desc
 
 ## Phase 2 — `_process_contracts` (complexity 18 → ≤ 10)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 PR OPEN — branch `claude/c901-process-contracts`, claimed 2026-07-18T23:25Z off
+`origin/dev` at `e84aa8a`. Commits `455f586` (characterization tests), `6bd9f63` (extraction),
+`8962daf` (name-denormalization wiring test — see Deviations). Gates: red gate observed
+(`C901 'ContractAggregationService._process_contracts' is too complex (18)`); after extraction
+`pdm run lint` exit 0, `_process_contracts` no longer flagged by `--select=C901`, complexity 18 → 7
+(`_fetch_item_rows` 6, `_update_item_processing_status` 4, `_collect_resolvable_ids` 2,
+`_parse_esi_datetime` 2, `_build_contract_rows` 1); full suite 362 → 365 passed. `run_aggregation`
+keeps its own noqa for Phase 3, untouched. Classification `Review — data-integrity` — Sam merges.
 
 **Files:**
 - Modify: `app/backend/src/fastapi_app/services/background_aggregation.py`
