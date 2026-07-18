@@ -64,11 +64,13 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** Phase 0 shipped; Phase 1 next.
+
+**Baseline (Phase 0, captured against `origin/dev` tip `27dac66`):** backend `pdm run pytest -q` → `220 passed`; frontend `npx vitest run --reporter=dot` → `Test Files 12 passed (12)`, `Tests 62 passed (62)`. Phase 1/2 backend work must never drop the pytest count below 220.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Campaign branch setup | ⬜ Not started | — | — |
+| 0 — Campaign branch setup | ✅ Shipped | (pending) | Baseline: backend 220 passed, frontend 12 files / 62 tests passed |
 | 1 — Backend foundations | ⬜ Not started | — | — |
 | 2 — F005 Saved Searches backend | ⬜ Not started | — | — |
 | 3 — F006 Watchlist backend | ⬜ Not started | — | — |
@@ -103,7 +105,7 @@ These bind every task below and are stated here so no task repeats them:
 
 ## Phase 0 — Campaign branch setup
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at (pending) on 2026-07-18
 
 Establishes the campaign worktree off `origin/dev` and captures the green baseline (backend pytest + frontend vitest) so every later phase measures against a known-good starting point. No production code.
 
@@ -120,7 +122,7 @@ task is a trustworthy baseline: the suites MUST be green before any M3 code land
 
 **Files:** none created/modified (worktree + local `.env` + baseline capture only).
 
-- [ ] **Step 1: Create the worktree off `origin/dev`.** From the main repo root `/Users/sam/Code/hangar-bay`:
+- [x] **Step 1: Create the worktree off `origin/dev`.** From the main repo root `/Users/sam/Code/hangar-bay`:
   ```bash
   cd /Users/sam/Code/hangar-bay
   git fetch origin dev
@@ -128,25 +130,29 @@ task is a trustworthy baseline: the suites MUST be green before any M3 code land
   cd .claude/worktrees/m3-account-features
   ```
   All later task commands run from inside this worktree.
-- [ ] **Step 2: Bring up the dependency containers.**
+- [x] **Step 2: Bring up the dependency containers.**
   ```bash
   docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.dependencies.yml up -d --wait postgres_db valkey_cache
   ```
-- [ ] **Step 3: Provision the backend `.env`.** The worktree has no `app/backend/src/.env` (it is gitignored). Create it from the template and fill the required values:
+- [x] **Step 3: Provision the backend `.env`.** The worktree has no `app/backend/src/.env` (it is gitignored). Create it from the template and fill the required values:
   ```bash
   cp app/backend/.env.example app/backend/src/.env
   ```
   Then ensure `app/backend/src/.env` sets, at minimum: `ENVIRONMENT=development`, `DB_RECREATE_ON_STARTUP=true`, `ESI_USER_AGENT=...`, `DATABASE_URL=postgresql+asyncpg://…/hangar_bay_db`, `CACHE_URL=redis://…/0`, and — required for pytest — `DATABASE_URL_TESTS=postgresql+asyncpg://…/hangar_bay_test` (a dedicated test database; conftest raises at import if unset). Match the connection strings to the compose containers from Step 2. (If a working dev `.env` already exists in another local worktree, copying it is fine.)
-- [ ] **Step 4: Install backend deps and capture the backend baseline.**
+- [x] **Step 4: Install backend deps and capture the backend baseline.**
   ```bash
   cd app/backend && pdm install && pdm run pytest -q
   ```
   Expected: all tests pass (≈196 test functions at `origin/dev` tip `a7b0f26`). Record the exact `N passed` count from the summary line in this plan's Execution Status before proceeding — this is the number Phase 1/2 must never reduce.
-- [ ] **Step 5: Install frontend deps and capture the frontend baseline.**
+
+  **Actual:** `220 passed in 6.95s`, clean output, no warnings. `origin/dev` tip at execution time was `27dac66` (commits since `a7b0f26` are docs-only — no production code — so the higher count is the plan estimate being approximate, not drift).
+- [x] **Step 5: Install frontend deps and capture the frontend baseline.**
   ```bash
   cd ../frontend/web && npm ci && npx vitest run --reporter=dot
   ```
   Expected: all vitest suites pass (12 unit/component test files at baseline). Record the `Test Files N passed` / `Tests N passed` counts in this plan's Execution Status. (The frontend baseline is captured now for later phases; Section A touches no frontend code.)
+
+  **Actual:** `Test Files  12 passed (12)` / `Tests  62 passed (62)`. jsdom logs expected `Not implemented: Window's scrollTo()` / `HTMLCanvasElement's getContext()` noise throughout (pre-existing jsdom environment limitations, not test failures) — no assertion failures, no errors.
 
 ```
 BEFORE marking this task complete:
