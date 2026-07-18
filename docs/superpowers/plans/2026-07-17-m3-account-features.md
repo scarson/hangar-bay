@@ -1617,7 +1617,7 @@ with a deliberate same-name/distinct-type_id tiebreaker, never rely on insertion
     # Account features (M3)
     MAX_WATCHLIST_ITEMS_PER_USER: int = 200
 ```
-Also document it in `app/backend/src/.env.example` (ENV-4): `MAX_WATCHLIST_ITEMS_PER_USER=200`.
+Also document it in `app/backend/.env.example` (ENV-4): `MAX_WATCHLIST_ITEMS_PER_USER=200`.
 
 - [ ] **Step 2: Add the watchlist schemas.** Append to `schemas/account.py` (ensure imports at top of
   the file include `from datetime import datetime`, `from typing import Optional`,
@@ -2158,7 +2158,7 @@ app.include_router(watchlist_router.router)   # /me/watchlist-items (bare, PROXY
   `cd app/backend && pdm run pytest -q && pdm run lint`
 
 - [ ] **Step 9: Commit.**
-  `git add app/backend/src/fastapi_app/schemas/account.py app/backend/src/fastapi_app/core/config.py app/backend/src/.env.example app/backend/src/fastapi_app/services/watchlist_service.py app/backend/src/fastapi_app/api/watchlist.py app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/api/test_watchlist.py`
+  `git add app/backend/src/fastapi_app/schemas/account.py app/backend/src/fastapi_app/core/config.py app/backend/.env.example app/backend/src/fastapi_app/services/watchlist_service.py app/backend/src/fastapi_app/api/watchlist.py app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/api/test_watchlist.py`
   ```
   feat(api): add F006 watchlist CRUD with ESI add pipeline
 
@@ -3130,7 +3130,7 @@ assertion, never a running clock.)
     WATCHLIST_MATCH_LOCK_TTL_SECONDS: int = 900
     NOTIFICATION_RETENTION_DAYS: int = 90              # prune window (matcher §4.4 step 5)
 ```
-Document all three in `app/backend/src/.env.example` (ENV-4). All have defaults → no `_ENV_DEFAULTS`
+Document all three in `app/backend/.env.example` (ENV-4). All have defaults → no `_ENV_DEFAULTS`
 change. (`MAX_SAVED_SEARCHES_PER_USER` is owned by the F005 section — see coordination note; if it is
 missing at this point, add `MAX_SAVED_SEARCHES_PER_USER: int = 100` here alongside these.)
 
@@ -3165,11 +3165,15 @@ def test_add_watchlist_matcher_job_registers_expected_id():
     assert call.kwargs["replace_existing"] is True
 
 
-def test_matcher_service_with_default_now_fn_is_picklable():
+def test_matcher_service_is_picklable():
     import pickle
-    # RedisJobStore pickles the job func + args; a lambda now_fn would break this.
-    svc = WatchlistMatcherService(settings=MagicMock(), now_fn=None)
-    assert pickle.loads(pickle.dumps(svc.now_fn)) is None
+    # RedisJobStore pickles the job func + args; the SERVICE itself must round-trip (a MagicMock
+    # settings or a lambda now_fn would break this — use the real settings singleton).
+    from fastapi_app.core.config import settings as real_settings
+    svc = WatchlistMatcherService(settings=real_settings, now_fn=None)
+    restored = pickle.loads(pickle.dumps(svc))
+    assert restored.now_fn is None
+    assert restored.settings.WATCHLIST_MATCH_INTERVAL_SECONDS == real_settings.WATCHLIST_MATCH_INTERVAL_SECONDS
 
 
 async def test_run_watchlist_matcher_job_swallows_exceptions():
@@ -3251,7 +3255,7 @@ def add_watchlist_matcher_job(
   `cd app/backend && pdm run pytest -q && pdm run lint`
 
 - [ ] **Step 9: Commit.**
-  `git add app/backend/src/fastapi_app/core/config.py app/backend/src/.env.example app/backend/src/fastapi_app/core/scheduler.py app/backend/src/fastapi_app/services/scheduled_jobs.py app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py`
+  `git add app/backend/src/fastapi_app/core/config.py app/backend/.env.example app/backend/src/fastapi_app/core/scheduler.py app/backend/src/fastapi_app/services/scheduled_jobs.py app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py`
   ```
   feat(api): register the watchlist matcher as a scheduled interval job
 
