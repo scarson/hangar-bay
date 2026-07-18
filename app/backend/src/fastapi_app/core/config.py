@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     # --- M3 account features ---
     # Per-user soft caps (best-effort count-checks, design §3.5).
     MAX_SAVED_SEARCHES_PER_USER: int = 100
+    MAX_WATCHLIST_ITEMS_PER_USER: int = 200
 
     # Database + cache
     DATABASE_URL: str = Field(..., description="SQLAlchemy database connection string.")

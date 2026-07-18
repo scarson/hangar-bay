@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator, model_validator
 
 from .contracts import SortableContractFields, SortDirection
 
@@ -50,6 +50,48 @@ class SavedSearchSchema(BaseModel):
     id: int
     name: str
     search_parameters: SavedSearchParameters
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WatchlistItemCreate(BaseModel):
+    """Add-watchlist body: exactly one of type_id / type_name, plus optional max_price / notes."""
+
+    type_id: Optional[int] = Field(default=None, gt=0)
+    type_name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    max_price: Optional[float] = Field(default=None, ge=0.01, description="ISK; >= 0.01 when present.")
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("type_name", "notes")
+    @classmethod
+    def _strip_blank_to_none(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+    @model_validator(mode="after")
+    def _exactly_one_identifier(self):
+        if (self.type_id is None) == (self.type_name is None):
+            raise ValueError("provide exactly one of type_id or type_name")
+        return self
+
+
+class WatchlistItemUpdate(BaseModel):
+    """Partial update: omitted field preserves, explicit JSON null clears (via model_fields_set)."""
+
+    max_price: Optional[float] = Field(default=None, ge=0.01)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class WatchlistItemSchema(BaseModel):
+    id: int
+    type_id: int
+    type_name: str
+    max_price: Optional[float] = None
+    notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

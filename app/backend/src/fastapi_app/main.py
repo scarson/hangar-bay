@@ -25,6 +25,7 @@ from .services.background_aggregation import ContractAggregationService # For ma
 from .api import contracts as contracts_router
 from .api import auth as auth_router
 from .api import saved_searches as saved_searches_router
+from .api import watchlist as watchlist_router
 from .models import contracts # This import is crucial for Base.metadata to find the tables.
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -194,5 +195,6 @@ app.include_router(contracts_router.router)
 app.include_router(auth_router.router)      # /auth/sso/login|callback|logout (bare, PROXY-1)
 app.include_router(auth_router.me_router)   # /me (bare)
 app.include_router(saved_searches_router.router)   # /me/saved-searches/* (bare, PROXY-1)
+app.include_router(watchlist_router.router)   # /me/watchlist-items (bare, PROXY-1)
 
 # Further application setup, routers, middleware, etc., will go here
