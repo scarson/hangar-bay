@@ -5,6 +5,7 @@ import { ApiError } from '../../../lib/api/client'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
 import { formatIsk, primaryLabel, timeRemaining } from '../format'
 import { useContract } from '../hooks/useContract'
+import { WatchButton } from '../../watchlists/components/WatchButton'
 
 const DATETIME = new Intl.DateTimeFormat('en-US', {
   dateStyle: 'medium',
@@ -189,6 +190,11 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
                 {item.is_blueprint_copy ? <Badge tone="copper">BPC</Badge> : null}
                 {!item.is_included ? (
                   <span className="text-xs text-warn">asked for, not included</span>
+                ) : null}
+                {item.is_included && item.category === 'ship' ? (
+                  <span className="ml-auto">
+                    <WatchButton typeId={item.type_id} />
+                  </span>
                 ) : null}
               </li>
             ))}
