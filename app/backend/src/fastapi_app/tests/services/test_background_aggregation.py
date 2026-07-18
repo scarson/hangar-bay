@@ -339,3 +339,77 @@ async def test_process_contracts_persists_bpc_flag_and_is_bpc_filter_matches(
     assert response.status_code == 200
     matched_ids = [c["contract_id"] for c in response.json()["items"]]
     assert 900201 in matched_ids
+
+
+async def test_item_fetch_failure_for_one_contract_does_not_abort_batch(db_session: AsyncSession):
+    """One contract's item fetch raising must not prevent the other contract's
+    items from landing, and the failed contract must never be marked processed."""
+    service = _make_service()
+
+    async def items_side_effect(contract_id):
+        if contract_id == 910001:
+            raise RuntimeError("simulated ESI items failure")
+        return [{"record_id": 21, "type_id": 587, "quantity": 1, "is_included": True}]
+
+    service.esi_client.get_contract_items = AsyncMock(side_effect=items_side_effect)
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 64}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    contracts = [
+        dict(_ship_contract_dict(910001)),
+        dict(_ship_contract_dict(910002)),
+    ]
+
+    await service._process_contracts(db_session, contracts)
+
+    item_rows = (
+        await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 910002)
+        )
+    ).scalars().all()
+    assert len(item_rows) == 1  # the healthy contract's items landed
+
+    failed_row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910001)
+        )
+    ).scalar_one()
+    healthy_row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910002)
+        )
+    ).scalar_one()
+    # The model default is 'PENDING_ITEMS' (models/contracts.py) — a contract
+    # whose item fetch failed keeps the default, it is NEVER marked COMPLETED
+    # or ENRICHMENT_INCOMPLETE (both require membership in processed ids).
+    assert failed_row.item_processing_status == "PENDING_ITEMS"
+    assert healthy_row.item_processing_status == "COMPLETED"
+
+
+async def test_structure_ids_are_excluded_from_name_resolution(db_session: AsyncSession, caplog):
+    """The resolvable-ID cut is `id < 100_000_000_000` (10^11): player-structure
+    IDs at or above 10^11 are unresolvable via /universe/names/ and are filtered
+    out of the resolve batch (name column stays NULL). Pin BOTH sides of the
+    boundary so an off-by-one in the extracted helper cannot slip through."""
+    caplog.set_level("INFO")  # the filter log is INFO; default capture level misses it
+    service = _make_service()
+    contract = dict(_ship_contract_dict(910003))
+    contract["start_location_id"] = 99_999_999_999       # last resolvable id
+    contract["end_location_id"] = 100_000_000_000        # first excluded id
+    contract["type"] = "courier"  # skip the item-fetch loop entirely
+
+    await service._process_contracts(db_session, [contract])
+
+    resolved_ids = service.esi_client.resolve_ids_to_names.await_args.args[0]
+    assert 99_999_999_999 in resolved_ids
+    assert 100_000_000_000 not in resolved_ids
+    assert "Filtered out 1 unresolvable structure IDs." in caplog.text
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910003)
+        )
+    ).scalar_one()
+    assert row.start_location_name is None  # 99999999999 resolves to nothing in the stub map
