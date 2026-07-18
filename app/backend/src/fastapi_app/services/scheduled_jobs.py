@@ -16,7 +16,7 @@ async def run_aggregation_job(aggregation_service: ContractAggregationService):
     This function now expects an already initialized ContractAggregationService instance.
     """
     logger.info("Executing scheduled job: run_aggregation_job with injected service")
-    
+
     try:
         await aggregation_service.run_aggregation()
     except Exception as e:

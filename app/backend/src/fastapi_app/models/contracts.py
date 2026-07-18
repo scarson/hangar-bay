@@ -15,8 +15,9 @@ from sqlalchemy import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
-from typing import Optional, Any, Dict, List # Dict and List for relationship type hints if needed, Any for JSON
+from typing import Optional, Any, Dict, List  # Dict and List for relationship type hints if needed, Any for JSON
 from datetime import datetime
+
 
 class EsiMarketGroupCache(Base):
     __tablename__ = 'esi_market_group_cache'
@@ -48,7 +49,7 @@ class Contract(Base):
     start_location_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     start_location_system_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     start_location_region_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    end_location_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True) # Optional for courier contracts
+    end_location_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)  # Optional for courier contracts
     for_corporation: Mapped[bool] = mapped_column(Boolean, nullable=False)
     date_issued: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     date_expired: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -60,7 +61,7 @@ class Contract(Base):
     start_location_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     issuer_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     issuer_corporation_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    is_ship_contract: Mapped[bool] = mapped_column(Boolean, default=False) 
+    is_ship_contract: Mapped[bool] = mapped_column(Boolean, default=False)
     item_processing_status: Mapped[str] = mapped_column(String, default='PENDING_ITEMS', index=True)
     items_last_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     contract_esi_etag: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -97,7 +98,7 @@ class ContractItem(Base):
 
     # Denormalized data from other sources
     type_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    category: Mapped[Optional[str]] = mapped_column(String, nullable=True) # e.g., 'ship'
+    category: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # e.g., 'ship'
     market_group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     contract: Mapped["Contract"] = relationship(back_populates="items")

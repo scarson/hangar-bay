@@ -11,7 +11,7 @@ from typing import Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, APIRouter
-from redis.asyncio import Redis # For type hinting Redis client
+from redis.asyncio import Redis  # For type hinting Redis client
 from .core.config import settings
 from .core.cache import init_cache, close_cache
 from .core.http_client import init_http_client, close_http_client
@@ -20,16 +20,15 @@ from .core.dependencies import get_cache
 from .core.logging import setup_logging, RequestIDMiddleware
 from .core.token_cipher import is_token_cipher_configured
 from .db import AsyncSessionLocal, async_engine, Base
-from .core.esi_client_class import ESIClient # For manual ESI client creation
-from .services.background_aggregation import ContractAggregationService # For manual service creation
+from .core.esi_client_class import ESIClient  # For manual ESI client creation
+from .services.background_aggregation import ContractAggregationService  # For manual service creation
 from .services.watchlist_matcher import WatchlistMatcherService
 from .api import contracts as contracts_router
 from .api import auth as auth_router
 from .api import saved_searches as saved_searches_router
 from .api import watchlist as watchlist_router
 from .api import notifications as notifications_router
-from .models import contracts # This import is crucial for Base.metadata to find the tables.
-from fastapi import Request
+from .models import contracts  # This import is crucial for Base.metadata to find the tables.
 from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
@@ -37,7 +36,6 @@ logger = logging.getLogger(__name__)
 # Configure basic logging for early startup messages
 # This will be enhanced with structured logging in the lifespan function
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(name)s - %(message)s')
-
 
 
 @asynccontextmanager
@@ -86,6 +84,8 @@ app = FastAPI(
 )
 
 # Add global exception handler FIRST, before middleware
+
+
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
     """
@@ -199,7 +199,6 @@ def warn_if_sso_unconfigured() -> None:
             "EVE SSO is not configured (ESI_CLIENT_ID/TOKEN_CIPHER_KEYS empty); "
             "/auth/sso/login and /auth/sso/callback return 503."
         )
-
 
 
 # CASCADE-PROD-CHECK: Remove or disable this endpoint for production.

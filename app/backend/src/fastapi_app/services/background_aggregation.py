@@ -3,22 +3,22 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager, AbstractAsyncContextManager
-from typing import Iterable, Iterator, List, Callable # Added Callable
+from typing import Iterable, Iterator, List, Callable  # Added Callable
 from datetime import datetime
 
-import redis.asyncio as aioredis # For on-demand client creation
+import redis.asyncio as aioredis  # For on-demand client creation
 from fastapi import Depends
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.dependencies import get_cache, get_esi_client, get_settings
-from ..core.config import Settings # Settings type for hinting
-from ..core.esi_client_class import ESIClient # ESIClient class for type hint
-from ..core.exceptions import ESINotModifiedError # Restored ESINotModifiedError
+from ..core.config import Settings  # Settings type for hinting
+from ..core.esi_client_class import ESIClient  # ESIClient class for type hint
+from ..core.exceptions import ESINotModifiedError  # Restored ESINotModifiedError
 
-from ..models.contracts import Contract, ContractItem # Models
+from ..models.contracts import Contract, ContractItem  # Models
 # Removed incorrect import: from ..services.esi_client import ESIClient as ESIClientService
-from .db_upsert import bulk_upsert # Upsert utility
+from .db_upsert import bulk_upsert  # Upsert utility
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +71,12 @@ class ContractAggregationService:
         # session_factory: Callable[..., AbstractAsyncContextManager[AsyncSession]], # Removed
         # cache: Redis, # Removed cache client from constructor
         esi_client: ESIClient,
-        settings: Settings, # Settings will now be injected
+        settings: Settings,  # Settings will now be injected
     ):
         # self.session_factory = session_factory # Removed
         # self.cache = cache # Removed cache client attribute
         self.esi_client = esi_client
-        self.settings = settings # Assign the injected settings
+        self.settings = settings  # Assign the injected settings
 
     @asynccontextmanager
     async def _concurrency_lock(self):
@@ -102,7 +102,7 @@ class ContractAggregationService:
                 raise ConcurrencyLockError("Could not acquire aggregation lock.")
 
             logger.info("Concurrency lock acquired for contract aggregation.")
-            yield # If this raises, the finally block below still runs
+            yield  # If this raises, the finally block below still runs
         finally:
             if lock_acquired:
                 logger.info("Releasing concurrency lock for contract aggregation.")
@@ -119,9 +119,9 @@ class ContractAggregationService:
                         "Leaving the current holder's lock intact.",
                         AGGREGATION_LOCK_TIMEOUT,
                     )
-            await redis_client.close() # Ensure redis client is closed
+            await redis_client.close()  # Ensure redis client is closed
 
-    async def run_aggregation(self):
+    async def run_aggregation(self):  # noqa: C901
         """
         Runs the full public contract aggregation and ingestion process.
         Uses a database session from the session factory.
@@ -142,20 +142,20 @@ class ContractAggregationService:
                 # Use the ESIClient as a context manager to ensure its http_client is initialized.
                 async with self.esi_client:
                     logger.info("Concurrency lock acquired. Starting public contract aggregation run.")
-                    
+
                     # Dynamically create engine and session factory
                     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
                     from sqlalchemy.orm import sessionmaker
-                    
-                    logger.info(f"Creating database engine with URL: {self.settings.DATABASE_URL[:30]}...") # Log part of URL for privacy
+
+                    logger.info(f"Creating database engine with URL: {self.settings.DATABASE_URL[:30]}...")  # Log part of URL for privacy
                     engine = create_async_engine(self.settings.DATABASE_URL)
                     local_session_factory = sessionmaker(
                         bind=engine,
                         class_=AsyncSession,
                         expire_on_commit=False
                     )
-                    
-                    async with local_session_factory() as db_session: # Obtain a new session for this run
+
+                    async with local_session_factory() as db_session:  # Obtain a new session for this run
                         logger.info(f"Processing contracts for region IDs: {current_region_ids}")
                         all_contracts_data: List[dict] = []
 
@@ -173,7 +173,6 @@ class ContractAggregationService:
                                 logger.info(f"Contracts for region {region_id} not modified.")
                             except Exception as e:
                                 logger.error(f"Failed to fetch contracts for region {region_id}: {e}", exc_info=True)
-
 
                         if not all_contracts_data:
                             logger.info("No new contracts found across all specified regions.")
@@ -205,12 +204,12 @@ class ContractAggregationService:
             # If the error was in _concurrency_lock, no db_session was active yet.
             return
         finally:
-            if engine: # Check if engine was initialized
+            if engine:  # Check if engine was initialized
                 logger.info("Disposing of database engine.")
                 await engine.dispose()
                 logger.info("Database engine disposed.")
 
-    async def _process_contracts(self, db_session: AsyncSession, contracts: List[dict]):
+    async def _process_contracts(self, db_session: AsyncSession, contracts: List[dict]):  # noqa: C901
         """
         Processes a list of contracts, fetches their items, and upserts them using the provided db_session.
         """
@@ -339,7 +338,7 @@ class ContractAggregationService:
             BATCH_SIZE = 50  # Number of items to process in each batch
             for i in range(0, len(all_items), BATCH_SIZE):
                 batch_items = all_items[i:i + BATCH_SIZE]
-                logger.info(f"Upserting batch of {len(batch_items)} contract items (items {i+1}-{i+len(batch_items)} of {len(all_items)}).")
+                logger.info(f"Upserting batch of {len(batch_items)} contract items (items {i + 1}-{i + len(batch_items)} of {len(all_items)}).")
                 await bulk_upsert(db_session, ContractItem, batch_items)
             logger.info(f"Finished upserting all {len(all_items)} contract items.")
         else:
@@ -459,7 +458,7 @@ class ContractAggregationService:
 async def get_aggregation_service(
     # cache: Redis = Depends(get_cache), # Service no longer takes cache client directly
     esi_client: ESIClient = Depends(get_esi_client),
-    settings: Settings = Depends(get_settings), # Use the new get_settings dependency
+    settings: Settings = Depends(get_settings),  # Use the new get_settings dependency
 ) -> ContractAggregationService:
     """
     FastAPI dependency to get an instance of the ContractAggregationService.

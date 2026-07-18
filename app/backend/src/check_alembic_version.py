@@ -5,6 +5,7 @@ import os
 # and alembic.ini, which is app/backend/src/
 DB_PATH = os.path.join(os.path.dirname(__file__), 'hangar_bay_dev.db')
 
+
 def get_alembic_version():
     if not os.path.exists(DB_PATH):
         print(f"ERROR: Database file not found at {DB_PATH}")
@@ -25,6 +26,7 @@ def get_alembic_version():
     finally:
         if conn:
             conn.close()
+
 
 if __name__ == "__main__":
     get_alembic_version()

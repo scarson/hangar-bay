@@ -1,7 +1,7 @@
 """
 Centralized configuration for the application's structured logging.
 
-This module provides the setup_logging function and request ID middleware 
+This module provides the setup_logging function and request ID middleware
 for consistent, structured logging across the application using structlog.
 
 The setup_logging function defined here will be imported and called in main.py during app startup.
@@ -33,24 +33,24 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         # Generate a unique request ID
         request_id = str(uuid.uuid4())
-        
+
         # Set the request ID in the context variable
         request_id_contextvar.set(request_id)
-        
+
         # Bind the request ID to structlog context
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id)
-        
+
         # Process the request
         response = await call_next(request)
-        
+
         return response
 
 
 def setup_logging(settings: Settings) -> None:
     """
     Configure structured logging for the application.
-    
+
     Args:
         settings: Application settings containing LOG_LEVEL configuration
     """
@@ -79,20 +79,20 @@ def setup_logging(settings: Settings) -> None:
 
     # Configure root logger to use structlog
     root_logger = logging.getLogger()
-    
+
     # Clear any existing handlers
     root_logger.handlers.clear()
-    
+
     # Add new handler
     handler = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
-    
+
     # Set log level from settings
     log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
     root_logger.setLevel(log_level)
-    
+
     # Prevent duplicate log messages
     root_logger.propagate = False
 
@@ -100,10 +100,10 @@ def setup_logging(settings: Settings) -> None:
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """
     Get a structured logger instance.
-    
+
     Args:
         name: Name of the logger (typically __name__)
-        
+
     Returns:
         Configured structlog logger instance
     """
@@ -120,7 +120,7 @@ def log_key_event(
 ) -> None:
     """
     Log a key business event with standardized schema.
-    
+
     Args:
         logger: The structlog logger instance
         event: Short, descriptive name for the event
@@ -135,10 +135,10 @@ def log_key_event(
         "duration_ms": duration_ms,
         **kwargs
     }
-    
+
     if error_message:
         log_data["error_message"] = error_message
-    
+
     if success:
         logger.info("Key event completed", **log_data)
     else:
