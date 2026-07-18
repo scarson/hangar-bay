@@ -102,10 +102,11 @@ tests SQL strings rather than behavior.
 **Phase 1, Task 1.2 — two annotation-level deviations from the normative helper signatures.**
 (a) `_needs_item_join` wraps its expression in `bool()`; the original assigned a raw truthy value, and
 the plan's normative signature declares `-> bool`. Consumed only by `if`, so no caller can observe it.
-(b) `_fetch_page_joined` / `_fetch_page_simple` keep the plan's normative `-> list[Contract]`
-annotation but return a SQLAlchemy `Sequence`. Inserting `list(...)` would have been a real (if tiny)
-behavior change, so the statement was moved verbatim and the loose annotation kept. No caller performs
-list-specific operations.
+(b) `_fetch_page_simple` keeps the plan's normative `-> list[Contract]` annotation but returns a
+SQLAlchemy `Sequence`. Inserting `list(...)` would have been a real (if tiny) behavior change, so the
+statement was moved verbatim and the loose annotation kept. No caller performs list-specific
+operations. `_fetch_page_joined`'s annotation is honest — its position-restoration step builds a real
+`list` — so this applies to the simple path only.
 
 ### Discoveries
 
