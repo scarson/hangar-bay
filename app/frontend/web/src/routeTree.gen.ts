@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SavedSearchesRouteImport } from './routes/saved-searches'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ContractsIndexRouteImport } from './routes/contracts.index'
 import { Route as ContractsContractIdRouteImport } from './routes/contracts.$contractId'
 
+const SavedSearchesRoute = SavedSearchesRouteImport.update({
+  id: '/saved-searches',
+  path: '/saved-searches',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,36 +37,52 @@ const ContractsContractIdRoute = ContractsContractIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/saved-searches': typeof SavedSearchesRoute
   '/contracts/$contractId': typeof ContractsContractIdRoute
   '/contracts/': typeof ContractsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/saved-searches': typeof SavedSearchesRoute
   '/contracts/$contractId': typeof ContractsContractIdRoute
   '/contracts': typeof ContractsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/saved-searches': typeof SavedSearchesRoute
   '/contracts/$contractId': typeof ContractsContractIdRoute
   '/contracts/': typeof ContractsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/contracts/$contractId' | '/contracts/'
+  fullPaths: '/' | '/saved-searches' | '/contracts/$contractId' | '/contracts/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/contracts/$contractId' | '/contracts'
-  id: '__root__' | '/' | '/contracts/$contractId' | '/contracts/'
+  to: '/' | '/saved-searches' | '/contracts/$contractId' | '/contracts'
+  id:
+    | '__root__'
+    | '/'
+    | '/saved-searches'
+    | '/contracts/$contractId'
+    | '/contracts/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SavedSearchesRoute: typeof SavedSearchesRoute
   ContractsContractIdRoute: typeof ContractsContractIdRoute
   ContractsIndexRoute: typeof ContractsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/saved-searches': {
+      id: '/saved-searches'
+      path: '/saved-searches'
+      fullPath: '/saved-searches'
+      preLoaderRoute: typeof SavedSearchesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +109,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SavedSearchesRoute: SavedSearchesRoute,
   ContractsContractIdRoute: ContractsContractIdRoute,
   ContractsIndexRoute: ContractsIndexRoute,
 }
