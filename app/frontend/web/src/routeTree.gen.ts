@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WatchlistRouteImport } from './routes/watchlist'
 import { Route as SavedSearchesRouteImport } from './routes/saved-searches'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ContractsIndexRouteImport } from './routes/contracts.index'
 import { Route as ContractsContractIdRouteImport } from './routes/contracts.$contractId'
 
+const WatchlistRoute = WatchlistRouteImport.update({
+  id: '/watchlist',
+  path: '/watchlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SavedSearchesRoute = SavedSearchesRouteImport.update({
   id: '/saved-searches',
   path: '/saved-searches',
@@ -38,12 +44,14 @@ const ContractsContractIdRoute = ContractsContractIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/saved-searches': typeof SavedSearchesRoute
+  '/watchlist': typeof WatchlistRoute
   '/contracts/$contractId': typeof ContractsContractIdRoute
   '/contracts/': typeof ContractsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/saved-searches': typeof SavedSearchesRoute
+  '/watchlist': typeof WatchlistRoute
   '/contracts/$contractId': typeof ContractsContractIdRoute
   '/contracts': typeof ContractsIndexRoute
 }
@@ -51,18 +59,30 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/saved-searches': typeof SavedSearchesRoute
+  '/watchlist': typeof WatchlistRoute
   '/contracts/$contractId': typeof ContractsContractIdRoute
   '/contracts/': typeof ContractsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/saved-searches' | '/contracts/$contractId' | '/contracts/'
+  fullPaths:
+    | '/'
+    | '/saved-searches'
+    | '/watchlist'
+    | '/contracts/$contractId'
+    | '/contracts/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/saved-searches' | '/contracts/$contractId' | '/contracts'
+  to:
+    | '/'
+    | '/saved-searches'
+    | '/watchlist'
+    | '/contracts/$contractId'
+    | '/contracts'
   id:
     | '__root__'
     | '/'
     | '/saved-searches'
+    | '/watchlist'
     | '/contracts/$contractId'
     | '/contracts/'
   fileRoutesById: FileRoutesById
@@ -70,12 +90,20 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SavedSearchesRoute: typeof SavedSearchesRoute
+  WatchlistRoute: typeof WatchlistRoute
   ContractsContractIdRoute: typeof ContractsContractIdRoute
   ContractsIndexRoute: typeof ContractsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/watchlist': {
+      id: '/watchlist'
+      path: '/watchlist'
+      fullPath: '/watchlist'
+      preLoaderRoute: typeof WatchlistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/saved-searches': {
       id: '/saved-searches'
       path: '/saved-searches'
@@ -110,6 +138,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SavedSearchesRoute: SavedSearchesRoute,
+  WatchlistRoute: WatchlistRoute,
   ContractsContractIdRoute: ContractsContractIdRoute,
   ContractsIndexRoute: ContractsIndexRoute,
 }
