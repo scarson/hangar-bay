@@ -92,6 +92,8 @@ notes and commit messages.
 
 - **Design §9.2 — backfilling real `users` rows into the `test_auth_flow` sessions "where trivial" — deliberately deferred.** No reduction in duplication materialized from the migration: the new `authed_user` fixture (Task 1.2) already covers the M3 tests that need a real `users` row, and the existing `test_auth_flow` tests keep their minted-session `user_id` values, which no longer FK anywhere they insert. Recorded here so the design and plan agree with an audit trail rather than a silent drop (round-2 review MINOR-7); mirror this line into the Task 10.2 PR-body deviation notes at ship time.
 
+- **Post-review fix wave — addressed codex pre-merge findings 1–7** (frontend findings 1, 2, 5, 6, 7; backend findings 3, 4 tracked separately). See `docs/audits/m3-plan-review/codex-pr46-review.md` for the review and per-finding failure/fix detail.
+
 ---
 <!-- SECTION A of the M3 implementation plan: Phase 0 (campaign setup) + Phase 1 (backend foundations) + Phase 2 (F005 Saved Searches backend). Authoritative design: docs/superpowers/specs/2026-07-17-m3-account-features-design.md. -->
 
