@@ -119,7 +119,8 @@ async def echo(full_path: str, request: Request):
         "query": request.scope["query_string"].decode(),
         "body_len": len(body),
         "body_prefix": body[:100].decode(errors="replace"),
-        "database_url_env": os.environ.get("DATABASE_URL", "")[:16],  # scheme prefix only, never creds
+        # Scheme ONLY — never any slice of the URL (a prefix slice leaks the username).
+        "database_url_scheme": (lambda u: f"{u.partition('://')[0]}://" if "://" in u else "")(os.environ.get("DATABASE_URL", "")),
         "render_git_commit": os.environ.get("RENDER_GIT_COMMIT", "MISSING"),  # P6: release-verification dependency
     })
 ```
@@ -148,14 +149,22 @@ CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 # P1 — POST body pass-through across the cross-service rewrite:
 curl -s -X POST "https://<spike-site>.onrender.com/api/v1/auth/sso/callback?code=abc&state=xyz" \
   -H 'Content-Type: application/x-www-form-urlencoded' -d 'grant=body-survives'
-# EXPECT: method=POST, raw_path=/auth/sso/callback, query=code=abc&state=xyz, body_len=18
+# EXPECT: method=POST, raw_path=/auth/sso/callback, query=code=abc&state=xyz,
+#         body_len=19 (len("grant=body-survives")), body_prefix echoing the payload.
+# The pass/fail criterion is the ECHOED VALUES matching what was sent — if you vary
+# the payload, recompute the expected length; do not fail the probe on a stale constant.
 
 # P2 — trailing-slash preservation, both shapes:
 curl -s "https://<spike-site>.onrender.com/api/v1/contracts/"   # EXPECT raw_path=/contracts/
 curl -s "https://<spike-site>.onrender.com/api/v1/contracts"    # EXPECT raw_path=/contracts (no added slash)
 
+# P2b — rewrite-destination hostname reality check: record the spike service's ACTUAL
+# assigned onrender.com hostname from the dashboard. Render suffixes service hostnames
+# when the name is taken — the production blueprint's rewrite destination (Task 1.2)
+# must use the REAL assigned hostname, verified again at Phase 2b apply time.
+
 # P3 — fromDatabase URL scheme actually injected:
-curl -s "https://<spike-site>.onrender.com/api/v1/anything" | jq .database_url_env
+curl -s "https://<spike-site>.onrender.com/api/v1/anything" | jq .database_url_scheme
 # EXPECT "postgresql://" (or record what it actually is — this drives Task 3.1)
 
 # P4 — static-site default response headers:
@@ -169,13 +178,15 @@ curl -s "https://<spike-site>.onrender.com/api/v1/anything" | jq .render_git_com
 # EXPECT: the spike repo's full head SHA, NOT "MISSING".
 
 # P5 — deploy pin + poll mechanism: create a Render API key on the spike account, then:
-curl -s -X POST -H "Authorization: Bearer $SPIKE_KEY" -H 'Content-Type: application/json' \
+curl -s -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $SPIKE_KEY" -H 'Content-Type: application/json' \
   -d '{"commitId": "<full-sha-of-spike-repo-head>"}' \
-  "https://api.render.com/v1/services/<spike-service-id>/deploys" | jq '{id, status, commit}'
+  "https://api.render.com/v1/services/<spike-service-id>/deploys" | tee /tmp/p5-create.json
 # Then poll: curl -s -H "Authorization: Bearer $SPIKE_KEY" \
 #   "https://api.render.com/v1/services/<spike-service-id>/deploys/<deploy-id>" | jq .status
 # EXPECT: commitId is honored (deploy builds THAT sha) and status transitions ... -> live.
-# RECORD the exact status enum values observed (drives deploy.yml's poll loop in Task 1.4).
+# RECORD: the exact status enum values observed, AND the create-response shape for BOTH
+# 201 Created and 202 Queued — trigger a second create while the first is mid-build to
+# capture the 202 body (does it carry an id?). Both shapes drive Task 1.4's poll loop.
 ```
 
 - [ ] **Step 4: Write `docs/audits/m4-recon/render-spike-results.md`** with an ABOUTME header, the raw curl outputs, and a **verdict block**: `TOPOLOGY: A (static-site rewrites)` if P1 AND P2 both pass exactly, else `TOPOLOGY: B (in-container Caddy — Appendix B)`; plus the P3 scheme string, P4 header gaps table, and P5 status enums.
@@ -336,11 +347,18 @@ services:
     routes:                           # ORDER MATTERS: prefix-strip rule before SPA fallback (PROXY-1)
       - type: rewrite
         source: /api/v1/*
+        # PLACEHOLDER HOSTNAME: Render suffixes service hostnames when a name is taken.
+        # At Phase 2b apply time, verify the API service's ACTUAL assigned hostname in the
+        # dashboard and correct this destination in the same change if it differs (spike P2b).
         destination: https://hangar-bay-api.onrender.com/*
       - type: rewrite
         source: /*
         destination: /index.html
-    headers:                          # close the gaps the spike found (spec §4 edge headers)
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+        # Drop this rule ONLY if spike P4 recorded Render already sending an equal-or-stronger HSTS header.
       - path: /index.html
         name: Cache-Control
         value: no-cache
@@ -355,7 +373,7 @@ databases:
     postgresMajorVersion: "17"
 ```
 
-- [ ] **Step 2: Validate field names against the current Blueprint spec** (`render.com/docs/blueprint-spec` — Render renames keys occasionally; the spike account's "New Blueprint" dry-run validates the file). Fix any renamed keys; record them as a Deviation if they differ from the block above. If the spike's P4 showed Render already sets a header above, keep our explicit rule anyway (defense in depth, and blueprint-documented intent).
+- [ ] **Step 2: Validate field names against the current Blueprint spec** (`render.com/docs/blueprint-spec` — Render renames keys occasionally; the spike account's "New Blueprint" dry-run validates the file). Highest-drift-risk keys to check by name: `autoDeployTrigger` (older schema: `autoDeploy`), the Key Value service's `fromService.property: connectionString`, `previews.generation`, and `postgresMajorVersion`. Fix any renamed keys; record them as a Deviation if they differ from the block above. If the spike's P4 showed Render already sets a Cache-Control header above, keep our explicit cache rules anyway (defense in depth); the HSTS rule alone is conditional per its inline note.
 
 - [ ] **Step 3: Commit:**
 ```bash
@@ -485,8 +503,24 @@ DATABASE_URL='postgresql+asyncpg://hangar:hangar@localhost:5432/m4_alembic_scaff
 # EXPECT: clean exit, no revisions applied (empty versions/), no debug-print spam.
 DATABASE_URL='postgresql+asyncpg://hangar:hangar@localhost:5432/m4_alembic_scaffold_check' pdm run migrate-check
 # EXPECT: no current revision (empty history).
-pdm run pytest   # EXPECT: full suite still green (tests import env.py's do_run_migrations)
+pdm run pytest   # EXPECT: full suite still green
 docker exec hangar_bay_postgres psql -U hangar -c 'DROP DATABASE m4_alembic_scaffold_check;'
+```
+Also add an import-safety test (no existing test imports env.py — the safety of plain `import` must be pinned, not assumed) in `app/backend/src/fastapi_app/tests/test_migrations.py` (created here; Task 3.9 extends it):
+```python
+# ABOUTME: Guards the alembic env.py contract — import-safe outside alembic, migration/model equivalence (Task 3.9).
+import importlib.util
+from pathlib import Path
+
+
+def test_alembic_env_import_is_side_effect_free():
+    """Importing env.py outside an alembic EnvironmentContext must not run migrations
+    (the invocation tail is guarded); reaching the end of the module without error IS the assertion."""
+    env_path = Path(__file__).resolve().parents[2] / "alembic" / "env.py"
+    spec = importlib.util.spec_from_file_location("alembic_env_import_check", env_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)   # raises if the tail fires without alembic context
+    assert callable(module.do_run_migrations)
 ```
 
 - [ ] **Step 5: Commit:**
@@ -537,19 +571,43 @@ jobs:
     steps:
       - name: Resolve deploy SHA
         id: sha
-        run: echo "sha=${{ github.event.inputs.sha || github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy backend (pin + poll)
+        env:
+          INPUT_SHA: ${{ github.event.inputs.sha }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          deploy_id=$(curl -sf -X POST \
+          sha="${INPUT_SHA:-$RUN_SHA}"
+          # Untrusted workflow_dispatch input: accept ONLY a full lowercase hex SHA —
+          # anything else could corrupt GITHUB_OUTPUT or splice into later commands.
+          if ! printf '%s' "$sha" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "refusing non-SHA input: $sha"; exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy backend (pin + poll)
+        env:
+          SERVICE_ID: ${{ secrets.RENDER_API_SERVICE_ID }}
+          DEPLOY_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          resp=$(curl -s -w '\n%{http_code}' -X POST \
             -H "Authorization: Bearer $RENDER_API_KEY" -H 'Content-Type: application/json' \
-            -d "{\"commitId\": \"${{ steps.sha.outputs.sha }}\"}" \
-            "https://api.render.com/v1/services/${{ secrets.RENDER_API_SERVICE_ID }}/deploys" | jq -r .id)
+            -d "{\"commitId\": \"$DEPLOY_SHA\"}" \
+            "https://api.render.com/v1/services/$SERVICE_ID/deploys")
+          code=$(tail -1 <<<"$resp"); body=$(sed '$d' <<<"$resp")
+          deploy_id=$(jq -r '.id // empty' <<<"$body")
+          # 202 Queued may omit the id — resolve it from the deploy list for our commit.
+          if [ -z "$deploy_id" ]; then
+            echo "create returned HTTP $code without an id; resolving from the deploy list"
+            deploy_id=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
+              "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=10" \
+              | jq -r --arg sha "$DEPLOY_SHA" '[.[] | (.deploy // .) | select(.commit.id == $sha)][0].id // empty')
+          fi
+          [ -n "$deploy_id" ] || { echo "no deploy id for $DEPLOY_SHA (HTTP $code): $body"; exit 1; }
           echo "backend deploy: $deploy_id"
           for i in $(seq 1 120); do
             status=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
-              "https://api.render.com/v1/services/${{ secrets.RENDER_API_SERVICE_ID }}/deploys/$deploy_id" | jq -r .status)
+              "https://api.render.com/v1/services/$SERVICE_ID/deploys/$deploy_id" | jq -r .status)
             echo "[$i] $status"
             case "$status" in
               live) exit 0 ;;
@@ -560,16 +618,28 @@ jobs:
           echo "timed out waiting for backend deploy"; exit 1
 
       - name: Deploy static site (pin + poll)
+        env:
+          SERVICE_ID: ${{ secrets.RENDER_STATIC_SERVICE_ID }}
+          DEPLOY_SHA: ${{ steps.sha.outputs.sha }}
         run: |
           set -euo pipefail
-          deploy_id=$(curl -sf -X POST \
+          resp=$(curl -s -w '\n%{http_code}' -X POST \
             -H "Authorization: Bearer $RENDER_API_KEY" -H 'Content-Type: application/json' \
-            -d "{\"commitId\": \"${{ steps.sha.outputs.sha }}\"}" \
-            "https://api.render.com/v1/services/${{ secrets.RENDER_STATIC_SERVICE_ID }}/deploys" | jq -r .id)
+            -d "{\"commitId\": \"$DEPLOY_SHA\"}" \
+            "https://api.render.com/v1/services/$SERVICE_ID/deploys")
+          code=$(tail -1 <<<"$resp"); body=$(sed '$d' <<<"$resp")
+          deploy_id=$(jq -r '.id // empty' <<<"$body")
+          if [ -z "$deploy_id" ]; then
+            echo "create returned HTTP $code without an id; resolving from the deploy list"
+            deploy_id=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
+              "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=10" \
+              | jq -r --arg sha "$DEPLOY_SHA" '[.[] | (.deploy // .) | select(.commit.id == $sha)][0].id // empty')
+          fi
+          [ -n "$deploy_id" ] || { echo "no deploy id for $DEPLOY_SHA (HTTP $code): $body"; exit 1; }
           echo "static deploy: $deploy_id"
           for i in $(seq 1 60); do
             status=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
-              "https://api.render.com/v1/services/${{ secrets.RENDER_STATIC_SERVICE_ID }}/deploys/$deploy_id" | jq -r .status)
+              "https://api.render.com/v1/services/$SERVICE_ID/deploys/$deploy_id" | jq -r .status)
             echo "[$i] $status"
             case "$status" in
               live) exit 0 ;;
@@ -669,7 +739,7 @@ cd app/backend && pdm run export-openapi
 cd ../frontend/web && npm run generate:api
 git diff --stat -- app/frontend/web/openapi.json app/frontend/web/src/lib/api/schema.d.ts   # EXPECT: empty
 ```
-If it is NOT clean, STOP: the drift predates M4 — commit the regenerated files as their own `fix(api): regenerate stale OpenAPI client` commit first and note a Discovery.
+If it is NOT clean, STOP: the drift predates M4 — but `openapi.json`/`schema.d.ts` are M3-regenerated files inside the Phase-1 forbidden surface (Standing Order 2), so do NOT commit a regeneration in Phase 1. Record a Discovery, drop Task 1.5 from the Phase-1 PR entirely, and re-run it as the FIRST Phase-3 commit (post-M3, when regenerating cannot collide).
 
 - [ ] **Step 3: Commit:**
 ```bash
@@ -679,7 +749,7 @@ git commit -m "ci: add OpenAPI drift gate (export + regenerate + fail on dirty d
 
 ### Task 1.6: Phase 1 PR
 
-- [ ] **Step 1:** Push and open a PR to dev titled `build(m4): phase 1 — deploy scaffolding (Dockerfile, blueprint, Alembic stage 1, CD workflow, drift gate)`, body listing the five tasks + `## Merge classification` → `Routine`. Auto-merge on green CI (`gh pr merge --merge --delete-branch`), one-writer rule: check `gh pr list` first; do not touch dev while the M3 session is mid-merge.
+- [ ] **Step 1:** Push and open ONE PR to dev titled `build(m4): phase 1 — deploy scaffolding (Dockerfile, blueprint, Alembic stage 1, CD workflow, drift gate)`, body listing the five tasks + `## Merge classification` → `Routine`. Single PR — do NOT split by task (five small config surfaces review together; splitting creates ordering ambiguity for zero review benefit). Auto-merge on green CI (`gh pr merge --merge --delete-branch`), one-writer rule: check `gh pr list` first; do not touch dev while the M3 session is mid-merge.
 - [ ] **Step 2:** Update this plan's banners + Execution Status table; commit the plan update.
 
 ---
@@ -697,9 +767,9 @@ git commit -m "ci: add OpenAPI drift gate (export + regenerate + fail on dirty d
 4. Create the Render workspace (no services yet) and a Render API key; GitHub repo: add Actions secrets `RENDER_API_KEY`, and repo variable `PROD_ORIGIN` = `https://<domain>`. (`RENDER_API_SERVICE_ID`/`RENDER_STATIC_SERVICE_ID` don't exist until 2b creates the services.)
 
 **Sam's checklist — 2b (= Phase 4 Step 0, AFTER Phases 1+3 are on `main`):**
-1. Apply `render.yaml` via "New → Blueprint" pointed at the repo (`main` branch).
-2. Add the custom domain to `hangar-bay-web`; set the registrar DNS records Render displays; wait for cert issuance.
-3. Dashboard-enter the `sync: false` secrets on `hangar-bay-api` (I-5 — dashboard only, never CLI/chat): `ESI_USER_AGENT` (real contact), `ESI_CLIENT_ID`/`ESI_CLIENT_SECRET` (from 2a step 3), `TOKEN_CIPHER_KEYS` (fresh: `python -c "import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"` — run locally, never reuse dev's), `METRICS_TOKEN` (fresh: `python -c "import secrets; print(secrets.token_urlsafe(32))"`), `ESI_SSO_CALLBACK_URL` = `https://<domain>/api/v1/auth/sso/callback`, `FRONTEND_ORIGIN` = `https://<domain>`.
+1. **Generate every secret value BEFORE opening the blueprint flow** (Render prompts for `sync: false` values DURING "New → Blueprint", and applying starts the first deploy — values entered late mean a failed first deploy; late-added `sync: false` declarations on blueprint updates are also ignored by Render): `TOKEN_CIPHER_KEYS` (fresh: `python -c "import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"` — run locally, never reuse dev's), `METRICS_TOKEN` (fresh: `python -c "import secrets; print(secrets.token_urlsafe(32))"`), and have ready: `ESI_USER_AGENT` (real contact string), `ESI_CLIENT_ID`/`ESI_CLIENT_SECRET` (from 2a step 3), `ESI_SSO_CALLBACK_URL` = `https://<domain>/api/v1/auth/sso/callback`, `FRONTEND_ORIGIN` = `https://<domain>`.
+2. Apply `render.yaml` via "New → Blueprint" pointed at the repo (`main` branch), **entering all step-1 values in the blueprint-creation form itself** (I-5 — dashboard form only, never CLI/chat). Before confirming, verify the API service's assigned hostname matches the rewrite destination in `render.yaml` (spike P2b) — if Render suffixed it, fix the destination on a branch→PR→release first.
+3. Add the custom domain to `hangar-bay-web`; set the registrar DNS records Render displays; wait for cert issuance.
 4. Add GitHub Actions secrets `RENDER_API_SERVICE_ID` / `RENDER_STATIC_SERVICE_ID` (service IDs from the dashboard URLs of the just-created services).
 
 - [ ] Agent step: when Sam reports 2a/2b completion, record dates + any deviations here and flip the banner.
@@ -796,27 +866,29 @@ and replace `local_session_factory` usage with `AsyncSessionLocal`. Delete the `
 - Create: `app/backend/src/fastapi_app/core/metrics.py`
 - Test: aggregation service test module
 
-- [ ] **Step 1 (RED):** tests for the three outcomes (spec §8.2 semantics — `success` all regions committed / `partial` some / `failure` none or abort; timestamp advances on success AND partial):
+**Semantics (binding; the spec's §8.2 was updated to match in this plan's review cycle):** counters mean **regions CHECKED successfully** — a fetch success AND an ETag-304 not-modified both count as checked-ok (`ESINotModifiedError` at the current `background_aggregation.py:172` branch means ESI answered healthily and our data is already current; a steady-state all-304 run is a SUCCESS, not a failure). `success`/`partial` may be recorded ONLY after the shared transaction commits (or completes as a valid no-op — the all-304 path); any processing/commit/top-level failure forces `outcome="failure"` regardless of fetch counters, because commits are not per-region.
+
+- [ ] **Step 1 (RED):** async tests (house async client/fixture idioms), covering the four outcome paths AND the gauge:
 ```python
-async def test_freshness_key_written_on_full_success(...):
-    # fake ESI: all regions succeed → after run:
-    raw = await fake_redis.get("hangar-bay:ingest:last_run")
-    data = json.loads(raw)
-    assert data["outcome"] == "success"
-    assert data["regions_failed"] == 0
-    assert data["finished_at"]  # ISO-8601 string
+async def test_freshness_success_when_all_regions_fetch_ok(...):
+    # fake ESI: all regions return pages; run commits → key has outcome=="success",
+    # regions_failed==0, finished_at ISO-8601, last_success_at == finished_at;
+    # gauge: last_ingest_success_timestamp._value.get() advanced (capture before/after).
 
-async def test_freshness_key_partial_when_one_region_fails(...):
-    # fake ESI: region A ok, region B raises → outcome == "partial", regions_failed == 1
+async def test_freshness_success_when_all_regions_304(...):
+    # fake ESI: every region raises ESINotModifiedError → outcome=="success" (checked-ok),
+    # timestamp advances. THE all-304 steady-state case — the one that must not read as failure.
 
-async def test_freshness_key_failure_when_lock_body_raises(...):
-    # fake ESI: everything raises → outcome == "failure"; and if a prior key existed
-    # its finished_at is preserved-with-outcome-updated? NO — simpler contract:
-    # the key is ALWAYS overwritten with this run's record; /ready derives staleness
-    # from the last success separately. Assert: outcome == "failure" and the
-    # "last_success_at" field carries the PRIOR success timestamp unchanged.
+async def test_freshness_partial_when_one_region_fails(...):
+    # region A ok, region B raises a fetch error → outcome=="partial", regions_failed==1,
+    # timestamp advances (data did refresh for A).
+
+async def test_freshness_failure_when_commit_raises(...):
+    # fetches ok but the transaction commit raises → outcome=="failure",
+    # last_success_at preserves the PRIOR success value (seed the key first),
+    # gauge unchanged (capture before/after).
 ```
-Pin the exact key contract in the test file's docstring: JSON `{"finished_at": iso, "outcome": "success|partial|failure", "regions_ok": int, "regions_failed": int, "last_success_at": iso-or-null}` at key `hangar-bay:ingest:last_run`, no TTL. Run → FAIL.
+Pin the exact key contract in the test file's docstring: JSON `{"finished_at": iso, "outcome": "success|partial|failure", "regions_ok": int, "regions_failed": int, "last_success_at": iso-or-null}` at key `hangar-bay:ingest:last_run`, no TTL; `regions_ok` counts checked-ok (fetched OR 304). Isolate gauge state between tests (read the gauge value before acting; assert on the delta, not absolutes). Run → FAIL.
 
 - [ ] **Step 2 (GREEN):** implement. `core/metrics.py`:
 ```python
@@ -829,10 +901,16 @@ last_ingest_success_timestamp = Gauge(
     "Unix time of the last aggregation run that committed data (success or partial).",
 )
 ```
-In `background_aggregation.py`: count per-region ok/failed in the existing region loop (the `except` at the current `logger.error("Failed to fetch contracts for region ...")` site increments `failed`); after commit (current "finished successfully" site) and in the failure paths, write the record:
+In `background_aggregation.py`, three wiring changes:
+1. `_concurrency_lock` currently yields nothing and closes its private redis client on exit — change it to `yield redis_client` and consume as `async with self._concurrency_lock() as redis_client:` so the outcome write happens INSIDE the lock context with a live client. The top-level-abort recording (outcome `failure`) must also happen inside that context (before the lock releases), from an `except` that re-raises after recording.
+2. Count per-region results in the existing region loop: fetch success increments `ok`; the `ESINotModifiedError` branch (current line 172) ALSO increments `ok` (checked-ok — see Semantics above); the generic fetch-error branch (current `logger.error("Failed to fetch contracts for region ...")` site) increments `failed`.
+3. Call `_record_run_outcome` at exactly two sites: after the shared transaction commits (current "finished successfully" site — outcome derived from counters) and in the failure exit (forced `outcome="failure"`). A failure of the outcome WRITE itself is logged at warning and swallowed — freshness recording must never turn a successful ingest into a failed job:
 ```python
-async def _record_run_outcome(self, redis_client, ok: int, failed: int) -> None:
-    outcome = "success" if failed == 0 and ok > 0 else ("partial" if ok > 0 else "failure")
+async def _record_run_outcome(self, redis_client, ok: int, failed: int, *, forced_failure: bool = False) -> None:
+    if forced_failure:
+        outcome = "failure"
+    else:
+        outcome = "success" if failed == 0 and ok > 0 else ("partial" if ok > 0 else "failure")
     now = datetime.now(timezone.utc).isoformat()
     prior_raw = await redis_client.get(INGEST_LAST_RUN_KEY)
     prior_success = None
@@ -852,7 +930,7 @@ async def _record_run_outcome(self, redis_client, ok: int, failed: int) -> None:
     if outcome in ("success", "partial"):
         last_ingest_success_timestamp.set_to_current_time()
 ```
-with `INGEST_LAST_RUN_KEY = "hangar-bay:ingest:last_run"` beside the lock-key constant, called from the run's success and failure exits (inside the lock; lock-not-acquired skips recording — a skipped run is not a run). Run tests → PASS; full suite green.
+with `INGEST_LAST_RUN_KEY = "hangar-bay:ingest:last_run"` beside the lock-key constant, and the whole `_record_run_outcome` body wrapped in `try/except Exception: logger.warning("failed to record ingest outcome", exc_info=True)` per wiring rule 3. Lock-not-acquired skips recording — a skipped run is not a run. Run tests → PASS; full suite green.
 
 - [ ] **Step 3:** Commit `feat(api): record ingestion freshness (outcome + last-success) to Valkey and a Prometheus gauge`.
 
@@ -863,12 +941,12 @@ with `INGEST_LAST_RUN_KEY = "hangar-bay:ingest:last_run"` beside the lock-key co
 - Modify: `app/backend/src/fastapi_app/main.py` (router include only)
 - Test: `app/backend/src/fastapi_app/tests/api/test_ops.py`
 
-- [ ] **Step 1 (RED):** tests via the house `TestClient`/override fixtures (TEST-7: the readiness handler must not be retried into false health — but these are direct endpoint tests, no QueryClient involved):
+- [ ] **Step 1 (RED):** ASYNC tests via the house async `httpx.AsyncClient` fixture — every call is `await client.get(...)` with the module's async marker. The house `client` fixture wires only the DB override; these tests MUST also override the cache dependency (`app.dependency_overrides[get_cache] = ...` returning the fake redis) or `/ready`'s cache probe hits nothing:
 ```python
-async def test_ready_ok_reports_db_cache_and_freshness(...):
-    # overrides: healthy db session (SELECT 1 works), fake redis with a fresh
+async def test_ready_ok_reports_db_cache_and_freshness(client, fake_cache_override):
+    # healthy db (SELECT 1 works against the test DB), fake redis seeded with a fresh
     # ingest record (finished_at=now, outcome="success", last_success_at=now)
-    r = client.get("/ready")
+    r = await client.get("/ready")
     assert r.status_code == 200
     body = r.json()
     assert body["db"] == "ok" and body["cache"] == "ok"
@@ -877,8 +955,10 @@ async def test_ready_ok_reports_db_cache_and_freshness(...):
     assert body["data_stale"] is False
     assert body["commit"]  # release identifier (RENDER_GIT_COMMIT or "unknown")
 
-async def test_ready_503_when_db_down(...):     # db override raises → 503, body names "db"
-async def test_ready_503_when_cache_down(...):  # redis ping raises → 503, body names "cache"
+async def test_ready_503_when_db_down(...):      # db override raises → 503, body["db"]=="error"
+async def test_ready_503_when_db_hangs(...):     # db override awaits past the timeout → 503, body["db"]=="error" (asyncio.timeout path)
+async def test_ready_503_when_cache_down(...):   # fake redis ping raises → 503, body["cache"]=="error"
+async def test_ready_503_when_cache_hangs(...):  # fake redis ping sleeps past the timeout → 503 (timeout path)
 async def test_ready_stale_flag_when_ingest_old(...):
     # last_success_at = now - 3 * AGGREGATION_SCHEDULER_INTERVAL_SECONDS → 200, data_stale True
 async def test_ready_null_freshness_before_first_run(...):
@@ -890,6 +970,7 @@ Run → FAIL (no route).
 ```python
 # ABOUTME: Operational endpoints — /ready (dependency + freshness readiness; deploy health gate).
 # ABOUTME: /health (in main.py) stays the dependency-free liveness stub per observability-spec §2.5.
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
@@ -899,10 +980,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import get_settings
-from ..core.dependencies import get_cache, get_db
+from ..core.dependencies import get_cache
+from ..db import get_db          # get_db lives in db.py, NOT core/dependencies (verified)
 from ..services.background_aggregation import INGEST_LAST_RUN_KEY
 
 router = APIRouter(tags=["Ops"])  # bare mount (PROXY-1)
+
+READINESS_CHECK_TIMEOUT_SECONDS = 2.0  # spec §8.1: short timeouts so /ready never hangs a deploy gate
 
 
 @router.get("/ready")
@@ -913,16 +997,18 @@ async def ready(response: Response, db: AsyncSession = Depends(get_db), cache=De
     }
     healthy = True
     try:
-        await db.execute(text("SELECT 1"))
+        async with asyncio.timeout(READINESS_CHECK_TIMEOUT_SECONDS):
+            await db.execute(text("SELECT 1"))
         checks["db"] = "ok"
-    except Exception:
+    except Exception:            # includes TimeoutError — a hung probe is an unhealthy component
         checks["db"] = "error"
         healthy = False
     freshness = None
     try:
-        await cache.ping()
+        async with asyncio.timeout(READINESS_CHECK_TIMEOUT_SECONDS):
+            await cache.ping()
+            freshness = await cache.get(INGEST_LAST_RUN_KEY)
         checks["cache"] = "ok"
-        freshness = await cache.get(INGEST_LAST_RUN_KEY)
     except Exception:
         checks["cache"] = "error"
         healthy = False
@@ -956,28 +1042,31 @@ async def ready(response: Response, db: AsyncSession = Depends(get_db), cache=De
 - Modify: `app/backend/src/fastapi_app/main.py`, `app/backend/src/fastapi_app/core/config.py`
 - Test: `app/backend/src/fastapi_app/tests/test_main.py` (or merged-tree equivalent)
 
-- [ ] **Step 1 (RED):**
+- [ ] **Step 1 (RED):** async tests (house async client; token via `monkeypatch` on the settings singleton — no bespoke fixture needed):
 ```python
-def test_metrics_open_when_no_token_configured(client):
-    assert client.get("/metrics").status_code == 200
+async def test_metrics_open_when_no_token_configured(client):
+    assert (await client.get("/metrics")).status_code == 200
 
-def test_metrics_401_without_bearer_when_token_set(client_with_metrics_token):
-    assert client_with_metrics_token.get("/metrics").status_code == 401
+async def test_metrics_401_without_bearer_when_token_set(client, monkeypatch):
+    monkeypatch.setattr(settings, "METRICS_TOKEN", SecretStr("test-metrics-token"))
+    assert (await client.get("/metrics")).status_code == 401
 
-def test_metrics_200_with_correct_bearer(client_with_metrics_token):
-    r = client_with_metrics_token.get("/metrics", headers={"Authorization": "Bearer test-metrics-token"})
+async def test_metrics_200_with_correct_bearer(client, monkeypatch):
+    monkeypatch.setattr(settings, "METRICS_TOKEN", SecretStr("test-metrics-token"))
+    r = await client.get("/metrics", headers={"Authorization": "Bearer test-metrics-token"})
     assert r.status_code == 200
     assert b"hangar_bay" in r.content
 
-def test_cache_test_endpoint_is_gone(client):
-    assert client.get("/cache-test").status_code == 404
+async def test_cache_test_endpoint_is_gone(client):
+    assert (await client.get("/cache-test")).status_code == 404
 ```
 Run → FAIL.
 
 - [ ] **Step 2 (GREEN):** `config.py` gains `METRICS_TOKEN: SecretStr = SecretStr("")`. In `main.py`: remove `instrumentator.expose(app, ...)` (KEEP `instrumentator.instrument(app)`), delete the whole `/cache-test` route (its `CASCADE-PROD-CHECK` comment is the instruction), and add:
 ```python
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from fastapi import HTTPException           # main.py does not currently import this — add it
 from fastapi.responses import PlainTextResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 @app.get("/metrics", include_in_schema=False)
 async def metrics(request: Request):
@@ -1003,7 +1092,9 @@ def test_sso_partial_config_fails_startup_in_production(...): # id set, secret e
 def test_sso_localhost_urls_fail_startup_in_production(...):  # id+secret+cipher set, callback contains localhost → RuntimeError naming ESI_SSO_CALLBACK_URL
 def test_sso_partial_config_only_warns_in_development(...):   # same partial config, ENVIRONMENT=development → warning, no raise
 ```
-Test mechanism: call `validate_sso_configuration()` DIRECTLY with monkeypatched settings values (`monkeypatch.setattr` on the settings singleton fields) — do NOT boot the app via TestClient for these; lifespan startup is exercised once by the existing boot tests. Run → FAIL.
+**Partial-config matrix (production):** parametrize over EVERY subset of `{ESI_CLIENT_ID, ESI_CLIENT_SECRET, TOKEN_CIPHER_KEYS}` that is non-empty but not the full set — including secret-set-but-id-empty and cipher-set-but-id-empty (a leftover credential with no client id is just as much a deploy mistake as the reverse) — each must raise with the missing fields named. Localhost check: any of the three configured AND `localhost` in callback/origin → raise naming the URL field. The wholly-empty set is the only warn-and-continue state.
+
+Test mechanism: call `validate_sso_configuration()` DIRECTLY with monkeypatched settings values (`monkeypatch.setattr` on the settings singleton fields). PLUS one lifespan-wiring test proving startup actually invokes it (the rename must not silently orphan the call site): monkeypatch a production+partial settings combination AND patch the lifespan's external initializers (`init_cache`, `init_http_client`, `create_scheduler` — patch at their `fastapi_app.main` import sites), then assert `with pytest.raises(RuntimeError): async with app.router.lifespan_context(app): pass`. Run → FAIL.
 
 - [ ] **Step 2 (GREEN):** replace `warn_if_sso_unconfigured` with `validate_sso_configuration()` implementing: wholly-unconfigured (no client id AND cipher unconfigured) → `logger.warning` in every environment; in `production`, any of {client id set but secret empty, client id set but cipher unconfigured, `"localhost"` in `ESI_SSO_CALLBACK_URL` or `FRONTEND_ORIGIN` while client id set} → `raise RuntimeError("SSO misconfiguration: <named fields>")`; otherwise silent. Call site in `lifespan` unchanged. Run → PASS; full suite green.
 
@@ -1018,8 +1109,11 @@ Test mechanism: call `validate_sso_configuration()` DIRECTLY with monkeypatched 
 ```python
 def test_engine_pool_production_settings():
     from fastapi_app.db import async_engine
+    # _pre_ping/_max_overflow are private pool attrs — version-coupled to SQLAlchemy 2.x;
+    # if a bump breaks these, fix the ATTRIBUTE ACCESS, never the config being asserted.
     assert async_engine.pool._pre_ping is True
-    assert async_engine.pool.size() <= 5
+    assert async_engine.pool.size() == 5
+    assert async_engine.pool._max_overflow == 5
 ```
 - [ ] **Step 2 (GREEN):**
 ```python
@@ -1041,7 +1135,7 @@ Full suite green. Commit `feat(api): pre-ping + bounded pool on the app engine f
 - Create: `app/backend/src/alembic/versions/<rev>_baseline.py` (generated, then hand-reviewed)
 - Test: `app/backend/src/fastapi_app/tests/test_migrations.py`
 
-- [ ] **Step 1:** Update `env.py`'s model imports to the merged model set (Task 3.0 listed it — expect `user`, `contracts`, plus M3's modules, e.g. `saved_search`, `watchlist`, `notification`; import exactly what `fastapi_app/models/__init__.py` exports).
+- [ ] **Step 1:** Update `env.py`'s model imports to the merged model set — import exactly the module list `fastapi_app/models/__init__.py` exports post-M3 (M3's plan puts the three new models in a single `models/account.py`, so the expected line is `from fastapi_app.models import user, contracts, account  # noqa: F401` — but the merged `__init__.py` is authoritative, not this example).
 - [ ] **Step 2: Generate the baseline against a BLANK database** (spec §5 — autogen against a populated dev DB diffs to empty):
 ```bash
 docker exec hangar_bay_postgres psql -U hangar -c 'CREATE DATABASE m4_baseline_gen;'
@@ -1070,29 +1164,36 @@ def test_migrated_schema_matches_model_metadata(blank_migrated_sync_connection):
     diff = compare_metadata(ctx, Base.metadata)
     assert diff == [], f"schema drift between migrations and models: {diff}"
 ```
-The fixture uses the standard alembic-API pattern (env.py's `run_migrations_online` consumes the injected connection):
+The fixture uses the standard alembic-API pattern (env.py's `run_migrations_online` consumes the injected connection). NOTE: `conftest.py` has NO database create/drop helper (the test DB is created by CI / the operator), so this fixture owns the full lifecycle — complete code, not an idiom reference:
 ```python
 @pytest.fixture(scope="session")
 def blank_migrated_sync_connection():
-    # Derive a sync psycopg2 URL for a throwaway DB from DATABASE_URL_TESTS
-    # (create/drop via conftest's existing DB-provisioning idioms).
     from alembic import command
     from alembic.config import Config
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.engine import make_url
 
-    sync_url = str(settings.DATABASE_URL_TESTS).replace("+asyncpg", "+psycopg2").replace("/hangar_bay_test", "/m4_equiv_check")
-    # ...create m4_equiv_check via autocommit connection to the postgres db (house idiom)...
-    engine = create_engine(sync_url)
-    with engine.connect() as conn:
-        cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
-        cfg.attributes["connection"] = conn
-        command.upgrade(cfg, "head")
-        conn.commit()
-        yield conn
-    engine.dispose()
-    # ...drop m4_equiv_check...
+    base_url = make_url(str(settings.DATABASE_URL_TESTS)).set(drivername="postgresql+psycopg2")
+    equiv_url = base_url.set(database="m4_equiv_check")
+    admin = create_engine(base_url.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text("DROP DATABASE IF EXISTS m4_equiv_check (FORCE)"))  # tolerate a prior failed run
+        conn.execute(text("CREATE DATABASE m4_equiv_check"))
+    engine = create_engine(equiv_url)
+    try:
+        with engine.connect() as conn:
+            cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "head")
+            conn.commit()
+            yield conn
+    finally:
+        engine.dispose()
+        with admin.connect() as conn:
+            conn.execute(text("DROP DATABASE IF EXISTS m4_equiv_check (FORCE)"))
+        admin.dispose()
 ```
-Run → PASS. Full suite green.
+(`WITH (FORCE)` needs Postgres ≥13 — CI runs 16, compose runs ≥16; adjust `parents[2]` if the test file's depth differs from `tests/test_migrations.py` → `src/alembic.ini`.) Run → PASS. Full suite green.
 - [ ] **Step 5:** Run the same upgrade twice (idempotency: second run applies nothing) and `pdm run migrate-check` shows the baseline as current. Drop the scratch DBs. Commit `feat(db): generate the post-M3 baseline revision with a migration<->metadata equivalence guard`.
 
 ### Task 3.10: `live-smoke-prod` Playwright project
@@ -1126,7 +1227,13 @@ and change the `webServer` block to `webServer: process.env.E2E_PROD_BASE_URL ? 
 ### Task 3.12: Pitfalls entries + Phase 3 PR
 
 - [ ] **Step 1:** Add to `docs/pitfalls/implementation-pitfalls.md` (full maintenance checklist in its Appendix C — TOC, checklist item, Appendix B row, changelog): **DEPLOY-1** "Managed platforms inject `postgresql://` URLs; the async stack needs `postgresql+asyncpg://` — normalize in Settings, never hand-edit platform URLs" (Where It Bit Us: M4 codex design review, pre-deploy); **DEPLOY-2** "uvicorn stays `--workers 1`: the APScheduler runs in-process, so N workers = N schedulers racing the ingestion lock every tick — scale reads by splitting the scheduler out, not by adding workers."
-- [ ] **Step 2:** Batch-review the whole phase (Standing Order: minimum 3 review rounds — self-review vs spec §§4-8, pitfalls-checklist pass, fresh-eyes diff read; keep going past 3 if a round still finds issues), run `pdm run lint && pdm run pytest && npx tsc -b && npm run test && npm run e2e`, then PR to dev: `feat(m4): phase 3 — production hardening (readiness, freshness, metrics gate, SSO fail-fast, Alembic baseline)` with `## Merge classification` → `Review — production configuration & data-integrity surfaces`. **Sam merges.**
+- [ ] **Step 2:** Batch-review the whole phase — minimum 3 rounds, keep going past 3 if a round still finds issues: (round A) self-review vs spec §§4-8; (round B) pitfalls-checklist pass; (round C) a dispatched fresh-eyes reviewer reading the full phase diff. Round C's dispatch prompt MUST carry the ORCH-1 mandatory-persistence block from `docs/git-strategy.md` §Output persistence with the absolute path `<worktree>/docs/audits/m4-phase3-review/round-C-fresh-eyes.md` (one file per additional round: `round-D-….md`, …), and each round's report file is committed before consolidation.
+  Then run the full gates:
+```bash
+cd app/backend && pdm run lint && pdm run pytest
+cd ../frontend/web && npx tsc -b && npm run test && npm run e2e   # e2e = fixture lanes; no env vars needed
+```
+  Then PR to dev: `feat(m4): phase 3 — production hardening (readiness, freshness, metrics gate, SSO fail-fast, Alembic baseline)` with `## Merge classification` → `Review — production configuration & data-integrity surfaces`. **Sam merges.**
 - [ ] **Step 3:** Update this plan's banners/table; commit.
 
 ---
@@ -1167,4 +1274,4 @@ uvicorn moves to a supervised child on `127.0.0.1:8000` (honcho with a 2-line Pr
 
 ## Appendix C — Pitfall map for this plan
 
-ENV-1 (JSON list env vars — Tasks 1.1/1.2 set `AGGREGATION_REGION_IDS` as a JSON string); ENV-2/ENV-3 (Phase 3 batching; the prod gate is verified in Task 1.1 Step 3); ENV-4 (new Settings fields `METRICS_TOKEN` documented in `.env.example`, Task 3.11); PROXY-1 (rewrite ordering Task 1.2; verbatim paths spike P2; `/api/v1/ready` smoke path Task 1.4); SQLA-2 (partial-index predicate hand-review, Task 3.9 Step 3); ESI-1 (no new ESI routes added; `/meta/status` stays parked per spec §8.4); TEST-2 (no retries added; assertion-rigor Standing Order 6); TEST-6 (Playwright specs stay under `e2e/`, Task 3.10 touches config only); TEST-7 (error-branch tests in 3.4/3.5 drive the endpoint directly, no client retry layer); ORCH-1 (any Phase-3 review subagents persist findings to `docs/audits/m4-phase3-review/` before returning).
+ENV-1 (JSON list env vars — Tasks 1.1/1.2 set `AGGREGATION_REGION_IDS` as a JSON string); ENV-2/ENV-3 (Phase 3 batching; the prod gate is verified in Task 1.1 Step 3); ENV-4 (new Settings fields `METRICS_TOKEN` documented in `.env.example`, Task 3.11); PROXY-1 (rewrite ordering Task 1.2; verbatim paths spike P2; `/api/v1/ready` smoke path Task 1.4); SQLA-2 (partial-index predicate hand-review, Task 3.9 Step 3); ESI-1 (no new ESI routes added; `/meta/status` stays parked per spec §8.4); TEST-2 (no retries added; assertion-rigor Standing Order 6); TEST-6 (Playwright specs stay under `e2e/`, Task 3.10 touches config only); TEST-7 (error-branch tests in 3.4/3.5 drive the endpoint directly, no client retry layer); ORCH-1 (Phase-3 review dispatches carry the mandatory-persistence block with exact absolute file paths — `docs/audits/m4-phase3-review/round-<letter>-<lens>.md` — and each wave is committed before consolidation; see Task 3.12 Step 2).
