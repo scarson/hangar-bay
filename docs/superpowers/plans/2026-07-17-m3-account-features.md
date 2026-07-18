@@ -64,7 +64,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phases 0-7 shipped (backend + codegen complete; frontend F005 Saved Searches + F006 Watchlists done); frontend F007 + E2E + docs next.
+**Overall:** Phases 0-8 shipped (backend + codegen complete; frontend F005 Saved Searches + F006 Watchlists + F007 Alerts/Notifications done); E2E + docs next.
 
 **Baseline (Phase 0, captured against `origin/dev` tip `27dac66`):** backend `pdm run pytest -q` → `220 passed`; frontend `npx vitest run --reporter=dot` → `Test Files 12 passed (12)`, `Tests 62 passed (62)`. Phase 1/2 backend work must never drop the pytest count below 220.
 
@@ -78,7 +78,7 @@ notes and commit messages.
 | 5 — Codegen | ✅ Shipped | `6e64674` | openapi.json + schema.d.ts regenerated for F005/F006/F007; `npx tsc -b` clean |
 | 6 — Frontend F005 | ✅ Shipped | `b2d3912` | `/saved-searches` route + page (Apply/Rename/two-step Delete) + `SaveSearchControl`; frontend 17 files / 89 tests passed |
 | 7 — Frontend F006 | ✅ Shipped | `6a0450b` | `/watchlist` route + page (add-by-name, inline edit, clear-to-null, two-step Remove) + `WatchButton`; frontend 21 files / 109 tests passed |
-| 8 — Frontend F007 | ⬜ Not started | — | — |
+| 8 — Frontend F007 | ✅ Shipped | `fdf5f9f` | `/notifications` route + page (paginated list, mark-read-on-click, mark-all-read, watchlist-alerts settings toggle) + `NotificationBell` in the header + notifications hooks; frontend 26 files / 135 tests passed |
 | 9 — E2E | ⬜ Not started | — | — |
 | 10 — Docs, gates, PR | ⬜ Not started | — | — |
 
@@ -5446,7 +5446,7 @@ Push: `git push`.
 
 ## Phase 8 — Frontend F007: Alerts / Notifications
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `fdf5f9f` on 2026-07-18
 
 Delivers: the notifications hooks (list, unread-count with a testable queryOptions factory, mark-read/all, settings); the header bell inside `HeaderIdentity`; and the `/notifications` page with pagination, mark-read-on-click, mark-all-read, and the settings checkbox.
 
@@ -5948,7 +5948,7 @@ Follow TDD: write failing test → implement → verify green.
 - Test: `app/frontend/web/src/features/notifications/components/NotificationsPage.test.tsx`
 - Test: `app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx` (vitest-axe, design §6)
 
-- [ ] **Step 1: Write the failing `format.ts` test.** COMPLETE file:
+- [x] **Step 1: Write the failing `format.ts` test.** COMPLETE file:
 
 ```ts
 // ABOUTME: timeAgo formats a past ISO timestamp as a coarse relative span; now is injectable for determinism (TEST-3).
@@ -5971,9 +5971,9 @@ describe('timeAgo', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/format.test.ts --reporter=dot`. Expected: `Failed to resolve import "./format"`.
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/format.test.ts --reporter=dot`. Expected: `Failed to resolve import "./format"`.
 
-- [ ] **Step 3: Implement `format.ts`.** COMPLETE file:
+- [x] **Step 3: Implement `format.ts`.** COMPLETE file:
 
 ```ts
 // ABOUTME: Relative-time formatting for notification timestamps ("3h ago"); now is injectable for deterministic tests.
@@ -5991,9 +5991,9 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
 }
 ```
 
-- [ ] **Step 4: Run `format.test.ts` green.** `cd app/frontend/web && npx vitest run src/features/notifications/format.test.ts --reporter=dot` (pass).
+- [x] **Step 4: Run `format.test.ts` green.** `cd app/frontend/web && npx vitest run src/features/notifications/format.test.ts --reporter=dot` (pass).
 
-- [ ] **Step 5: Add the optional `unitLabel` to `Pagination.tsx`.** Small backward-safe extension (default keeps `contracts`, so existing call sites and the contracts pagination E2E are unaffected). Replace the component signature + label line:
+- [x] **Step 5: Add the optional `unitLabel` to `Pagination.tsx`.** Small backward-safe extension (default keeps `contracts`, so existing call sites and the contracts pagination E2E are unaffected). Replace the component signature + label line:
 
 ```tsx
 export function Pagination({
@@ -6048,7 +6048,7 @@ export function CheckboxField({
 }
 ```
 
-- [ ] **Step 6: Write the failing NotificationsPage tests.** Cover: anonymous prompt; authed list after skeleton unmount (TEST-8); mark-read fires on row click; pagination wiring (page 2 requested); mark-all-read POST; settings checkbox PUT body; contract deep-link present. COMPLETE file:
+- [x] **Step 6: Write the failing NotificationsPage tests.** Cover: anonymous prompt; authed list after skeleton unmount (TEST-8); mark-read fires on row click; pagination wiring (page 2 requested); mark-all-read POST; settings checkbox PUT body; contract deep-link present. COMPLETE file:
 
 ```tsx
 // ABOUTME: NotificationsPage tests over the real /notifications route — auth branches, mark-read on click, pagination, mark-all-read, settings toggle.
@@ -6172,9 +6172,9 @@ describe('NotificationsPage', () => {
 })
 ```
 
-- [ ] **Step 7: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationsPage.test.tsx --reporter=dot`. Expected: route missing → sign-in heading not found.
+- [x] **Step 7: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationsPage.test.tsx --reporter=dot`. Expected: route missing → sign-in heading not found.
 
-- [ ] **Step 8: Create `src/routes/notifications.tsx`.** COMPLETE file:
+- [x] **Step 8: Create `src/routes/notifications.tsx`.** COMPLETE file:
 
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'
@@ -6189,7 +6189,7 @@ function RouteComponent() {
 }
 ```
 
-- [ ] **Step 9: Implement `NotificationsPage.tsx`.** COMPLETE file:
+- [x] **Step 9: Implement `NotificationsPage.tsx`.** COMPLETE file:
 
 ```tsx
 // ABOUTME: F007 notifications page — auth-gated paginated list, mark-read-on-click (+deep-link), mark-all-read, and the watchlist-alerts settings checkbox.
@@ -6335,7 +6335,7 @@ function NotificationRow({ n }: { n: Notification }) {
 }
 ```
 
-- [ ] **Step 10: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx`. COMPLETE file:
+- [x] **Step 10: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx`. COMPLETE file:
 
 ```tsx
 // ABOUTME: Automated axe accessibility checks for the notifications page — authed-with-data and anonymous states.
@@ -6387,9 +6387,9 @@ describe('accessibility (axe) — notifications', () => {
 })
 ```
 
-- [ ] **Step 11: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationsPage.test.tsx src/features/notifications/components/NotificationsPage.a11y.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 if needed). Regression-check the contracts pagination usage: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/routes/notifications.tsx src/features/notifications src/features/contracts/components/Pagination.tsx src/components/Checkbox.tsx` (green).
+- [x] **Step 11: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationsPage.test.tsx src/features/notifications/components/NotificationsPage.a11y.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 if needed). Regression-check the contracts pagination usage: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/routes/notifications.tsx src/features/notifications src/features/contracts/components/Pagination.tsx src/components/Checkbox.tsx` (green).
 
-- [ ] **Step 12: Commit.**
+- [x] **Step 12: Commit.**
   `git add app/frontend/web/src/routes/notifications.tsx app/frontend/web/src/routeTree.gen.ts app/frontend/web/src/features/notifications/format.ts app/frontend/web/src/features/notifications/format.test.ts app/frontend/web/src/features/notifications/components/NotificationsPage.tsx app/frontend/web/src/features/notifications/components/NotificationsPage.test.tsx app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx app/frontend/web/src/features/contracts/components/Pagination.tsx app/frontend/web/src/components/Checkbox.tsx`
   ```
   feat(web): add notifications page with mark-read, pagination, and settings
