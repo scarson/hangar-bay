@@ -96,3 +96,30 @@ class WatchlistItemSchema(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationSchema(BaseModel):
+    id: int
+    type: str
+    message: str
+    contract_id: Optional[int] = None
+    watch_type_id: Optional[int] = None
+    price: Optional[float] = None
+    is_read: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationSettingsSchema(BaseModel):
+    watchlist_alerts_enabled: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationFilters(BaseModel):
+    """Query-param model for GET /me/notifications/ — bind with Annotated[..., Query()] (FASTAPI-1)."""
+
+    is_read: Optional[bool] = Field(default=None)
+    page: int = Field(default=1, ge=1)
+    size: int = Field(default=50, ge=1, le=100)
