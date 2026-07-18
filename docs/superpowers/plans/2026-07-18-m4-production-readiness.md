@@ -205,7 +205,7 @@ git commit -m "docs(m4): record Render spike results (edge, URL scheme, headers,
 
 **Execution Status:** ⬜ NOT STARTED
 
-Branch: `claude/m4-phase1-deploy-scaffolding` off fresh `origin/dev`. All tasks here are TDD-exempt config/scaffolding EXCEPT nothing — but every task has verification commands. One PR at the end (Routine), or split Task 1.3 into its own PR if review size warrants.
+Branch: `claude/m4-phase1-deploy-scaffolding` off fresh `origin/dev`. All tasks here are TDD-exempt config/scaffolding EXCEPT nothing — but every task has verification commands. One PR at the end (Routine; single-PR decision is binding — Task 1.6).
 
 ### Task 1.1: Backend production Dockerfile
 
@@ -1032,7 +1032,7 @@ async def ready(response: Response, db: AsyncSession = Depends(get_db), cache=De
         response.status_code = 503
     return checks
 ```
-`main.py`: `from .api import ops as ops_router` + `app.include_router(ops_router.router)` beside the existing includes. Adapt `get_db`/`get_cache` names to the merged `core/dependencies.py` exports (Task 3.0 verified them). Run tests → PASS; full suite green.
+`main.py`: `from .api import ops as ops_router` + `app.include_router(ops_router.router)` beside the existing includes. Import sources are as shown in the code block — `get_cache` from `core/dependencies.py`, `get_db` from `db.py`; Task 3.0 re-verifies both survive the M3 merge at those locations. Run tests → PASS; full suite green.
 
 - [ ] **Step 3:** Commit `feat(api): add /ready readiness probe (db + cache + ingestion freshness + release commit)`.
 
@@ -1172,6 +1172,8 @@ def blank_migrated_sync_connection():
     from alembic.config import Config
     from sqlalchemy import create_engine, text
     from sqlalchemy.engine import make_url
+
+    from fastapi_app.core.config import settings
 
     base_url = make_url(str(settings.DATABASE_URL_TESTS)).set(drivername="postgresql+psycopg2")
     equiv_url = base_url.set(database="m4_equiv_check")
