@@ -271,3 +271,11 @@
     *   "Integrate a 'Save Search' button into the F002 feature's UI. On click, it should capture current filter parameters from F002's state, prompt for a name, and call `SavedSearchService.createSavedSearch()`."
     *   "When a saved search is 'applied', populate the filter controls of F002 with its `search_parameters` and trigger a new search."
     *   "Ensure all user-facing text (buttons, prompts, etc.) is internationalized."
+
+## Implemented with deviations (M3, 2026-07-17)
+
+Implemented zero-scope per [the M3 design spec](../../docs/superpowers/specs/2026-07-17-m3-account-features-design.md). Recorded deviations (design §8):
+- **Per-user cap of 100 saved searches** — overrides this spec's §15 "no hard limit for MVP"; enforced best-effort (count-then-insert), race-safe only for the name-uniqueness constraint.
+- **No `GET /me/saved-searches/{search_id}`** — the list response carries complete rows; the single-resource GET is deferred until a consumer needs it.
+- **Rename-only update** — updating stored criteria in place is deferred (this spec already defers it); the PUT changes `name` only.
+- **`extra="forbid"` on stored parameters** — the saved blob is the frontend `ContractSearch` minus `page`; ME/TE and unknown keys are rejected at the API boundary.

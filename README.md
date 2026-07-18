@@ -42,7 +42,13 @@ For a comprehensive understanding of the Hangar Bay project, please refer to the
 *   **F002 (Ship Browsing & Advanced Search/Filtering):** contract list view with URL-driven filtering, sorting, and pagination.
 *   **F003 (Detailed Ship/Contract View):** per-contract detail view.
 
-**Milestone 2 (EVE SSO) — implemented.** F004 (User Authentication via EVE Online SSO) is implemented: header login/identity (login button, character name and portrait, logout), server-side sessions backed by Valkey, an encrypted token vault for EVE SSO access/refresh tokens, and CI coverage. The live-lane SSO login test (a real EVE SSO round trip) is deferred pending EVE credentials landing in the local `.env` plus a live end-to-end verification pass. The account features that depend on authentication (F005 Saved Searches, F006 Watchlists, F007 Alerts) remain deferred, gated on Milestone 3.
+**Milestone 2 (EVE SSO) — implemented.** F004 (User Authentication via EVE Online SSO) is implemented: header login/identity (login button, character name and portrait, logout), server-side sessions backed by Valkey, an encrypted token vault for EVE SSO access/refresh tokens, and CI coverage. The live-lane SSO login test (a real EVE SSO round trip) is deferred pending EVE credentials landing in the local `.env` plus a live end-to-end verification pass. The account features that depend on authentication (F005 Saved Searches, F006 Watchlists, F007 Alerts) are delivered in Milestone 3, below.
+
+**Milestone 3 (account features) — implemented.** Built zero-scope on the Milestone 2 SSO identity (no new ESI scope), behind a sign-in gate. Scope framing and recorded deviations: [the M3 design spec](docs/superpowers/specs/2026-07-17-m3-account-features-design.md).
+
+*   **F005 (Saved Searches):** save the active contract filters from the contracts header; apply, rename, and delete them on `/saved-searches`.
+*   **F006 (Watchlists):** watch ships by type — quick-watch from the contract detail view and add-by-exact-name on `/watchlist`, with inline max-price and notes editing.
+*   **F007 (Alerts/Notifications):** an APScheduler matcher notifies watchers when an outstanding local contract matches a watched ship; a header bell, the `/notifications` page, mark-read / mark-all-read, and a watchlist-alerts settings toggle.
 
 ## Development Setup
 
