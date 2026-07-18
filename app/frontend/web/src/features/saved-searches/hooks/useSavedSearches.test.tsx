@@ -42,21 +42,45 @@ function wrap() {
 
 afterEach(() => vi.unstubAllGlobals())
 
+const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
+const meResponse = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
 describe('useSavedSearches (query)', () => {
-  it('GETs /api/v1/me/saved-searches/ and returns the array', async () => {
+  it('GETs /api/v1/me/saved-searches/ for the authed identity and returns the array', async () => {
     const rows = [{ id: 1, name: 'A', search_parameters: { ships_only: true, size: 50, sort_by: 'date_issued', sort_direction: 'desc' }, created_at: '2026-07-17T00:00:00Z', updated_at: '2026-07-17T00:00:00Z' }]
-    const calls = stubFetch(() => new Response(JSON.stringify(rows), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    const { wrapper } = wrap()
+    const calls = stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(200, AUTHED) : meResponse(200, rows),
+    )
+    const { qc, wrapper } = wrap()
     const { result } = renderHook(() => useSavedSearches(), { wrapper })
     await waitFor(() => expect(result.current.data).toHaveLength(1))
-    expect(calls[0].url).toContain('/api/v1/me/saved-searches/')
-    expect(calls[0].method ?? 'GET').toBe('GET')
+    const domain = calls.find((c) => /\/me\/saved-searches\//.test(c.url))!
+    expect(domain.url).toContain('/api/v1/me/saved-searches/')
+    expect(domain.method ?? 'GET').toBe('GET')
     expect(result.current.data![0].name).toBe('A')
+    // Identity-scoped key: the list caches under the character id so a session swap can't
+    // resolve one identity's data under another's key (finding 1).
+    expect(qc.getQueryData(['savedSearches', 'list', AUTHED.character_id])).toHaveLength(1)
+  })
+
+  it('does not fetch while anonymous (enabled gates on the identity)', async () => {
+    const calls = stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(401, { detail: 'unauthenticated' }) : meResponse(200, []),
+    )
+    const { wrapper } = wrap()
+    const { result } = renderHook(() => useSavedSearches(), { wrapper })
+    await waitFor(() => expect(calls.some((c) => /\/api\/v1\/me$/.test(c.url))).toBe(true))
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(result.current.data).toBeUndefined()
+    expect(calls.some((c) => /\/me\/saved-searches\//.test(c.url))).toBe(false)
   })
 
   it('invalidates ["auth","me"] when the query 401s', async () => {
     const { spy, wrapper } = wrap()
-    stubFetch(() => new Response(JSON.stringify({ detail: 'unauthenticated' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
+    stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(200, AUTHED) : meResponse(401, { detail: 'unauthenticated' }),
+    )
     const { result } = renderHook(() => useSavedSearches(), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })

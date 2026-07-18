@@ -3,13 +3,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, raiseApiError, type SavedSearch } from '../../../lib/api/client'
 import type { components } from '../../../lib/api/schema'
+import { useCurrentUser } from '../../auth/hooks/useCurrentUser'
 
 type SavedSearchCreate = components['schemas']['SavedSearchCreate']
 
 export function useSavedSearches() {
   const queryClient = useQueryClient()
+  // Scope the cache to the authenticated character so a session-cookie swap in another tab can't
+  // resolve one identity's saved searches under another's key; gate the fetch on a resolved
+  // identity (finding 1). Mutations invalidate the ['savedSearches'] prefix, which still matches.
+  const { data: user } = useCurrentUser()
   return useQuery<SavedSearch[]>({
-    queryKey: ['savedSearches', 'list'],
+    queryKey: ['savedSearches', 'list', user?.character_id],
+    enabled: !!user,
     queryFn: async () => {
       const { data, response } = await api.GET('/me/saved-searches/')
       if (data === undefined) raiseApiError(queryClient, response.status)

@@ -6,8 +6,13 @@ import { useCurrentUser } from '../../auth/hooks/useCurrentUser'
 
 export function useNotifications(params: { page: number; size: number; is_read?: boolean }) {
   const queryClient = useQueryClient()
+  // Scope the cache to the authenticated character so a session-cookie swap in another tab can't
+  // resolve one identity's notifications under another's key; gate the fetch on a resolved identity
+  // (finding 1). Mutations invalidate the ['notifications'] prefix, which still matches.
+  const { data: user } = useCurrentUser()
   return useQuery<PaginatedNotifications>({
-    queryKey: ['notifications', 'list', params],
+    queryKey: ['notifications', 'list', user?.character_id, params],
+    enabled: !!user,
     queryFn: async () => {
       const { data, response } = await api.GET('/me/notifications/', { params: { query: params } })
       if (data === undefined) raiseApiError(queryClient, response.status)
@@ -18,10 +23,11 @@ export function useNotifications(params: { page: number; size: number; is_read?:
 
 // The unread badge reads `total` off a filtered size=1 page — no dedicated count
 // endpoint (design §3.4). Polls every 60s; only enabled when authed. Takes the caller's
-// queryClient so a 401 poll invalidates ['auth','me'] like every other /me/* query.
-export function unreadCountQueryOptions(queryClient: QueryClient, enabled: boolean) {
+// queryClient so a 401 poll invalidates ['auth','me'] like every other /me/* query, and the
+// authenticated characterId so the count caches per identity (finding 1).
+export function unreadCountQueryOptions(queryClient: QueryClient, enabled: boolean, characterId: number | undefined) {
   return queryOptions({
-    queryKey: ['notifications', 'unreadCount'],
+    queryKey: ['notifications', 'unreadCount', characterId],
     enabled,
     refetchInterval: 60_000,
     queryFn: async () => {
@@ -37,7 +43,7 @@ export function unreadCountQueryOptions(queryClient: QueryClient, enabled: boole
 export function useUnreadCount() {
   const queryClient = useQueryClient()
   const { data: user } = useCurrentUser()
-  return useQuery(unreadCountQueryOptions(queryClient, !!user))
+  return useQuery(unreadCountQueryOptions(queryClient, !!user, user?.character_id))
 }
 
 export function useMarkRead() {
@@ -66,8 +72,12 @@ export function useMarkAllRead() {
 
 export function useNotificationSettings() {
   const queryClient = useQueryClient()
+  // Per-user settings — scope the cache to the character id and gate on a resolved identity
+  // (finding 1). The update mutation invalidates ['notifications', 'settings'], which still matches.
+  const { data: user } = useCurrentUser()
   return useQuery<NotificationSettings>({
-    queryKey: ['notifications', 'settings'],
+    queryKey: ['notifications', 'settings', user?.character_id],
+    enabled: !!user,
     queryFn: async () => {
       const { data, response } = await api.GET('/me/notification-settings')
       if (data === undefined) raiseApiError(queryClient, response.status)

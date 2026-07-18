@@ -27,24 +27,28 @@ function wrap() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const spy = vi.spyOn(qc, 'invalidateQueries')
   const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-  return { spy, wrapper }
+  return { qc, spy, wrapper }
 }
 afterEach(() => vi.unstubAllGlobals())
 
+const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
+const meResponse = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
 describe('unreadCountQueryOptions', () => {
-  it('carries the polling config and count query key', () => {
+  it('carries the polling config and identity-scoped count query key', () => {
     const qc = new QueryClient()
-    const opts = unreadCountQueryOptions(qc, true)
-    expect(opts.queryKey).toEqual(['notifications', 'unreadCount'])
+    const opts = unreadCountQueryOptions(qc, true, 91000001)
+    expect(opts.queryKey).toEqual(['notifications', 'unreadCount', 91000001])
     expect(opts.refetchInterval).toBe(60_000)
     expect(opts.enabled).toBe(true)
-    expect(unreadCountQueryOptions(qc, false).enabled).toBe(false)
+    expect(unreadCountQueryOptions(qc, false, 91000001).enabled).toBe(false)
   })
 
   it('queryFn hits the size=1 unread endpoint and returns total', async () => {
     const qc = new QueryClient()
     const calls = stubFetch(() => new Response(JSON.stringify({ total: 5, page: 1, size: 1, items: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    const opts = unreadCountQueryOptions(qc, true)
+    const opts = unreadCountQueryOptions(qc, true, 91000001)
     const total = await (opts.queryFn as () => Promise<number>)()
     expect(total).toBe(5)
     expect(calls[0].url).toContain('/api/v1/me/notifications/')
@@ -56,25 +60,45 @@ describe('unreadCountQueryOptions', () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
     stubFetch(() => new Response(JSON.stringify({ detail: 'unauth' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
-    const opts = unreadCountQueryOptions(qc, true)
+    const opts = unreadCountQueryOptions(qc, true, 91000001)
     await expect((opts.queryFn as () => Promise<number>)()).rejects.toThrow()
     expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })
   })
 })
 
 describe('useNotifications (list)', () => {
-  it('GETs the list with page/size params', async () => {
-    const calls = stubFetch(() => new Response(JSON.stringify({ total: 0, page: 2, size: 20, items: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    const { wrapper } = wrap()
-    const { result } = renderHook(() => useNotifications({ page: 2, size: 20 }), { wrapper })
+  it('GETs the list with page/size params and caches under the character id', async () => {
+    const calls = stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(200, AUTHED) : meResponse(200, { total: 0, page: 2, size: 20, items: [] }),
+    )
+    const { qc, wrapper } = wrap()
+    const params = { page: 2, size: 20 }
+    const { result } = renderHook(() => useNotifications(params), { wrapper })
     await waitFor(() => expect(result.current.data).toBeDefined())
-    expect(calls[0].url).toContain('/api/v1/me/notifications/')
-    expect(calls[0].url).toContain('page=2')
-    expect(calls[0].url).toContain('size=20')
+    const domain = calls.find((c) => /\/me\/notifications\//.test(c.url))!
+    expect(domain.url).toContain('/api/v1/me/notifications/')
+    expect(domain.url).toContain('page=2')
+    expect(domain.url).toContain('size=20')
+    // Identity-scoped key (finding 1): character id precedes the params.
+    expect(qc.getQueryData(['notifications', 'list', AUTHED.character_id, params])).toBeDefined()
+  })
+
+  it('does not fetch while anonymous (enabled gates on the identity)', async () => {
+    const calls = stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(401, { detail: 'unauth' }) : meResponse(200, { total: 0, page: 1, size: 20, items: [] }),
+    )
+    const { wrapper } = wrap()
+    const { result } = renderHook(() => useNotifications({ page: 1, size: 20 }), { wrapper })
+    await waitFor(() => expect(calls.some((c) => /\/api\/v1\/me$/.test(c.url))).toBe(true))
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(result.current.data).toBeUndefined()
+    expect(calls.some((c) => /\/me\/notifications\//.test(c.url))).toBe(false)
   })
 
   it('surfaces an error after a persistent failure (TEST-7)', async () => {
-    stubFetch(() => new Response(JSON.stringify({ detail: 'boom' }), { status: 500, headers: { 'Content-Type': 'application/json' } }))
+    stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(200, AUTHED) : new Response(JSON.stringify({ detail: 'boom' }), { status: 500, headers: { 'Content-Type': 'application/json' } }),
+    )
     const { wrapper } = wrap()
     const { result } = renderHook(() => useNotifications({ page: 1, size: 20 }), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true))
@@ -82,7 +106,9 @@ describe('useNotifications (list)', () => {
 
   it('invalidates ["auth","me"] when the list 401s', async () => {
     const { spy, wrapper } = wrap()
-    stubFetch(() => new Response(JSON.stringify({ detail: 'unauth' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
+    stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(200, AUTHED) : meResponse(401, { detail: 'unauth' }),
+    )
     const { result } = renderHook(() => useNotifications({ page: 1, size: 20 }), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })
@@ -123,17 +149,23 @@ describe('useMarkRead / useMarkAllRead', () => {
 })
 
 describe('notification settings', () => {
-  it('GETs the settings', async () => {
-    const calls = stubFetch(() => new Response(JSON.stringify({ watchlist_alerts_enabled: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    const { wrapper } = wrap()
+  it('GETs the settings for the authed identity and caches under the character id', async () => {
+    const calls = stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(200, AUTHED) : meResponse(200, { watchlist_alerts_enabled: true }),
+    )
+    const { qc, wrapper } = wrap()
     const { result } = renderHook(() => useNotificationSettings(), { wrapper })
     await waitFor(() => expect(result.current.data).toEqual({ watchlist_alerts_enabled: true }))
-    expect(calls[0].url).toContain('/api/v1/me/notification-settings')
+    expect(calls.some((c) => /\/api\/v1\/me\/notification-settings/.test(c.url))).toBe(true)
+    // Identity-scoped key (finding 1): per-user settings cache under the character id.
+    expect(qc.getQueryData(['notifications', 'settings', AUTHED.character_id])).toEqual({ watchlist_alerts_enabled: true })
   })
 
   it('invalidates ["auth","me"] when the settings GET 401s', async () => {
     const { spy, wrapper } = wrap()
-    stubFetch(() => new Response(JSON.stringify({ detail: 'unauth' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
+    stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(200, AUTHED) : meResponse(401, { detail: 'unauth' }),
+    )
     const { result } = renderHook(() => useNotificationSettings(), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })

@@ -20,23 +20,45 @@ function wrap() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const spy = vi.spyOn(qc, 'invalidateQueries')
   const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-  return { spy, wrapper }
+  return { qc, spy, wrapper }
 }
 afterEach(() => vi.unstubAllGlobals())
 
+const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
+const meResponse = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+
 describe('useWatchlist (query)', () => {
-  it('GETs /api/v1/me/watchlist-items/ and returns the array', async () => {
+  it('GETs /api/v1/me/watchlist-items/ for the authed identity and caches under the character id', async () => {
     const rows = [{ id: 1, type_id: 587, type_name: 'Rifter', max_price: null, notes: null, created_at: 'x', updated_at: 'x' }]
-    const calls = stubFetch(() => new Response(JSON.stringify(rows), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    const { wrapper } = wrap()
+    const calls = stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(200, AUTHED) : meResponse(200, rows),
+    )
+    const { qc, wrapper } = wrap()
     const { result } = renderHook(() => useWatchlist(), { wrapper })
     await waitFor(() => expect(result.current.data).toHaveLength(1))
-    expect(calls[0].url).toContain('/api/v1/me/watchlist-items/')
+    expect(calls.some((c) => /\/api\/v1\/me\/watchlist-items\//.test(c.url))).toBe(true)
+    // Identity-scoped key (finding 1): the list caches under the character id.
+    expect(qc.getQueryData(['watchlists', 'list', AUTHED.character_id])).toHaveLength(1)
+  })
+
+  it('does not fetch while anonymous (enabled gates on the identity)', async () => {
+    const calls = stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(401, { detail: 'unauth' }) : meResponse(200, []),
+    )
+    const { wrapper } = wrap()
+    const { result } = renderHook(() => useWatchlist(), { wrapper })
+    await waitFor(() => expect(calls.some((c) => /\/api\/v1\/me$/.test(c.url))).toBe(true))
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(result.current.data).toBeUndefined()
+    expect(calls.some((c) => /\/me\/watchlist-items\//.test(c.url))).toBe(false)
   })
 
   it('invalidates ["auth","me"] when the query 401s', async () => {
     const { spy, wrapper } = wrap()
-    stubFetch(() => new Response(JSON.stringify({ detail: 'unauth' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
+    stubFetch((call) =>
+      /\/api\/v1\/me$/.test(call.url) ? meResponse(200, AUTHED) : meResponse(401, { detail: 'unauth' }),
+    )
     const { result } = renderHook(() => useWatchlist(), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })

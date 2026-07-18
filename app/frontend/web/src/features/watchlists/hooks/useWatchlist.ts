@@ -3,14 +3,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, raiseApiError, type WatchlistItem } from '../../../lib/api/client'
 import type { components } from '../../../lib/api/schema'
+import { useCurrentUser } from '../../auth/hooks/useCurrentUser'
 
 type WatchlistItemCreate = components['schemas']['WatchlistItemCreate']
 type WatchlistItemUpdate = components['schemas']['WatchlistItemUpdate']
 
 export function useWatchlist() {
   const queryClient = useQueryClient()
+  // Scope the cache to the authenticated character so a session-cookie swap in another tab can't
+  // resolve one identity's watchlist under another's key; gate the fetch on a resolved identity
+  // (finding 1). Mutations invalidate the ['watchlists'] prefix, which still matches.
+  const { data: user } = useCurrentUser()
   return useQuery<WatchlistItem[]>({
-    queryKey: ['watchlists', 'list'],
+    queryKey: ['watchlists', 'list', user?.character_id],
+    enabled: !!user,
     queryFn: async () => {
       const { data, response } = await api.GET('/me/watchlist-items/')
       if (data === undefined) raiseApiError(queryClient, response.status)
