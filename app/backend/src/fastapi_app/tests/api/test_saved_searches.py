@@ -1,5 +1,7 @@
 # ABOUTME: HTTP-level (TEST-1) + app.openapi() schema tests for the F005 saved-searches CRUD surface.
 # ABOUTME: Covers CRUD, 401 anon, cross-user 404, 409 duplicate/rename via real constraint, cap 400, 422s, ordering, PROXY-1.
+import json
+
 import pytest
 
 from fastapi_app.main import app
@@ -123,6 +125,31 @@ async def test_validation_422(authed_user):
     assert (await client.post("/me/saved-searches/", json=_body(min_me=5))).status_code == 422          # unknown key (extra=forbid)
     assert (await client.post("/me/saved-searches/", json={"search_parameters": {}})).status_code == 422  # missing name
     assert (await client.post("/me/saved-searches/", json=_body(name="   "))).status_code == 422         # blank name
+
+
+# ---------- non-finite / storage-overflow prices (finding 4; TEST-1 HTTP-level) ----------
+# httpx's json= encoder refuses inf/nan client-side (allow_nan=False), so send raw JSON bytes: the
+# server-side parser accepts Infinity/NaN tokens, exercising the schema's allow_inf_nan guard.
+@pytest.mark.parametrize("field", ["min_price", "max_price"])
+@pytest.mark.parametrize("bad", [1e309, float("nan"), 1e20])  # inf, nan, over NUMERIC(20,2) / 1e15 cap
+@pytest.mark.asyncio
+async def test_price_rejects_non_finite_and_overflow_422(authed_user, field, bad):
+    user, client = authed_user
+    resp = await client.post(
+        "/me/saved-searches/",
+        content=json.dumps(_body(name="P", **{field: bad})),
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_price_accepts_1e15_boundary(authed_user):
+    user, client = authed_user
+    resp = await client.post("/me/saved-searches/", json=_body(name="Boundary", min_price=1e15, max_price=1e15))
+    assert resp.status_code == 201
+    params = resp.json()["search_parameters"]
+    assert params["min_price"] == 1e15 and params["max_price"] == 1e15
 
 
 # ---------- app.openapi() schema assertions ----------

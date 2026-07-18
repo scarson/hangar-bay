@@ -7,7 +7,29 @@ from fastapi_app.schemas.account import (
     SavedSearchCreate,
     SavedSearchParameters,
     SavedSearchUpdate,
+    WatchlistItemCreate,
+    WatchlistItemUpdate,
 )
+
+# inf (1e309 overflows to inf), NaN, and a magnitude over NUMERIC(20,2) / the 1e15 cap.
+NON_FINITE_OR_OVERFLOW = [1e309, float("nan"), 1e20]
+PRICE_BOUNDARY = 1_000_000_000_000_000  # 1e15 — accepted (le is inclusive)
+
+
+def _build_with_price(model_field, value):
+    """Construct each price-bearing model with `value` on its named float field."""
+    model, field = model_field
+    if model is WatchlistItemCreate:
+        return WatchlistItemCreate(type_id=587, **{field: value})
+    return model(**{field: value})
+
+
+PRICE_FIELDS = [
+    (SavedSearchParameters, "min_price"),
+    (SavedSearchParameters, "max_price"),
+    (WatchlistItemCreate, "max_price"),
+    (WatchlistItemUpdate, "max_price"),
+]
 
 
 def test_parameters_defaults_materialize():
@@ -55,3 +77,19 @@ def test_update_requires_and_trims_name():
     assert u.name == "Renamed"
     with pytest.raises(ValidationError):
         SavedSearchUpdate(name="")
+
+
+# ---------- price fields: reject non-finite / storage-overflow, accept the boundary ----------
+
+@pytest.mark.parametrize("model_field", PRICE_FIELDS)
+@pytest.mark.parametrize("bad", NON_FINITE_OR_OVERFLOW)
+def test_price_fields_reject_non_finite_and_overflow(model_field, bad):
+    with pytest.raises(ValidationError):
+        _build_with_price(model_field, bad)
+
+
+@pytest.mark.parametrize("model_field", PRICE_FIELDS)
+def test_price_fields_accept_1e15_boundary(model_field):
+    _, field = model_field
+    built = _build_with_price(model_field, PRICE_BOUNDARY)
+    assert getattr(built, field) == PRICE_BOUNDARY

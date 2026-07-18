@@ -7,6 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator,
 
 from .contracts import SortableContractFields, SortDirection
 
+# Upper bound for ISK price fields: 1e15, far above any real EVE price and well inside the
+# NUMERIC(20,2) storage width, so a schema-valid price can never fail numeric persistence.
+# Paired with allow_inf_nan=False so inf/NaN can't slip past the ge/le comparisons.
+PRICE_CEILING = 1_000_000_000_000_000
+
 
 class SavedSearchParameters(BaseModel):
     """Server-side validation model for a saved search's stored filter blob. Mirrors the
@@ -16,8 +21,8 @@ class SavedSearchParameters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     search: Optional[str] = Field(default=None, min_length=3)
-    min_price: Optional[float] = Field(default=None, ge=0)
-    max_price: Optional[float] = Field(default=None, ge=0)
+    min_price: Optional[float] = Field(default=None, ge=0, le=PRICE_CEILING, allow_inf_nan=False)
+    max_price: Optional[float] = Field(default=None, ge=0, le=PRICE_CEILING, allow_inf_nan=False)
     region_ids: Optional[List[PositiveInt]] = Field(default=None)
     is_bpc: Optional[bool] = Field(default=None)
     ships_only: bool = Field(default=True)
@@ -61,7 +66,10 @@ class WatchlistItemCreate(BaseModel):
 
     type_id: Optional[int] = Field(default=None, gt=0)
     type_name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    max_price: Optional[float] = Field(default=None, ge=0.01, description="ISK; >= 0.01 when present.")
+    max_price: Optional[float] = Field(
+        default=None, ge=0.01, le=PRICE_CEILING, allow_inf_nan=False,
+        description="ISK; >= 0.01 when present.",
+    )
     notes: Optional[str] = Field(default=None, max_length=500)
 
     @field_validator("type_name", "notes")
@@ -82,7 +90,7 @@ class WatchlistItemCreate(BaseModel):
 class WatchlistItemUpdate(BaseModel):
     """Partial update: omitted field preserves, explicit JSON null clears (via model_fields_set)."""
 
-    max_price: Optional[float] = Field(default=None, ge=0.01)
+    max_price: Optional[float] = Field(default=None, ge=0.01, le=PRICE_CEILING, allow_inf_nan=False)
     notes: Optional[str] = Field(default=None, max_length=500)
 
 

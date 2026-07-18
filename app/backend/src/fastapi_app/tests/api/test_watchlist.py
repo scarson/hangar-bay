@@ -1,5 +1,7 @@
 # ABOUTME: HTTP-level tests for the /me/watchlist-items surface (F006) — add pipeline, CRUD, auth.
 # ABOUTME: ESI is mocked at the app.state.http_client seam (base http://sso.test) via pytest-httpx.
+import json
+
 import httpx
 import pytest
 from sqlalchemy import select
@@ -158,6 +160,41 @@ async def test_add_unknown_name_400(authed_user, httpx_mock, db_session):
     assert resp.status_code == 400
     assert "unknown ship name" in resp.json()["detail"]
     assert (await db_session.execute(select(WatchlistItem))).first() is None
+
+
+# ---------- non-finite / storage-overflow price rejection (finding 4; TEST-1 HTTP-level) ----------
+# httpx's json= encoder refuses inf/nan client-side (allow_nan=False), so send raw JSON bytes: the
+# server-side parser accepts Infinity/NaN tokens, exercising the schema's allow_inf_nan guard.
+
+def _raw(payload: dict) -> dict:
+    return {"content": json.dumps(payload), "headers": {"content-type": "application/json"}}
+
+
+@pytest.mark.parametrize("bad", [1e309, float("nan"), 1e20])  # inf, nan, over NUMERIC(20,2) / 1e15 cap
+@pytest.mark.asyncio
+async def test_add_rejects_non_finite_or_overflow_max_price_422(authed_user, httpx_mock, bad):
+    user, client = authed_user
+    resp = await client.post("/me/watchlist-items/", **_raw({"type_id": 587, "max_price": bad}))
+    assert resp.status_code == 422
+    assert httpx_mock.get_requests() == []   # rejected at validation, before any ESI traffic
+
+
+@pytest.mark.parametrize("bad", [1e309, float("nan"), 1e20])
+@pytest.mark.asyncio
+async def test_update_rejects_non_finite_or_overflow_max_price_422(authed_user, db_session, bad):
+    user, client = authed_user
+    item = await _seed_item(db_session, user)
+    resp = await client.put(f"/me/watchlist-items/{item.id}", **_raw({"max_price": bad}))
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_accepts_1e15_boundary_max_price(authed_user, db_session):
+    user, client = authed_user
+    item = await _seed_item(db_session, user)
+    resp = await client.put(f"/me/watchlist-items/{item.id}", json={"max_price": 1e15})
+    assert resp.status_code == 200
+    assert resp.json()["max_price"] == 1e15
 
 
 @pytest.mark.asyncio

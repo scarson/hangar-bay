@@ -1,6 +1,9 @@
 import logging
+import math
 import structlog
 from fastapi import Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -99,6 +102,35 @@ async def generic_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"detail": "An unexpected server error occurred."},
+    )
+
+
+def _json_safe(value):
+    """Coerce non-finite floats (inf/-inf/nan) to their string form, recursing through dict/list
+    containers, so a payload is renderable by Starlette's allow_nan=False JSON encoder."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Return the standard 422 body even when a rejected value is a non-finite float.
+
+    Pydantic echoes the offending input in every error entry. A client sending the JSON number
+    1e309 (which parses to inf) or a NaN token would otherwise crash Starlette's allow_nan=False
+    encoder while it renders the 422, surfacing a 500. Stringifying non-finite inputs keeps the
+    {"detail": [...]} shape valid JSON; behaviour is identical to FastAPI's default handler for
+    every finite input.
+    """
+    return JSONResponse(
+        status_code=422, content={"detail": _json_safe(jsonable_encoder(exc.errors()))}
     )
 
 # Add RequestID middleware for structured logging correlation
