@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:b6f5097c146903cb9e8d64a05909fc72c8c2405917286d35c7b115479c02ba17"
+content_hash = "sha256:765a1de244802cc49c8229adb916d14ca39da16755747cb3457863914c646d53"
 
 [[metadata.targets]]
 requires_python = ">=3.14"
@@ -146,6 +146,17 @@ files = [
     {file = "asyncpg-0.30.0-cp313-cp313-win32.whl", hash = "sha256:ae374585f51c2b444510cdf3595b97ece4f233fde739aa14b50e0d64e8a7a590"},
     {file = "asyncpg-0.30.0-cp313-cp313-win_amd64.whl", hash = "sha256:f59b430b8e27557c3fb9869222559f7417ced18688375825f8f12302c34e915e"},
     {file = "asyncpg-0.30.0.tar.gz", hash = "sha256:c551e9928ab6707602f44811817f82ba3c446e018bfe1d3abecc8ba5f3eac851"},
+]
+
+[[package]]
+name = "attrs"
+version = "26.1.0"
+requires_python = ">=3.9"
+summary = "Classes Without Boilerplate"
+groups = ["dev"]
+files = [
+    {file = "attrs-26.1.0-py3-none-any.whl", hash = "sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309"},
+    {file = "attrs-26.1.0.tar.gz", hash = "sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32"},
 ]
 
 [[package]]
@@ -409,6 +420,21 @@ dependencies = [
 files = [
     {file = "flake8-7.2.0-py2.py3-none-any.whl", hash = "sha256:93b92ba5bdb60754a6da14fa3b93a9361fd00a59632ada61fd7b130436c40343"},
     {file = "flake8-7.2.0.tar.gz", hash = "sha256:fa558ae3f6f7dbf2b4f22663e5343b6b6023620461f8d4ff2019ef4b5ee70426"},
+]
+
+[[package]]
+name = "flake8-bugbear"
+version = "25.11.29"
+requires_python = ">=3.10"
+summary = "A plugin for flake8 finding likely bugs and design problems in your program. Contains warnings that don't belong in pyflakes and pycodestyle."
+groups = ["dev"]
+dependencies = [
+    "attrs>=22.2.0",
+    "flake8>=7.2.0",
+]
+files = [
+    {file = "flake8_bugbear-25.11.29-py3-none-any.whl", hash = "sha256:9bf15e2970e736d2340da4c0a70493db964061c9c38f708cfe1f7b2d87392298"},
+    {file = "flake8_bugbear-25.11.29.tar.gz", hash = "sha256:b5d06710f3d26e595541ad303ad4d5cb52578bd4bccbb2c2c0b2c72e243dafc8"},
 ]
 
 [[package]]
