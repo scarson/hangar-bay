@@ -4,9 +4,6 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-logger = logging.getLogger(__name__)
-
-
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -31,6 +28,8 @@ from .api import notifications as notifications_router
 from .models import contracts # This import is crucial for Base.metadata to find the tables.
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 # Configure basic logging for early startup messages
 # This will be enhanced with structured logging in the lifespan function
