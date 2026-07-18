@@ -60,15 +60,66 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** In progress — Phase 1 claimed 2026-07-18.
+
+**Baseline at Phase 1 claim** (branch point `bfaf495`, fresh `origin/dev`): `pdm run pytest` = **358 passed**; `pdm run lint` = exit 0; `grep -rn "noqa: C901" src/` = the 5 expected sites.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 1 — get_contracts | ⬜ Not started | — | — |
+| 1 — get_contracts | 🚧 PR open | `69b0112`, `3d4e61e`, `1ca0aa0` | branch `claude/c901-get-contracts`; complexity 20 → 7; suite 358 → 362 |
 | 2 — _process_contracts | ⬜ Not started | — | same file as Phase 3; run before it |
 | 3 — run_aggregation | ⬜ Not started | — | blocked by Phase 2 (same file) |
 | 4 — _get_esi_object + shared retry helper | ⬜ Not started | — | introduces `_get_with_transient_retry` |
 | 5 — get_esi_data_with_etag_caching | ⬜ Not started | — | blocked by Phase 4 (uses its helper); write its missing tests FIRST |
+
+### Deviations
+
+**Phase 1, Task 1.1 — the plan's tiebreaker test as written was vacuous; its fixture was reshaped.**
+`test_joined_pagination_tiebreaks_equal_sort_keys_by_contract_id` was specified with a normative body
+in Task 1.1. Written exactly as specified, it passed against BOTH of the mutations it claimed to
+guard against: deleting `Contract.contract_id.asc()` from the joined `id_query`, and merging
+`_fetch_page_joined` into `_fetch_page_simple` (the change non-negotiable ground rule 4 forbids). Two
+review lenses independently mutation-tested it and converged on this. Root causes: each contract
+carried exactly ONE matching `ContractItem`, so the join produced no duplicated rows for SQLA-1 to
+bite on; and the fixture inserted `930001` before `930002`, so heap order accidentally matched the
+asserted order. Fix (commit `1ca0aa0`, test file only): contract 930001 now carries 2 matching items
+(joined row count 3 > contract count 2), rows are inserted in descending contract_id order, the sort
+key moved from `price` to `ship_name` so the tie is on the aggregated item column, and TEST-4
+partition assertions were added (union of pages == full set, intersection empty). Test name and the
+plan's normative assertions are unchanged.
+
+**Residual limit, documented rather than faked:** the tiebreaker-removal mutation still cannot be made
+red at this fixture size. `EXPLAIN` shows Postgres feeds the final sort from a `GroupAggregate` that is
+already sorted by `contract_id`, so tied keys emerge contract_id-ascending whether or not the
+tiebreaker exists; descending inserts, 3 contracts, item-column sorts, and forcing `HashAggregate` via
+`enable_sort=off` were all tried and all still returned ascending. The tiebreaker IS covered — by the
+pre-existing `tests/api/test_contract_filters.py::test_pagination_sorted_by_ship_name_no_duplicates`,
+which does go red under that mutation. The test's docstring now states what it locks (SQLA-1
+joined-row pagination + TEST-4 partition), what it does not (the tiebreaker), and where the tiebreaker
+is actually covered. The rejected alternative was asserting on the compiled `ORDER BY` SQL text, which
+tests SQL strings rather than behavior.
+
+**Phase 1, Task 1.2 — two annotation-level deviations from the normative helper signatures.**
+(a) `_needs_item_join` wraps its expression in `bool()`; the original assigned a raw truthy value, and
+the plan's normative signature declares `-> bool`. Consumed only by `if`, so no caller can observe it.
+(b) `_fetch_page_joined` / `_fetch_page_simple` keep the plan's normative `-> list[Contract]`
+annotation but return a SQLAlchemy `Sequence`. Inserting `list(...)` would have been a real (if tiny)
+behavior change, so the statement was moved verbatim and the loose annotation kept. No caller performs
+list-specific operations.
+
+### Discoveries
+
+**Concurrent pytest runs clobber the shared test database.** `pdm run pytest` drops and recreates the
+database named by `DATABASE_URL_TESTS`; isolation comes from per-run drop/recreate, not per-test
+rollback. Two agents running the suite simultaneously produce spurious `IntegrityError` / `DROP TABLE`
+failures that look like real test defects. Reviewers doing mutation testing must serialize, or point
+their own `DATABASE_URL_TESTS` at a scratch database. This bit the Phase 1 review round (2026-07-18)
+and cost one reviewer several confusing runs before it was diagnosed.
+
+**`_apply_contract_filters` measures exactly 10 — at the C901 limit.** The plan's contingency
+(`_apply_location_filters`) was correctly NOT applied, since the plan says do not preemptively split
+and the measurement is not > 10. But the next filter added to `get_contracts` will break the build.
+Whoever adds it should apply the documented contingency at that time.
 
 ---
 
@@ -92,7 +143,12 @@ notes and commit messages.
 
 ## Phase 1 — `get_contracts` (complexity 20 → ≤ 10)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 PR OPEN — branch `claude/c901-get-contracts`, claimed 2026-07-18T22:21Z.
+Commits `69b0112` (characterization tests), `3d4e61e` (extraction), `1ca0aa0` (mutation-sensitivity fix
+for the tiebreaker fixture — see Deviations). Gates: red gate observed
+(`C901 'get_contracts' is too complex (20)`); after extraction `pdm run lint` exit 0,
+`--select=C901` empty, `get_contracts` 20 → 7, `_apply_contract_filters` 10, `_apply_item_filters` 5;
+full suite 358 → 362 passed; 4 `# noqa: C901` remain (Phases 2-5).
 
 **Files:**
 - Modify: `app/backend/src/fastapi_app/services/contract_service.py`
