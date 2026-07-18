@@ -80,6 +80,10 @@ notes and commit messages.
 | 9 — E2E | ⬜ Not started | — | — |
 | 10 — Docs, gates, PR | ⬜ Not started | — | — |
 
+### Deviations
+
+- **Design §9.2 — backfilling real `users` rows into the `test_auth_flow` sessions "where trivial" — deliberately deferred.** No reduction in duplication materialized from the migration: the new `authed_user` fixture (Task 1.2) already covers the M3 tests that need a real `users` row, and the existing `test_auth_flow` tests keep their minted-session `user_id` values, which no longer FK anywhere they insert. Recorded here so the design and plan agree with an audit trail rather than a silent drop (round-2 review MINOR-7); mirror this line into the Task 10.2 PR-body deviation notes at ship time.
+
 ---
 <!-- SECTION A of the M3 implementation plan: Phase 0 (campaign setup) + Phase 1 (backend foundations) + Phase 2 (F005 Saved Searches backend). Authoritative design: docs/superpowers/specs/2026-07-17-m3-account-features-design.md. -->
 
@@ -200,8 +204,6 @@ assertions (timing bounds).
   from fastapi_app.db import Base
   from fastapi_app.models import Notification, SavedSearch, User, WatchlistItem
 
-  pytestmark = pytest.mark.asyncio
-
 
   def test_account_tables_registered():
       for table in ("saved_searches", "watchlist_items", "notifications"):
@@ -220,12 +222,14 @@ assertions (timing bounds).
       return user
 
 
+  @pytest.mark.asyncio
   async def test_watchlist_alerts_enabled_defaults_true(db_session):
       user = await _make_user(db_session, character_id=91000201)
       await db_session.refresh(user)
       assert user.watchlist_alerts_enabled is True
 
 
+  @pytest.mark.asyncio
   async def test_saved_search_fk_requires_real_user(db_session):
       # A row FK'd to a nonexistent users.id raises IntegrityError (savepoint keeps the tx alive).
       with pytest.raises(IntegrityError):
@@ -234,12 +238,14 @@ assertions (timing bounds).
               await db_session.flush()
 
 
+  @pytest.mark.asyncio
   async def test_saved_search_fk_accepts_real_user(db_session):
       user = await _make_user(db_session, character_id=91000202)
       db_session.add(SavedSearch(user_id=user.id, name="ok", search_parameters={}))
       await db_session.flush()  # succeeds — FK satisfied
 
 
+  @pytest.mark.asyncio
   async def test_saved_search_unique_user_name(db_session):
       user = await _make_user(db_session, character_id=91000203)
       db_session.add(SavedSearch(user_id=user.id, name="dup", search_parameters={}))
@@ -250,6 +256,7 @@ assertions (timing bounds).
               await db_session.flush()
 
 
+  @pytest.mark.asyncio
   async def test_watchlist_item_unique_user_type(db_session):
       user = await _make_user(db_session, character_id=91000204)
       db_session.add(WatchlistItem(user_id=user.id, type_id=587, type_name="Rifter"))
@@ -260,6 +267,7 @@ assertions (timing bounds).
               await db_session.flush()
 
 
+  @pytest.mark.asyncio
   async def test_notifications_partial_dedup_index_blocks_duplicate_watchlist_match(db_session):
       user = await _make_user(db_session, character_id=91000205)
       await db_session.execute(insert(Notification).values(
@@ -430,7 +438,12 @@ assertions (timing bounds).
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/models/account.py app/backend/src/fastapi_app/models/user.py app/backend/src/fastapi_app/models/__init__.py app/backend/src/fastapi_app/tests/models/test_account_models.py
-  git commit -m "feat(backend): add M3 account models and watchlist-alerts flag"
+  ```
+  then commit with:
+  ```
+  feat(backend): add M3 account models and watchlist-alerts flag
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   ```
 
 ```
@@ -530,7 +543,12 @@ Follow TDD: write failing test → implement → verify green.
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/tests/conftest.py app/backend/src/fastapi_app/tests/api/test_account_fixtures.py
-  git commit -m "test(backend): add authed_user fixture and login_as helper"
+  ```
+  then commit with:
+  ```
+  test(backend): add authed_user fixture and login_as helper
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   ```
 
 ```
@@ -675,7 +693,12 @@ Design §4.1: resolve `session["user_id"]` to a live `users` row; if the row is 
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/core/current_user.py app/backend/src/fastapi_app/tests/core/test_current_user.py
-  git commit -m "feat(backend): add get_current_user session-to-row resolution dependency"
+  ```
+  then commit with:
+  ```
+  feat(backend): add get_current_user session-to-row resolution dependency
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   ```
 
 ```
@@ -705,29 +728,81 @@ assertions (timing bounds).
 
 **Files:**
 - Modify: `app/backend/src/fastapi_app/services/auth_service.py` (rewrite `upsert_user`; extend imports; remove ONLY the first-login-race TODO block)
-- Test: `app/backend/src/fastapi_app/tests/services/test_auth_service.py` (add one statement-path test)
+- Test: `app/backend/src/fastapi_app/tests/services/test_auth_service.py` (add one deterministic two-session concurrency test)
 
-**Nature of the change:** this is a behavior-preserving refactor that closes the first-login race (design §9.1). The concurrent double-insert it fixes cannot be exercised without a concurrency harness (out of scope), so the existing `test_auth_service.py` suite is the regression guard for external behavior, and the one new test below pins the ON-CONFLICT contract (same row on re-login, no duplicate). There is no red-first behavior test for the refactor itself — that is expected and honest; the red→green cycle here is: existing suite green → rewrite → existing suite still green + new same-row test green.
+**Nature of the change:** this refactor closes the first-login race (design §9.1). The new deterministic two-session test below IS the red-first behavior test: it drives two concurrent first logins for the same `character_id` on independent connections, and Postgres's unique-index lock on the winner's uncommitted insert makes the ordering deterministic (a lock wait, not a timing race). Against the current select-then-insert the losing session raises `IntegrityError` once the winner commits (RED); against `INSERT ... ON CONFLICT DO UPDATE` it lands on the winner's row (GREEN). The existing `test_auth_service.py` suite remains the regression guard for external behavior (encryption, rotation, owner-hash transfer). The red→green cycle here is: new test RED against current code → rewrite → new test GREEN + existing suite still green.
 
-- [ ] **Step 1: Add the failing statement-path test.** Append to `app/backend/src/fastapi_app/tests/services/test_auth_service.py`:
+- [ ] **Step 1: Add the failing concurrency test.** Append to `app/backend/src/fastapi_app/tests/services/test_auth_service.py`. It needs three imports the module does not have yet — add to the import block: `import asyncio`, `from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine`, and `from fastapi_app.db import Base`:
   ```python
   @pytest.mark.asyncio
-  async def test_upsert_on_conflict_updates_existing_row_not_duplicates(db_session):
-      # Two logins for the same character_id resolve to the SAME row via ON CONFLICT DO UPDATE —
-      # the loser of a first-login race lands on the winner's row rather than erroring (design §9.1).
-      ident1 = VerifiedIdentity(character_id=91000001, character_name="First", owner_hash="OWN1")
-      u1 = await auth_service.upsert_user(db_session, ident1, {"access_token": "AT1", "expires_in": 1200})
-      ident2 = VerifiedIdentity(character_id=91000001, character_name="Second", owner_hash="OWN2")
-      u2 = await auth_service.upsert_user(db_session, ident2, {"access_token": "AT2", "expires_in": 1200})
-      assert u2.id == u1.id  # updated in place, not a new insert
-      rows = (await db_session.execute(select(User).where(User.character_id == 91000001))).scalars().all()
-      assert len(rows) == 1
-      assert u2.character_name == "Second"
-      assert u2.owner_hash == "OWN2"
+  async def test_concurrent_first_login_both_succeed_single_row():
+      # Two genuinely concurrent first logins for the SAME character_id, on independent connections.
+      # Blocking is enforced by Postgres's unique-index lock on session A's uncommitted insert — NOT
+      # by sleep timing — so the ordering is deterministic. Against the current select-then-insert,
+      # session B raises IntegrityError once A commits (RED); against ON CONFLICT DO UPDATE, B lands
+      # on A's row (GREEN). This test does NOT take the db_session fixture: both sessions must commit
+      # independently, so it manages its own two engines against DATABASE_URL_TESTS.
+      url = str(settings.DATABASE_URL_TESTS)
+      engine_a = create_async_engine(url)
+      engine_b = create_async_engine(url)
+      session_a = None
+      task_b = None
+      try:
+          async with engine_a.begin() as conn:   # commit the schema so BOTH connections see the table
+              await conn.run_sync(Base.metadata.drop_all)
+              await conn.run_sync(Base.metadata.create_all)
+          maker_a = async_sessionmaker(engine_a, expire_on_commit=False)
+          maker_b = async_sessionmaker(engine_b, expire_on_commit=False)
+
+          ident_a = VerifiedIdentity(character_id=91000001, character_name="First", owner_hash="OWN1")
+          ident_b = VerifiedIdentity(character_id=91000001, character_name="Second", owner_hash="OWN2")
+
+          session_a = maker_a()
+          user_a = await auth_service.upsert_user(
+              session_a, ident_a, {"access_token": "AT1", "expires_in": 1200}
+          )   # A's insert is flushed but NOT committed — its unique-index entry now blocks B.
+
+          b_out: dict = {}
+
+          async def _upsert_in_session_b():
+              async with maker_b() as session_b:
+                  b_out["user"] = await auth_service.upsert_user(
+                      session_b, ident_b, {"access_token": "AT2", "expires_in": 1200}
+                  )
+                  await session_b.commit()
+
+          task_b = asyncio.create_task(_upsert_in_session_b())
+          await asyncio.sleep(0.1)     # let B reach its insert and BLOCK on A's lock (a lock wait, not a race)
+          assert not task_b.done()     # B is parked on the lock — neither finished nor errored yet
+
+          await session_a.commit()     # release the lock; B now resolves against A's committed row
+          await task_b                  # RED: current select-then-insert raises IntegrityError here. GREEN: B succeeds.
+
+          async with maker_a() as verify:
+              rows = (
+                  await verify.execute(select(User).where(User.character_id == 91000001))
+              ).scalars().all()
+          assert len(rows) == 1                       # exactly one users row — no duplicate
+          assert user_a.character_id == 91000001
+          assert b_out["user"].character_id == 91000001
+          assert rows[0].owner_hash == "OWN2"         # B was the last writer — updated A's row in place
+      finally:
+          if task_b is not None:       # never orphan the background task (keeps output pristine on failure)
+              task_b.cancel()
+              try:
+                  await task_b
+              except BaseException:
+                  pass
+          if session_a is not None:    # roll A's tx back BEFORE the DDL drop so it can't deadlock on A's lock
+              await session_a.close()
+          async with engine_a.begin() as conn:
+              await conn.run_sync(Base.metadata.drop_all)
+          await engine_a.dispose()
+          await engine_b.dispose()
   ```
-  Note: this test passes against the current `select`-then-mutate implementation too (it is behavior-preserving), so it will already be green — that is fine; it locks the contract the rewrite must keep. Run the full `test_auth_service.py` now to record the green baseline:
+  Run it against the CURRENT implementation to confirm it fails RED — session B raises `IntegrityError`:
   ```bash
-  cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_auth_service.py -v
+  cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_auth_service.py::test_concurrent_first_login_both_succeed_single_row -v
   ```
 - [ ] **Step 2: Rewrite `upsert_user`.** In `services/auth_service.py`, change the import line `from sqlalchemy import select` to:
   ```python
@@ -783,7 +858,7 @@ assertions (timing bounds).
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_auth_service.py -v
   ```
-  Expected: every existing test (create+encrypt, refresh-token-present, owner-hash transfer, mark_for_reauth, all refresh_user_tokens paths) plus the new same-row test pass. The owner-hash-transfer test in particular proves the ON-CONFLICT update path (`len(rows) == 1`, `owner_hash == "OWN2"`, `last_login_at` advanced) still holds.
+  Expected: every existing test (create+encrypt, refresh-token-present, owner-hash transfer, mark_for_reauth, all refresh_user_tokens paths) plus the new two-session concurrency test pass. The owner-hash-transfer test in particular proves the ON-CONFLICT update path (`len(rows) == 1`, `owner_hash == "OWN2"`, `last_login_at` advanced) still holds.
 - [ ] **Step 4: Confirm the callback flow is unaffected.** Run the auth-flow HTTP suite (it exercises `_finalize_login` → `upsert_user`):
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_auth_flow.py -v
@@ -793,14 +868,20 @@ assertions (timing bounds).
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/services/auth_service.py app/backend/src/fastapi_app/tests/services/test_auth_service.py
-  git commit -m "fix(auth): make first-login upsert race-safe with ON CONFLICT DO UPDATE"
+  ```
+  then commit with:
+  ```
+  fix(auth): make first-login upsert race-safe with ON CONFLICT DO UPDATE
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   ```
 
 ```
 BEFORE marking this task complete:
 1. Review tests against docs/pitfalls/testing-pitfalls.md
 2. Verify test coverage (error paths? edge cases?) — the full existing suite (encryption,
-   rotation, outage-keeps-vault, wrong-key re-auth) stays green AND the new test pins same-row-on-conflict.
+   rotation, outage-keeps-vault, wrong-key re-auth) stays green AND the new two-session test pins
+   race-safe same-row-on-conflict (RED against the old code, GREEN after the rewrite).
 3. Run tests and confirm green (test_auth_service.py + test_auth_flow.py).
 ```
 
@@ -966,7 +1047,12 @@ Follow TDD: write failing test → implement → verify green.
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/schemas/account.py app/backend/src/fastapi_app/tests/api/test_account_schemas.py
-  git commit -m "feat(api): add saved-search request/response schemas"
+  ```
+  then commit with:
+  ```
+  feat(api): add saved-search request/response schemas
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   ```
 
 ```
@@ -1013,14 +1099,13 @@ assertions (timing bounds).
   from fastapi_app.main import app
   from fastapi_app.tests.conftest import login_as
 
-  pytestmark = pytest.mark.asyncio
-
 
   def _body(name="Frigs", **params):
       return {"name": name, "search_parameters": params}
 
 
   # ---------- happy-path CRUD ----------
+  @pytest.mark.asyncio
   async def test_create_and_list_roundtrip(authed_user):
       user, client = authed_user
       resp = await client.post("/me/saved-searches/", json=_body(
@@ -1040,6 +1125,7 @@ assertions (timing bounds).
       assert [s["id"] for s in listed.json()] == [created["id"]]
 
 
+  @pytest.mark.asyncio
   async def test_rename_happy(authed_user):
       user, client = authed_user
       a = (await client.post("/me/saved-searches/", json=_body(name="Old"))).json()
@@ -1048,6 +1134,7 @@ assertions (timing bounds).
       assert resp.json()["name"] == "New"
 
 
+  @pytest.mark.asyncio
   async def test_delete_happy_then_404(authed_user):
       user, client = authed_user
       a = (await client.post("/me/saved-searches/", json=_body(name="Temp"))).json()
@@ -1055,6 +1142,7 @@ assertions (timing bounds).
       assert (await client.delete(f"/me/saved-searches/{a['id']}")).status_code == 404
 
 
+  @pytest.mark.asyncio
   async def test_list_ordered_name_asc(authed_user):
       user, client = authed_user
       for n in ["Zeta", "Alpha", "Mike"]:
@@ -1064,6 +1152,7 @@ assertions (timing bounds).
 
 
   # ---------- 401 anonymous on every route ----------
+  @pytest.mark.asyncio
   async def test_all_routes_401_anonymous(auth_client):
       assert (await auth_client.get("/me/saved-searches/")).status_code == 401
       assert (await auth_client.post("/me/saved-searches/", json=_body())).status_code == 401
@@ -1072,6 +1161,7 @@ assertions (timing bounds).
 
 
   # ---------- cross-user isolation (404, indistinguishable from not-found) ----------
+  @pytest.mark.asyncio
   async def test_cross_user_isolation(authed_user, db_session):
       user_a, client = authed_user
       a = (await client.post("/me/saved-searches/", json=_body(name="A-secret"))).json()
@@ -1084,6 +1174,7 @@ assertions (timing bounds).
 
 
   # ---------- 409 duplicate name via the real constraint (no pre-check) ----------
+  @pytest.mark.asyncio
   async def test_duplicate_name_409_and_leaves_one_row(authed_user):
       user, client = authed_user
       assert (await client.post("/me/saved-searches/", json=_body(name="Dup"))).status_code == 201
@@ -1093,6 +1184,7 @@ assertions (timing bounds).
       assert len(dups) == 1
 
 
+  @pytest.mark.asyncio
   async def test_rename_to_existing_name_409(authed_user):
       user, client = authed_user
       a = (await client.post("/me/saved-searches/", json=_body(name="A"))).json()
@@ -1104,6 +1196,7 @@ assertions (timing bounds).
 
 
   # ---------- per-user cap (best-effort, sequential — design §3.5) ----------
+  @pytest.mark.asyncio
   async def test_cap_returns_400(authed_user, monkeypatch):
       from fastapi_app.core.config import settings
       monkeypatch.setattr(settings, "MAX_SAVED_SEARCHES_PER_USER", 2)
@@ -1116,6 +1209,7 @@ assertions (timing bounds).
 
 
   # ---------- 422 validation (bad search_parameters + name) ----------
+  @pytest.mark.asyncio
   async def test_validation_422(authed_user):
       user, client = authed_user
       assert (await client.post("/me/saved-searches/", json=_body(search="ab"))).status_code == 422       # short search
@@ -1145,9 +1239,10 @@ assertions (timing bounds).
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_saved_searches.py -v
   ```
   Expected failure: collection/import error — `ModuleNotFoundError: No module named 'fastapi_app.services.saved_search_service'` (and the schema test asserts a `/me/saved-searches/` path that is not mounted yet).
-- [ ] **Step 3: Add the config setting.** In `core/config.py`, add under the Aggregation block (any location with the other scalars is fine):
+- [ ] **Step 3: Add the config setting.** In `core/config.py`, add under the Aggregation block (any location with the other scalars is fine). This establishes the single canonical `# --- M3 account features ---` block that Tasks 3.2 and 4.3 append their config fields INTO (do not start a second M3 block later):
   ```python
-      # M3 account features — per-user soft caps (best-effort count-checks, design §3.5)
+      # --- M3 account features ---
+      # Per-user soft caps (best-effort count-checks, design §3.5).
       MAX_SAVED_SEARCHES_PER_USER: int = 100
   ```
   (Has a default, so no `export_openapi.py` `_ENV_DEFAULTS` change is needed — recon backend-api-patterns §5.) Document it in `app/backend/.env.example` per ENV-4 by adding, near the aggregation settings:
@@ -1233,9 +1328,13 @@ assertions (timing bounds).
       db: AsyncSession, user_id: int, search_id: int, payload: SavedSearchUpdate
   ) -> SavedSearch:
       row = await _get_owned(db, user_id, search_id)
-      row.name = payload.name
       try:
+          # begin_nested() flushes pending state when the savepoint is ENTERED, so the rename
+          # assignment MUST happen INSIDE the savepoint. If `row.name = payload.name` were set
+          # before `begin_nested()`, the unique-name violation would flush OUTSIDE the savepoint
+          # and poison the begin-once outer transaction instead of rolling back only this statement.
           async with db.begin_nested():
+              row.name = payload.name
               await db.flush()
       except IntegrityError:
           raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
@@ -1341,7 +1440,12 @@ assertions (timing bounds).
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/services/saved_search_service.py app/backend/src/fastapi_app/api/saved_searches.py app/backend/src/fastapi_app/core/config.py app/backend/.env.example app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/api/test_saved_searches.py
-  git commit -m "feat(api): add saved-searches CRUD endpoints"
+  ```
+  then commit with:
+  ```
+  feat(api): add saved-searches CRUD endpoints
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   ```
 - [ ] **Step 10: Push the campaign branch (first push of the campaign).**
   ```bash
@@ -1525,6 +1629,15 @@ async def test_resolve_names_network_error_raises(httpx_mock):
     async with httpx.AsyncClient(base_url=ESI) as http:
         with pytest.raises(ESIRequestFailedError):
             await _client(http).resolve_names(["x"])
+
+
+async def test_resolve_names_non_json_body_raises(httpx_mock):
+    # A 200 with a non-JSON body (e.g. an upstream HTML error page) must not escape as a raw
+    # ValueError/500 — response.json() failures normalize to ESIRequestFailedError (design §4.5).
+    httpx_mock.add_response(method="POST", url=IDS_URL, status_code=200, text="<html>not json</html>")
+    async with httpx.AsyncClient(base_url=ESI) as http:
+        with pytest.raises(ESIRequestFailedError):
+            await _client(http).resolve_names(["x"])
 ```
 
 - [ ] **Step 2: Run the test, confirm it fails.**
@@ -1547,14 +1660,19 @@ async def test_resolve_names_network_error_raises(httpx_mock):
         """
         try:
             response = await self.http_client.post("/v1/universe/ids/", json=names)
-        except (httpx.ReadTimeout, httpx.ConnectError) as e:
+        except httpx.RequestError as e:
+            # RequestError covers ReadTimeout / ConnectError / ConnectTimeout / etc. — any transport
+            # failure surfaces as ESIRequestFailedError so the caller maps it to 502, never a raw 500.
             raise ESIRequestFailedError(message=f"Network error resolving names: {e}")
         if not (200 <= response.status_code < 300):
             raise ESIRequestFailedError(
                 status_code=response.status_code,
                 message=f"universe/ids resolution failed: HTTP {response.status_code}",
             )
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError:
+            raise ESIRequestFailedError(message="Non-JSON body from /v1/universe/ids/")
         if not isinstance(data, dict):
             raise ESIRequestFailedError(
                 message=f"Expected JSON object from /v1/universe/ids/, got {type(data).__name__}"
@@ -1564,7 +1682,7 @@ async def test_resolve_names_network_error_raises(httpx_mock):
 
 - [ ] **Step 4: Run the test, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/core/test_esi_client_resolve_names.py -v`
-  All 5 pass; output pristine.
+  All 6 pass; output pristine.
 
 - [ ] **Step 5: Commit.**
   `git add app/backend/src/fastapi_app/core/esi_client_class.py app/backend/src/fastapi_app/tests/core/test_esi_client_resolve_names.py`
@@ -1610,14 +1728,15 @@ with a deliberate same-name/distinct-type_id tiebreaker, never rely on insertion
 - Modify: `app/backend/src/fastapi_app/main.py` (import + mount `watchlist` router).
 - Test (Create): `app/backend/src/fastapi_app/tests/api/test_watchlist.py`.
 
-- [ ] **Step 1: Add the config field.** In `core/config.py`, after the Aggregation block (~line 58),
-  add a new block (default present → no `_ENV_DEFAULTS` change needed):
+- [ ] **Step 1: Add the config field.** In `core/config.py`, append INTO the single
+  `# --- M3 account features ---` block established in Task 2.2 (do NOT start a second M3 block) — add
+  the field beside `MAX_SAVED_SEARCHES_PER_USER` (default present → no `_ENV_DEFAULTS` change needed):
 
 ```python
-    # Account features (M3)
     MAX_WATCHLIST_ITEMS_PER_USER: int = 200
 ```
-Also document it in `app/backend/.env.example` (ENV-4): `MAX_WATCHLIST_ITEMS_PER_USER=200`.
+Also document it in `app/backend/.env.example` (ENV-4), under the same `# --- M3 account features ---`
+block: `MAX_WATCHLIST_ITEMS_PER_USER=200`.
 
 - [ ] **Step 2: Add the watchlist schemas.** Append to `schemas/account.py` (ensure imports at top of
   the file include `from datetime import datetime`, `from typing import Optional`,
@@ -1680,7 +1799,6 @@ from fastapi_app.main import app as real_app
 from fastapi_app.models import WatchlistItem
 from fastapi_app.core.config import settings
 
-pytestmark = pytest.mark.asyncio
 
 ESI = "http://sso.test"
 IDS_URL = f"{ESI}/v1/universe/ids/"
@@ -1704,6 +1822,7 @@ def _ship_group(group_id=25):
 
 # ---------- happy paths ----------
 
+@pytest.mark.asyncio
 async def test_add_by_type_id_denormalizes_name(authed_user, httpx_mock, db_session):
     user, client = authed_user
     httpx_mock.add_response(method="GET", url=_type_url(587), json=_published_ship("Rifter", 25))
@@ -1720,6 +1839,7 @@ async def test_add_by_type_id_denormalizes_name(authed_user, httpx_mock, db_sess
     assert row.type_name == "Rifter"
 
 
+@pytest.mark.asyncio
 async def test_add_by_name_resolves_then_validates(authed_user, httpx_mock, db_session):
     user, client = authed_user
     httpx_mock.add_response(method="POST", url=IDS_URL,
@@ -1735,6 +1855,7 @@ async def test_add_by_name_resolves_then_validates(authed_user, httpx_mock, db_s
 
 # ---------- validation / ESI error discrimination (no row inserted) ----------
 
+@pytest.mark.asyncio
 async def test_add_non_ship_category_400(authed_user, httpx_mock, db_session):
     user, client = authed_user
     httpx_mock.add_response(method="GET", url=_type_url(34), json=_published_ship("Tritanium", 18))
@@ -1744,6 +1865,7 @@ async def test_add_non_ship_category_400(authed_user, httpx_mock, db_session):
     assert (await db_session.execute(select(WatchlistItem))).first() is None
 
 
+@pytest.mark.asyncio
 async def test_add_unpublished_400(authed_user, httpx_mock, db_session):
     user, client = authed_user
     httpx_mock.add_response(method="GET", url=_type_url(999),
@@ -1753,6 +1875,7 @@ async def test_add_unpublished_400(authed_user, httpx_mock, db_session):
     assert (await db_session.execute(select(WatchlistItem))).first() is None
 
 
+@pytest.mark.asyncio
 async def test_add_esi_type_404_is_400_not_502(authed_user, httpx_mock, db_session):
     # _get_esi_object 4xx -> httpx.HTTPStatusError (NOT ESIRequestFailedError); service maps 4xx->400.
     user, client = authed_user
@@ -1762,6 +1885,7 @@ async def test_add_esi_type_404_is_400_not_502(authed_user, httpx_mock, db_sessi
     assert (await db_session.execute(select(WatchlistItem))).first() is None
 
 
+@pytest.mark.asyncio
 async def test_add_esi_5xx_is_502(authed_user, httpx_mock, db_session):
     # _get_esi_object retries 5xx 3x (~1.5s) then raises ESIRequestFailedError(status=503) -> 502.
     # Repeatable response; DO NOT assert request count == 1 (retries are load-bearing).
@@ -1772,6 +1896,7 @@ async def test_add_esi_5xx_is_502(authed_user, httpx_mock, db_session):
     assert (await db_session.execute(select(WatchlistItem))).first() is None
 
 
+@pytest.mark.asyncio
 async def test_add_unknown_name_400(authed_user, httpx_mock, db_session):
     user, client = authed_user
     httpx_mock.add_response(method="POST", url=IDS_URL, json={})   # no inventory_types
@@ -1781,12 +1906,14 @@ async def test_add_unknown_name_400(authed_user, httpx_mock, db_session):
     assert (await db_session.execute(select(WatchlistItem))).first() is None
 
 
+@pytest.mark.asyncio
 async def test_add_neither_identifier_422(authed_user, db_session):
     user, client = authed_user
     resp = await client.post("/me/watchlist-items/", json={"max_price": 5})
     assert resp.status_code == 422
 
 
+@pytest.mark.asyncio
 async def test_add_both_identifiers_422(authed_user, db_session):
     user, client = authed_user
     resp = await client.post("/me/watchlist-items/", json={"type_id": 587, "type_name": "Rifter"})
@@ -1795,6 +1922,7 @@ async def test_add_both_identifiers_422(authed_user, db_session):
 
 # ---------- duplicate + cap ----------
 
+@pytest.mark.asyncio
 async def test_add_duplicate_type_409(authed_user, httpx_mock, db_session):
     user, client = authed_user
     # reusable because the 2nd add re-reads type/group (cache may or may not serve it).
@@ -1808,6 +1936,7 @@ async def test_add_duplicate_type_409(authed_user, httpx_mock, db_session):
     assert len(rows) == 1
 
 
+@pytest.mark.asyncio
 async def test_cap_short_circuits_before_any_esi_call(authed_user, httpx_mock, db_session, monkeypatch):
     user, client = authed_user
     monkeypatch.setattr(settings, "MAX_WATCHLIST_ITEMS_PER_USER", 0)
@@ -1827,6 +1956,7 @@ async def _seed_item(db_session, user, *, type_id=587, type_name="Rifter", max_p
     return item
 
 
+@pytest.mark.asyncio
 async def test_put_omitted_field_preserves(authed_user, db_session):
     user, client = authed_user
     item = await _seed_item(db_session, user, max_price=100, notes="a")
@@ -1837,6 +1967,7 @@ async def test_put_omitted_field_preserves(authed_user, db_session):
     assert body["max_price"] == 100.0   # omitted -> preserved
 
 
+@pytest.mark.asyncio
 async def test_put_explicit_null_clears(authed_user, db_session):
     user, client = authed_user
     item = await _seed_item(db_session, user, max_price=100, notes="a")
@@ -1849,6 +1980,7 @@ async def test_put_explicit_null_clears(authed_user, db_session):
 
 # ---------- list ordering (TEST-3: same-name tiebreaker on type_id) ----------
 
+@pytest.mark.asyncio
 async def test_list_ordered_type_name_then_type_id(authed_user, db_session):
     user, client = authed_user
     await _seed_item(db_session, user, type_id=200, type_name="Alpha", max_price=None, notes=None)
@@ -1862,6 +1994,7 @@ async def test_list_ordered_type_name_then_type_id(authed_user, db_session):
 
 # ---------- cross-user isolation (uniform 404) ----------
 
+@pytest.mark.asyncio
 async def test_cross_user_put_and_delete_404(authed_user, db_session):
     user_a, client = authed_user
     item = await _seed_item(db_session, user_a)
@@ -1877,6 +2010,7 @@ async def test_cross_user_put_and_delete_404(authed_user, db_session):
 
 # ---------- delete happy + not-found ----------
 
+@pytest.mark.asyncio
 async def test_delete_removes_own_item(authed_user, db_session):
     user, client = authed_user
     item = await _seed_item(db_session, user)
@@ -1884,19 +2018,29 @@ async def test_delete_removes_own_item(authed_user, db_session):
     assert (await db_session.execute(select(WatchlistItem).where(WatchlistItem.id == item.id))).first() is None
 
 
+@pytest.mark.asyncio
 async def test_delete_missing_404(authed_user, db_session):
     user, client = authed_user
     assert (await client.delete("/me/watchlist-items/999999")).status_code == 404
 
 
-# ---------- anonymous 401 (auth_client without a session cookie) ----------
+# ---------- anonymous 401 on EVERY route+method (auth_client sets app.state.redis; no session cookie) ----------
 
-async def test_anonymous_401(auth_client):
-    assert (await auth_client.get("/me/watchlist-items/")).status_code == 401
-    assert (await auth_client.post("/me/watchlist-items/", json={"type_id": 587})).status_code == 401
+@pytest.mark.parametrize("method, path, json_body", [
+    ("POST", "/me/watchlist-items/", {"type_id": 587}),
+    ("GET", "/me/watchlist-items/", None),
+    ("PUT", "/me/watchlist-items/1", {"notes": "x"}),
+    ("DELETE", "/me/watchlist-items/1", None),
+])
+@pytest.mark.asyncio
+async def test_every_watchlist_route_401_anonymous(auth_client, method, path, json_body):
+    # get_current_user's first dependency is get_current_session, so a cookieless request 401s
+    # before any handler body runs — assert it for every method/path the router declares.
+    resp = await auth_client.request(method, path, json=json_body)
+    assert resp.status_code == 401
 
 
-# ---------- OpenAPI schema (PROXY-1 + declared error bodies) ----------
+# ---------- OpenAPI schema (PROXY-1 + declared error bodies + 401 on every operation) ----------
 
 def test_openapi_watchlist_paths_bare_and_declared():
     schema = real_app.openapi()
@@ -1906,6 +2050,14 @@ def test_openapi_watchlist_paths_bare_and_declared():
     assert not any(p.startswith("/api/v1") for p in paths)   # PROXY-1 sentinel
     post = paths["/me/watchlist-items/"]["post"]
     assert set(post["responses"]) >= {"201", "400", "401", "409", "422", "502"}
+    # every new watchlist operation must declare a 401 response (design §4.5 acceptance criterion).
+    for path, method in [
+        ("/me/watchlist-items/", "post"),
+        ("/me/watchlist-items/", "get"),
+        ("/me/watchlist-items/{item_id}", "put"),
+        ("/me/watchlist-items/{item_id}", "delete"),
+    ]:
+        assert "401" in paths[path][method]["responses"]
 ```
 
 - [ ] **Step 4: Run the test, confirm it fails.**
@@ -2044,6 +2196,10 @@ async def update_watchlist_item(
     if "notes" in fields:
         item.notes = payload.notes
     await db.flush()
+    # updated_at carries onupdate=func.now() (a server-evaluated UPDATE default). SQLAlchemy fetches
+    # UPDATE-generated defaults only on refresh — without this the router's WatchlistItemSchema
+    # serialization reads an expired attribute and raises MissingGreenlet (implicit async IO). Section A.
+    await db.refresh(item)
     return item
 
 
@@ -2259,7 +2415,6 @@ from sqlalchemy import select
 from fastapi_app.main import app as real_app
 from fastapi_app.models import Notification
 
-pytestmark = pytest.mark.asyncio
 
 BASE = datetime(2026, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -2275,6 +2430,7 @@ async def _seed(db_session, user, *, n, is_read=False, start=0):
     await db_session.flush()
 
 
+@pytest.mark.asyncio
 async def test_list_orders_created_desc_id_desc(authed_user, db_session):
     user, client = authed_user
     await _seed(db_session, user, n=3)
@@ -2286,6 +2442,7 @@ async def test_list_orders_created_desc_id_desc(authed_user, db_session):
     assert msgs == ["m0", "m1", "m2"]   # created_at desc (m0 newest)
 
 
+@pytest.mark.asyncio
 async def test_pagination_crosses_boundary(authed_user, db_session):
     user, client = authed_user
     await _seed(db_session, user, n=5)
@@ -2298,6 +2455,7 @@ async def test_pagination_crosses_boundary(authed_user, db_session):
     assert len(ids) == len(set(ids)) == 5   # union == full set, no dup/skip across boundary
 
 
+@pytest.mark.asyncio
 async def test_total_reflects_is_read_filter(authed_user, db_session):
     # Badge contract: total under is_read=false == unread count, NOT the all-time row count.
     user, client = authed_user
@@ -2309,6 +2467,7 @@ async def test_total_reflects_is_read_filter(authed_user, db_session):
     assert allrows["total"] == 5
 
 
+@pytest.mark.asyncio
 async def test_mark_read_and_ownership(authed_user, db_session):
     user, client = authed_user
     await _seed(db_session, user, n=1)
@@ -2319,6 +2478,7 @@ async def test_mark_read_and_ownership(authed_user, db_session):
     assert (await client.post("/me/notifications/999999/mark-read")).status_code == 404
 
 
+@pytest.mark.asyncio
 async def test_mark_all_read_idempotent(authed_user, db_session):
     user, client = authed_user
     await _seed(db_session, user, n=3)
@@ -2328,6 +2488,7 @@ async def test_mark_all_read_idempotent(authed_user, db_session):
     assert all(r.is_read for r in rows)
 
 
+@pytest.mark.asyncio
 async def test_cross_user_mark_read_404(authed_user, db_session):
     user_a, client = authed_user
     await _seed(db_session, user_a, n=1)
@@ -2339,6 +2500,7 @@ async def test_cross_user_mark_read_404(authed_user, db_session):
     assert row.is_read is False   # B could not touch A's row
 
 
+@pytest.mark.asyncio
 async def test_settings_round_trip(authed_user, db_session):
     user, client = authed_user
     get1 = await client.get("/me/notification-settings")
@@ -2351,9 +2513,21 @@ async def test_settings_round_trip(authed_user, db_session):
     assert user.watchlist_alerts_enabled is False
 
 
-async def test_anonymous_401(auth_client):
-    assert (await auth_client.get("/me/notifications/")).status_code == 401
-    assert (await auth_client.get("/me/notification-settings")).status_code == 401
+# ---------- anonymous 401 on EVERY route+method (auth_client sets app.state.redis; no session cookie) ----------
+
+@pytest.mark.parametrize("method, path, json_body", [
+    ("GET", "/me/notifications/", None),
+    ("POST", "/me/notifications/1/mark-read", None),
+    ("POST", "/me/notifications/mark-all-read", None),
+    ("GET", "/me/notification-settings", None),
+    ("PUT", "/me/notification-settings", {"watchlist_alerts_enabled": False}),
+])
+@pytest.mark.asyncio
+async def test_every_notification_route_401_anonymous(auth_client, method, path, json_body):
+    # get_current_user 401s a cookieless request before any handler body runs — assert it on
+    # every method/path the two routers declare.
+    resp = await auth_client.request(method, path, json=json_body)
+    assert resp.status_code == 401
 
 
 def test_openapi_notification_paths_bare():
@@ -2363,7 +2537,15 @@ def test_openapi_notification_paths_bare():
               "/me/notifications/mark-all-read", "/me/notification-settings"):
         assert p in paths
     assert not any(p.startswith("/api/v1") for p in paths)
-    assert "401" in paths["/me/notifications/"]["get"]["responses"]
+    # 401 declared on every new notification operation (design §4.5 acceptance criterion).
+    for path, method in [
+        ("/me/notifications/", "get"),
+        ("/me/notifications/{notification_id}/mark-read", "post"),
+        ("/me/notifications/mark-all-read", "post"),
+        ("/me/notification-settings", "get"),
+        ("/me/notification-settings", "put"),
+    ]:
+        assert "401" in paths[path][method]["responses"]
 ```
 
 - [ ] **Step 3: Run the test, confirm it fails.**
@@ -2591,7 +2773,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -2703,7 +2885,7 @@ async def test_dedup_partial_index_binds(db_session: AsyncSession):
     # works if the ON CONFLICT restates the partial-index predicate (index_where).
     stmt = pg_insert(Notification).values(**row).on_conflict_do_nothing(
         index_elements=["user_id", "contract_id", "watch_type_id"],
-        index_where=(Notification.type == "watchlist_match"),
+        index_where=text("type = 'watchlist_match'"),
     )
     await db_session.execute(stmt)
     assert (await db_session.scalar(select(func.count()).select_from(Notification))) == 1
@@ -2887,7 +3069,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
 
 import redis.asyncio as aioredis
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -3043,13 +3225,16 @@ class WatchlistMatcherService:
         for start in range(0, len(payloads), NOTIFICATION_INSERT_CHUNK):
             chunk = payloads[start : start + NOTIFICATION_INSERT_CHUNK]
             # The conflict target MUST restate the partial-index predicate (index_where) or Postgres
-            # raises "no unique or exclusion constraint matching the ON CONFLICT specification".
+            # raises "no unique or exclusion constraint matching the ON CONFLICT specification". The
+            # predicate MUST be a literal identical to the index DDL: a parameterized predicate
+            # compiles to `type = $1`, which Postgres's partial-index implication check cannot match
+            # against the index's literal predicate, so inference can fail.
             stmt_ins = (
                 pg_insert(Notification)
                 .values(chunk)
                 .on_conflict_do_nothing(
                     index_elements=["user_id", "contract_id", "watch_type_id"],
-                    index_where=(Notification.type == "watchlist_match"),
+                    index_where=text("type = 'watchlist_match'"),
                 )
                 .returning(Notification.id)
             )
@@ -3120,19 +3305,22 @@ assertion, never a running clock.)
 - Modify: `app/backend/src/fastapi_app/main.py` (lifespan: build matcher service + register job).
 - Test (Create): `app/backend/src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py`.
 
-- [ ] **Step 1: Add the config fields.** In `core/config.py`, extend the "Account features (M3)" block
-  added in Task 3.2 so it reads:
+- [ ] **Step 1: Add the config fields.** In `core/config.py`, append these three fields INTO the single
+  `# --- M3 account features ---` block (established in Task 2.2, extended in Task 3.2) — do NOT start a
+  second M3 block. The consolidated block then reads:
 
 ```python
-    # Account features (M3)
-    MAX_WATCHLIST_ITEMS_PER_USER: int = 200
+    # --- M3 account features ---
+    MAX_SAVED_SEARCHES_PER_USER: int = 100             # (Task 2.2)
+    MAX_WATCHLIST_ITEMS_PER_USER: int = 200            # (Task 3.2)
     WATCHLIST_MATCH_INTERVAL_SECONDS: int = 900        # 15 min
     WATCHLIST_MATCH_LOCK_TTL_SECONDS: int = 900
     NOTIFICATION_RETENTION_DAYS: int = 90              # prune window (matcher §4.4 step 5)
 ```
-Document all three in `app/backend/.env.example` (ENV-4). All have defaults → no `_ENV_DEFAULTS`
-change. (`MAX_SAVED_SEARCHES_PER_USER` is owned by the F005 section — see coordination note; if it is
-missing at this point, add `MAX_SAVED_SEARCHES_PER_USER: int = 100` here alongside these.)
+Document all three new fields in `app/backend/.env.example` (ENV-4), under the same
+`# --- M3 account features ---` block. All have defaults → no `_ENV_DEFAULTS` change. (If
+`MAX_SAVED_SEARCHES_PER_USER` is somehow missing here — its owning F005 section didn't run — add it in
+this same block.)
 
 - [ ] **Step 2: Write the failing thin tests.** Create
   `app/backend/src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py`:
@@ -3148,7 +3336,6 @@ from fastapi_app.core.scheduler import add_watchlist_matcher_job
 from fastapi_app.services.scheduled_jobs import run_watchlist_matcher_job
 from fastapi_app.services.watchlist_matcher import WatchlistMatcherService
 
-pytestmark = pytest.mark.asyncio
 
 
 def test_add_watchlist_matcher_job_registers_expected_id():
@@ -3176,15 +3363,17 @@ def test_matcher_service_is_picklable():
     assert restored.settings.WATCHLIST_MATCH_INTERVAL_SECONDS == real_settings.WATCHLIST_MATCH_INTERVAL_SECONDS
 
 
+@pytest.mark.asyncio
 async def test_run_watchlist_matcher_job_swallows_exceptions():
     svc = MagicMock()
     svc.run_matching = AsyncMock(side_effect=RuntimeError("boom"))
     await run_watchlist_matcher_job(svc)   # must NOT raise
     svc.run_matching.assert_awaited_once()
 ```
-(Note: `test_matcher_service_with_default_now_fn_is_picklable` pickles only `now_fn` — the full service
-carries a `MagicMock` settings here which is not picklable; production passes a real `Settings`, which
-is. The point of the test is that the *default* `now_fn` is `None`, not a lambda.)
+(Note: `test_matcher_service_is_picklable` pickles the FULL service using the real `settings` singleton
+— a `MagicMock` settings or a `lambda` `now_fn` would not pickle, so RedisJobStore requires production
+to construct the service with the real `Settings` and leave `now_fn=None`. The test asserts exactly
+that: the round-tripped service's default `now_fn` is `None`, not a lambda, and its settings survive.)
 
 - [ ] **Step 3: Run the tests, confirm they fail.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py -v`
@@ -3362,7 +3551,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 **`/me/*` path literals are type-checked (PROXY-1 + codegen).** openapi-fetch validates every path string and path-param key against the generated `paths` type. The literals this section uses — `/me/saved-searches/`, `/me/saved-searches/{search_id}`, `/me/watchlist-items/`, `/me/watchlist-items/{item_id}`, `/me/notifications/`, `/me/notifications/{notification_id}/mark-read`, `/me/notifications/mark-all-read`, `/me/notification-settings` — and the path-param key `item_id` follow the backend binding contract (collection routes carry the trailing slash; item routes are `/{item_id}`; settings is a slash-less singleton). If `npx tsc -b` rejects any literal or the `item_id` key, open `src/lib/api/schema.d.ts` and copy the exact key the backend generated. **The only sanctioned adaptation is matching the generated key verbatim — never add `/api/v1`, never change a trailing-slash choice (PROXY-1).**
 
-**Mutation discipline (design §5, recon §2.2 — applies to EVERY mutation hook below).** `openapi-fetch` resolves non-2xx as `{ error, response }` and does **not** throw. So every mutation's `mutationFn` does `if (!response.ok) throw new ApiError(response.status)`. `onSuccess` invalidates the domain list prefix. `onError` additionally invalidates `['auth','me']` when the thrown error is an `ApiError` with `status === 401`, so a server-side force-logout collapses the header to anonymous in the same breath (design §5 auth-state coherence).
+**Hook 401 discipline (design §5, recon §2.2 — applies to EVERY `/me/*` hook below, queries AND mutations).** `openapi-fetch` resolves non-2xx as `{ error, response }` and does **not** throw. So every hook routes a failure through the shared `raiseApiError(queryClient, response.status)` helper (added to `client.ts` in Task 6.1): a query's `queryFn` calls it when `data === undefined`, and a mutation's `mutationFn` calls it when `!response.ok`. `raiseApiError` invalidates `['auth','me']` when the status is `401` (so a server-side force-logout collapses the header to anonymous in the same breath — design §5 auth-state coherence) and then always throws `ApiError(status)` so the query/mutation still surfaces the failure. A mutation's `onSuccess` additionally invalidates its domain list prefix; no `onError` handler is needed because the 401 invalidation happens inside `mutationFn` before the error propagates.
 
 **Type aliases vs input schemas.** The five aliases the binding contract names (`SavedSearch`, `WatchlistItem`, `Notification`, `NotificationSettings`, `PaginatedNotifications`) are added to `client.ts` in Task 6.1 and imported from `../../../lib/api/client`. Request-body input schemas that are NOT aliased (e.g. `SavedSearchCreate`, `WatchlistItemUpdate`) are type-imported directly from the generated schema: `import type { components } from '../../../lib/api/schema'` then `type X = components['schemas']['X']`.
 
@@ -3388,14 +3577,29 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.ts`
 - Test: `app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.test.tsx`
 
-- [ ] **Step 1: Add the five type aliases to `client.ts`.** Insert after the existing `CurrentUser` alias (client.ts line 7). This is a re-export of generated types (not feature logic), so it precedes the TDD loop; a `tsc` run confirms the underlying schemas exist.
+- [ ] **Step 1: Add the five type aliases and the shared 401 helper to `client.ts`.** Insert the aliases after the existing `CurrentUser` alias (client.ts line 7); add the `QueryClient` type import at the top and the `raiseApiError` helper after the `ApiError` class. These are re-exports of generated types plus one shared helper (not feature logic), so this precedes the TDD loop; a `tsc` run confirms the underlying schemas exist.
 
 ```ts
+// at the top of client.ts, alongside the other imports:
+import type { QueryClient } from '@tanstack/react-query'
+
+// after the CurrentUser alias (line 7):
 export type SavedSearch = components['schemas']['SavedSearchSchema']
 export type WatchlistItem = components['schemas']['WatchlistItemSchema']
 export type Notification = components['schemas']['NotificationSchema']
 export type NotificationSettings = components['schemas']['NotificationSettingsSchema']
 export type PaginatedNotifications = components['schemas']['PaginatedResponse_NotificationSchema_']
+
+// after the ApiError class — the ONE shared 401 handler every /me/* hook (queries AND mutations)
+// routes failures through: a 401 means get_current_user destroyed the server-side session
+// (design §4.1), so invalidate ['auth','me'] to collapse the header to anonymous in the same breath
+// (design §5); then always throw so the query/mutation still surfaces the error to the caller.
+export function raiseApiError(queryClient: QueryClient, status: number): never {
+  if (status === 401) {
+    queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
+  }
+  throw new ApiError(status)
+}
 ```
 
 - [ ] **Step 2: Verify the aliases resolve.** Run `cd app/frontend/web && npx tsc -b`. Expected: green. If it errors with "Property 'SavedSearchSchema' does not exist", the backend codegen chain did not land those schemas — STOP and raise to the dispatching agent (the backend phases must complete first); do not hand-edit `schema.d.ts`.
@@ -3457,6 +3661,14 @@ describe('useSavedSearches (query)', () => {
     expect(calls[0].url).toContain('/api/v1/me/saved-searches/')
     expect(calls[0].method ?? 'GET').toBe('GET')
     expect(result.current.data![0].name).toBe('A')
+  })
+
+  it('invalidates ["auth","me"] when the query 401s', async () => {
+    const { spy, wrapper } = wrap()
+    stubFetch(() => new Response(JSON.stringify({ detail: 'unauthenticated' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
+    const { result } = renderHook(() => useSavedSearches(), { wrapper })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })
   })
 })
 
@@ -3556,31 +3768,23 @@ describe('useDeleteSavedSearch', () => {
 
 ```ts
 // ABOUTME: TanStack Query hooks for F005 saved searches — list query + create/rename/delete mutations.
-// ABOUTME: Every mutation checks response.ok, invalidates ['savedSearches'] on 2xx, and invalidates ['auth','me'] on a 401.
+// ABOUTME: Every hook routes non-2xx through raiseApiError (invalidates ['auth','me'] on 401); mutations invalidate ['savedSearches'] on 2xx.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, ApiError, type SavedSearch } from '../../../lib/api/client'
+import { api, raiseApiError, type SavedSearch } from '../../../lib/api/client'
 import type { components } from '../../../lib/api/schema'
 
 type SavedSearchCreate = components['schemas']['SavedSearchCreate']
 
 export function useSavedSearches() {
+  const queryClient = useQueryClient()
   return useQuery<SavedSearch[]>({
     queryKey: ['savedSearches', 'list'],
     queryFn: async () => {
       const { data, response } = await api.GET('/me/saved-searches/')
-      if (data === undefined) throw new ApiError(response.status)
+      if (data === undefined) raiseApiError(queryClient, response.status)
       return data
     },
   })
-}
-
-// A 401 from a /me/* write means the session was force-logged-out server-side
-// (get_current_user destroys the session, design §4.1); invalidating ['auth','me']
-// collapses the header to anonymous in the same breath (design §5).
-function invalidateAuthOn401(queryClient: ReturnType<typeof useQueryClient>, error: unknown) {
-  if (error instanceof ApiError && error.status === 401) {
-    queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
-  }
 }
 
 export function useCreateSavedSearch() {
@@ -3588,11 +3792,10 @@ export function useCreateSavedSearch() {
   return useMutation({
     mutationFn: async (body: SavedSearchCreate) => {
       const { data, response } = await api.POST('/me/saved-searches/', { body })
-      if (!response.ok) throw new ApiError(response.status)
+      if (!response.ok) raiseApiError(queryClient, response.status)
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['savedSearches'] }),
-    onError: (error) => invalidateAuthOn401(queryClient, error),
   })
 }
 
@@ -3604,11 +3807,10 @@ export function useRenameSavedSearch() {
         params: { path: { search_id: id } },
         body: { name },
       })
-      if (!response.ok) throw new ApiError(response.status)
+      if (!response.ok) raiseApiError(queryClient, response.status)
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['savedSearches'] }),
-    onError: (error) => invalidateAuthOn401(queryClient, error),
   })
 }
 
@@ -3619,17 +3821,22 @@ export function useDeleteSavedSearch() {
       const { response } = await api.DELETE('/me/saved-searches/{search_id}', {
         params: { path: { search_id: id } },
       })
-      if (!response.ok) throw new ApiError(response.status)
+      if (!response.ok) raiseApiError(queryClient, response.status)
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['savedSearches'] }),
-    onError: (error) => invalidateAuthOn401(queryClient, error),
   })
 }
 ```
 
 - [ ] **Step 6: Run the tests green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/hooks/useSavedSearches.test.tsx --reporter=dot`. Expected: all pass. Then `npx tsc -b` (green) and `npx eslint src/features/saved-searches src/lib/api/client.ts` (green).
 
-- [ ] **Step 7: Commit.** `git add app/frontend/web/src/lib/api/client.ts app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.ts app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.test.tsx` then commit: `feat(web): add saved-search type aliases and CRUD query hooks`
+- [ ] **Step 7: Commit.**
+  `git add app/frontend/web/src/lib/api/client.ts app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.ts app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.test.tsx`
+  ```
+  feat(web): add saved-search type aliases and CRUD query hooks
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -3685,7 +3892,13 @@ describe('RequireSignIn', () => {
     const link = await screen.findByRole('link', { name: /log in with eve/i })
     const next = encodeURIComponent('/saved-searches?foo=bar')
     expect(link).toHaveAttribute('href', `/api/v1/auth/sso/login?next=${next}`)
-    expect(link.getAttribute('href')).not.toContain('sso')
+    // The href legitimately contains "/auth/sso/login", so `.not.toContain('sso')` could never pass.
+    // The thing that must be stripped is the transient `sso` QUERY param inside `next` — parse the
+    // URL and assert the DECODED next carries no `sso=`, while the endpoint path is untouched.
+    const href = link.getAttribute('href')!
+    expect(href.startsWith('/api/v1/auth/sso/login')).toBe(true)
+    const decodedNext = decodeURIComponent(new URL(href, 'https://localhost:5173').searchParams.get('next')!)
+    expect(decodedNext).not.toContain('sso=')
   })
 })
 ```
@@ -3725,7 +3938,13 @@ export function RequireSignIn({ feature }: { feature: string }) {
 
 - [ ] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/auth/components/RequireSignIn.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/auth/components/RequireSignIn.tsx` (green).
 
-- [ ] **Step 5: Commit.** `git add app/frontend/web/src/features/auth/components/RequireSignIn.tsx app/frontend/web/src/features/auth/components/RequireSignIn.test.tsx` then: `feat(web): add RequireSignIn auth-gate prompt`
+- [ ] **Step 5: Commit.**
+  `git add app/frontend/web/src/features/auth/components/RequireSignIn.tsx app/frontend/web/src/features/auth/components/RequireSignIn.test.tsx`
+  ```
+  feat(web): add RequireSignIn auth-gate prompt
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -3938,7 +4157,13 @@ The control's own `ml-auto` pushes it to the right of the count; for anonymous u
 
 - [ ] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SaveSearchControl.test.tsx --reporter=dot` (pass). Then re-run the neighbouring suite to prove no regression: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/features/saved-searches src/features/contracts/components/ContractsPage.tsx` (green).
 
-- [ ] **Step 6: Commit.** `git add app/frontend/web/src/features/saved-searches/components/SaveSearchControl.tsx app/frontend/web/src/features/saved-searches/components/SaveSearchControl.test.tsx app/frontend/web/src/features/contracts/components/ContractsPage.tsx` then: `feat(web): add Save Search control to the contracts results header`
+- [ ] **Step 6: Commit.**
+  `git add app/frontend/web/src/features/saved-searches/components/SaveSearchControl.tsx app/frontend/web/src/features/saved-searches/components/SaveSearchControl.test.tsx app/frontend/web/src/features/contracts/components/ContractsPage.tsx`
+  ```
+  feat(web): add Save Search control to the contracts results header
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -3960,17 +4185,19 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/routes/saved-searches.tsx`
 - Create: `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.tsx`
 - Test: `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.test.tsx`
+- Test: `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx` (vitest-axe, design §6)
 
-- [ ] **Step 1: Write the failing page tests.** Cover the three auth branches, the empty state, Apply (navigates to `/contracts` with parsed params), Rename, two-step Delete, and the TEST-7 (error) + TEST-8 (skeleton-unmount sync) disciplines. Because `renderApp` builds a QueryClient with `retry: false`, error-state stubs fail **every** call to the endpoint (the robust form of TEST-7). COMPLETE file:
+- [ ] **Step 1: Write the failing page tests.** Cover the three auth branches, the empty state, Apply (navigates to `/contracts` with parsed params), Rename, two-step Delete, and the TEST-7 (error) + TEST-8 (skeleton-unmount sync) disciplines. Because `renderApp` builds a QueryClient with `retry: false`, error-state stubs fail **every** call to the endpoint (the robust form of TEST-7). Every authed stub answers the header bell's unread-count query (`GET /me/notifications/?is_read=false&size=1`) with the page shape `{ total: 0, page: 1, size: 1, items: [] }` — once Task 8.2 mounts the bell into `HeaderIdentity`, a bare `[]` would leave that count query with `data.total === undefined` and silently error (NIT-9); stubbing the real shape now keeps these tests hermetic afterward. COMPLETE file:
 
 ```tsx
 // ABOUTME: SavedSearchesPage tests over the real /saved-searches route — auth branches, empty state, Apply/Rename/Delete, error + skeleton sync.
 // ABOUTME: TEST-8: wait for the loading skeleton (role=status "Loading saved searches") to unmount before asserting list content.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
+import { act, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
+import { summarizeSearch } from './SavedSearchesPage'
 
 const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
 const SAVED = [
@@ -4002,6 +4229,7 @@ describe('SavedSearchesPage', () => {
   it('lists saved searches for an authed user after the skeleton unmounts (TEST-8)', async () => {
     stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/saved-searches\//.test(url)) return jsonResponse(SAVED)
       return jsonResponse([])
     })
@@ -4016,6 +4244,7 @@ describe('SavedSearchesPage', () => {
   it('shows the empty state when the user has no saved searches', async () => {
     stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/saved-searches\//.test(url)) return jsonResponse([])
       return jsonResponse([])
     })
@@ -4026,6 +4255,7 @@ describe('SavedSearchesPage', () => {
   it('shows an error state when the list fails to load (TEST-7: every call fails)', async () => {
     stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/saved-searches\//.test(url)) return jsonResponse({ detail: 'boom' }, 500)
       return jsonResponse([])
     })
@@ -4036,6 +4266,7 @@ describe('SavedSearchesPage', () => {
   it('applies a saved search by navigating to /contracts with the parsed params', async () => {
     stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/saved-searches\//.test(url)) return jsonResponse(SAVED)
       return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
     })
@@ -4049,6 +4280,7 @@ describe('SavedSearchesPage', () => {
   it('renames a saved search (PUT with the new name)', async () => {
     const calls = stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/saved-searches\/1/.test(url)) return jsonResponse({ ...SAVED[0], name: 'Renamed' })
       if (/\/me\/saved-searches\//.test(url)) return jsonResponse(SAVED)
       return jsonResponse([])
@@ -4068,6 +4300,7 @@ describe('SavedSearchesPage', () => {
   it('requires a second click to delete (two-step)', async () => {
     const calls = stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/saved-searches\/1/.test(url)) return new Response(null, { status: 204 })
       if (/\/me\/saved-searches\//.test(url)) return jsonResponse(SAVED)
       return jsonResponse([])
@@ -4079,6 +4312,37 @@ describe('SavedSearchesPage', () => {
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
     await userEvent.click(screen.getByRole('button', { name: /confirm delete/i }))
     await waitFor(() => expect(calls.some((c) => /\/me\/saved-searches\/1/.test(c.url) && c.method === 'DELETE')).toBe(true))
+  })
+
+  it('auto-disarms the two-step delete after 5s (timeout reset)', async () => {
+    stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/saved-searches\//.test(url)) return jsonResponse(SAVED)
+      return jsonResponse([])
+    })
+    renderApp('/saved-searches')
+    await screen.findByText('Cheap frigates')
+    // Enable fake timers AFTER the initial load so the arming click schedules the 5s timeout on the
+    // fake clock; userEvent advances the fake clock for its own internal timing.
+    vi.useFakeTimers()
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      await user.click(screen.getByRole('button', { name: /^delete$/i }))
+      expect(screen.getByRole('button', { name: /confirm delete/i })).toBeInTheDocument()
+      act(() => { vi.advanceTimersByTime(5000) })
+      expect(screen.queryByRole('button', { name: /confirm delete/i })).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('summarizeSearch', () => {
+  it('defaults the sort fields when an older stored blob omits them', () => {
+    // Older blobs may omit the server-defaulted sort_by/sort_direction; the summary must still render
+    // (a `.replace()` on undefined would be a TS build error and a runtime crash).
+    expect(summarizeSearch({})).toContain('sorted by date issued desc')
   })
 })
 ```
@@ -4107,7 +4371,7 @@ function RouteComponent() {
 ```tsx
 // ABOUTME: F005 saved-searches manage page — auth-gated list with per-row Apply (navigate to /contracts), inline Rename, and two-step Delete.
 // ABOUTME: summarizeSearch renders a human-readable criteria line from the stored SavedSearchParameters blob.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Button } from '../../../components/Button'
 import { Input } from '../../../components/Input'
@@ -4135,7 +4399,10 @@ export function summarizeSearch(p: SavedSearchParameters): string {
   if (p.region_ids && p.region_ids.length > 0) {
     parts.push(`${p.region_ids.length} region${p.region_ids.length === 1 ? '' : 's'}`)
   }
-  parts.push(`sorted by ${p.sort_by.replace(/_/g, ' ')} ${p.sort_direction}`)
+  // sort_by / sort_direction have server-side defaults, so openapi-typescript types them optional
+  // (possibly-undefined). Default before use — a `.replace()` on undefined is a TS18048 build error
+  // AND an older stored blob may genuinely omit them.
+  parts.push(`sorted by ${(p.sort_by ?? 'date_issued').replace(/_/g, ' ')} ${p.sort_direction ?? 'desc'}`)
   return parts.join(' · ')
 }
 
@@ -4197,6 +4464,14 @@ function SavedSearchRow({ saved }: { saved: SavedSearch }) {
   const [name, setName] = useState(saved.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
+  // Auto-disarm the two-step delete after 5s so a stray first click can't leave the row armed
+  // indefinitely (blur also disarms; this covers the focus-retained case). Cleared on unmount/re-arm.
+  useEffect(() => {
+    if (!confirmDelete) return
+    const timer = setTimeout(() => setConfirmDelete(false), 5000)
+    return () => clearTimeout(timer)
+  }, [confirmDelete])
+
   const apply = () =>
     navigate({ to: '/contracts', search: parseContractSearch(saved.search_parameters as Record<string, unknown>) })
 
@@ -4249,9 +4524,65 @@ function SavedSearchRow({ saved }: { saved: SavedSearch }) {
 
 Note on `parseContractSearch(saved.search_parameters …)`: the stored blob is re-validated on the way back out (design §5) — `parseContractSearch` accepts arbitrary input and always returns a well-formed `ContractSearch`, so a drifted blob can never break navigation.
 
-- [ ] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SavedSearchesPage.test.tsx --reporter=dot` (pass). `routeTree.gen.ts` regenerates automatically when Vite/the test harness picks up the new route file; if the route is not found, run `npx vite build --mode development` once to force tree regeneration, or start `npm run dev` briefly — do NOT hand-edit `routeTree.gen.ts`. Then `npx tsc -b` and `npx eslint src/routes/saved-searches.tsx src/features/saved-searches` (green).
+- [ ] **Step 5: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx`. COMPLETE file:
 
-- [ ] **Step 6: Commit.** `git add app/frontend/web/src/routes/saved-searches.tsx app/frontend/web/src/routes/routeTree.gen.ts app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.tsx app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.test.tsx` then: `feat(web): add saved-searches manage page with apply/rename/delete`
+```tsx
+// ABOUTME: Automated axe accessibility checks for the saved-searches page — authed-with-data and anonymous states.
+// ABOUTME: Mirrors src/features/contracts/components/a11y.test.tsx (vitest-axe on the designed UI, design §6).
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { screen } from '@testing-library/react'
+import { axe } from 'vitest-axe'
+import * as matchers from 'vitest-axe/matchers'
+import { jsonResponse } from '../../../test/http'
+import { renderApp } from '../../../test/renderApp'
+
+expect.extend(matchers)
+
+const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
+const SAVED = [
+  { id: 1, name: 'Cheap frigates', search_parameters: { ships_only: true, min_price: 0, max_price: 5000000, size: 50, sort_by: 'price', sort_direction: 'asc' }, created_at: '2026-07-17T00:00:00Z', updated_at: '2026-07-17T00:00:00Z' },
+]
+
+function stubFetch(handler: (url: string) => Response) {
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    return handler(url)
+  })
+}
+
+afterEach(() => vi.unstubAllGlobals())
+
+describe('accessibility (axe) — saved searches', () => {
+  it('authed list view has no violations', async () => {
+    stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/saved-searches\//.test(url)) return jsonResponse(SAVED)
+      return jsonResponse([])
+    })
+    const { container } = renderApp('/saved-searches')
+    await screen.findByText('Cheap frigates')
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('anonymous sign-in prompt has no violations', async () => {
+    stubFetch((url) => (/\/api\/v1\/me$/.test(url) ? jsonResponse({ detail: 'unauthenticated' }, 401) : jsonResponse([])))
+    const { container } = renderApp('/saved-searches')
+    await screen.findByRole('heading', { name: /sign in to use saved searches/i })
+    expect(await axe(container)).toHaveNoViolations()
+  })
+})
+```
+
+- [ ] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SavedSearchesPage.test.tsx src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx --reporter=dot` (pass). `routeTree.gen.ts` regenerates automatically when Vite/the test harness picks up the new route file; if the route is not found, run `npx vite build --mode development` once to force tree regeneration, or start `npm run dev` briefly — do NOT hand-edit `routeTree.gen.ts`. Then `npx tsc -b` and `npx eslint src/routes/saved-searches.tsx src/features/saved-searches` (green).
+
+- [ ] **Step 7: Commit.**
+  `git add app/frontend/web/src/routes/saved-searches.tsx app/frontend/web/src/routeTree.gen.ts app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.tsx app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.test.tsx app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx`
+  ```
+  feat(web): add saved-searches manage page with apply/rename/delete
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -4327,6 +4658,14 @@ describe('useWatchlist (query)', () => {
     await waitFor(() => expect(result.current.data).toHaveLength(1))
     expect(calls[0].url).toContain('/api/v1/me/watchlist-items/')
   })
+
+  it('invalidates ["auth","me"] when the query 401s', async () => {
+    const { spy, wrapper } = wrap()
+    stubFetch(() => new Response(JSON.stringify({ detail: 'unauth' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
+    const { result } = renderHook(() => useWatchlist(), { wrapper })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })
+  })
 })
 
 describe('useAddWatchlistItem', () => {
@@ -4397,29 +4736,24 @@ describe('useRemoveWatchlistItem', () => {
 
 ```ts
 // ABOUTME: TanStack Query hooks for F006 watchlists — list query + add/update/remove mutations.
-// ABOUTME: update forwards the body verbatim so an explicit {max_price: null} clears (JSON null); every mutation invalidates ['watchlists'] on 2xx and ['auth','me'] on 401.
+// ABOUTME: update forwards the body verbatim so an explicit {max_price: null} clears (JSON null); every hook routes non-2xx through raiseApiError (['watchlists'] on 2xx, ['auth','me'] on 401).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, ApiError, type WatchlistItem } from '../../../lib/api/client'
+import { api, raiseApiError, type WatchlistItem } from '../../../lib/api/client'
 import type { components } from '../../../lib/api/schema'
 
 type WatchlistItemCreate = components['schemas']['WatchlistItemCreate']
 type WatchlistItemUpdate = components['schemas']['WatchlistItemUpdate']
 
 export function useWatchlist() {
+  const queryClient = useQueryClient()
   return useQuery<WatchlistItem[]>({
     queryKey: ['watchlists', 'list'],
     queryFn: async () => {
       const { data, response } = await api.GET('/me/watchlist-items/')
-      if (data === undefined) throw new ApiError(response.status)
+      if (data === undefined) raiseApiError(queryClient, response.status)
       return data
     },
   })
-}
-
-function invalidateAuthOn401(queryClient: ReturnType<typeof useQueryClient>, error: unknown) {
-  if (error instanceof ApiError && error.status === 401) {
-    queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
-  }
 }
 
 export function useAddWatchlistItem() {
@@ -4427,11 +4761,10 @@ export function useAddWatchlistItem() {
   return useMutation({
     mutationFn: async (body: WatchlistItemCreate) => {
       const { data, response } = await api.POST('/me/watchlist-items/', { body })
-      if (!response.ok) throw new ApiError(response.status)
+      if (!response.ok) raiseApiError(queryClient, response.status)
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['watchlists'] }),
-    onError: (error) => invalidateAuthOn401(queryClient, error),
   })
 }
 
@@ -4443,11 +4776,10 @@ export function useUpdateWatchlistItem() {
         params: { path: { item_id: id } },
         body,
       })
-      if (!response.ok) throw new ApiError(response.status)
+      if (!response.ok) raiseApiError(queryClient, response.status)
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['watchlists'] }),
-    onError: (error) => invalidateAuthOn401(queryClient, error),
   })
 }
 
@@ -4458,17 +4790,22 @@ export function useRemoveWatchlistItem() {
       const { response } = await api.DELETE('/me/watchlist-items/{item_id}', {
         params: { path: { item_id: id } },
       })
-      if (!response.ok) throw new ApiError(response.status)
+      if (!response.ok) raiseApiError(queryClient, response.status)
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['watchlists'] }),
-    onError: (error) => invalidateAuthOn401(queryClient, error),
   })
 }
 ```
 
 - [ ] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/hooks/useWatchlist.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/watchlists` (green).
 
-- [ ] **Step 5: Commit.** `git add app/frontend/web/src/features/watchlists/hooks/useWatchlist.ts app/frontend/web/src/features/watchlists/hooks/useWatchlist.test.tsx` then: `feat(web): add watchlist CRUD query hooks`
+- [ ] **Step 5: Commit.**
+  `git add app/frontend/web/src/features/watchlists/hooks/useWatchlist.ts app/frontend/web/src/features/watchlists/hooks/useWatchlist.test.tsx`
+  ```
+  feat(web): add watchlist CRUD query hooks
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -4603,7 +4940,13 @@ export function WatchButton({ typeId }: { typeId: number }) {
 
 - [ ] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchButton.test.tsx --reporter=dot` (pass); then regression-check the detail suite: `npx vitest run src/features/contracts/components/pages.test.tsx src/features/contracts/components/a11y.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/features/watchlists src/features/contracts/components/ContractDetailPage.tsx` (green).
 
-- [ ] **Step 6: Commit.** `git add app/frontend/web/src/features/watchlists/components/WatchButton.tsx app/frontend/web/src/features/watchlists/components/WatchButton.test.tsx app/frontend/web/src/features/contracts/components/ContractDetailPage.tsx` then: `feat(web): add quick-watch button to contract detail ship rows`
+- [ ] **Step 6: Commit.**
+  `git add app/frontend/web/src/features/watchlists/components/WatchButton.tsx app/frontend/web/src/features/watchlists/components/WatchButton.test.tsx app/frontend/web/src/features/contracts/components/ContractDetailPage.tsx`
+  ```
+  feat(web): add quick-watch button to contract detail ship rows
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -4625,14 +4968,15 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/routes/watchlist.tsx`
 - Create: `app/frontend/web/src/features/watchlists/components/WatchlistPage.tsx`
 - Test: `app/frontend/web/src/features/watchlists/components/WatchlistPage.test.tsx`
+- Test: `app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx` (vitest-axe, design §6)
 
-- [ ] **Step 1: Write the failing page tests.** Cover: anonymous prompt; list render after skeleton unmount (TEST-8); empty state; add-by-name form posting `{type_name, max_price?, notes?}`; 400 unknown-name inline error; clear-to-null PUT body assertion; two-step Remove. COMPLETE file:
+- [ ] **Step 1: Write the failing page tests.** Cover: anonymous prompt; list render after skeleton unmount (TEST-8); empty state; add-by-name form posting `{type_name, max_price?, notes?}`; 400 unknown-name inline error; clear-to-null PUT body assertion; the max-price 0-boundary guard; two-step Remove (incl. the 5s timeout reset). Every authed stub answers the header bell's unread-count query (`GET /me/notifications/?is_read=false&size=1`) with `{ total: 0, page: 1, size: 1, items: [] }` — a bare `[]` would leave that count query erroring once Task 8.2 mounts the bell (NIT-9). COMPLETE file:
 
 ```tsx
 // ABOUTME: WatchlistPage tests over the real /watchlist route — auth branches, add-by-name form, clear-to-null edit, two-step remove.
 // ABOUTME: Asserts add-form and clear-to-null PUT wire payloads (TEST-5); TEST-8 skeleton-unmount sync before list assertions.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
+import { act, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
@@ -4664,6 +5008,7 @@ describe('WatchlistPage', () => {
   it('lists rows after the skeleton unmounts (TEST-8)', async () => {
     stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/watchlist-items\//.test(url)) return jsonResponse(ROWS)
       return jsonResponse([])
     })
@@ -4676,6 +5021,7 @@ describe('WatchlistPage', () => {
   it('adds by name with the optional price + notes payload', async () => {
     const calls = stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/watchlist-items\//.test(url)) return jsonResponse({ id: 2, type_id: 24694, type_name: 'Maelstrom', max_price: 300000000, notes: 'flagship', created_at: 'x', updated_at: 'x' }, 201)
       return jsonResponse([])
     })
@@ -4693,6 +5039,7 @@ describe('WatchlistPage', () => {
   it('shows an inline error when the name is unknown (400)', async () => {
     stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/watchlist-items\//.test(url)) return jsonResponse({ detail: 'unknown ship name' }, 400)
       return jsonResponse([])
     })
@@ -4706,6 +5053,7 @@ describe('WatchlistPage', () => {
   it('clears max_price to null via the clear affordance (PUT body is JSON null)', async () => {
     const calls = stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/watchlist-items\/1/.test(url)) return jsonResponse({ ...ROWS[0], max_price: null })
       if (/\/me\/watchlist-items\//.test(url)) return jsonResponse(ROWS)
       return jsonResponse([])
@@ -4721,6 +5069,7 @@ describe('WatchlistPage', () => {
   it('requires a second click to remove (two-step)', async () => {
     const calls = stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
       if (/\/me\/watchlist-items\/1/.test(url)) return new Response(null, { status: 204 })
       if (/\/me\/watchlist-items\//.test(url)) return jsonResponse(ROWS)
       return jsonResponse([])
@@ -4731,6 +5080,45 @@ describe('WatchlistPage', () => {
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
     await userEvent.click(screen.getByRole('button', { name: /confirm remove/i }))
     await waitFor(() => expect(calls.some((c) => /\/me\/watchlist-items\/1/.test(c.url) && c.method === 'DELETE')).toBe(true))
+  })
+
+  it('rejects an entered max price of 0 with an inline message and does not POST', async () => {
+    const calls = stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse([])
+      return jsonResponse([])
+    })
+    renderApp('/watchlist')
+    await screen.findByRole('heading', { level: 1, name: /watchlist/i })
+    await userEvent.type(screen.getByLabelText(/ship name/i), 'Rifter')
+    await userEvent.type(screen.getByLabelText(/max price/i), '0')
+    await userEvent.click(screen.getByRole('button', { name: /add to watchlist/i }))
+    expect(await screen.findByText(/max price must be at least 0\.01/i)).toBeInTheDocument()
+    expect(calls.some((c) => /\/me\/watchlist-items\//.test(c.url) && c.method === 'POST')).toBe(false)
+  })
+
+  it('auto-disarms the two-step remove after 5s (timeout reset)', async () => {
+    stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse(ROWS)
+      return jsonResponse([])
+    })
+    renderApp('/watchlist')
+    await screen.findByText('Rifter')
+    // Fake timers AFTER the initial load so the arming click schedules the 5s timeout on the fake
+    // clock; userEvent advances the fake clock for its own internal timing.
+    vi.useFakeTimers()
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      await user.click(screen.getByRole('button', { name: /^remove$/i }))
+      expect(screen.getByRole('button', { name: /confirm remove/i })).toBeInTheDocument()
+      act(() => { vi.advanceTimersByTime(5000) })
+      expect(screen.queryByRole('button', { name: /confirm remove/i })).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 ```
@@ -4757,7 +5145,7 @@ function RouteComponent() {
 ```tsx
 // ABOUTME: F006 watchlist page — add-by-name form (name + optional max price/notes) and inline-editable rows with clear-to-null and two-step remove.
 // ABOUTME: Empty max-price/notes on ADD is omitted (create); an emptied field on EDIT sends explicit null (clear) per the backend PUT semantics.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../../../components/Button'
 import { Input } from '../../../components/Input'
 import { ApiError, type WatchlistItem } from '../../../lib/api/client'
@@ -4822,6 +5210,7 @@ function AddByNameForm() {
   const [name, setName] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [notes, setNotes] = useState('')
+  const [priceError, setPriceError] = useState('')
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -4829,6 +5218,13 @@ function AddByNameForm() {
     if (typeName.length === 0) return
     const price = maxPrice.trim()
     const note = notes.trim()
+    // The backend requires max_price >= 0.01; guard 0 (and anything below) here and show an inline
+    // message instead of POSTing a value we know will 422.
+    if (price !== '' && Number(price) < 0.01) {
+      setPriceError('Max price must be at least 0.01 ISK, or leave it blank for any price.')
+      return
+    }
+    setPriceError('')
     add.mutate(
       {
         type_name: typeName,
@@ -4861,7 +5257,17 @@ function AddByNameForm() {
       </div>
       <div className="flex w-40 flex-col gap-1">
         <label htmlFor="watch-price" className="text-label">Max price (ISK)</label>
-        <Input id="watch-price" type="number" min="0" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder="optional" />
+        <Input
+          id="watch-price"
+          type="number"
+          min="0.01"
+          step="0.01"
+          value={maxPrice}
+          onChange={(e) => { setMaxPrice(e.target.value); if (priceError) setPriceError('') }}
+          placeholder="optional"
+          aria-invalid={priceError ? true : undefined}
+          aria-describedby={priceError ? 'watch-price-error' : undefined}
+        />
       </div>
       <div className="flex min-w-[10rem] flex-1 flex-col gap-1">
         <label htmlFor="watch-notes" className="text-label">Notes</label>
@@ -4870,7 +5276,9 @@ function AddByNameForm() {
       <Button type="submit" variant="primary" disabled={add.isPending || name.trim().length === 0}>
         Add to watchlist
       </Button>
-      {message ? (
+      {priceError ? (
+        <p id="watch-price-error" role="alert" aria-live="polite" className="w-full text-xs text-danger">{priceError}</p>
+      ) : message ? (
         <p role="alert" aria-live="polite" className="w-full text-xs text-danger">{message}</p>
       ) : null}
     </form>
@@ -4883,6 +5291,14 @@ function WatchlistRow({ item }: { item: WatchlistItem }) {
   const [maxPrice, setMaxPrice] = useState(item.max_price != null ? String(item.max_price) : '')
   const [notes, setNotes] = useState(item.notes ?? '')
   const [confirmRemove, setConfirmRemove] = useState(false)
+
+  // Auto-disarm the two-step remove after 5s so a stray first click can't leave the row armed
+  // indefinitely (blur also disarms; this covers the focus-retained case). Cleared on unmount/re-arm.
+  useEffect(() => {
+    if (!confirmRemove) return
+    const timer = setTimeout(() => setConfirmRemove(false), 5000)
+    return () => clearTimeout(timer)
+  }, [confirmRemove])
 
   // Empty input → explicit null (clear); a value → the number/string. Both fields are
   // always sent, so the backend's omit-preserves path is never relied on from the UI.
@@ -4915,7 +5331,8 @@ function WatchlistRow({ item }: { item: WatchlistItem }) {
         <Input
           id={`price-${item.id}`}
           type="number"
-          min="0"
+          min="0.01"
+          step="0.01"
           className="w-32 text-data"
           value={maxPrice}
           onChange={(e) => setMaxPrice(e.target.value)}
@@ -4940,9 +5357,63 @@ function WatchlistRow({ item }: { item: WatchlistItem }) {
 }
 ```
 
-- [ ] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchlistPage.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 Step 5 if the route isn't found). Then `npx tsc -b` and `npx eslint src/routes/watchlist.tsx src/features/watchlists` (green).
+- [ ] **Step 5: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx`. COMPLETE file:
 
-- [ ] **Step 6: Commit.** `git add app/frontend/web/src/routes/watchlist.tsx app/frontend/web/src/routes/routeTree.gen.ts app/frontend/web/src/features/watchlists/components/WatchlistPage.tsx app/frontend/web/src/features/watchlists/components/WatchlistPage.test.tsx` then: `feat(web): add watchlist page with add-by-name and inline editing`
+```tsx
+// ABOUTME: Automated axe accessibility checks for the watchlist page — authed-with-data and anonymous states.
+// ABOUTME: Mirrors src/features/contracts/components/a11y.test.tsx (vitest-axe on the designed UI, design §6).
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { screen } from '@testing-library/react'
+import { axe } from 'vitest-axe'
+import * as matchers from 'vitest-axe/matchers'
+import { jsonResponse } from '../../../test/http'
+import { renderApp } from '../../../test/renderApp'
+
+expect.extend(matchers)
+
+const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
+const ROWS = [{ id: 1, type_id: 587, type_name: 'Rifter', max_price: 5000000, notes: 'cheap', created_at: 'x', updated_at: 'x' }]
+
+function stubFetch(handler: (url: string) => Response) {
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    return handler(url)
+  })
+}
+
+afterEach(() => vi.unstubAllGlobals())
+
+describe('accessibility (axe) — watchlist', () => {
+  it('authed list view has no violations', async () => {
+    stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse(ROWS)
+      return jsonResponse([])
+    })
+    const { container } = renderApp('/watchlist')
+    await screen.findByText('Rifter')
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('anonymous sign-in prompt has no violations', async () => {
+    stubFetch((url) => (/\/api\/v1\/me$/.test(url) ? jsonResponse({ detail: 'unauth' }, 401) : jsonResponse([])))
+    const { container } = renderApp('/watchlist')
+    await screen.findByRole('heading', { name: /sign in to use your watchlist/i })
+    expect(await axe(container)).toHaveNoViolations()
+  })
+})
+```
+
+- [ ] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchlistPage.test.tsx src/features/watchlists/components/WatchlistPage.a11y.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 if the route isn't found). Then `npx tsc -b` and `npx eslint src/routes/watchlist.tsx src/features/watchlists` (green).
+
+- [ ] **Step 7: Commit.**
+  `git add app/frontend/web/src/routes/watchlist.tsx app/frontend/web/src/routeTree.gen.ts app/frontend/web/src/features/watchlists/components/WatchlistPage.tsx app/frontend/web/src/features/watchlists/components/WatchlistPage.test.tsx app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx`
+  ```
+  feat(web): add watchlist page with add-by-name and inline editing
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -5018,21 +5489,32 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('unreadCountQueryOptions', () => {
   it('carries the polling config and count query key', () => {
-    const opts = unreadCountQueryOptions(true)
+    const qc = new QueryClient()
+    const opts = unreadCountQueryOptions(qc, true)
     expect(opts.queryKey).toEqual(['notifications', 'unreadCount'])
     expect(opts.refetchInterval).toBe(60_000)
     expect(opts.enabled).toBe(true)
-    expect(unreadCountQueryOptions(false).enabled).toBe(false)
+    expect(unreadCountQueryOptions(qc, false).enabled).toBe(false)
   })
 
   it('queryFn hits the size=1 unread endpoint and returns total', async () => {
+    const qc = new QueryClient()
     const calls = stubFetch(() => new Response(JSON.stringify({ total: 5, page: 1, size: 1, items: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-    const opts = unreadCountQueryOptions(true)
+    const opts = unreadCountQueryOptions(qc, true)
     const total = await (opts.queryFn as () => Promise<number>)()
     expect(total).toBe(5)
     expect(calls[0].url).toContain('/api/v1/me/notifications/')
     expect(calls[0].url).toContain('is_read=false')
     expect(calls[0].url).toContain('size=1')
+  })
+
+  it('invalidates ["auth","me"] when the count poll 401s', async () => {
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    stubFetch(() => new Response(JSON.stringify({ detail: 'unauth' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
+    const opts = unreadCountQueryOptions(qc, true)
+    await expect((opts.queryFn as () => Promise<number>)()).rejects.toThrow()
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })
   })
 })
 
@@ -5052,6 +5534,14 @@ describe('useNotifications (list)', () => {
     const { wrapper } = wrap()
     const { result } = renderHook(() => useNotifications({ page: 1, size: 20 }), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true))
+  })
+
+  it('invalidates ["auth","me"] when the list 401s', async () => {
+    const { spy, wrapper } = wrap()
+    stubFetch(() => new Response(JSON.stringify({ detail: 'unauth' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
+    const { result } = renderHook(() => useNotifications({ page: 1, size: 20 }), { wrapper })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })
   })
 })
 
@@ -5077,6 +5567,15 @@ describe('useMarkRead / useMarkAllRead', () => {
     expect(calls[0].method).toBe('POST')
     expect(spy).toHaveBeenCalledWith({ queryKey: ['notifications'] })
   })
+
+  it('invalidates ["auth","me"] when mark-read 401s', async () => {
+    const { spy, wrapper } = wrap()
+    stubFetch(() => new Response(JSON.stringify({ detail: 'unauth' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
+    const { result } = renderHook(() => useMarkRead(), { wrapper })
+    result.current.mutate(7)
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })
+  })
 })
 
 describe('notification settings', () => {
@@ -5086,6 +5585,14 @@ describe('notification settings', () => {
     const { result } = renderHook(() => useNotificationSettings(), { wrapper })
     await waitFor(() => expect(result.current.data).toEqual({ watchlist_alerts_enabled: true }))
     expect(calls[0].url).toContain('/api/v1/me/notification-settings')
+  })
+
+  it('invalidates ["auth","me"] when the settings GET 401s', async () => {
+    const { spy, wrapper } = wrap()
+    stubFetch(() => new Response(JSON.stringify({ detail: 'unauth' }), { status: 401, headers: { 'Content-Type': 'application/json' } }))
+    const { result } = renderHook(() => useNotificationSettings(), { wrapper })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })
   })
 
   it('PUTs the settings body and invalidates the settings key', async () => {
@@ -5103,29 +5610,31 @@ describe('notification settings', () => {
 
 - [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/hooks/useNotifications.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./useNotifications"`.
 
-- [ ] **Step 3: Implement `useNotifications.ts`.** `unreadCountQueryOptions` is a standalone factory (independently testable); `useUnreadCount` calls `useCurrentUser` to derive `enabled`. COMPLETE file:
+- [ ] **Step 3: Implement `useNotifications.ts`.** `unreadCountQueryOptions` is a standalone factory (independently testable) that now takes the caller's `queryClient` so its poll routes 401s through `raiseApiError` like every other query; `useUnreadCount` supplies that `queryClient` and calls `useCurrentUser` to derive `enabled`. COMPLETE file:
 
 ```ts
 // ABOUTME: TanStack Query hooks for F007 notifications — paginated list, unread-count poll, mark-read/all, settings.
-// ABOUTME: unreadCountQueryOptions is a standalone factory (testable without a component); the count query reads `total` from a size=1 unread page.
-import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, ApiError, type NotificationSettings, type PaginatedNotifications } from '../../../lib/api/client'
+// ABOUTME: unreadCountQueryOptions is a standalone factory (testable without a component); every hook routes non-2xx through raiseApiError (['auth','me'] on 401).
+import { QueryClient, queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, raiseApiError, type NotificationSettings, type PaginatedNotifications } from '../../../lib/api/client'
 import { useCurrentUser } from '../../auth/hooks/useCurrentUser'
 
 export function useNotifications(params: { page: number; size: number; is_read?: boolean }) {
+  const queryClient = useQueryClient()
   return useQuery<PaginatedNotifications>({
     queryKey: ['notifications', 'list', params],
     queryFn: async () => {
       const { data, response } = await api.GET('/me/notifications/', { params: { query: params } })
-      if (data === undefined) throw new ApiError(response.status)
+      if (data === undefined) raiseApiError(queryClient, response.status)
       return data
     },
   })
 }
 
 // The unread badge reads `total` off a filtered size=1 page — no dedicated count
-// endpoint (design §3.4). Polls every 60s; only enabled when authed.
-export function unreadCountQueryOptions(enabled: boolean) {
+// endpoint (design §3.4). Polls every 60s; only enabled when authed. Takes the caller's
+// queryClient so a 401 poll invalidates ['auth','me'] like every other /me/* query.
+export function unreadCountQueryOptions(queryClient: QueryClient, enabled: boolean) {
   return queryOptions({
     queryKey: ['notifications', 'unreadCount'],
     enabled,
@@ -5134,15 +5643,16 @@ export function unreadCountQueryOptions(enabled: boolean) {
       const { data, response } = await api.GET('/me/notifications/', {
         params: { query: { is_read: false, size: 1 } },
       })
-      if (data === undefined) throw new ApiError(response.status)
+      if (data === undefined) raiseApiError(queryClient, response.status)
       return data.total
     },
   })
 }
 
 export function useUnreadCount() {
+  const queryClient = useQueryClient()
   const { data: user } = useCurrentUser()
-  return useQuery(unreadCountQueryOptions(!!user))
+  return useQuery(unreadCountQueryOptions(queryClient, !!user))
 }
 
 export function useMarkRead() {
@@ -5152,7 +5662,7 @@ export function useMarkRead() {
       const { response } = await api.POST('/me/notifications/{notification_id}/mark-read', {
         params: { path: { notification_id: id } },
       })
-      if (!response.ok) throw new ApiError(response.status)
+      if (!response.ok) raiseApiError(queryClient, response.status)
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   })
@@ -5163,18 +5673,19 @@ export function useMarkAllRead() {
   return useMutation({
     mutationFn: async () => {
       const { response } = await api.POST('/me/notifications/mark-all-read')
-      if (!response.ok) throw new ApiError(response.status)
+      if (!response.ok) raiseApiError(queryClient, response.status)
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   })
 }
 
 export function useNotificationSettings() {
+  const queryClient = useQueryClient()
   return useQuery<NotificationSettings>({
     queryKey: ['notifications', 'settings'],
     queryFn: async () => {
       const { data, response } = await api.GET('/me/notification-settings')
-      if (data === undefined) throw new ApiError(response.status)
+      if (data === undefined) raiseApiError(queryClient, response.status)
       return data
     },
   })
@@ -5185,7 +5696,7 @@ export function useUpdateNotificationSettings() {
   return useMutation({
     mutationFn: async (body: NotificationSettings) => {
       const { data, response } = await api.PUT('/me/notification-settings', { body })
-      if (!response.ok) throw new ApiError(response.status)
+      if (!response.ok) raiseApiError(queryClient, response.status)
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications', 'settings'] }),
@@ -5195,7 +5706,13 @@ export function useUpdateNotificationSettings() {
 
 - [ ] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/hooks/useNotifications.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/notifications` (green).
 
-- [ ] **Step 5: Commit.** `git add app/frontend/web/src/features/notifications/hooks/useNotifications.ts app/frontend/web/src/features/notifications/hooks/useNotifications.test.tsx` then: `feat(web): add notifications query and mutation hooks`
+- [ ] **Step 5: Commit.**
+  `git add app/frontend/web/src/features/notifications/hooks/useNotifications.ts app/frontend/web/src/features/notifications/hooks/useNotifications.test.tsx`
+  ```
+  feat(web): add notifications query and mutation hooks
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -5217,6 +5734,7 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/features/notifications/components/NotificationBell.tsx`
 - Modify: `app/frontend/web/src/features/auth/components/HeaderIdentity.tsx` (authenticated branch, lines 32–46)
 - Test: `app/frontend/web/src/features/notifications/components/NotificationBell.test.tsx`
+- Modify: `app/frontend/web/e2e/helpers/api.ts` (add `AccountCall`, `readBody`, and the shared `interceptNotifications` helper — this task is its first consumer)
 - Modify: `app/frontend/web/e2e/auth.spec.ts` (the two authenticated tests — keep the lane hermetic)
 
 - [ ] **Step 1: Write the failing test.** Drives the bell through `renderApp('/contracts')` with authed `/me` and a stubbed count endpoint; asserts the `Link` to `/notifications` with `aria-label` "Notifications (N unread)", the badge shows N when N>0, and no badge number when N=0. COMPLETE file:
@@ -5314,11 +5832,77 @@ export function NotificationBell() {
 
 The bell renders only in this authed branch, so anonymous headers are unchanged; `useUnreadCount`'s `enabled: !!user` means no count request fires when anonymous. The existing `HeaderIdentity.test.tsx` authed tests have a fallback handler returning `{total:0,…}`, so the count query resolves to 0 (no badge) and those tests keep passing with no change.
 
-- [ ] **Step 5: Keep the E2E lane hermetic.** The header now fires `GET /me/notifications/?is_read=false&size=1` on every authed render, so the two authenticated tests in `e2e/auth.spec.ts` ("authenticated header shows portrait…" and "logout POSTs exactly once…") would leak an un-intercepted request (TEST-9 discipline). Add a notifications intercept to both. In `e2e/auth.spec.ts`, import `interceptNotifications` from `./helpers/api` (added in Phase 9 Task 9.1) — **Phase 9 Task 9.1 must land before this edit compiles**; if executing 8.2 before 9.1, add a minimal inline `page.route(/\/api\/v1\/me\/notifications\//, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: 0, page: 1, size: 1, items: [] }) }))` in those two tests and replace it with `interceptNotifications` during 9.1. Verify with the fixture lane in Step 6.
+- [ ] **Step 5: Add the shared `interceptNotifications` E2E helper (first consumer) and keep the auth lane hermetic.** The header now fires `GET /me/notifications/?is_read=false&size=1` on every authed render, so the two authenticated tests in `e2e/auth.spec.ts` ("authenticated header shows portrait…" and "logout POSTs exactly once…") would leak an un-intercepted request (TEST-9 discipline). This task is the first consumer of the notifications intercept, so define it here (Phase 9 Task 9.1 reuses it verbatim and its `AccountCall`/`readBody` scaffolding). Append to `e2e/helpers/api.ts` after the existing helpers (`Page` is already imported at the top):
 
-- [ ] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationBell.test.tsx src/features/auth/components/HeaderIdentity.test.tsx --reporter=dot` (all pass). `npx tsc -b` and `npx eslint src/features/notifications src/features/auth/components/HeaderIdentity.tsx` (green). Fixture-lane smoke for the touched spec: `npx playwright test auth.spec.ts --project=desktop` (green).
+```ts
+export interface AccountCall {
+  url: URL
+  method: string
+  body: unknown
+}
 
-- [ ] **Step 7: Commit.** `git add app/frontend/web/src/features/notifications/components/NotificationBell.tsx app/frontend/web/src/features/notifications/components/NotificationBell.test.tsx app/frontend/web/src/features/auth/components/HeaderIdentity.tsx app/frontend/web/e2e/auth.spec.ts` then: `feat(web): add notification bell to the header identity cluster`
+function readBody(route: import('@playwright/test').Route): unknown {
+  try {
+    return route.request().postDataJSON()
+  } catch {
+    return undefined
+  }
+}
+
+/** Intercept /me/notifications/* and /me/notification-settings. The count query (is_read=false&size=1)
+ * returns { total: unread, items: [] }; the list query returns the page; mark-read/all return 204;
+ * settings GET returns `settings`, PUT captures + echoes. Shared by the header bell's auth specs and
+ * the notifications spec (Task 9.4). */
+export async function interceptNotifications(
+  page: Page,
+  opts: { items?: ReadonlyArray<{ is_read: boolean }>; unread?: number; settings?: { watchlist_alerts_enabled: boolean } } = {},
+): Promise<AccountCall[]> {
+  const calls: AccountCall[] = []
+  const items = opts.items ?? []
+  const unread = opts.unread ?? items.filter((n) => !n.is_read).length
+  let settings = opts.settings ?? { watchlist_alerts_enabled: true }
+  await page.route(/\/api\/v1\/me\/notification-settings/, async (route) => {
+    const req = route.request()
+    const method = req.method()
+    if (method === 'PUT') {
+      const body = readBody(route) as { watchlist_alerts_enabled: boolean }
+      settings = body
+      calls.push({ url: new URL(req.url()), method, body })
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(settings) })
+    }
+    calls.push({ url: new URL(req.url()), method, body: undefined })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(settings) })
+  })
+  await page.route(/\/api\/v1\/me\/notifications/, async (route) => {
+    const req = route.request()
+    const method = req.method()
+    const url = new URL(req.url())
+    calls.push({ url, method, body: method === 'POST' ? readBody(route) : undefined })
+    if (/\/mark-all-read$/.test(url.pathname) || /\/mark-read$/.test(url.pathname)) {
+      return route.fulfill({ status: 204, body: '' })
+    }
+    if (url.searchParams.get('is_read') === 'false' && url.searchParams.get('size') === '1') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: unread, page: 1, size: 1, items: [] }) })
+    }
+    const pageNum = Number(url.searchParams.get('page') ?? '1')
+    const size = Number(url.searchParams.get('size') ?? '20')
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: items.length, page: pageNum, size, items }) })
+  })
+  return calls
+}
+```
+
+Note: the two routes are registered settings-first then notifications — Playwright runs last-registered-first, so `/me/notifications` (registered last) is evaluated first; its pattern does NOT match `/me/notification-settings` (different literal), so each request lands on the right handler. Then wire it into `e2e/auth.spec.ts`: add `interceptNotifications` to the `./helpers/api` import and call `await interceptNotifications(page, { unread: 0 })` (before `page.goto`) in both authenticated tests.
+
+- [ ] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationBell.test.tsx src/features/auth/components/HeaderIdentity.test.tsx --reporter=dot` (all pass). `npx tsc -b` and `npx eslint src/features/notifications src/features/auth/components/HeaderIdentity.tsx e2e/helpers/api.ts` (green). Fixture-lane smoke for the touched spec: `npx playwright test auth.spec.ts --project=desktop` (green).
+
+- [ ] **Step 7: Commit.**
+  `git add app/frontend/web/src/features/notifications/components/NotificationBell.tsx app/frontend/web/src/features/notifications/components/NotificationBell.test.tsx app/frontend/web/src/features/auth/components/HeaderIdentity.tsx app/frontend/web/e2e/helpers/api.ts app/frontend/web/e2e/auth.spec.ts`
+  ```
+  feat(web): add notification bell to the header identity cluster
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -5341,8 +5925,10 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/routes/notifications.tsx`
 - Create: `app/frontend/web/src/features/notifications/components/NotificationsPage.tsx`
 - Modify: `app/frontend/web/src/features/contracts/components/Pagination.tsx` (add an optional `unitLabel` so the pager reads "notifications", not "contracts")
+- Modify: `app/frontend/web/src/components/Checkbox.tsx` (add an optional `disabled` prop — backward-safe)
 - Test: `app/frontend/web/src/features/notifications/format.test.ts`
 - Test: `app/frontend/web/src/features/notifications/components/NotificationsPage.test.tsx`
+- Test: `app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx` (vitest-axe, design §6)
 
 - [ ] **Step 1: Write the failing `format.ts` test.** COMPLETE file:
 
@@ -5413,6 +5999,35 @@ and the label span:
       <span className="text-data text-ink-dim">
         Page {page} of {pageCount} · {total.toLocaleString('en-US')} {unitLabel}
       </span>
+```
+
+Also extend the shared `CheckboxField` (`src/components/Checkbox.tsx`) with an optional `disabled` prop (backward-safe default `false`) so the settings toggle can lock while its query is pending — add `disabled = false` to the destructured props and its type, and pass `disabled={disabled}` to the `<input>`:
+
+```tsx
+export function CheckboxField({
+  label,
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  label: ReactNode
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 rounded-sm py-0.5 text-sm text-ink-body select-none hover:text-ink">
+      <input
+        type="checkbox"
+        className="size-4 shrink-0 cursor-pointer accent-(--color-brand)"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      {label}
+    </label>
+  )
+}
 ```
 
 - [ ] **Step 6: Write the failing NotificationsPage tests.** Cover: anonymous prompt; authed list after skeleton unmount (TEST-8); mark-read fires on row click; pagination wiring (page 2 requested); mark-all-read POST; settings checkbox PUT body; contract deep-link present. COMPLETE file:
@@ -5515,6 +6130,26 @@ describe('NotificationsPage', () => {
     await waitFor(() => expect(calls.some((c) => /\/me\/notification-settings/.test(c.url) && c.method === 'PUT')).toBe(true))
     const put = calls.find((c) => /\/me\/notification-settings/.test(c.url) && c.method === 'PUT')!
     expect(JSON.parse(put.body!)).toEqual({ watchlist_alerts_enabled: false })
+  })
+
+  it('disables the watchlist-alerts toggle until settings load (no PUT before load)', async () => {
+    const calls: Call[] = []
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = input as Request
+      const url = req.url ?? String(input)
+      calls.push({ url, method: req.method ?? init?.method, body: await req.clone().text() })
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      // Settings GET never resolves → useNotificationSettings stays isPending → the checkbox is disabled.
+      if (/\/me\/notification-settings/.test(url)) return new Promise<Response>(() => {})
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 1, page: 1, size: 20, items: [N()] })
+      return jsonResponse({}, 404)
+    })
+    renderApp('/notifications')
+    await screen.findByText(/rifter available/i)
+    const toggle = screen.getByLabelText(/watchlist alerts/i)
+    expect(toggle).toBeDisabled()
+    await userEvent.click(toggle)   // disabled → no interaction, so no settings write
+    expect(calls.some((c) => /\/me\/notification-settings/.test(c.url) && c.method === 'PUT')).toBe(false)
   })
 })
 ```
@@ -5627,13 +6262,16 @@ function NotificationsBody() {
 }
 
 function SettingsToggle() {
-  const { data: settings } = useNotificationSettings()
+  const settingsQuery = useNotificationSettings()
   const update = useUpdateNotificationSettings()
   return (
     <div className="rounded-md border border-line bg-surface px-4 py-3">
       <CheckboxField
         label="Watchlist alerts"
-        checked={settings?.watchlist_alerts_enabled ?? false}
+        checked={settingsQuery.data?.watchlist_alerts_enabled ?? false}
+        // Disabled until settings load so a click can't PUT a value derived from the `?? false`
+        // fallback rather than the user's persisted state; also locked during an in-flight write.
+        disabled={settingsQuery.isPending || update.isPending}
         onChange={(checked) => update.mutate({ watchlist_alerts_enabled: checked })}
       />
     </div>
@@ -5679,9 +6317,67 @@ function NotificationRow({ n }: { n: Notification }) {
 }
 ```
 
-- [ ] **Step 10: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationsPage.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 Step 5 if needed). Regression-check the contracts pagination usage: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/routes/notifications.tsx src/features/notifications src/features/contracts/components/Pagination.tsx` (green).
+- [ ] **Step 10: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx`. COMPLETE file:
 
-- [ ] **Step 11: Commit.** `git add app/frontend/web/src/routes/notifications.tsx app/frontend/web/src/routes/routeTree.gen.ts app/frontend/web/src/features/notifications/format.ts app/frontend/web/src/features/notifications/format.test.ts app/frontend/web/src/features/notifications/components/NotificationsPage.tsx app/frontend/web/src/features/notifications/components/NotificationsPage.test.tsx app/frontend/web/src/features/contracts/components/Pagination.tsx` then: `feat(web): add notifications page with mark-read, pagination, and settings`
+```tsx
+// ABOUTME: Automated axe accessibility checks for the notifications page — authed-with-data and anonymous states.
+// ABOUTME: Mirrors src/features/contracts/components/a11y.test.tsx (vitest-axe on the designed UI, design §6).
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { screen } from '@testing-library/react'
+import { axe } from 'vitest-axe'
+import * as matchers from 'vitest-axe/matchers'
+import { jsonResponse } from '../../../test/http'
+import { renderApp } from '../../../test/renderApp'
+
+expect.extend(matchers)
+
+const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
+const NOTE = {
+  id: 1, type: 'watchlist_match', message: 'Rifter available in an auction priced 900,000 ISK in Jita IV - Moon 4',
+  contract_id: 101, watch_type_id: 587, price: 900000, is_read: false, created_at: '2026-07-17T11:00:00Z',
+}
+
+function stubFetch(handler: (url: string) => Response) {
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    return handler(url)
+  })
+}
+
+afterEach(() => vi.unstubAllGlobals())
+
+describe('accessibility (axe) — notifications', () => {
+  it('authed list view has no violations', async () => {
+    stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notification-settings/.test(url)) return jsonResponse({ watchlist_alerts_enabled: true })
+      if (/is_read=false&size=1/.test(url)) return jsonResponse({ total: 1, page: 1, size: 1, items: [] })
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 1, page: 1, size: 20, items: [NOTE] })
+      return jsonResponse({}, 404)
+    })
+    const { container } = renderApp('/notifications')
+    await screen.findByText(/rifter available/i)
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('anonymous sign-in prompt has no violations', async () => {
+    stubFetch((url) => (/\/api\/v1\/me$/.test(url) ? jsonResponse({ detail: 'unauth' }, 401) : jsonResponse({ total: 0, page: 1, size: 20, items: [] })))
+    const { container } = renderApp('/notifications')
+    await screen.findByRole('heading', { name: /sign in to use notifications/i })
+    expect(await axe(container)).toHaveNoViolations()
+  })
+})
+```
+
+- [ ] **Step 11: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationsPage.test.tsx src/features/notifications/components/NotificationsPage.a11y.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 if needed). Regression-check the contracts pagination usage: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/routes/notifications.tsx src/features/notifications src/features/contracts/components/Pagination.tsx src/components/Checkbox.tsx` (green).
+
+- [ ] **Step 12: Commit.**
+  `git add app/frontend/web/src/routes/notifications.tsx app/frontend/web/src/routeTree.gen.ts app/frontend/web/src/features/notifications/format.ts app/frontend/web/src/features/notifications/format.test.ts app/frontend/web/src/features/notifications/components/NotificationsPage.tsx app/frontend/web/src/features/notifications/components/NotificationsPage.test.tsx app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx app/frontend/web/src/features/contracts/components/Pagination.tsx app/frontend/web/src/components/Checkbox.tsx`
+  ```
+  feat(web): add notifications page with mark-read, pagination, and settings
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -5719,7 +6415,7 @@ Because these are E2E fixtures/helpers (test infrastructure, not production code
 
 **Files:**
 - Create: `app/frontend/web/e2e/fixtures/account.ts`
-- Modify: `app/frontend/web/e2e/helpers/api.ts` (add `interceptSavedSearches`, `interceptWatchlist`, `interceptNotifications`; update the `stubPortraits` JSDoc)
+- Modify: `app/frontend/web/e2e/helpers/api.ts` (add `interceptSavedSearches`, `interceptWatchlist`; `interceptNotifications` + `AccountCall`/`readBody` were already added in Task 8.2 — reuse them; update the `stubPortraits` JSDoc)
 
 - [ ] **Step 1: Read the current `e2e/helpers/api.ts`** (already reviewed in recon) to match the captured-calls shape and the last-registered-first routing discipline.
 
@@ -5797,26 +6493,12 @@ export function makeNotification(overrides: Partial<WireNotification> = {}): Wir
 }
 ```
 
-- [ ] **Step 3: Add the intercept helpers to `e2e/helpers/api.ts`.** Append these (and the imports) after the existing helpers. Each returns a live captured-calls array `{ url, method, body }` (the same "captured calls" idea as `interceptContractList`, extended with `method`/`body` because these are write endpoints). COMPLETE additions:
+- [ ] **Step 3: Add the saved-searches + watchlist intercept helpers to `e2e/helpers/api.ts`.** `interceptNotifications` and its `AccountCall`/`readBody` scaffolding are **already present** — added in Task 8.2 (its first consumer). Verify they exist and do NOT redefine them; the two helpers below reuse the existing `AccountCall`/`readBody`. Append after the existing helpers. Each returns a live captured-calls array `{ url, method, body }` (the same "captured calls" idea as `interceptContractList`, extended with `method`/`body` because these are write endpoints). COMPLETE additions:
 
 ```ts
 // (add to the imports at the top of e2e/helpers/api.ts)
 import { makeSavedSearch, type WireSavedSearch } from '../fixtures/account'
-import type { WireWatchlistItem, WireNotification } from '../fixtures/account'
-
-export interface AccountCall {
-  url: URL
-  method: string
-  body: unknown
-}
-
-function readBody(route: import('@playwright/test').Route): unknown {
-  try {
-    return route.request().postDataJSON()
-  } catch {
-    return undefined
-  }
-}
+import type { WireWatchlistItem } from '../fixtures/account'
 
 /** Intercept /me/saved-searches/* — GET returns `list`, POST echoes a made row (201), PUT 200, DELETE 204. */
 export async function interceptSavedSearches(page: Page, list: WireSavedSearch[] = []): Promise<AccountCall[]> {
@@ -5849,50 +6531,9 @@ export async function interceptWatchlist(page: Page, list: WireWatchlistItem[] =
   })
   return calls
 }
-
-/** Intercept /me/notifications/* and /me/notification-settings. The count query (is_read=false&size=1)
- * returns { total: unread, items: [] }; the list query returns the page; mark-read/all return 204;
- * settings GET returns `settings`, PUT captures + echoes. */
-export async function interceptNotifications(
-  page: Page,
-  opts: { items?: WireNotification[]; unread?: number; settings?: { watchlist_alerts_enabled: boolean } } = {},
-): Promise<AccountCall[]> {
-  const calls: AccountCall[] = []
-  const items = opts.items ?? []
-  const unread = opts.unread ?? items.filter((n) => !n.is_read).length
-  let settings = opts.settings ?? { watchlist_alerts_enabled: true }
-  await page.route(/\/api\/v1\/me\/notification-settings/, async (route) => {
-    const req = route.request()
-    const method = req.method()
-    if (method === 'PUT') {
-      const body = readBody(route) as { watchlist_alerts_enabled: boolean }
-      settings = body
-      calls.push({ url: new URL(req.url()), method, body })
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(settings) })
-    }
-    calls.push({ url: new URL(req.url()), method, body: undefined })
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(settings) })
-  })
-  await page.route(/\/api\/v1\/me\/notifications/, async (route) => {
-    const req = route.request()
-    const method = req.method()
-    const url = new URL(req.url())
-    calls.push({ url, method, body: method === 'POST' ? readBody(route) : undefined })
-    if (/\/mark-all-read$/.test(url.pathname) || /\/mark-read$/.test(url.pathname)) {
-      return route.fulfill({ status: 204, body: '' })
-    }
-    if (url.searchParams.get('is_read') === 'false' && url.searchParams.get('size') === '1') {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: unread, page: 1, size: 1, items: [] }) })
-    }
-    const pageNum = Number(url.searchParams.get('page') ?? '1')
-    const size = Number(url.searchParams.get('size') ?? '20')
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: items.length, page: pageNum, size, items }) })
-  })
-  return calls
-}
 ```
 
-Note: the two notification routes are registered settings-first then notifications — Playwright runs last-registered-first, so `/me/notifications` (registered last) is evaluated first; its pattern does NOT match `/me/notification-settings` (different literal), so each request lands on the right handler regardless.
+`interceptNotifications` (and `AccountCall`/`readBody`) already live in `e2e/helpers/api.ts` from Task 8.2 — the notifications specs (Task 9.4) import it from `./helpers/api` unchanged.
 
 - [ ] **Step 4: Confirm `stubPortraits` already covers type renders (no functional change needed).** The existing glob `**://images.evetech.net/**` already matches `images.evetech.net/types/{id}/render` — the watchlist row icon URL — so watchlist specs stay offline with the current helper. Update only the JSDoc to say so; do NOT narrow or duplicate the route. Replace the `stubPortraits` doc comment with:
 
@@ -5903,7 +6544,13 @@ Note: the two notification routes are registered settings-first then notificatio
 
 - [ ] **Step 5: Verify it compiles.** `cd app/frontend/web && npx tsc -b` (green) and `npx eslint e2e/fixtures/account.ts e2e/helpers/api.ts` (green). No spec runs yet — the specs in 9.2–9.4 exercise these.
 
-- [ ] **Step 6: Commit.** `git add app/frontend/web/e2e/fixtures/account.ts app/frontend/web/e2e/helpers/api.ts` then: `test(e2e): add account fixtures and intercept helpers`
+- [ ] **Step 6: Commit.**
+  `git add app/frontend/web/e2e/fixtures/account.ts app/frontend/web/e2e/helpers/api.ts`
+  ```
+  test(e2e): add account fixtures and intercept helpers
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -5981,7 +6628,13 @@ test.describe('saved searches', () => {
 
 - [ ] **Step 3: Run mobile too.** `npx playwright test saved-searches.spec.ts --project=mobile` (green).
 
-- [ ] **Step 4: Commit.** `git add app/frontend/web/e2e/saved-searches.spec.ts` then: `test(e2e): cover saved-search save + apply flows`
+- [ ] **Step 4: Commit.**
+  `git add app/frontend/web/e2e/saved-searches.spec.ts`
+  ```
+  test(e2e): cover saved-search save + apply flows
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -6051,7 +6704,13 @@ test.describe('watchlist', () => {
 
 - [ ] **Step 2: Run desktop + mobile.** `cd app/frontend/web && npx playwright test watchlist.spec.ts --project=desktop` then `--project=mobile` (both green).
 
-- [ ] **Step 3: Commit.** `git add app/frontend/web/e2e/watchlist.spec.ts` then: `test(e2e): cover watchlist add-by-name and two-step remove`
+- [ ] **Step 3: Commit.**
+  `git add app/frontend/web/e2e/watchlist.spec.ts`
+  ```
+  test(e2e): cover watchlist add-by-name and two-step remove
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -6113,9 +6772,13 @@ test.describe('notifications', () => {
     await stubPortraits(page)
 
     await page.goto('/notifications')
-    // TEST-8: wait for the loading skeleton to unmount before asserting on list content.
-    await expect(page.getByRole('status', { name: 'Loading notifications' })).toHaveCount(0)
+    // TEST-8: the loading skeleton (role=status "Loading notifications") must unmount before the list
+    // shows. `interceptNotifications` resolves instantly, so asserting the skeleton *visible* first
+    // would race the fixture; instead use the loaded row as the deterministic synchronization gate,
+    // then assert the skeleton has detached (a non-vacuous check now that content is confirmed loaded).
+    // Do NOT weaken this to a bare toHaveCount(0) before the row renders (TEST-2 / TEST-8).
     await expect(page.getByText(/rifter available/i)).toBeVisible()
+    await expect(page.getByRole('status', { name: 'Loading notifications' })).toHaveCount(0)
 
     await page.getByRole('button', { name: /mark all as read/i }).click()
     await expect.poll(() => calls.some((c) => /\/mark-all-read$/.test(c.url.pathname) && c.method === 'POST')).toBe(true)
@@ -6131,7 +6794,13 @@ test.describe('notifications', () => {
 
 - [ ] **Step 2: Run desktop + mobile.** `cd app/frontend/web && npx playwright test notifications.spec.ts --project=desktop` then `--project=mobile` (both green).
 
-- [ ] **Step 3: Commit.** `git add app/frontend/web/e2e/notifications.spec.ts` then: `test(e2e): cover notification badge and mark-all-read`
+- [ ] **Step 3: Commit.**
+  `git add app/frontend/web/e2e/notifications.spec.ts`
+  ```
+  test(e2e): cover notification badge and mark-all-read
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -6168,7 +6837,7 @@ Follow TDD: write failing test → implement → verify green.
 This task edits Markdown only (no production code / no test suite). TDD does not apply (CLAUDE.md §TDD Scope: docs are exempt). The "test" here is the completeness self-check in Step 4.
 
 **Files:**
-- Modify: `app/backend/../docs/pitfalls/implementation-pitfalls.md` (repo path: `docs/pitfalls/implementation-pitfalls.md`)
+- Modify: `docs/pitfalls/implementation-pitfalls.md`
 - Modify: `docs/pitfalls/testing-pitfalls.md`
 
 - [ ] **Step 1: Add `SQLA-2` to implementation-pitfalls.md §Section 2 (Data & Persistence).** Insert after the SQLA-1 entry (before the `### §2.C — Review Checklist` heading). Follows the house `Flaw → Why It Matters → Fix → Where It Bit Us` shape; the "Where It Bit Us" is written pre-emptively (the design mandated the fix, so this documents the trap the matcher's write path would hit without it):
@@ -6180,7 +6849,7 @@ This task edits Markdown only (no production code / no test suite). TDD does not
 
 **Why It Matters:** The failure is runtime-only (schema and query both look valid), so it surfaces on the first real insert, not at review or migration time. For a scheduled writer (the watchlist matcher) that means every run raises and zero notifications are ever created.
 
-**The Fix:** Restate the partial-index predicate in the conflict clause. SQLAlchemy: `insert(...).on_conflict_do_nothing(index_elements=["user_id", "contract_id", "watch_type_id"], index_where=(Notification.type == "watchlist_match"))`. Also populate **every** column in the index — Postgres treats NULLs as distinct in a unique index, so a NULL-bearing dedup column would never conflict and hollow out the guarantee.
+**The Fix:** Restate the partial-index predicate in the conflict clause as a **literal identical to the index DDL**. SQLAlchemy: `insert(...).on_conflict_do_nothing(index_elements=["user_id", "contract_id", "watch_type_id"], index_where=text("type = 'watchlist_match'"))`. Use `text(...)`, not the ORM comparison `Notification.type == "watchlist_match"` — the latter compiles to a parameterized `type = $1`, which Postgres's partial-index implication check cannot match against the index's literal predicate, so inference can fail. Also populate **every** column in the index — Postgres treats NULLs as distinct in a unique index, so a NULL-bearing dedup column would never conflict and hollow out the guarantee.
 
 **Where It Bit Us:** Pre-empted in the M3 watchlist-matcher design (`docs/superpowers/specs/2026-07-17-m3-account-features-design.md` §4.4); the partial index `uq_notifications_watchlist_dedup` on `(user_id, contract_id, watch_type_id) WHERE type='watchlist_match'` requires the `index_where` restatement or the matcher's core insert raises on every run. See testing-pitfalls.md TEST-11.
 ```
@@ -6205,7 +6874,13 @@ This task edits Markdown only (no production code / no test suite). TDD does not
 - [ ] **🔥 TEST-11 — Writer-side bulk inserts need a test that crosses one chunk boundary.** A bulk insert split into fixed-size chunks (asyncpg caps a statement at 32767 bind params, so the matcher inserts ≤1000 rows/statement) has an off-by-one or last-chunk-dropped bug that is invisible to any test whose match set fits in a single chunk. **Do instead:** arrange a match set strictly larger than one insert chunk (e.g. > `NOTIFICATION_INSERT_CHUNK` rows) and assert every row lands — `created == len(match_set)` and the union of inserted dedup keys equals the expected set. **Bit us:** pre-empted in the M3 watchlist matcher (`services/watchlist_matcher.py`, `NOTIFICATION_INSERT_CHUNK=1000`); pairs with implementation-pitfalls SQLA-2 (the chunked insert is the same statement that carries the partial-index ON CONFLICT). Relates to §4 Bounded growth.
 ```
 
-- [ ] **Step 6: Commit.** `git add docs/pitfalls/implementation-pitfalls.md docs/pitfalls/testing-pitfalls.md` then: `docs(pitfalls): add SQLA-2 (partial-index ON CONFLICT) and TEST-11 (chunk-boundary insert)`
+- [ ] **Step 6: Commit.**
+  `git add docs/pitfalls/implementation-pitfalls.md docs/pitfalls/testing-pitfalls.md`
+  ```
+  docs(pitfalls): add SQLA-2 (partial-index ON CONFLICT) and TEST-11 (chunk-boundary insert)
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -6274,7 +6949,13 @@ Implemented zero-scope per [the M3 design spec](../../docs/superpowers/specs/202
 
 Confirm the relative link depth (`../../docs/...`) matches `design/features/` → repo root when editing; adjust to the real relative path if the feature specs live at a different depth.
 
-- [ ] **Step 5: Commit.** `git add README.md design/features/feature-index.md design/features/F005-Saved-Searches.md design/features/F006-Watchlists.md design/features/F007-Alerts-Notifications.md` then: `docs: mark F005/F006/F007 implemented with recorded M3 deviations`
+- [ ] **Step 5: Commit.**
+  `git add README.md design/features/feature-index.md design/features/F005-Saved-Searches.md design/features/F006-Watchlists.md design/features/F007-Alerts-Notifications.md`
+  ```
+  docs: mark F005/F006/F007 implemented with recorded M3 deviations
+
+  Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+  ```
 
 ```
 BEFORE marking this task complete:
@@ -6304,7 +6985,7 @@ No new code; this task runs the gates and opens the PR. Invoke `superpowers:veri
 
 - [ ] **Step 5: E2E fixture lane — desktop + mobile.** `cd app/frontend/web && npm run e2e` (runs the desktop + mobile projects; live-smoke auto-skips). Expected: all pass, `retries` at 0. If any spec flakes, fix with deterministic synchronization (TEST-2), never a retry bump. Record the pass count per project.
 
-- [ ] **Step 6: Confirm the codegen artifacts are committed and current.** `git status --porcelain app/frontend/web/openapi.json app/frontend/web/src/lib/api/schema.d.ts app/frontend/web/src/routeTree.gen.ts` — expected: clean (no uncommitted regen diff). If `routeTree.gen.ts` shows a diff, commit it (`chore(web): regenerate route tree`). The backend-schema codegen (`openapi.json` + `schema.d.ts`) was committed in the backend phases; if a diff appears, STOP and raise — a late schema change means the client is stale.
+- [ ] **Step 6: Confirm the codegen artifacts are committed and current.** `git status --porcelain app/frontend/web/openapi.json app/frontend/web/src/lib/api/schema.d.ts app/frontend/web/src/routeTree.gen.ts` — expected: clean (no uncommitted regen diff). If `routeTree.gen.ts` shows a diff, commit it — subject `chore(web): regenerate route tree`, ending with the `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` trailer like every other commit. The backend-schema codegen (`openapi.json` + `schema.d.ts`) was committed in the backend phases; if a diff appears, STOP and raise — a late schema change means the client is stale.
 
 - [ ] **Step 7: Push the branch.** `git push` (branch already tracks `origin/claude/m3-account-features` from Phase 6).
 
