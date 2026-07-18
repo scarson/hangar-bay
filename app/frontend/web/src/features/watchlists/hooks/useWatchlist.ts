@@ -1,7 +1,7 @@
 // ABOUTME: TanStack Query hooks for F006 watchlists — list query + add/update/remove mutations.
 // ABOUTME: update forwards the body verbatim so an explicit {max_price: null} clears (JSON null); every hook routes non-2xx through raiseApiError (['watchlists'] on 2xx, ['auth','me'] on 401).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, raiseApiError, type WatchlistItem } from '../../../lib/api/client'
+import { api, extractDetail, raiseApiError, type WatchlistItem } from '../../../lib/api/client'
 import type { components } from '../../../lib/api/schema'
 import { useCurrentUser } from '../../auth/hooks/useCurrentUser'
 
@@ -29,8 +29,10 @@ export function useAddWatchlistItem() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (body: WatchlistItemCreate) => {
-      const { data, response } = await api.POST('/me/watchlist-items/', { body })
-      if (!response.ok) raiseApiError(queryClient, response.status)
+      // Capture the parsed error body so ApiError carries the backend detail — the add UI keys the
+      // 400 message (cap vs unknown-ship vs not-a-ship) and 502 outage off it (finding 6).
+      const { data, error, response } = await api.POST('/me/watchlist-items/', { body })
+      if (!response.ok) raiseApiError(queryClient, response.status, extractDetail(error))
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['watchlists'] }),

@@ -61,4 +61,16 @@ describe('WatchButton', () => {
     await userEvent.click(await screen.findByRole('button', { name: /^watch$/i }))
     expect(await screen.findByText(/already watching/i)).toBeInTheDocument()
   })
+
+  it('surfaces a brief failure message on a non-409 error (500)', async () => {
+    stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse({ detail: 'boom' }, 500)
+      return jsonResponse(CONTRACT)
+    })
+    renderApp('/contracts/101')
+    await userEvent.click(await screen.findByRole('button', { name: /^watch$/i }))
+    // Previously a non-409 failure was silently swallowed; now it surfaces inline (finding 6).
+    expect(await screen.findByText(/couldn.t add/i)).toBeInTheDocument()
+  })
 })

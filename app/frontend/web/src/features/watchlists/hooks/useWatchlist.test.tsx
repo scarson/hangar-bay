@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ApiError } from '../../../lib/api/client'
 import { useWatchlist, useAddWatchlistItem, useUpdateWatchlistItem, useRemoveWatchlistItem } from './useWatchlist'
 
 interface Call { url: string; method?: string; body?: string }
@@ -94,6 +95,16 @@ describe('useAddWatchlistItem', () => {
     result.current.mutate({ type_id: 1 })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(spy).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] })
+  })
+
+  it('carries the backend detail on the ApiError (structured error, finding 6)', async () => {
+    const { wrapper } = wrap()
+    stubFetch(() => new Response(JSON.stringify({ detail: 'watchlist is full (max 200 items)' }), { status: 400, headers: { 'Content-Type': 'application/json' } }))
+    const { result } = renderHook(() => useAddWatchlistItem(), { wrapper })
+    result.current.mutate({ type_id: 587 })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error).toBeInstanceOf(ApiError)
+    expect((result.current.error as ApiError).detail).toBe('watchlist is full (max 200 items)')
   })
 })
 

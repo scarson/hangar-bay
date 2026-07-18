@@ -24,6 +24,24 @@ export function parseMaxPrice(raw: string): { price: number | null } | { error: 
   return { price: value }
 }
 
+// Map an add-watchlist failure to user-facing copy. A 400 is disambiguated by the backend `detail`
+// so a valid ship at the 200-item cap no longer reports a spelling problem; 409 is a duplicate, 502
+// is an upstream (EVE) outage, and anything else — including a network error with no ApiError — is a
+// generic retry (finding 6).
+function addWatchlistErrorMessage(error: unknown): string | undefined {
+  if (!error) return undefined
+  if (!(error instanceof ApiError)) return 'Couldn’t add that ship. Try again.'
+  const detail = error.detail?.toLowerCase() ?? ''
+  if (error.status === 409) return 'You’re already watching that ship.'
+  if (error.status === 502) return 'EVE’s API is unavailable — try again shortly.'
+  if (error.status === 400) {
+    if (detail.includes('full')) return 'Your watchlist is full — remove a ship before adding another.'
+    if (detail.includes('not a ship') || detail.includes('not a published')) return 'That type isn’t a ship, so it can’t be watched.'
+    return 'Couldn’t find a ship with that exact name. Check the spelling.'
+  }
+  return 'Couldn’t add that ship. Try again.'
+}
+
 export function WatchlistPage() {
   useDocumentTitle('Watchlist')
   const { data: user, isPending } = useCurrentUser()
@@ -110,13 +128,7 @@ function AddByNameForm() {
     )
   }
 
-  const status = add.error instanceof ApiError ? add.error.status : undefined
-  const message =
-    status === 400 ? 'Couldn’t find a ship with that exact name. Check the spelling.'
-    : status === 409 ? 'You’re already watching that ship.'
-    : status === 502 ? 'EVE’s type service is unavailable right now. Try again shortly.'
-    : add.isError ? 'Couldn’t add that ship. Try again.'
-    : undefined
+  const message = addWatchlistErrorMessage(add.error)
 
   return (
     <form onSubmit={submit} noValidate aria-label="Add a ship to your watchlist" className="flex flex-wrap items-end gap-3 rounded-md border border-line bg-surface p-4">

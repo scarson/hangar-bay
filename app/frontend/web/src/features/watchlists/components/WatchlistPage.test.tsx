@@ -82,6 +82,49 @@ describe('WatchlistPage', () => {
     expect(await screen.findByText(/couldn.t find a ship/i)).toBeInTheDocument()
   })
 
+  it('surfaces the cap message (not "unknown ship") when the add hits the 200-item cap', async () => {
+    stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse({ detail: 'watchlist is full (max 200 items)' }, 400)
+      return jsonResponse([])
+    })
+    renderApp('/watchlist')
+    await screen.findByRole('heading', { level: 1, name: /watchlist/i })
+    await userEvent.type(screen.getByLabelText(/ship name/i), 'Maelstrom')
+    await userEvent.click(screen.getByRole('button', { name: /add to watchlist/i }))
+    expect(await screen.findByText(/remove a ship before adding/i)).toBeInTheDocument()
+    expect(screen.queryByText(/check the spelling/i)).not.toBeInTheDocument()
+  })
+
+  it('surfaces a not-a-ship message when the type is not a ship (400 detail)', async () => {
+    stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse({ detail: 'type is not a ship' }, 400)
+      return jsonResponse([])
+    })
+    renderApp('/watchlist')
+    await screen.findByRole('heading', { level: 1, name: /watchlist/i })
+    await userEvent.type(screen.getByLabelText(/ship name/i), 'Tritanium')
+    await userEvent.click(screen.getByRole('button', { name: /add to watchlist/i }))
+    expect(await screen.findByText(/isn.t a ship/i)).toBeInTheDocument()
+  })
+
+  it('surfaces an upstream-outage message on a 502', async () => {
+    stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse({ detail: 'Ship metadata service is unavailable; try again.' }, 502)
+      return jsonResponse([])
+    })
+    renderApp('/watchlist')
+    await screen.findByRole('heading', { level: 1, name: /watchlist/i })
+    await userEvent.type(screen.getByLabelText(/ship name/i), 'Maelstrom')
+    await userEvent.click(screen.getByRole('button', { name: /add to watchlist/i }))
+    expect(await screen.findByText(/eve.s api is unavailable/i)).toBeInTheDocument()
+  })
+
   it('clears max_price to null via the clear affordance (PUT body is JSON null)', async () => {
     const calls = stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
