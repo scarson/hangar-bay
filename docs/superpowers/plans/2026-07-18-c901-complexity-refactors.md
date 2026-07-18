@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Pay down the five functions suppressed with `# noqa: C901` in PR #47 (backend lint debt), reducing each to McCabe complexity ≤ 10 and removing its noqa, with zero behavior change proven by characterization tests (single documented exception: one retry-warning log prefix, Task 4.2).
+**Goal:** Pay down the five functions suppressed with `# noqa: C901` in PR #47 (backend lint debt), reducing each to McCabe complexity ≤ 10 and removing its noqa, with zero behavior change proven by characterization tests (two documented exceptions: one retry-warning log prefix in Task 4.2, and the ETag-path byte/str cache-client normalization fix in Task 5.2a).
 
 **Architecture:** One phase per function, one PR per phase, each branched off fresh `origin/dev`. Every phase follows the same shape: (a) add characterization tests that lock the CURRENT behavior — including error paths — and pass against the unrefactored code; (b) extract helpers until the function measures ≤ 10; (c) remove the `# noqa: C901`; (d) prove lint + full suite green. Phases 2 and 3 touch the same file and MUST be sequential; Phase 5 depends on a helper introduced in Phase 4.
 
@@ -80,7 +80,7 @@ notes and commit messages.
    - *Tests*: new characterization tests MUST pass against the UNREFACTORED code first. A characterization test that fails against current code means you guessed behavior instead of reading it — fix the test, not the code.
    - *Refactor gate*: BEFORE extracting helpers, delete the `# noqa: C901` and run `pdm run lint` — it MUST fail with the expected C901 line (this is the "red"). After extraction, lint MUST exit 0 (the "green"). Restore the noqa if you pause mid-phase; never commit a red lint.
 3. **BEFORE starting work** on any task: invoke `superpowers:test-driven-development`, and read `docs/pitfalls/testing-pitfalls.md` and `docs/pitfalls/implementation-pitfalls.md`. Pitfalls that WILL bite here: ENV-2/ENV-3 (every backend `.py` save under `pdm run dev --reload` wipes the DB — do not run the dev server while editing; the test suite manages its own DB), TEST-7 (error-state tests must exhaust retries).
-4. **Zero behavior change is the contract.** Helpers are extracted verbatim wherever possible: same statements, same order, same log messages (message strings are observable behavior — tests and operators grep them), same exception types and messages. ONE documented exception exists in the whole plan: Task 4.2's retry-helper consolidation changes the object variant's retry-warning prefix ("ESI object request to …" → "ESI request to …") — accepted there, called out in that PR's body, and permitted nowhere else. If you believe you found a bug in current behavior, do NOT fix it silently: record it under Discoveries, keep the characterization test locking CURRENT behavior, and flag it in the PR body.
+4. **Zero behavior change is the contract.** Helpers are extracted verbatim wherever possible: same statements, same order, same log messages (message strings are observable behavior — tests and operators grep them), same exception types and messages. TWO documented exceptions exist in the whole plan, each accepted where defined, called out in its PR body, and permitted nowhere else: Task 4.2's retry-helper consolidation changes the object variant's retry-warning prefix ("ESI object request to …" → "ESI request to …"), and Task 5.2a hardens the ETag path's cached-etag read to tolerate str-valued cache clients (a Sam-directed fix for a verified latent bug, TDD'd as its own commit). If you believe you found a bug in current behavior, do NOT fix it silently: record it under Discoveries, keep the characterization test locking CURRENT behavior, and flag it in the PR body.
 5. **No API changes.** Every extracted helper is module-private (`_` prefix) or a private method. Public signatures (`get_contracts`, `run_aggregation`, `get_esi_data_with_etag_caching`, `get_public_contracts`, `get_contract_items`, `get_universe_type`, `get_universe_group`) MUST NOT change.
 6. **Complexity check command.** `cd app/backend && .venv/bin/flake8 --select=C901 src/fastapi_app/<file>` — empty output means every function in the file is ≤ 10.
 7. **BEFORE marking any task complete:** review new tests against `docs/pitfalls/testing-pitfalls.md`; verify error paths and edge cases are covered; run the phase's test file AND `pdm run lint` AND the full `pdm run pytest` and confirm green.
@@ -594,8 +594,8 @@ async def _get_with_transient_retry(
 ### Task 5.1: Characterization test suite (the core of this phase)
 
 - [ ] **Step 1: Build fixtures.** Mirror the existing `_get_esi_object` test idiom in this file: `MagicMock` http/redis clients with `AsyncMock` methods (`_client_with_response` / `_client_with_get` helpers) — NOT `pytest_httpx` and NOT `tests/fake_redis.py`'s `FakeRedis`. Two contracts to respect:
-  - **Redis values are BYTES on this path.** `ESIClient`'s managed client is `aioredis.from_url(...)` with default `decode_responses=False`, and the ETag code calls `cached_etag.decode()`. Stub `redis.get` to return `b"..."` (or `None`), never `str` — `FakeRedis` is str-valued (house `decode_responses=True` pattern) and would crash this path with `AttributeError`, which is exactly why it is the wrong double here.
-  - **Discovery candidate — verify during this phase, do NOT fix silently:** the app's shared cache client (`core/cache.py:45`) is created with `decode_responses=True`. If any production wiring injects THAT client into `ESIClient` (check `core/dependencies.py` / scheduler wiring), a real ETag cache hit would raise `AttributeError` on `.decode()`. Record the finding under Discoveries with the wiring evidence either way.
+  - **Redis values are BYTES on this path.** `ESIClient`'s managed client is `aioredis.from_url(...)` with default `decode_responses=False`, and the ETag code calls `cached_etag.decode()`. Stub `redis.get` to return `b"..."` (or `None`), never `str` — `FakeRedis` is str-valued (house `decode_responses=True` pattern) and would crash this path with `AttributeError` against the CURRENT code, which is exactly why it is the wrong double for characterization. (Task 5.2a later makes str clients tolerated; the characterization suite still runs on the bytes contract, which stays the production reality for this client.)
+  - **Wiring already verified (2026-07-18, plan-authoring session) — latent hazard, not live:** the shared cache client (`core/cache.py:45`, `decode_responses=True`, str-valued) never reaches the ETag path today. The aggregation service — the only ETag-method caller — is built at `main.py:55` as `ESIClient(settings=settings)` with no injected redis, so it uses the managed bytes-returning client; `get_esi_client` (which injects the str client) is consumed only by the watchlist API, whose calls (`get_universe_type`/`get_universe_group`/`resolve_names`) avoid the ETag path; and `get_aggregation_service` (`background_aggregation.py:458`) — the one wiring that WOULD combine the str client with the ETag path — has zero callers (dead code). Task 5.2a fixes the latent crash; flag the dead provider in this phase's PR body for Sam's removal decision (do NOT delete it yourself).
   - Monkeypatch `asyncio.sleep` inside retry tests so backoff is a no-op (mechanism assertion: count requests, don't time them).
 - [ ] **Step 2: Write these tests** (names are normative; bodies follow the existing file's idioms):
 
@@ -654,6 +654,47 @@ test_malformed_200_json_propagates
 - [ ] **Step 3: Run against UNREFACTORED code.** ALL must pass. Any failure = your fixture or your reading of the code is wrong (or you found a live bug → Discoveries subsection + STOP for triage; do not fix silently).
 - [ ] **Step 4: Commit** — `test(api): characterize get_esi_data_with_etag_caching (etag, pagination, ttl, retry)`
 
+### Task 5.2a: Fix the latent str-client crash on the ETag path (Sam-directed, 2026-07-18)
+
+This is the plan's second documented behavior change (see ground rule 4). The cached-etag read assumes a bytes-returning client (`cached_etag.decode()`); a `decode_responses=True` client (the app's shared cache client) would crash it with `AttributeError` on the first ETag cache hit. Verified latent today (see the wiring note in Task 5.1 Step 1) — fix it now so the hazard doesn't outlive the refactor. Run this task AFTER Task 5.1's characterization suite is green (the suite is the net for this change too) and BEFORE Task 5.2.
+
+- [ ] **Step 1: Write the failing test** (append to `test_esi_client.py`):
+
+```python
+async def test_etag_path_tolerates_str_valued_redis_client():
+    """A decode_responses=True cache client returns str; the ETag read must
+    accept both str and bytes without crashing (latent-hazard fix, 2026-07-18)."""
+    response = _ok_response([{"contract_id": 1}], content=b'[{"contract_id": 1}]')
+    response.status_code = 200
+    response.headers = {}
+    http_client = MagicMock()
+    http_client.get = AsyncMock(return_value=response)
+    redis_client = MagicMock()
+    redis_client.get = AsyncMock(return_value="an-etag-as-str")  # str, not bytes
+    redis_client.set = AsyncMock()
+    client = ESIClient(settings=MagicMock(), http_client=http_client, redis_client=redis_client)
+
+    data = await client.get_esi_data_with_etag_caching("/v1/test/")
+
+    assert data == [{"contract_id": 1}]
+    sent_headers = http_client.get.await_args.kwargs["headers"]
+    assert sent_headers["If-None-Match"] == "an-etag-as-str"
+```
+
+  (Adapt the response-mock construction to the file's `_ok_response` helper signature; the load-bearing parts are the str-returning `redis_client.get`, the surviving call, and the `If-None-Match` value passing through un-mangled.)
+
+- [ ] **Step 2: Run it — expected FAIL** with `AttributeError: 'str' object has no attribute 'decode'`.
+- [ ] **Step 3: Minimal fix** in `get_esi_data_with_etag_caching` — replace the header construction with:
+
+```python
+if isinstance(cached_etag, bytes):
+    cached_etag = cached_etag.decode()
+headers = {"If-None-Match": cached_etag or ""}
+```
+
+- [ ] **Step 4: Run the test — PASS**; run the full Task 5.1 suite — still green (bytes-client behavior unchanged).
+- [ ] **Step 5: Commit** — `fix(api): tolerate str-valued cache clients on the ESI etag path`
+
 ### Task 5.2: Red gate, then decompose
 
 - [ ] **Step 1: Red gate** (remove noqa; expect `C901 ... (23)`).
@@ -697,7 +738,7 @@ def _last_page_reached(self, response: httpx.Response, page: int, page_data: lis
 
 ## What this plan deliberately does NOT do
 
-- No behavior changes beyond the single documented Task 4.2 log-prefix delta, and no bug fixes (Discoveries + flag, never silent fixes).
+- No behavior changes and no bug fixes beyond the two documented exceptions (Task 4.2 log-prefix delta; Task 5.2a etag byte/str normalization) — anything else discovered goes to Discoveries + flag, never a silent fix.
 - No public API changes, no renames of existing symbols, no docstring rewrites beyond moved code.
 - No new abstractions beyond the listed helpers (no strategy patterns, no config knobs, no generic "query builder" — YAGNI).
 - No `max-complexity` config changes and no surviving `# noqa: C901` after Phase 5.
