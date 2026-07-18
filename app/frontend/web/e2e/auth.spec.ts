@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { SEVEN_SHIPS, pageOf } from './fixtures/contracts'
 import { makeCurrentUser } from './fixtures/auth'
-import { interceptContractList, interceptCurrentUser, interceptLogout, stubPortraits } from './helpers/api'
+import { interceptContractList, interceptCurrentUser, interceptLogout, interceptNotifications, stubPortraits } from './helpers/api'
 
 test.describe('SSO header identity', () => {
   test('anonymous header shows a login link with the encoded next', async ({ page }) => {
@@ -26,6 +26,7 @@ test.describe('SSO header identity', () => {
   test('authenticated header shows portrait, name, and logout', async ({ page }) => {
     await interceptCurrentUser(page, makeCurrentUser({ character_name: 'Sesta Hound' }))
     await interceptContractList(page, pageOf(SEVEN_SHIPS))
+    await interceptNotifications(page, { unread: 0 })   // header bell now polls the count — keep the lane hermetic (TEST-9)
     await stubPortraits(page)   // keep the fixture lane offline — portrait is an external CDN URL
     await page.goto('/contracts')
     await expect(page.getByText('Sesta Hound')).toBeVisible()
@@ -53,6 +54,7 @@ test.describe('SSO header identity', () => {
       authed = false
     })
     await interceptContractList(page, pageOf(SEVEN_SHIPS))
+    await interceptNotifications(page, { unread: 0 })   // header bell now polls the count — keep the lane hermetic (TEST-9)
     await stubPortraits(page)   // authenticated render → portrait request; stay offline
     await page.goto('/contracts')
     await page.getByRole('button', { name: /log out/i }).click()

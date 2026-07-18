@@ -1,6 +1,8 @@
 import type { Page } from '@playwright/test'
 import type { WireContract, WirePage } from '../fixtures/contracts'
 import type { WireCurrentUser } from '../fixtures/auth'
+import { makeSavedSearch, type WireSavedSearch } from '../fixtures/account'
+import type { WireWatchlistItem } from '../fixtures/account'
 
 /**
  * Route-interception helpers for the fixture lane.
@@ -155,9 +157,98 @@ const PORTRAIT_PNG = Buffer.from(
   'base64',
 )
 
-/** Serve a tiny PNG for EVE portrait requests so authenticated specs stay fully offline. */
+/** Serve a tiny PNG for ALL images.evetech.net requests — character portraits AND type renders
+ * (e.g. /types/{id}/render on the watchlist page) — so authenticated specs stay fully offline. */
 export async function stubPortraits(page: Page): Promise<void> {
   await page.route('**://images.evetech.net/**', (route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: PORTRAIT_PNG }),
   )
+}
+
+export interface AccountCall {
+  url: URL
+  method: string
+  body: unknown
+}
+
+function readBody(route: import('@playwright/test').Route): unknown {
+  try {
+    return route.request().postDataJSON()
+  } catch {
+    return undefined
+  }
+}
+
+/** Intercept /me/notifications/* and /me/notification-settings. The count query (is_read=false&size=1)
+ * returns { total: unread, items: [] }; the list query returns the page; mark-read/all return 204;
+ * settings GET returns `settings`, PUT captures + echoes. Shared by the header bell's auth specs and
+ * the notifications spec (Task 9.4). */
+export async function interceptNotifications(
+  page: Page,
+  opts: { items?: ReadonlyArray<{ is_read: boolean }>; unread?: number; settings?: { watchlist_alerts_enabled: boolean } } = {},
+): Promise<AccountCall[]> {
+  const calls: AccountCall[] = []
+  const items = opts.items ?? []
+  const unread = opts.unread ?? items.filter((n) => !n.is_read).length
+  let settings = opts.settings ?? { watchlist_alerts_enabled: true }
+  await page.route(/\/api\/v1\/me\/notification-settings/, async (route) => {
+    const req = route.request()
+    const method = req.method()
+    if (method === 'PUT') {
+      const body = readBody(route) as { watchlist_alerts_enabled: boolean }
+      settings = body
+      calls.push({ url: new URL(req.url()), method, body })
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(settings) })
+    }
+    calls.push({ url: new URL(req.url()), method, body: undefined })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(settings) })
+  })
+  await page.route(/\/api\/v1\/me\/notifications/, async (route) => {
+    const req = route.request()
+    const method = req.method()
+    const url = new URL(req.url())
+    calls.push({ url, method, body: method === 'POST' ? readBody(route) : undefined })
+    if (/\/mark-all-read$/.test(url.pathname) || /\/mark-read$/.test(url.pathname)) {
+      return route.fulfill({ status: 204, body: '' })
+    }
+    if (url.searchParams.get('is_read') === 'false' && url.searchParams.get('size') === '1') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: unread, page: 1, size: 1, items: [] }) })
+    }
+    const pageNum = Number(url.searchParams.get('page') ?? '1')
+    const size = Number(url.searchParams.get('size') ?? '20')
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: items.length, page: pageNum, size, items }) })
+  })
+  return calls
+}
+
+/** Intercept /me/saved-searches/* — GET returns `list`, POST echoes a made row (201), PUT 200, DELETE 204. */
+export async function interceptSavedSearches(page: Page, list: WireSavedSearch[] = []): Promise<AccountCall[]> {
+  const calls: AccountCall[] = []
+  await page.route(/\/api\/v1\/me\/saved-searches\//, async (route) => {
+    const req = route.request()
+    const method = req.method()
+    const body = method === 'POST' || method === 'PUT' ? readBody(route) : undefined
+    calls.push({ url: new URL(req.url()), method, body })
+    if (method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(list) })
+    if (method === 'DELETE') return route.fulfill({ status: 204, body: '' })
+    const echo = makeSavedSearch(body as Partial<WireSavedSearch>)
+    return route.fulfill({ status: method === 'POST' ? 201 : 200, contentType: 'application/json', body: JSON.stringify(echo) })
+  })
+  return calls
+}
+
+/** Intercept /me/watchlist-items/* — GET returns `list`, POST echoes (201), PUT 200, DELETE 204. */
+export async function interceptWatchlist(page: Page, list: WireWatchlistItem[] = []): Promise<AccountCall[]> {
+  const calls: AccountCall[] = []
+  await page.route(/\/api\/v1\/me\/watchlist-items\//, async (route) => {
+    const req = route.request()
+    const method = req.method()
+    const body = method === 'POST' || method === 'PUT' ? readBody(route) : undefined
+    calls.push({ url: new URL(req.url()), method, body })
+    if (method === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(list) })
+    if (method === 'DELETE') return route.fulfill({ status: 204, body: '' })
+    const src = (body ?? {}) as Partial<WireWatchlistItem>
+    return route.fulfill({ status: method === 'POST' ? 201 : 200, contentType: 'application/json', body: JSON.stringify({ id: 999, type_id: src.type_id ?? 587, type_name: src.type_name ?? 'Rifter', max_price: src.max_price ?? null, notes: src.notes ?? null, created_at: 'x', updated_at: 'x' }) })
+  })
+  return calls
 }

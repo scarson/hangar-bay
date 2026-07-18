@@ -3,7 +3,8 @@
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core import token_cipher
@@ -14,38 +15,45 @@ from .sso import VerifiedIdentity
 
 
 async def upsert_user(db: AsyncSession, identity: VerifiedIdentity, tokens: dict) -> User:
-    # Concurrent first-login race: two simultaneous first logins for the same
-    # character_id can both see `user is None` and both attempt an insert; the
-    # loser's flush raises IntegrityError (character_id is unique). This is
-    # handled correctly at the callable boundary — _finalize_login rolls the
-    # poisoned transaction back and redirects sso=error, so the loser simply
-    # retries (and the winner's row is then found). A future optimization
-    # (TODO(M3): catch IntegrityError + re-select, or INSERT ... ON CONFLICT)
-    # could make the loser succeed transparently instead of retrying, but the
-    # graceful-retry behavior is already correct for M2.
+    # Race-safe first login: INSERT ... ON CONFLICT (character_id) DO UPDATE so two simultaneous
+    # first logins for the same character_id both succeed against the single row (the loser updates
+    # the winner's row instead of raising IntegrityError). Owner-hash transfer stays: on any login
+    # the mutable identity/token columns are overwritten — data follows the character (§4.1).
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(seconds=int(tokens["expires_in"]))
-    user = (
-        await db.execute(select(User).where(User.character_id == identity.character_id))
-    ).scalar_one_or_none()
-
-    if user is None:
-        user = User(character_id=identity.character_id)
-        db.add(user)
-
-    # Owner-hash transfer: on mismatch we update in place — data follows the character.
-    user.character_name = identity.character_name
-    user.owner_hash = identity.owner_hash
-    user.esi_access_token = token_cipher.encrypt_token(tokens["access_token"])
+    encrypted_access = token_cipher.encrypt_token(tokens["access_token"])
     # Zero-scope logins carry no refresh_token key (D-DELTA-2); store NULL, never "".
     refresh_token = tokens.get("refresh_token")
-    user.esi_refresh_token = (
+    encrypted_refresh = (
         token_cipher.encrypt_token(refresh_token) if refresh_token is not None else None
     )
-    user.esi_access_token_expires_at = expires_at
-    user.last_login_at = now
-
-    await db.flush()
+    mutable = {
+        "character_name": identity.character_name,
+        "owner_hash": identity.owner_hash,
+        "esi_access_token": encrypted_access,
+        "esi_refresh_token": encrypted_refresh,
+        "esi_access_token_expires_at": expires_at,
+        "last_login_at": now,
+    }
+    stmt = (
+        pg_insert(User)
+        .values(character_id=identity.character_id, **mutable)
+        .on_conflict_do_update(
+            index_elements=["character_id"],
+            set_={**mutable, "updated_at": func.now()},
+        )
+    )
+    await db.execute(stmt)
+    # Re-select with populate_existing so an already-identity-mapped instance (e.g. a prior
+    # upsert in the same session) is refreshed with the new column values, and so the returned
+    # ORM row is fully loaded (no expired server-default columns) for the caller.
+    user = (
+        await db.execute(
+            select(User)
+            .where(User.character_id == identity.character_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
     return user
 
 

@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import fastapi_app.services.background_aggregation as bg_agg
 from fastapi_app.models.contracts import Contract, ContractItem
 from fastapi_app.services.background_aggregation import ContractAggregationService
+from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
 
 pytestmark = pytest.mark.asyncio
 
@@ -270,29 +271,6 @@ async def test_id_list_updates_batch_across_the_chunk_boundary(
     assert len(rows) == 3
     assert all(r.is_ship_contract is True for r in rows)
     assert all(r.item_processing_status == "COMPLETED" for r in rows)
-
-
-class _FakeLockRedis:
-    """Minimal in-memory async Redis for the lock's set / eval(CAD) / close path."""
-
-    def __init__(self, store: dict):
-        self.store = store
-
-    async def set(self, key, value, nx=False, ex=None):
-        if nx and key in self.store:
-            return None
-        self.store[key] = value
-        return True
-
-    async def eval(self, script, numkeys, *args):
-        key, token = args[0], args[1]
-        if self.store.get(key) == token:
-            del self.store[key]
-            return 1
-        return 0
-
-    async def close(self):
-        pass
 
 
 async def test_lock_release_deletes_only_its_own_token():

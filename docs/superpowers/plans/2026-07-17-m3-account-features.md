@@ -64,25 +64,35 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** All phases (0-10) shipped. Backend + codegen complete; frontend F005 Saved Searches + F006 Watchlists + F007 Alerts/Notifications done; E2E fixture lane done; docs (pitfalls SQLA-2/TEST-11, README, feature-index, per-feature deviation notes) done; all local gates green. PR #46 is OPEN to `dev` and awaits Sam's review/merge — the plan ends here (do NOT merge).
+
+**Baseline (Phase 0, captured against `origin/dev` tip `27dac66`):** backend `pdm run pytest -q` → `220 passed`; frontend `npx vitest run --reporter=dot` → `Test Files 12 passed (12)`, `Tests 62 passed (62)`. Phase 1/2 backend work must never drop the pytest count below 220.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Campaign branch setup | ⬜ Not started | — | — |
-| 1 — Backend foundations | ⬜ Not started | — | — |
-| 2 — F005 Saved Searches backend | ⬜ Not started | — | — |
-| 3 — F006 Watchlist backend | ⬜ Not started | — | — |
-| 4 — F007 Notifications backend + matcher | ⬜ Not started | — | — |
-| 5 — Codegen | ⬜ Not started | — | — |
-| 6 — Frontend F005 | ⬜ Not started | — | — |
-| 7 — Frontend F006 | ⬜ Not started | — | — |
-| 8 — Frontend F007 | ⬜ Not started | — | — |
-| 9 — E2E | ⬜ Not started | — | — |
-| 10 — Docs, gates, PR | ⬜ Not started | — | — |
+| 0 — Campaign branch setup | ✅ Shipped | `70e8d1a` | Baseline: backend 220 passed, frontend 12 files / 62 tests passed |
+| 1 — Backend foundations | ✅ Shipped | `c0c341c` | Task 1.4 recovered via cherry-pick (wrong-cwd executor) |
+| 2 — F005 Saved Searches backend | ✅ Shipped | `c4c1dab` | CRUD + full HTTP/schema matrix; backend 257 passed |
+| 3 — F006 Watchlist backend | ✅ Shipped | `bd3aa68` | ESIClient.resolve_names + watchlist CRUD add pipeline; backend 285 passed |
+| 4 — F007 Notifications backend + matcher | ✅ Shipped | `b6d1e13` | notifications API + `WatchlistMatcherService` + scheduler/lifespan wiring; backend 319 passed |
+| 5 — Codegen | ✅ Shipped | `6e64674` | openapi.json + schema.d.ts regenerated for F005/F006/F007; `npx tsc -b` clean |
+| 6 — Frontend F005 | ✅ Shipped | `b2d3912` | `/saved-searches` route + page (Apply/Rename/two-step Delete) + `SaveSearchControl`; frontend 17 files / 89 tests passed |
+| 7 — Frontend F006 | ✅ Shipped | `6a0450b` | `/watchlist` route + page (add-by-name, inline edit, clear-to-null, two-step Remove) + `WatchButton`; frontend 21 files / 109 tests passed |
+| 8 — Frontend F007 | ✅ Shipped | `fdf5f9f` | `/notifications` route + page (paginated list, mark-read-on-click, mark-all-read, watchlist-alerts settings toggle) + `NotificationBell` in the header + notifications hooks; frontend 26 files / 135 tests passed |
+| 9 — E2E | ✅ Shipped | `05a8800` | account fixtures + intercept helpers; saved-searches/watchlist/notifications specs — 18 passed (desktop+mobile) |
+| 10 — Docs, gates, PR | ✅ Shipped | `46e6f5a`, `70592e8` | pitfalls SQLA-2 + TEST-11; README/feature-index/F005-F007 deviation notes; gates all green; PR #46 opened to `dev` (unmerged) |
+
+**PR:** [#46 — feat: M3 account features](https://github.com/scarson/hangar-bay/pull/46) → base `dev`, head `claude/m3-account-features`, state **OPEN** (Review — database schema + per-user data authorization; **Sam merges**, `/codex review` to be recorded before merge).
 
 ### Deviations
+- Task 8.2: typed-Link/route-registration ordering defect — `/notifications` route stub folded into 8.2 (commit `25621f5`) so `tsc` gates; 8.3 replaces the stub. Plan reviewers missed the TanStack typed-route compile-order constraint.
+- Task 1.4: the original executor performed the work in the wrong checkout (inherited session cwd) and committed there; recovered by cherry-picking `8638582` → `c0c341c` onto the campaign branch. Work verified green in-branch (12 passed incl. the two-session race test). Remaining executors carry an explicit cwd-guard.
+
+- **Task 7.3 — three defects in the plan's verbatim COMPLETE files, all fixed with intent preserved (ship `6a0450b`).** (1) *Impl bug:* the add-by-name `<form>` needed `noValidate`. The price `<Input type="number" min="0.01">` triggers native constraint validation that blocks form submit when a user enters `0`, so the JS guard that shows the friendly "Max price must be at least 0.01" message never ran (in a real browser the native bubble would preempt the designed message too). Verified empirically that jsdom drops the submit event on a min-violation; `noValidate` lets JS own the validation UX. (2) *Test-stub bug (`adds by name`):* GET (list) and POST (create) share the `/me/watchlist-items/` collection URL, and the stub returned the created object for both, so the list query received a non-array and `WatchlistBody` crashed on `data.map`. Fixed by branching the stub on `call.method` (array for GET, object for POST) — matches the real contract and the SavedSearches house pattern. (3) *Test-mechanics bug (`auto-disarms`):* the plan's test used `userEvent.setup({advanceTimers})` + `await user.click` under `vi.useFakeTimers()`, which deadlocks (userEvent's async event-flush awaits a real timer the fake clock never advances); switched the arming click to synchronous `fireEvent.click`, exactly as the already-shipped `SavedSearchesPage.test.tsx` auto-disarms test does (with the same documented rationale). All 8 page tests + 2 axe tests green; full frontend suite 21 files / 109 tests passed.
 
 - **Design §9.2 — backfilling real `users` rows into the `test_auth_flow` sessions "where trivial" — deliberately deferred.** No reduction in duplication materialized from the migration: the new `authed_user` fixture (Task 1.2) already covers the M3 tests that need a real `users` row, and the existing `test_auth_flow` tests keep their minted-session `user_id` values, which no longer FK anywhere they insert. Recorded here so the design and plan agree with an audit trail rather than a silent drop (round-2 review MINOR-7); mirror this line into the Task 10.2 PR-body deviation notes at ship time.
+
+- **Post-review fix wave — addressed codex pre-merge findings 1–7** (frontend findings 1, 2, 5, 6, 7; backend findings 3, 4 tracked separately). See `docs/audits/m3-plan-review/codex-pr46-review.md` for the review and per-finding failure/fix detail.
 
 ---
 <!-- SECTION A of the M3 implementation plan: Phase 0 (campaign setup) + Phase 1 (backend foundations) + Phase 2 (F005 Saved Searches backend). Authoritative design: docs/superpowers/specs/2026-07-17-m3-account-features-design.md. -->
@@ -103,7 +113,7 @@ These bind every task below and are stated here so no task repeats them:
 
 ## Phase 0 — Campaign branch setup
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `70e8d1a` on 2026-07-18
 
 Establishes the campaign worktree off `origin/dev` and captures the green baseline (backend pytest + frontend vitest) so every later phase measures against a known-good starting point. No production code.
 
@@ -120,7 +130,7 @@ task is a trustworthy baseline: the suites MUST be green before any M3 code land
 
 **Files:** none created/modified (worktree + local `.env` + baseline capture only).
 
-- [ ] **Step 1: Create the worktree off `origin/dev`.** From the main repo root `/Users/sam/Code/hangar-bay`:
+- [x] **Step 1: Create the worktree off `origin/dev`.** From the main repo root `/Users/sam/Code/hangar-bay`:
   ```bash
   cd /Users/sam/Code/hangar-bay
   git fetch origin dev
@@ -128,25 +138,29 @@ task is a trustworthy baseline: the suites MUST be green before any M3 code land
   cd .claude/worktrees/m3-account-features
   ```
   All later task commands run from inside this worktree.
-- [ ] **Step 2: Bring up the dependency containers.**
+- [x] **Step 2: Bring up the dependency containers.**
   ```bash
   docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.dependencies.yml up -d --wait postgres_db valkey_cache
   ```
-- [ ] **Step 3: Provision the backend `.env`.** The worktree has no `app/backend/src/.env` (it is gitignored). Create it from the template and fill the required values:
+- [x] **Step 3: Provision the backend `.env`.** The worktree has no `app/backend/src/.env` (it is gitignored). Create it from the template and fill the required values:
   ```bash
   cp app/backend/.env.example app/backend/src/.env
   ```
   Then ensure `app/backend/src/.env` sets, at minimum: `ENVIRONMENT=development`, `DB_RECREATE_ON_STARTUP=true`, `ESI_USER_AGENT=...`, `DATABASE_URL=postgresql+asyncpg://…/hangar_bay_db`, `CACHE_URL=redis://…/0`, and — required for pytest — `DATABASE_URL_TESTS=postgresql+asyncpg://…/hangar_bay_test` (a dedicated test database; conftest raises at import if unset). Match the connection strings to the compose containers from Step 2. (If a working dev `.env` already exists in another local worktree, copying it is fine.)
-- [ ] **Step 4: Install backend deps and capture the backend baseline.**
+- [x] **Step 4: Install backend deps and capture the backend baseline.**
   ```bash
   cd app/backend && pdm install && pdm run pytest -q
   ```
   Expected: all tests pass (≈196 test functions at `origin/dev` tip `a7b0f26`). Record the exact `N passed` count from the summary line in this plan's Execution Status before proceeding — this is the number Phase 1/2 must never reduce.
-- [ ] **Step 5: Install frontend deps and capture the frontend baseline.**
+
+  **Actual:** `220 passed in 6.95s`, clean output, no warnings. `origin/dev` tip at execution time was `27dac66` (commits since `a7b0f26` are docs-only — no production code — so the higher count is the plan estimate being approximate, not drift).
+- [x] **Step 5: Install frontend deps and capture the frontend baseline.**
   ```bash
   cd ../frontend/web && npm ci && npx vitest run --reporter=dot
   ```
   Expected: all vitest suites pass (12 unit/component test files at baseline). Record the `Test Files N passed` / `Tests N passed` counts in this plan's Execution Status. (The frontend baseline is captured now for later phases; Section A touches no frontend code.)
+
+  **Actual:** `Test Files  12 passed (12)` / `Tests  62 passed (62)`. jsdom logs expected `Not implemented: Window's scrollTo()` / `HTMLCanvasElement's getContext()` noise throughout (pre-existing jsdom environment limitations, not test failures) — no assertion failures, no errors.
 
 ```
 BEFORE marking this task complete:
@@ -166,7 +180,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 1 — Backend foundations
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `c0c341c` on 2026-07-18 (Task 1.4 recovered via cherry-pick from a wrong-cwd executor commit — see Deviations)
 
 The auth backbone and data model every M3 feature stands on: the three per-user tables + the `users.watchlist_alerts_enabled` column (Task 1.1), the `authed_user` fixture + `login_as` helper that make FK'd-table tests possible (Task 1.2), the `get_current_user` session→row resolution dependency (Task 1.3), and the ride-along first-login upsert race fix (Task 1.4). Design authority: §4.1, §4.2, §9.1.
 
@@ -193,7 +207,7 @@ assertions (timing bounds).
 - Modify: `app/backend/src/fastapi_app/models/__init__.py` (register the three new models)
 - Test: `app/backend/src/fastapi_app/tests/models/test_account_models.py`
 
-- [ ] **Step 1: Write the failing model tests.** Create `app/backend/src/fastapi_app/tests/models/test_account_models.py`:
+- [x] **Step 1: Write the failing model tests.** Create `app/backend/src/fastapi_app/tests/models/test_account_models.py`:
   ```python
   # ABOUTME: Registration + constraint-binding guards for the M3 account tables.
   # ABOUTME: Proves FK-to-users, the two UniqueConstraints, and the notifications partial dedup index.
@@ -293,12 +307,12 @@ assertions (timing bounds).
       )).scalars().all()
       assert len(rows) == 2  # the first watchlist_match + the other_kind row
   ```
-- [ ] **Step 2: Run the tests and confirm they fail.**
+- [x] **Step 2: Run the tests and confirm they fail.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/models/test_account_models.py -v
   ```
   Expected failure: `ImportError: cannot import name 'Notification' from 'fastapi_app.models'` (the account module does not exist yet).
-- [ ] **Step 3: Create `app/backend/src/fastapi_app/models/account.py`.**
+- [x] **Step 3: Create `app/backend/src/fastapi_app/models/account.py`.**
   ```python
   # ABOUTME: M3 per-user account tables — saved searches, watchlist items, notifications — FK'd to users.id (ondelete CASCADE).
   # ABOUTME: Notifications carry the uq_notifications_watchlist_dedup partial unique index the matcher relies on for ON CONFLICT dedup.
@@ -402,7 +416,7 @@ assertions (timing bounds).
           ),
       )
   ```
-- [ ] **Step 4: Add `watchlist_alerts_enabled` to `models/user.py`.** Change the import line `from sqlalchemy import BigInteger, DateTime, String, Text, func` to also import `Boolean` and `true`:
+- [x] **Step 4: Add `watchlist_alerts_enabled` to `models/user.py`.** Change the import line `from sqlalchemy import BigInteger, DateTime, String, Text, func` to also import `Boolean` and `true`:
   ```python
   from sqlalchemy import BigInteger, Boolean, DateTime, String, Text, func, true
   ```
@@ -412,7 +426,7 @@ assertions (timing bounds).
           Boolean, nullable=False, server_default=true()
       )
   ```
-- [ ] **Step 5: Register the models in `models/__init__.py`.** Replace the file body with:
+- [x] **Step 5: Register the models in `models/__init__.py`.** Replace the file body with:
   ```python
   from .user import User
   from .contracts import Contract, ContractItem, EsiMarketGroupCache
@@ -429,12 +443,12 @@ assertions (timing bounds).
   ]
   ```
   (Registration is sufficient for `create_all` in dev and tests because `main.py` imports `from .models import contracts`, which runs this package `__init__` and imports `account`; `conftest.py` pulls the app import chain too — recon backend-data-auth §1.)
-- [ ] **Step 6: Run the tests and confirm green.**
+- [x] **Step 6: Run the tests and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/models/test_account_models.py -v
   ```
   Expected: all pass. Also run the existing user-model guard to confirm no regression: `pdm run pytest src/fastapi_app/tests/models/test_user_model.py -v`.
-- [ ] **Step 7: Lint + commit.**
+- [x] **Step 7: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/models/account.py app/backend/src/fastapi_app/models/user.py app/backend/src/fastapi_app/models/__init__.py app/backend/src/fastapi_app/tests/models/test_account_models.py
@@ -467,7 +481,7 @@ Follow TDD: write failing test → implement → verify green.
 - Modify: `app/backend/src/fastapi_app/tests/conftest.py` (add two imports, `login_as`, `authed_user`)
 - Test: `app/backend/src/fastapi_app/tests/api/test_account_fixtures.py`
 
-- [ ] **Step 1: Write the failing fixture tests.** Create `app/backend/src/fastapi_app/tests/api/test_account_fixtures.py`:
+- [x] **Step 1: Write the failing fixture tests.** Create `app/backend/src/fastapi_app/tests/api/test_account_fixtures.py`:
   ```python
   # ABOUTME: Round-trip proofs for the M3 authed_user fixture and login_as helper (real session in FakeRedis).
   import pytest
@@ -495,12 +509,12 @@ Follow TDD: write failing test → implement → verify green.
       assert resp.json()["character_id"] == 91000042
       assert other.character_id == 91000042
   ```
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_account_fixtures.py -v
   ```
   Expected failure: `ImportError: cannot import name 'login_as' from 'fastapi_app.tests.conftest'`.
-- [ ] **Step 3: Add the fixture + helper to `conftest.py`.** Add these imports near the existing `from fastapi_app.core.config import settings` (top region of the file):
+- [x] **Step 3: Add the fixture + helper to `conftest.py`.** Add these imports near the existing `from fastapi_app.core.config import settings` (top region of the file):
   ```python
   from fastapi_app.core import session as sess
   from fastapi_app.models import User
@@ -534,12 +548,12 @@ Follow TDD: write failing test → implement → verify green.
       )
       return user, auth_client
   ```
-- [ ] **Step 4: Run and confirm green.**
+- [x] **Step 4: Run and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_account_fixtures.py -v
   ```
   Expected: both pass.
-- [ ] **Step 5: Lint + commit.**
+- [x] **Step 5: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/tests/conftest.py app/backend/src/fastapi_app/tests/api/test_account_fixtures.py
@@ -574,7 +588,7 @@ Follow TDD: write failing test → implement → verify green.
 
 Design §4.1: resolve `session["user_id"]` to a live `users` row; if the row is absent OR its `character_id` differs from the session's, destroy the server-side session (re-reading the sid from the request cookie, since the session payload does not carry its own sid) and raise 401. The `character_id` equality check is load-bearing — after a dev wipe + a different user's re-login, `users.id` can be reassigned, so an existence check alone would silently read/write another character's data.
 
-- [ ] **Step 1: Write the failing tests.** Create `app/backend/src/fastapi_app/tests/core/test_current_user.py`:
+- [x] **Step 1: Write the failing tests.** Create `app/backend/src/fastapi_app/tests/core/test_current_user.py`:
   ```python
   # ABOUTME: get_current_user resolves session->users row and forces re-login on miss/mismatch (design §4.1).
   # ABOUTME: Direct-call unit tests; HTTP-level coverage (401 anon, cross-user) lands in Phase 2's CRUD suite.
@@ -643,12 +657,12 @@ Design §4.1: resolve `session["user_id"]` to a live `users` row; if the row is 
       assert exc.value.status_code == 401
       assert await redis.exists(f"session:{sid}") == 0
   ```
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/core/test_current_user.py -v
   ```
   Expected failure: `ModuleNotFoundError: No module named 'fastapi_app.core.current_user'`.
-- [ ] **Step 3: Create `app/backend/src/fastapi_app/core/current_user.py`.**
+- [x] **Step 3: Create `app/backend/src/fastapi_app/core/current_user.py`.**
   ```python
   # ABOUTME: get_current_user — the M3 auth backbone: resolves the session to a live users row and
   # ABOUTME: verifies character_id, forcing re-login (destroy session + 401) on a missing/reassigned row (design §4.1).
@@ -684,12 +698,12 @@ Design §4.1: resolve `session["user_id"]` to a live `users` row; if the row is 
           raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
       return user
   ```
-- [ ] **Step 4: Run and confirm green.**
+- [x] **Step 4: Run and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/core/test_current_user.py -v
   ```
   Expected: all three pass.
-- [ ] **Step 5: Lint + commit.**
+- [x] **Step 5: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/core/current_user.py app/backend/src/fastapi_app/tests/core/test_current_user.py
@@ -732,7 +746,7 @@ assertions (timing bounds).
 
 **Nature of the change:** this refactor closes the first-login race (design §9.1). The new deterministic two-session test below IS the red-first behavior test: it drives two concurrent first logins for the same `character_id` on independent connections, and Postgres's unique-index lock on the winner's uncommitted insert makes the ordering deterministic (a lock wait, not a timing race). Against the current select-then-insert the losing session raises `IntegrityError` once the winner commits (RED); against `INSERT ... ON CONFLICT DO UPDATE` it lands on the winner's row (GREEN). The existing `test_auth_service.py` suite remains the regression guard for external behavior (encryption, rotation, owner-hash transfer). The red→green cycle here is: new test RED against current code → rewrite → new test GREEN + existing suite still green.
 
-- [ ] **Step 1: Add the failing concurrency test.** Append to `app/backend/src/fastapi_app/tests/services/test_auth_service.py`. It needs three imports the module does not have yet — add to the import block: `import asyncio`, `from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine`, and `from fastapi_app.db import Base`:
+- [x] **Step 1: Add the failing concurrency test.** Append to `app/backend/src/fastapi_app/tests/services/test_auth_service.py`. It needs three imports the module does not have yet — add to the import block: `import asyncio`, `from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine`, and `from fastapi_app.db import Base`:
   ```python
   @pytest.mark.asyncio
   async def test_concurrent_first_login_both_succeed_single_row():
@@ -804,7 +818,7 @@ assertions (timing bounds).
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_auth_service.py::test_concurrent_first_login_both_succeed_single_row -v
   ```
-- [ ] **Step 2: Rewrite `upsert_user`.** In `services/auth_service.py`, change the import line `from sqlalchemy import select` to:
+- [x] **Step 2: Rewrite `upsert_user`.** In `services/auth_service.py`, change the import line `from sqlalchemy import select` to:
   ```python
   from sqlalchemy import func, select
   from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -854,17 +868,17 @@ assertions (timing bounds).
       return user
   ```
   Leave the `refresh_user_tokens` `TODO(M3)` block (lines ~88-94) and the `mark_for_reauth` deferred-note (lines ~52-54) exactly as they are — those items are scope-gated to the first token-using caller (design §1, §8), not this milestone.
-- [ ] **Step 3: Run the auth-service suite and confirm green.**
+- [x] **Step 3: Run the auth-service suite and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_auth_service.py -v
   ```
   Expected: every existing test (create+encrypt, refresh-token-present, owner-hash transfer, mark_for_reauth, all refresh_user_tokens paths) plus the new two-session concurrency test pass. The owner-hash-transfer test in particular proves the ON-CONFLICT update path (`len(rows) == 1`, `owner_hash == "OWN2"`, `last_login_at` advanced) still holds.
-- [ ] **Step 4: Confirm the callback flow is unaffected.** Run the auth-flow HTTP suite (it exercises `_finalize_login` → `upsert_user`):
+- [x] **Step 4: Confirm the callback flow is unaffected.** Run the auth-flow HTTP suite (it exercises `_finalize_login` → `upsert_user`):
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_auth_flow.py -v
   ```
   Expected: green. (`_finalize_login`'s try/except-rollback stays as defensive handling for other failure shapes; it is not modified here.)
-- [ ] **Step 5: Lint + commit.**
+- [x] **Step 5: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/services/auth_service.py app/backend/src/fastapi_app/tests/services/test_auth_service.py
@@ -895,7 +909,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 2 — F005 Saved Searches backend
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `c4c1dab` on 2026-07-18
 
 The complete F005 backend: the `search_parameters` validation model + request/response schemas (Task 2.1), then the ownership-scoped CRUD service, the auth-gated router, its `main.py` mount, the `MAX_SAVED_SEARCHES_PER_USER` setting, and the full HTTP + schema test matrix (Task 2.2). Design authority: §4.5, §3.5. All routes are bare-mounted (PROXY-1), auth-gated via `get_current_user`, and ownership-scoped; not-found and not-owned are the same 404 (anti-enumeration).
 
@@ -914,7 +928,7 @@ Follow TDD: write failing test → implement → verify green.
 
 `SavedSearchParameters` mirrors the frontend `ContractSearch` shape minus `page` (design §4.5) and sets `extra="forbid"` — this rejects the four inert ME/TE params (FASTAPI-2), `is_ship_contract` (the wire name; the saved blob uses the frontend `ships_only` form per design Appendix A), `page`, and arbitrary junk by construction, at the API boundary. It reuses the existing `SortableContractFields` / `SortDirection` enums.
 
-- [ ] **Step 1: Write the failing schema tests.** Create `app/backend/src/fastapi_app/tests/api/test_account_schemas.py`:
+- [x] **Step 1: Write the failing schema tests.** Create `app/backend/src/fastapi_app/tests/api/test_account_schemas.py`:
   ```python
   # ABOUTME: Unit tests for the SavedSearchParameters validation model + saved-search request/response schemas.
   # ABOUTME: Pins extra="forbid" (ME/TE + junk rejection), constraint bounds, and name trimming.
@@ -974,12 +988,12 @@ Follow TDD: write failing test → implement → verify green.
       with pytest.raises(ValidationError):
           SavedSearchUpdate(name="")
   ```
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_account_schemas.py -v
   ```
   Expected failure: `ModuleNotFoundError: No module named 'fastapi_app.schemas.account'`.
-- [ ] **Step 3: Create `app/backend/src/fastapi_app/schemas/account.py`.**
+- [x] **Step 3: Create `app/backend/src/fastapi_app/schemas/account.py`.**
   ```python
   # ABOUTME: Pydantic schemas for M3 saved searches — the extra="forbid" search_parameters model + CRUD request/response shapes.
   # ABOUTME: search_parameters mirrors the frontend ContractSearch minus page; ME/TE and unknown keys are rejected at the boundary (FASTAPI-2).
@@ -1038,12 +1052,12 @@ Follow TDD: write failing test → implement → verify green.
 
       model_config = ConfigDict(from_attributes=True)
   ```
-- [ ] **Step 4: Run and confirm green.**
+- [x] **Step 4: Run and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_account_schemas.py -v
   ```
   Expected: all pass.
-- [ ] **Step 5: Lint + commit.**
+- [x] **Step 5: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/schemas/account.py app/backend/src/fastapi_app/tests/api/test_account_schemas.py
@@ -1090,7 +1104,7 @@ assertions (timing bounds).
 
 **Codegen note:** mounting the router changes `app.openapi()` (the schema tests below read the live schema, so they pass immediately). The committed `openapi.json` / `schema.d.ts` FILES are NOT regenerated in this phase — the design batches the codegen chain into one dedicated step after all backend surface lands (design §7). No backend test asserts file-freshness (`tests/test_export_openapi.py` regenerates to a tmp path and only checks `/contracts`), so this phase stays green without regenerating.
 
-- [ ] **Step 1: Write the failing HTTP + schema test matrix.** Create `app/backend/src/fastapi_app/tests/api/test_saved_searches.py`:
+- [x] **Step 1: Write the failing HTTP + schema test matrix.** Create `app/backend/src/fastapi_app/tests/api/test_saved_searches.py`:
   ```python
   # ABOUTME: HTTP-level (TEST-1) + app.openapi() schema tests for the F005 saved-searches CRUD surface.
   # ABOUTME: Covers CRUD, 401 anon, cross-user 404, 409 duplicate/rename via real constraint, cap 400, 422s, ordering, PROXY-1.
@@ -1234,12 +1248,12 @@ assertions (timing bounds).
       comps = schema["components"]["schemas"]
       assert comps["SavedSearchParameters"]["additionalProperties"] is False  # extra="forbid"
   ```
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_saved_searches.py -v
   ```
   Expected failure: collection/import error — `ModuleNotFoundError: No module named 'fastapi_app.services.saved_search_service'` (and the schema test asserts a `/me/saved-searches/` path that is not mounted yet).
-- [ ] **Step 3: Add the config setting.** In `core/config.py`, add under the Aggregation block (any location with the other scalars is fine). This establishes the single canonical `# --- M3 account features ---` block that Tasks 3.2 and 4.3 append their config fields INTO (do not start a second M3 block later):
+- [x] **Step 3: Add the config setting.** In `core/config.py`, add under the Aggregation block (any location with the other scalars is fine). This establishes the single canonical `# --- M3 account features ---` block that Tasks 3.2 and 4.3 append their config fields INTO (do not start a second M3 block later):
   ```python
       # --- M3 account features ---
       # Per-user soft caps (best-effort count-checks, design §3.5).
@@ -1251,7 +1265,7 @@ assertions (timing bounds).
   # Per-user soft cap on saved searches (best-effort; enforced count-then-insert).
   MAX_SAVED_SEARCHES_PER_USER=100
   ```
-- [ ] **Step 4: Create the service `app/backend/src/fastapi_app/services/saved_search_service.py`.**
+- [x] **Step 4: Create the service `app/backend/src/fastapi_app/services/saved_search_service.py`.**
   ```python
   # ABOUTME: F005 saved-search CRUD — ownership-scoped queries, best-effort per-user cap, and unique-name
   # ABOUTME: 409 mapping via a SAVEPOINT (so a duplicate leaves the sibling row + outer transaction intact).
@@ -1347,7 +1361,7 @@ assertions (timing bounds).
       await db.delete(row)
       await db.flush()
   ```
-- [ ] **Step 5: Create the router `app/backend/src/fastapi_app/api/saved_searches.py`.**
+- [x] **Step 5: Create the router `app/backend/src/fastapi_app/api/saved_searches.py`.**
   ```python
   # ABOUTME: F005 saved-searches router — bare-mounted /me/saved-searches (PROXY-1), auth-gated via get_current_user.
   # ABOUTME: Declares 400/401/404/409 with ErrorDetail so the typed client sees the real error bodies (design §4.5).
@@ -1418,7 +1432,7 @@ assertions (timing bounds).
       await saved_search_service.delete_saved_search(db, user.id, search_id)
       return Response(status_code=status.HTTP_204_NO_CONTENT)
   ```
-- [ ] **Step 6: Mount the router in `main.py`.** Add the import beside the existing router imports (near `main.py:25-26`):
+- [x] **Step 6: Mount the router in `main.py`.** Add the import beside the existing router imports (near `main.py:25-26`):
   ```python
   from .api import saved_searches as saved_searches_router
   ```
@@ -1426,17 +1440,17 @@ assertions (timing bounds).
   ```python
   app.include_router(saved_searches_router.router)   # /me/saved-searches/* (bare, PROXY-1)
   ```
-- [ ] **Step 7: Run the F005 suite and confirm green.**
+- [x] **Step 7: Run the F005 suite and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_saved_searches.py -v
   ```
   Expected: all pass (CRUD, 401×4, cross-user 404×3, 409 duplicate+rename, cap 400, 422×5, ordering, schema).
-- [ ] **Step 8: Run the full backend suite to confirm no regression.**
+- [x] **Step 8: Run the full backend suite to confirm no regression.**
   ```bash
   cd app/backend && pdm run pytest -q
   ```
   Expected: the Phase-0 baseline count plus all Section-A additions, green. In particular `test_me_schema.py`'s PROXY-1 sentinel still passes (no `/api/v1` path introduced).
-- [ ] **Step 9: Lint + commit.**
+- [x] **Step 9: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/services/saved_search_service.py app/backend/src/fastapi_app/api/saved_searches.py app/backend/src/fastapi_app/core/config.py app/backend/.env.example app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/api/test_saved_searches.py
@@ -1447,7 +1461,7 @@ assertions (timing bounds).
 
   Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   ```
-- [ ] **Step 10: Push the campaign branch (first push of the campaign).**
+- [x] **Step 10: Push the campaign branch (first push of the campaign).**
   ```bash
   git push -u origin claude/m3-account-features
   ```
@@ -1541,7 +1555,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 3 — F006 Watchlist backend (ESI resolution + watchlist CRUD)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `bd3aa68` on 2026-07-18
 
 Goal: `ESIClient.resolve_names`, the watchlist request/response schemas, `watchlist_service` (the design
 §4.5 add pipeline in binding order), `api/watchlist.py`, the `main.py` mount, the
@@ -1563,7 +1577,7 @@ Follow TDD: write failing test → implement → verify green.
   `resolve_ids_to_names`, ~line 288).
 - Test (Create): `app/backend/src/fastapi_app/tests/core/test_esi_client_resolve_names.py`.
 
-- [ ] **Step 1: Write the failing test module.** Create
+- [x] **Step 1: Write the failing test module.** Create
   `app/backend/src/fastapi_app/tests/core/test_esi_client_resolve_names.py`:
 
 ```python
@@ -1640,12 +1654,12 @@ async def test_resolve_names_non_json_body_raises(httpx_mock):
             await _client(http).resolve_names(["x"])
 ```
 
-- [ ] **Step 2: Run the test, confirm it fails.**
+- [x] **Step 2: Run the test, confirm it fails.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/core/test_esi_client_resolve_names.py -v`
   Expected failure: `AttributeError: 'ESIClient' object has no attribute 'resolve_names'` (collection
   passes; each test errors on the missing method).
 
-- [ ] **Step 3: Implement `resolve_names`.** In `core/esi_client_class.py`, add after
+- [x] **Step 3: Implement `resolve_names`.** In `core/esi_client_class.py`, add after
   `resolve_ids_to_names` (the file already imports `httpx` and `ESIRequestFailedError`):
 
 ```python
@@ -1680,11 +1694,11 @@ async def test_resolve_names_non_json_body_raises(httpx_mock):
         return data
 ```
 
-- [ ] **Step 4: Run the test, confirm green.**
+- [x] **Step 4: Run the test, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/core/test_esi_client_resolve_names.py -v`
   All 6 pass; output pristine.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   `git add app/backend/src/fastapi_app/core/esi_client_class.py app/backend/src/fastapi_app/tests/core/test_esi_client_resolve_names.py`
   ```
   feat(api): add ESIClient.resolve_names for exact ship-name resolution
@@ -1728,7 +1742,7 @@ with a deliberate same-name/distinct-type_id tiebreaker, never rely on insertion
 - Modify: `app/backend/src/fastapi_app/main.py` (import + mount `watchlist` router).
 - Test (Create): `app/backend/src/fastapi_app/tests/api/test_watchlist.py`.
 
-- [ ] **Step 1: Add the config field.** In `core/config.py`, append INTO the single
+- [x] **Step 1: Add the config field.** In `core/config.py`, append INTO the single
   `# --- M3 account features ---` block established in Task 2.2 (do NOT start a second M3 block) — add
   the field beside `MAX_SAVED_SEARCHES_PER_USER` (default present → no `_ENV_DEFAULTS` change needed):
 
@@ -1738,7 +1752,7 @@ with a deliberate same-name/distinct-type_id tiebreaker, never rely on insertion
 Also document it in `app/backend/.env.example` (ENV-4), under the same `# --- M3 account features ---`
 block: `MAX_WATCHLIST_ITEMS_PER_USER=200`.
 
-- [ ] **Step 2: Add the watchlist schemas.** Append to `schemas/account.py` (ensure imports at top of
+- [x] **Step 2: Add the watchlist schemas.** Append to `schemas/account.py` (ensure imports at top of
   the file include `from datetime import datetime`, `from typing import Optional`,
   `from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator`):
 
@@ -1785,7 +1799,7 @@ class WatchlistItemSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 ```
 
-- [ ] **Step 3: Write the failing test module.** Create
+- [x] **Step 3: Write the failing test module.** Create
   `app/backend/src/fastapi_app/tests/api/test_watchlist.py`. This is the full design-§6 matrix; it
   fails at import (`api.watchlist` / `services.watchlist_service` don't exist yet).
 
@@ -2060,12 +2074,12 @@ def test_openapi_watchlist_paths_bare_and_declared():
         assert "401" in paths[path][method]["responses"]
 ```
 
-- [ ] **Step 4: Run the test, confirm it fails.**
+- [x] **Step 4: Run the test, confirm it fails.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_watchlist.py -v`
   Expected failure: `ModuleNotFoundError: No module named 'fastapi_app.api.watchlist'` (import-time
   collection error).
 
-- [ ] **Step 5: Implement `watchlist_service.py`.** Create
+- [x] **Step 5: Implement `watchlist_service.py`.** Create
   `app/backend/src/fastapi_app/services/watchlist_service.py`:
 
 ```python
@@ -2217,7 +2231,7 @@ async def delete_watchlist_item(db: AsyncSession, user: User, item_id: int) -> N
     await db.flush()
 ```
 
-- [ ] **Step 6: Implement `api/watchlist.py`.** Create `app/backend/src/fastapi_app/api/watchlist.py`:
+- [x] **Step 6: Implement `api/watchlist.py`.** Create `app/backend/src/fastapi_app/api/watchlist.py`:
 
 ```python
 # ABOUTME: F006 watchlist router — /me/watchlist-items (bare-mounted, PROXY-1; auth-gated per user).
@@ -2298,7 +2312,7 @@ async def delete_watchlist_item(
     await watchlist_service.delete_watchlist_item(db, user, item_id)
 ```
 
-- [ ] **Step 7: Mount the router in `main.py`.** Add the import next to the other `from .api import …`
+- [x] **Step 7: Mount the router in `main.py`.** Add the import next to the other `from .api import …`
   lines (`main.py:25-26`): `from .api import watchlist as watchlist_router`. Add the mount after the
   saved-searches mount added by the earlier phase (near `main.py:192-194`):
 
@@ -2308,12 +2322,12 @@ app.include_router(watchlist_router.router)   # /me/watchlist-items (bare, PROXY
 **Shared-file note:** `main.py` is edited by the F005 section (saved-searches mount) and by Task 4.1
 (notifications mount) and Task 4.3 (matcher lifespan wiring). Add your line; never revert a sibling's.
 
-- [ ] **Step 8: Run the test, confirm green.**
+- [x] **Step 8: Run the test, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_watchlist.py -v`
   All pass. Then confirm the wider suite still passes and lint is clean:
   `cd app/backend && pdm run pytest -q && pdm run lint`
 
-- [ ] **Step 9: Commit.**
+- [x] **Step 9: Commit.**
   `git add app/backend/src/fastapi_app/schemas/account.py app/backend/src/fastapi_app/core/config.py app/backend/.env.example app/backend/src/fastapi_app/services/watchlist_service.py app/backend/src/fastapi_app/api/watchlist.py app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/api/test_watchlist.py`
   ```
   feat(api): add F006 watchlist CRUD with ESI add pipeline
@@ -2338,7 +2352,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 4 — F007 Alerts backend (notifications API + matcher job + scheduler)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `b6d1e13` on 2026-07-18
 
 Goal: the notifications schemas + `api/notifications.py` (list/mark-read/mark-all-read/settings), the
 `WatchlistMatcherService` (design §4.4, exactly), the config fields + scheduler wiring + lifespan
@@ -2371,7 +2385,7 @@ tiebreaker, crossing a page boundary.)
 - Modify: `app/backend/src/fastapi_app/main.py` (mount `router` + `settings_router`).
 - Test (Create): `app/backend/src/fastapi_app/tests/api/test_notifications.py`.
 
-- [ ] **Step 1: Add the notification schemas + filter model.** Append to `schemas/account.py`:
+- [x] **Step 1: Add the notification schemas + filter model.** Append to `schemas/account.py`:
 
 ```python
 class NotificationSchema(BaseModel):
@@ -2401,7 +2415,7 @@ class NotificationFilters(BaseModel):
     size: int = Field(default=50, ge=1, le=100)
 ```
 
-- [ ] **Step 2: Write the failing test module.** Create
+- [x] **Step 2: Write the failing test module.** Create
   `app/backend/src/fastapi_app/tests/api/test_notifications.py`:
 
 ```python
@@ -2548,11 +2562,11 @@ def test_openapi_notification_paths_bare():
         assert "401" in paths[path][method]["responses"]
 ```
 
-- [ ] **Step 3: Run the test, confirm it fails.**
+- [x] **Step 3: Run the test, confirm it fails.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_notifications.py -v`
   Expected failure: `ModuleNotFoundError: No module named 'fastapi_app.api.notifications'`.
 
-- [ ] **Step 4: Implement `api/notifications.py`.** Create
+- [x] **Step 4: Implement `api/notifications.py`.** Create
   `app/backend/src/fastapi_app/api/notifications.py`:
 
 ```python
@@ -2665,7 +2679,7 @@ decorators use `""` (empty), yielding the exact path `/me/notification-settings`
 it's a singleton resource, not a collection; the collection trailing-slash convention applies to
 `/me/notifications/`).
 
-- [ ] **Step 5: Mount both routers in `main.py`.** Add the import
+- [x] **Step 5: Mount both routers in `main.py`.** Add the import
   `from .api import notifications as notifications_router` next to the others, and after the watchlist
   mount:
 
@@ -2674,11 +2688,11 @@ app.include_router(notifications_router.router)           # /me/notifications (b
 app.include_router(notifications_router.settings_router)  # /me/notification-settings (bare)
 ```
 
-- [ ] **Step 6: Run the test, confirm green.**
+- [x] **Step 6: Run the test, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_notifications.py -v`
   All pass.
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/backend/src/fastapi_app/schemas/account.py app/backend/src/fastapi_app/api/notifications.py app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/api/test_notifications.py`
   ```
   feat(api): add F007 notifications list, mark-read, and settings routes
@@ -2722,7 +2736,7 @@ with backdated `created_at` fixtures. All deterministic — no timing bounds.)
 - Create: `app/backend/src/fastapi_app/services/watchlist_matcher.py`.
 - Test (Create): `app/backend/src/fastapi_app/tests/services/test_watchlist_matcher.py`.
 
-- [ ] **Step 1: Promote the lock double.** Create `app/backend/src/fastapi_app/tests/lock_double.py`
+- [x] **Step 1: Promote the lock double.** Create `app/backend/src/fastapi_app/tests/lock_double.py`
   with the byte-identical behavior of `_FakeLockRedis` (`test_background_aggregation.py:275-295`):
 
 ```python
@@ -2757,13 +2771,13 @@ add `from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis` 
 (keeping the `_FakeLockRedis` local alias so the two existing lock tests at lines ~298-321 read
 unchanged).
 
-- [ ] **Step 2: Run the aggregation lock tests, confirm still green after the refactor.**
+- [x] **Step 2: Run the aggregation lock tests, confirm still green after the refactor.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_background_aggregation.py -v -k lock`
   Both `test_lock_release_deletes_only_its_own_token` and
   `test_lock_release_does_not_delete_a_reacquired_lock` pass unchanged (proves the promotion preserved
   behavior).
 
-- [ ] **Step 3: Write the failing matcher test module.** Create
+- [x] **Step 3: Write the failing matcher test module.** Create
   `app/backend/src/fastapi_app/tests/services/test_watchlist_matcher.py`:
 
 ```python
@@ -3051,11 +3065,11 @@ async def test_concurrency_lock_raises_when_held():
                 pass
 ```
 
-- [ ] **Step 4: Run the matcher tests, confirm they fail.**
+- [x] **Step 4: Run the matcher tests, confirm they fail.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_watchlist_matcher.py -v`
   Expected failure: `ModuleNotFoundError: No module named 'fastapi_app.services.watchlist_matcher'`.
 
-- [ ] **Step 5: Implement `watchlist_matcher.py`.** Create
+- [x] **Step 5: Implement `watchlist_matcher.py`.** Create
   `app/backend/src/fastapi_app/services/watchlist_matcher.py`:
 
 ```python
@@ -3258,11 +3272,11 @@ class WatchlistMatcherService:
         return result.rowcount
 ```
 
-- [ ] **Step 6: Run the matcher tests, confirm green.**
+- [x] **Step 6: Run the matcher tests, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_watchlist_matcher.py -v`
   All pass; output pristine (the run-failure path is not triggered in these tests, so no error spam).
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/backend/src/fastapi_app/tests/lock_double.py app/backend/src/fastapi_app/tests/services/test_background_aggregation.py app/backend/src/fastapi_app/services/watchlist_matcher.py app/backend/src/fastapi_app/tests/services/test_watchlist_matcher.py`
   ```
   feat(api): add watchlist matcher service with dedup and defensive prune
@@ -3305,7 +3319,7 @@ assertion, never a running clock.)
 - Modify: `app/backend/src/fastapi_app/main.py` (lifespan: build matcher service + register job).
 - Test (Create): `app/backend/src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py`.
 
-- [ ] **Step 1: Add the config fields.** In `core/config.py`, append these three fields INTO the single
+- [x] **Step 1: Add the config fields.** In `core/config.py`, append these three fields INTO the single
   `# --- M3 account features ---` block (established in Task 2.2, extended in Task 3.2) — do NOT start a
   second M3 block. The consolidated block then reads:
 
@@ -3322,7 +3336,7 @@ Document all three new fields in `app/backend/.env.example` (ENV-4), under the s
 `MAX_SAVED_SEARCHES_PER_USER` is somehow missing here — its owning F005 section didn't run — add it in
 this same block.)
 
-- [ ] **Step 2: Write the failing thin tests.** Create
+- [x] **Step 2: Write the failing thin tests.** Create
   `app/backend/src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py`:
 
 ```python
@@ -3375,12 +3389,12 @@ async def test_run_watchlist_matcher_job_swallows_exceptions():
 to construct the service with the real `Settings` and leave `now_fn=None`. The test asserts exactly
 that: the round-tripped service's default `now_fn` is `None`, not a lambda, and its settings survive.)
 
-- [ ] **Step 3: Run the tests, confirm they fail.**
+- [x] **Step 3: Run the tests, confirm they fail.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py -v`
   Expected failure: `ImportError: cannot import name 'add_watchlist_matcher_job'` /
   `'run_watchlist_matcher_job'`.
 
-- [ ] **Step 4: Implement `run_watchlist_matcher_job`.** In `services/scheduled_jobs.py`, add
+- [x] **Step 4: Implement `run_watchlist_matcher_job`.** In `services/scheduled_jobs.py`, add
   (top-level, importable, picklable-reference; mirrors `run_aggregation_job`):
 
 ```python
@@ -3395,7 +3409,7 @@ async def run_watchlist_matcher_job(matcher_service):
         logger.info("Finished scheduled job: run_watchlist_matcher_job")
 ```
 
-- [ ] **Step 5: Implement `add_watchlist_matcher_job`.** In `core/scheduler.py`, add the import
+- [x] **Step 5: Implement `add_watchlist_matcher_job`.** In `core/scheduler.py`, add the import
   `from datetime import datetime, timedelta` (extend the existing `from datetime import datetime`),
   `from ..services.scheduled_jobs import run_watchlist_matcher_job`, and
   `from ..services.watchlist_matcher import WatchlistMatcherService`; then:
@@ -3425,7 +3439,7 @@ def add_watchlist_matcher_job(
     )
 ```
 
-- [ ] **Step 6: Wire the lifespan in `main.py`.** Extend the scheduler import to
+- [x] **Step 6: Wire the lifespan in `main.py`.** Extend the scheduler import to
   `from .core.scheduler import add_aggregation_job, add_watchlist_matcher_job, create_scheduler`, add
   `from .services.watchlist_matcher import WatchlistMatcherService`, and in `lifespan` after
   `add_aggregation_job(scheduler, aggregation_service, settings)` (main.py:56), before
@@ -3436,14 +3450,14 @@ def add_watchlist_matcher_job(
     add_watchlist_matcher_job(scheduler, matcher_service, settings)
 ```
 
-- [ ] **Step 7: Run the thin tests, confirm green.**
+- [x] **Step 7: Run the thin tests, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py -v`
   All pass.
 
-- [ ] **Step 8: Run the full backend suite + lint (whole phase green before the PR gate).**
+- [x] **Step 8: Run the full backend suite + lint (whole phase green before the PR gate).**
   `cd app/backend && pdm run pytest -q && pdm run lint`
 
-- [ ] **Step 9: Commit.**
+- [x] **Step 9: Commit.**
   `git add app/backend/src/fastapi_app/core/config.py app/backend/.env.example app/backend/src/fastapi_app/core/scheduler.py app/backend/src/fastapi_app/services/scheduled_jobs.py app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py`
   ```
   feat(api): register the watchlist matcher as a scheduled interval job
@@ -3468,7 +3482,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 5 — Codegen: regenerate the typed client for the M3 account endpoints
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `6e64674` on 2026-07-18
 
 Goal: after ALL backend account endpoints exist (F005 saved-searches from the earlier section, plus
 this section's F006 watchlist + F007 notifications), regenerate `openapi.json` and `schema.d.ts` and
@@ -3480,12 +3494,12 @@ apply to generated code).
 - Modify (generated): `app/frontend/web/openapi.json`.
 - Modify (generated): `app/frontend/web/src/lib/api/schema.d.ts`.
 
-- [ ] **Step 1: Export the OpenAPI schema from the live app.**
+- [x] **Step 1: Export the OpenAPI schema from the live app.**
   `cd app/backend && pdm run export-openapi`
   Expected stdout: `OpenAPI schema written to ../frontend/web/openapi.json (<N> paths)` where `<N>` has
   grown by the M3 routes.
 
-- [ ] **Step 2: Verify the new paths landed in `openapi.json`.** From the repo root:
+- [x] **Step 2: Verify the new paths landed in `openapi.json`.** From the repo root:
   `grep -c '/me/saved-searches/' app/frontend/web/openapi.json` → non-zero (F005 sentinel, earlier
   section), and:
   `grep -c '/me/watchlist-items/' app/frontend/web/openapi.json` → non-zero, and
@@ -3494,16 +3508,16 @@ apply to generated code).
   backend schema). If any expected path is missing, STOP — a router was not mounted; do not hand-edit
   the generated file, fix the mount and re-export.
 
-- [ ] **Step 3: Regenerate the typed TS client.**
+- [x] **Step 3: Regenerate the typed TS client.**
   `cd app/frontend/web && npm run generate:api`
   This overwrites `src/lib/api/schema.d.ts` from `openapi.json`.
 
-- [ ] **Step 4: Confirm the frontend still typechecks against the regenerated schema.**
+- [x] **Step 4: Confirm the frontend still typechecks against the regenerated schema.**
   `cd app/frontend/web && npx tsc -b`
   Expected: clean (no consumers of the new paths exist yet — the frontend feature work is a later
   section — so this only proves the generated types are well-formed).
 
-- [ ] **Step 5: Commit both generated artifacts together.**
+- [x] **Step 5: Commit both generated artifacts together.**
   `git add app/frontend/web/openapi.json app/frontend/web/src/lib/api/schema.d.ts`
   ```
   chore(api): regenerate client for M3 account endpoints
@@ -3559,7 +3573,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 6 — Frontend F005: Saved Searches
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `b2d3912` on 2026-07-18
 
 Delivers: the five type aliases; the saved-searches query + three mutations with fetch-seam tests; the reusable `RequireSignIn` auth-gate; the in-header `SaveSearchControl`; and the `/saved-searches` page with Apply / Rename / two-step Delete.
 
@@ -3577,7 +3591,7 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.ts`
 - Test: `app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.test.tsx`
 
-- [ ] **Step 1: Add the five type aliases and the shared 401 helper to `client.ts`.** Insert the aliases after the existing `CurrentUser` alias (client.ts line 7); add the `QueryClient` type import at the top and the `raiseApiError` helper after the `ApiError` class. These are re-exports of generated types plus one shared helper (not feature logic), so this precedes the TDD loop; a `tsc` run confirms the underlying schemas exist.
+- [x] **Step 1: Add the five type aliases and the shared 401 helper to `client.ts`.** Insert the aliases after the existing `CurrentUser` alias (client.ts line 7); add the `QueryClient` type import at the top and the `raiseApiError` helper after the `ApiError` class. These are re-exports of generated types plus one shared helper (not feature logic), so this precedes the TDD loop; a `tsc` run confirms the underlying schemas exist.
 
 ```ts
 // at the top of client.ts, alongside the other imports:
@@ -3602,9 +3616,9 @@ export function raiseApiError(queryClient: QueryClient, status: number): never {
 }
 ```
 
-- [ ] **Step 2: Verify the aliases resolve.** Run `cd app/frontend/web && npx tsc -b`. Expected: green. If it errors with "Property 'SavedSearchSchema' does not exist", the backend codegen chain did not land those schemas — STOP and raise to the dispatching agent (the backend phases must complete first); do not hand-edit `schema.d.ts`.
+- [x] **Step 2: Verify the aliases resolve.** Run `cd app/frontend/web && npx tsc -b`. Expected: green. If it errors with "Property 'SavedSearchSchema' does not exist", the backend codegen chain did not land those schemas — STOP and raise to the dispatching agent (the backend phases must complete first); do not hand-edit `schema.d.ts`.
 
-- [ ] **Step 3: Write the failing hook tests.** Create `useSavedSearches.test.tsx`. Mirrors `useLogout.test.tsx` exactly: stub `fetch` at the seam, capture `{url, method, body}`, assert them, and assert `invalidateQueries` is/ isn't called. COMPLETE file:
+- [x] **Step 3: Write the failing hook tests.** Create `useSavedSearches.test.tsx`. Mirrors `useLogout.test.tsx` exactly: stub `fetch` at the seam, capture `{url, method, body}`, assert them, and assert `invalidateQueries` is/ isn't called. COMPLETE file:
 
 ```tsx
 // ABOUTME: useSavedSearches hook contracts — query + create/rename/delete mutations at the fetch seam.
@@ -3762,9 +3776,9 @@ describe('useDeleteSavedSearch', () => {
 })
 ```
 
-- [ ] **Step 4: Run the tests, confirm they fail.** `cd app/frontend/web && npx vitest run src/features/saved-searches/hooks/useSavedSearches.test.tsx --reporter=dot`. Expected: failure — `Failed to resolve import "./useSavedSearches"` (module does not exist yet).
+- [x] **Step 4: Run the tests, confirm they fail.** `cd app/frontend/web && npx vitest run src/features/saved-searches/hooks/useSavedSearches.test.tsx --reporter=dot`. Expected: failure — `Failed to resolve import "./useSavedSearches"` (module does not exist yet).
 
-- [ ] **Step 5: Implement `useSavedSearches.ts`.** COMPLETE file:
+- [x] **Step 5: Implement `useSavedSearches.ts`.** COMPLETE file:
 
 ```ts
 // ABOUTME: TanStack Query hooks for F005 saved searches — list query + create/rename/delete mutations.
@@ -3828,9 +3842,9 @@ export function useDeleteSavedSearch() {
 }
 ```
 
-- [ ] **Step 6: Run the tests green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/hooks/useSavedSearches.test.tsx --reporter=dot`. Expected: all pass. Then `npx tsc -b` (green) and `npx eslint src/features/saved-searches src/lib/api/client.ts` (green).
+- [x] **Step 6: Run the tests green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/hooks/useSavedSearches.test.tsx --reporter=dot`. Expected: all pass. Then `npx tsc -b` (green) and `npx eslint src/features/saved-searches src/lib/api/client.ts` (green).
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/frontend/web/src/lib/api/client.ts app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.ts app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.test.tsx`
   ```
   feat(web): add saved-search type aliases and CRUD query hooks
@@ -3858,7 +3872,7 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/features/auth/components/RequireSignIn.tsx`
 - Test: `app/frontend/web/src/features/auth/components/RequireSignIn.test.tsx`
 
-- [ ] **Step 1: Write the failing test.** Renders `RequireSignIn` inside a minimal TanStack memory router (so `useLocation` resolves) at a URL carrying a transient `?sso=` plus a real param, and asserts the login link's `href` carries `next` = encoded path+search with `sso` stripped — the exact `HeaderIdentity` mechanic (recon §5.3). COMPLETE file:
+- [x] **Step 1: Write the failing test.** Renders `RequireSignIn` inside a minimal TanStack memory router (so `useLocation` resolves) at a URL carrying a transient `?sso=` plus a real param, and asserts the login link's `href` carries `next` = encoded path+search with `sso` stripped — the exact `HeaderIdentity` mechanic (recon §5.3). COMPLETE file:
 
 ```tsx
 // ABOUTME: RequireSignIn renders the sign-in prompt; its login href mirrors HeaderIdentity (next=encoded path+search, sso stripped).
@@ -3903,9 +3917,9 @@ describe('RequireSignIn', () => {
 })
 ```
 
-- [ ] **Step 2: Run it, confirm failure.** `cd app/frontend/web && npx vitest run src/features/auth/components/RequireSignIn.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./RequireSignIn"`.
+- [x] **Step 2: Run it, confirm failure.** `cd app/frontend/web && npx vitest run src/features/auth/components/RequireSignIn.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./RequireSignIn"`.
 
-- [ ] **Step 3: Implement `RequireSignIn.tsx`.** COMPLETE file:
+- [x] **Step 3: Implement `RequireSignIn.tsx`.** COMPLETE file:
 
 ```tsx
 // ABOUTME: Shared auth-gate prompt for the M3 pages — a sign-in card whose login link deep-links back to the current path.
@@ -3936,9 +3950,9 @@ export function RequireSignIn({ feature }: { feature: string }) {
 }
 ```
 
-- [ ] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/auth/components/RequireSignIn.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/auth/components/RequireSignIn.tsx` (green).
+- [x] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/auth/components/RequireSignIn.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/auth/components/RequireSignIn.tsx` (green).
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   `git add app/frontend/web/src/features/auth/components/RequireSignIn.tsx app/frontend/web/src/features/auth/components/RequireSignIn.test.tsx`
   ```
   feat(web): add RequireSignIn auth-gate prompt
@@ -3967,7 +3981,7 @@ Follow TDD: write failing test → implement → verify green.
 - Modify: `app/frontend/web/src/features/contracts/components/ContractsPage.tsx` (results-header `<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">`, lines 107–116)
 - Test: `app/frontend/web/src/features/saved-searches/components/SaveSearchControl.test.tsx`
 
-- [ ] **Step 1: Write the failing integration test.** Drives the control through `renderApp('/contracts')` so the real ContractsPage + header render; stubs `/me` (authed/anonymous), the contract list, and captures the saved-search POST at the seam. COMPLETE file:
+- [x] **Step 1: Write the failing integration test.** Drives the control through `renderApp('/contracts')` so the real ContractsPage + header render; stubs `/me` (authed/anonymous), the contract list, and captures the saved-search POST at the seam. COMPLETE file:
 
 ```tsx
 // ABOUTME: SaveSearchControl integration over the real /contracts route — hidden when anonymous; posts search-minus-page; 409 inline.
@@ -4053,9 +4067,9 @@ describe('SaveSearchControl', () => {
 })
 ```
 
-- [ ] **Step 2: Run it, confirm failure.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SaveSearchControl.test.tsx --reporter=dot`. Expected: no "Save search" button found (control not wired into ContractsPage yet).
+- [x] **Step 2: Run it, confirm failure.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SaveSearchControl.test.tsx --reporter=dot`. Expected: no "Save search" button found (control not wired into ContractsPage yet).
 
-- [ ] **Step 3: Implement `SaveSearchControl.tsx`.** Exports the pure `toSavedSearchParameters` (search-minus-page + sub-min search drop) plus the control. COMPLETE file:
+- [x] **Step 3: Implement `SaveSearchControl.tsx`.** Exports the pure `toSavedSearchParameters` (search-minus-page + sub-min search drop) plus the control. COMPLETE file:
 
 ```tsx
 // ABOUTME: Authed-only "Save search" control for the ContractsPage results header — inline name disclosure, posts search-minus-page.
@@ -4147,7 +4161,7 @@ export function SaveSearchControl({ search }: { search: ContractSearch }) {
 }
 ```
 
-- [ ] **Step 4: Wire `SaveSearchControl` into ContractsPage.** Add the import and render it in the results-header flex row. Edit `ContractsPage.tsx`: add `import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'` alongside the other imports, and inside the `<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">` (after the `{data !== undefined ? (<p …>… matching</p>) : null}` block, still inside the div) add:
+- [x] **Step 4: Wire `SaveSearchControl` into ContractsPage.** Add the import and render it in the results-header flex row. Edit `ContractsPage.tsx`: add `import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'` alongside the other imports, and inside the `<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">` (after the `{data !== undefined ? (<p …>… matching</p>) : null}` block, still inside the div) add:
 
 ```tsx
           <SaveSearchControl search={search} />
@@ -4155,9 +4169,9 @@ export function SaveSearchControl({ search }: { search: ContractSearch }) {
 
 The control's own `ml-auto` pushes it to the right of the count; for anonymous users it returns `null` so the header is unchanged (existing `pages.test.tsx` uses `anonymousMe`, so nothing there regresses).
 
-- [ ] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SaveSearchControl.test.tsx --reporter=dot` (pass). Then re-run the neighbouring suite to prove no regression: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/features/saved-searches src/features/contracts/components/ContractsPage.tsx` (green).
+- [x] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SaveSearchControl.test.tsx --reporter=dot` (pass). Then re-run the neighbouring suite to prove no regression: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/features/saved-searches src/features/contracts/components/ContractsPage.tsx` (green).
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
   `git add app/frontend/web/src/features/saved-searches/components/SaveSearchControl.tsx app/frontend/web/src/features/saved-searches/components/SaveSearchControl.test.tsx app/frontend/web/src/features/contracts/components/ContractsPage.tsx`
   ```
   feat(web): add Save Search control to the contracts results header
@@ -4187,7 +4201,7 @@ Follow TDD: write failing test → implement → verify green.
 - Test: `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.test.tsx`
 - Test: `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx` (vitest-axe, design §6)
 
-- [ ] **Step 1: Write the failing page tests.** Cover the three auth branches, the empty state, Apply (navigates to `/contracts` with parsed params), Rename, two-step Delete, and the TEST-7 (error) + TEST-8 (skeleton-unmount sync) disciplines. Because `renderApp` builds a QueryClient with `retry: false`, error-state stubs fail **every** call to the endpoint (the robust form of TEST-7). Every authed stub answers the header bell's unread-count query (`GET /me/notifications/?is_read=false&size=1`) with the page shape `{ total: 0, page: 1, size: 1, items: [] }` — once Task 8.2 mounts the bell into `HeaderIdentity`, a bare `[]` would leave that count query with `data.total === undefined` and silently error (NIT-9); stubbing the real shape now keeps these tests hermetic afterward. COMPLETE file:
+- [x] **Step 1: Write the failing page tests.** Cover the three auth branches, the empty state, Apply (navigates to `/contracts` with parsed params), Rename, two-step Delete, and the TEST-7 (error) + TEST-8 (skeleton-unmount sync) disciplines. Because `renderApp` builds a QueryClient with `retry: false`, error-state stubs fail **every** call to the endpoint (the robust form of TEST-7). Every authed stub answers the header bell's unread-count query (`GET /me/notifications/?is_read=false&size=1`) with the page shape `{ total: 0, page: 1, size: 1, items: [] }` — once Task 8.2 mounts the bell into `HeaderIdentity`, a bare `[]` would leave that count query with `data.total === undefined` and silently error (NIT-9); stubbing the real shape now keeps these tests hermetic afterward. COMPLETE file:
 
 ```tsx
 // ABOUTME: SavedSearchesPage tests over the real /saved-searches route — auth branches, empty state, Apply/Rename/Delete, error + skeleton sync.
@@ -4347,9 +4361,9 @@ describe('summarizeSearch', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SavedSearchesPage.test.tsx --reporter=dot`. Expected failure: the `/saved-searches` route does not exist, so `renderApp` renders a not-found and the prompt/heading assertions fail.
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SavedSearchesPage.test.tsx --reporter=dot`. Expected failure: the `/saved-searches` route does not exist, so `renderApp` renders a not-found and the prompt/heading assertions fail.
 
-- [ ] **Step 3: Create the route file `src/routes/saved-searches.tsx`.** Named-`RouteComponent` pattern (recon §1). COMPLETE file:
+- [x] **Step 3: Create the route file `src/routes/saved-searches.tsx`.** Named-`RouteComponent` pattern (recon §1). COMPLETE file:
 
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'
@@ -4366,7 +4380,7 @@ function RouteComponent() {
 }
 ```
 
-- [ ] **Step 4: Implement `SavedSearchesPage.tsx`.** Exports `summarizeSearch` (criteria summary) plus the page. COMPLETE file:
+- [x] **Step 4: Implement `SavedSearchesPage.tsx`.** Exports `summarizeSearch` (criteria summary) plus the page. COMPLETE file:
 
 ```tsx
 // ABOUTME: F005 saved-searches manage page — auth-gated list with per-row Apply (navigate to /contracts), inline Rename, and two-step Delete.
@@ -4524,7 +4538,7 @@ function SavedSearchRow({ saved }: { saved: SavedSearch }) {
 
 Note on `parseContractSearch(saved.search_parameters …)`: the stored blob is re-validated on the way back out (design §5) — `parseContractSearch` accepts arbitrary input and always returns a well-formed `ContractSearch`, so a drifted blob can never break navigation.
 
-- [ ] **Step 5: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx`. COMPLETE file:
+- [x] **Step 5: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx`. COMPLETE file:
 
 ```tsx
 // ABOUTME: Automated axe accessibility checks for the saved-searches page — authed-with-data and anonymous states.
@@ -4574,9 +4588,9 @@ describe('accessibility (axe) — saved searches', () => {
 })
 ```
 
-- [ ] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SavedSearchesPage.test.tsx src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx --reporter=dot` (pass). `routeTree.gen.ts` regenerates automatically when Vite/the test harness picks up the new route file; if the route is not found, run `npx vite build --mode development` once to force tree regeneration, or start `npm run dev` briefly — do NOT hand-edit `routeTree.gen.ts`. Then `npx tsc -b` and `npx eslint src/routes/saved-searches.tsx src/features/saved-searches` (green).
+- [x] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SavedSearchesPage.test.tsx src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx --reporter=dot` (pass). `routeTree.gen.ts` regenerates automatically when Vite/the test harness picks up the new route file; if the route is not found, run `npx vite build --mode development` once to force tree regeneration, or start `npm run dev` briefly — do NOT hand-edit `routeTree.gen.ts`. Then `npx tsc -b` and `npx eslint src/routes/saved-searches.tsx src/features/saved-searches` (green).
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/frontend/web/src/routes/saved-searches.tsx app/frontend/web/src/routeTree.gen.ts app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.tsx app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.test.tsx app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx`
   ```
   feat(web): add saved-searches manage page with apply/rename/delete
@@ -4603,7 +4617,7 @@ Push at the phase boundary: `git push -u origin claude/m3-account-features` (fir
 
 ## Phase 7 — Frontend F006: Watchlists
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `6a0450b` on 2026-07-18 (Task 7.3 fixed three defects in the plan's verbatim COMPLETE files — see Deviations)
 
 Delivers: the watchlist query + add/update/remove mutations with fetch-seam tests; the quick-watch button on contract-detail ship rows; and the `/watchlist` page with the add-by-name form and inline-editable rows (clear-to-null).
 
@@ -4620,7 +4634,7 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/features/watchlists/hooks/useWatchlist.ts`
 - Test: `app/frontend/web/src/features/watchlists/hooks/useWatchlist.test.tsx`
 
-- [ ] **Step 1: Write the failing hook tests.** Same seam discipline as 6.1: assert URL/method/body and invalidation. The critical extra assertion for F006 is the **clear-to-null PUT body** (`{ max_price: null }` must serialize as JSON `null`, not be dropped). COMPLETE file:
+- [x] **Step 1: Write the failing hook tests.** Same seam discipline as 6.1: assert URL/method/body and invalidation. The critical extra assertion for F006 is the **clear-to-null PUT body** (`{ max_price: null }` must serialize as JSON `null`, not be dropped). COMPLETE file:
 
 ```tsx
 // ABOUTME: useWatchlist hook contracts — list query + add/update/remove mutations at the fetch seam.
@@ -4730,9 +4744,9 @@ describe('useRemoveWatchlistItem', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/hooks/useWatchlist.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./useWatchlist"`.
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/hooks/useWatchlist.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./useWatchlist"`.
 
-- [ ] **Step 3: Implement `useWatchlist.ts`.** The clear-to-null contract depends on the caller passing an explicit `null` (a JS `null` serializes to JSON `null`; `undefined` would be dropped) — the update mutation forwards the body verbatim, and the WatchlistPage row (Task 7.3) is what maps an emptied input to `null`. COMPLETE file:
+- [x] **Step 3: Implement `useWatchlist.ts`.** The clear-to-null contract depends on the caller passing an explicit `null` (a JS `null` serializes to JSON `null`; `undefined` would be dropped) — the update mutation forwards the body verbatim, and the WatchlistPage row (Task 7.3) is what maps an emptied input to `null`. COMPLETE file:
 
 ```ts
 // ABOUTME: TanStack Query hooks for F006 watchlists — list query + add/update/remove mutations.
@@ -4797,9 +4811,9 @@ export function useRemoveWatchlistItem() {
 }
 ```
 
-- [ ] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/hooks/useWatchlist.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/watchlists` (green).
+- [x] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/hooks/useWatchlist.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/watchlists` (green).
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   `git add app/frontend/web/src/features/watchlists/hooks/useWatchlist.ts app/frontend/web/src/features/watchlists/hooks/useWatchlist.test.tsx`
   ```
   feat(web): add watchlist CRUD query hooks
@@ -4828,7 +4842,7 @@ Follow TDD: write failing test → implement → verify green.
 - Modify: `app/frontend/web/src/features/contracts/components/ContractDetailPage.tsx` (item `<li>`, lines 179–194)
 - Test: `app/frontend/web/src/features/watchlists/components/WatchButton.test.tsx`
 
-- [ ] **Step 1: Write the failing test.** Drives the detail page via `renderApp('/contracts/101')` with a ship-bearing contract; asserts: anonymous → no Watch button; authed → Watch button on the ship row; click → POST `{type_id}`; 409 → "already watching" inline. COMPLETE file:
+- [x] **Step 1: Write the failing test.** Drives the detail page via `renderApp('/contracts/101')` with a ship-bearing contract; asserts: anonymous → no Watch button; authed → Watch button on the ship row; click → POST `{type_id}`; 409 → "already watching" inline. COMPLETE file:
 
 ```tsx
 // ABOUTME: WatchButton over the real contract-detail route — authed-only, one-click add by type_id, 409 "already watching".
@@ -4897,9 +4911,9 @@ describe('WatchButton', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchButton.test.tsx --reporter=dot`. Expected: no Watch button (component not wired into the detail page).
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchButton.test.tsx --reporter=dot`. Expected: no Watch button (component not wired into the detail page).
 
-- [ ] **Step 3: Implement `WatchButton.tsx`.** COMPLETE file:
+- [x] **Step 3: Implement `WatchButton.tsx`.** COMPLETE file:
 
 ```tsx
 // ABOUTME: Quick-watch button for a listed ship on the contract-detail page — authed-only, one-click add by type_id, no price field.
@@ -4926,7 +4940,7 @@ export function WatchButton({ typeId }: { typeId: number }) {
 }
 ```
 
-- [ ] **Step 4: Wire `WatchButton` into ContractDetailPage.** Add `import { WatchButton } from '../../watchlists/components/WatchButton'` with the other imports, and inside the item `<li>` (after the existing badge/`asked for, not included` spans, still inside the `<li>`, ContractDetailPage.tsx ~line 192) add — gated on `category === 'ship'` and inclusion:
+- [x] **Step 4: Wire `WatchButton` into ContractDetailPage.** Add `import { WatchButton } from '../../watchlists/components/WatchButton'` with the other imports, and inside the item `<li>` (after the existing badge/`asked for, not included` spans, still inside the `<li>`, ContractDetailPage.tsx ~line 192) add — gated on `category === 'ship'` and inclusion:
 
 ```tsx
                 {item.is_included && item.category === 'ship' ? (
@@ -4938,9 +4952,9 @@ export function WatchButton({ typeId }: { typeId: number }) {
 
 `ml-auto` right-aligns the button within the flex row. `WatchButton` itself returns `null` when anonymous, so existing detail tests (which use `anonymousMe`) are unaffected.
 
-- [ ] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchButton.test.tsx --reporter=dot` (pass); then regression-check the detail suite: `npx vitest run src/features/contracts/components/pages.test.tsx src/features/contracts/components/a11y.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/features/watchlists src/features/contracts/components/ContractDetailPage.tsx` (green).
+- [x] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchButton.test.tsx --reporter=dot` (pass); then regression-check the detail suite: `npx vitest run src/features/contracts/components/pages.test.tsx src/features/contracts/components/a11y.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/features/watchlists src/features/contracts/components/ContractDetailPage.tsx` (green).
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
   `git add app/frontend/web/src/features/watchlists/components/WatchButton.tsx app/frontend/web/src/features/watchlists/components/WatchButton.test.tsx app/frontend/web/src/features/contracts/components/ContractDetailPage.tsx`
   ```
   feat(web): add quick-watch button to contract detail ship rows
@@ -4970,7 +4984,9 @@ Follow TDD: write failing test → implement → verify green.
 - Test: `app/frontend/web/src/features/watchlists/components/WatchlistPage.test.tsx`
 - Test: `app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx` (vitest-axe, design §6)
 
-- [ ] **Step 1: Write the failing page tests.** Cover: anonymous prompt; list render after skeleton unmount (TEST-8); empty state; add-by-name form posting `{type_name, max_price?, notes?}`; 400 unknown-name inline error; clear-to-null PUT body assertion; the max-price 0-boundary guard; two-step Remove (incl. the 5s timeout reset). Every authed stub answers the header bell's unread-count query (`GET /me/notifications/?is_read=false&size=1`) with `{ total: 0, page: 1, size: 1, items: [] }` — a bare `[]` would leave that count query erroring once Task 8.2 mounts the bell (NIT-9). COMPLETE file:
+> **Execution note (ship `6a0450b`):** three defects in the COMPLETE files below were corrected during execution, intent preserved — see the top-of-plan Deviations subsection. Summary: (1) `WatchlistPage.tsx` add `<form>` needs `noValidate` (Step 4) so native number-input `min` validation doesn't preempt the JS "max price ≥ 0.01" guard; (2) the `adds by name` test stub (Step 1) branches on `call.method` so the shared `/me/watchlist-items/` GET returns an array (not the POST's created object) — otherwise `WatchlistBody` crashes on `data.map`; (3) the `auto-disarms` test (Step 1) uses synchronous `fireEvent.click` for the arming click under fake timers (userEvent's async flush deadlocks the fake clock), mirroring the shipped `SavedSearchesPage` auto-disarms test.
+
+- [x] **Step 1: Write the failing page tests.** Cover: anonymous prompt; list render after skeleton unmount (TEST-8); empty state; add-by-name form posting `{type_name, max_price?, notes?}`; 400 unknown-name inline error; clear-to-null PUT body assertion; the max-price 0-boundary guard; two-step Remove (incl. the 5s timeout reset). Every authed stub answers the header bell's unread-count query (`GET /me/notifications/?is_read=false&size=1`) with `{ total: 0, page: 1, size: 1, items: [] }` — a bare `[]` would leave that count query erroring once Task 8.2 mounts the bell (NIT-9). COMPLETE file:
 
 ```tsx
 // ABOUTME: WatchlistPage tests over the real /watchlist route — auth branches, add-by-name form, clear-to-null edit, two-step remove.
@@ -5123,9 +5139,9 @@ describe('WatchlistPage', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchlistPage.test.tsx --reporter=dot`. Expected: route missing → sign-in heading not found.
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchlistPage.test.tsx --reporter=dot`. Expected: route missing → sign-in heading not found.
 
-- [ ] **Step 3: Create `src/routes/watchlist.tsx`.** COMPLETE file:
+- [x] **Step 3: Create `src/routes/watchlist.tsx`.** COMPLETE file:
 
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'
@@ -5140,7 +5156,7 @@ function RouteComponent() {
 }
 ```
 
-- [ ] **Step 4: Implement `WatchlistPage.tsx`.** The add form maps an empty max-price/notes input to an omitted key; each row's inline edit and "Clear max price" affordance map an emptied field to explicit `null` (clear). COMPLETE file:
+- [x] **Step 4: Implement `WatchlistPage.tsx`.** The add form maps an empty max-price/notes input to an omitted key; each row's inline edit and "Clear max price" affordance map an emptied field to explicit `null` (clear). COMPLETE file:
 
 ```tsx
 // ABOUTME: F006 watchlist page — add-by-name form (name + optional max price/notes) and inline-editable rows with clear-to-null and two-step remove.
@@ -5357,7 +5373,7 @@ function WatchlistRow({ item }: { item: WatchlistItem }) {
 }
 ```
 
-- [ ] **Step 5: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx`. COMPLETE file:
+- [x] **Step 5: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx`. COMPLETE file:
 
 ```tsx
 // ABOUTME: Automated axe accessibility checks for the watchlist page — authed-with-data and anonymous states.
@@ -5405,9 +5421,9 @@ describe('accessibility (axe) — watchlist', () => {
 })
 ```
 
-- [ ] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchlistPage.test.tsx src/features/watchlists/components/WatchlistPage.a11y.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 if the route isn't found). Then `npx tsc -b` and `npx eslint src/routes/watchlist.tsx src/features/watchlists` (green).
+- [x] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/watchlists/components/WatchlistPage.test.tsx src/features/watchlists/components/WatchlistPage.a11y.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 if the route isn't found). Then `npx tsc -b` and `npx eslint src/routes/watchlist.tsx src/features/watchlists` (green).
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/frontend/web/src/routes/watchlist.tsx app/frontend/web/src/routeTree.gen.ts app/frontend/web/src/features/watchlists/components/WatchlistPage.tsx app/frontend/web/src/features/watchlists/components/WatchlistPage.test.tsx app/frontend/web/src/features/watchlists/components/WatchlistPage.a11y.test.tsx`
   ```
   feat(web): add watchlist page with add-by-name and inline editing
@@ -5434,7 +5450,7 @@ Push: `git push`.
 
 ## Phase 8 — Frontend F007: Alerts / Notifications
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `fdf5f9f` on 2026-07-18
 
 Delivers: the notifications hooks (list, unread-count with a testable queryOptions factory, mark-read/all, settings); the header bell inside `HeaderIdentity`; and the `/notifications` page with pagination, mark-read-on-click, mark-all-read, and the settings checkbox.
 
@@ -5451,7 +5467,7 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/features/notifications/hooks/useNotifications.ts`
 - Test: `app/frontend/web/src/features/notifications/hooks/useNotifications.test.tsx`
 
-- [ ] **Step 1: Write the failing tests.** Per the brief: fake timers are NOT required — assert the queryOptions object fields directly (the `unreadCountQueryOptions` factory carries `refetchInterval: 60_000` and `enabled`), drive its `queryFn` to assert the count URL (`is_read=false&size=1`) and that it returns `total`; the list hook asserts its URL/params; mutations assert URL/method + invalidation; the list error path uses a persistent failure (TEST-7). COMPLETE file:
+- [x] **Step 1: Write the failing tests.** Per the brief: fake timers are NOT required — assert the queryOptions object fields directly (the `unreadCountQueryOptions` factory carries `refetchInterval: 60_000` and `enabled`), drive its `queryFn` to assert the count URL (`is_read=false&size=1`) and that it returns `total`; the list hook asserts its URL/params; mutations assert URL/method + invalidation; the list error path uses a persistent failure (TEST-7). COMPLETE file:
 
 ```tsx
 // ABOUTME: useNotifications hook contracts — list, unread-count queryOptions factory, mark-read/all, settings.
@@ -5608,9 +5624,9 @@ describe('notification settings', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/hooks/useNotifications.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./useNotifications"`.
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/hooks/useNotifications.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./useNotifications"`.
 
-- [ ] **Step 3: Implement `useNotifications.ts`.** `unreadCountQueryOptions` is a standalone factory (independently testable) that now takes the caller's `queryClient` so its poll routes 401s through `raiseApiError` like every other query; `useUnreadCount` supplies that `queryClient` and calls `useCurrentUser` to derive `enabled`. COMPLETE file:
+- [x] **Step 3: Implement `useNotifications.ts`.** `unreadCountQueryOptions` is a standalone factory (independently testable) that now takes the caller's `queryClient` so its poll routes 401s through `raiseApiError` like every other query; `useUnreadCount` supplies that `queryClient` and calls `useCurrentUser` to derive `enabled`. COMPLETE file:
 
 ```ts
 // ABOUTME: TanStack Query hooks for F007 notifications — paginated list, unread-count poll, mark-read/all, settings.
@@ -5704,9 +5720,9 @@ export function useUpdateNotificationSettings() {
 }
 ```
 
-- [ ] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/hooks/useNotifications.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/notifications` (green).
+- [x] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/hooks/useNotifications.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/notifications` (green).
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   `git add app/frontend/web/src/features/notifications/hooks/useNotifications.ts app/frontend/web/src/features/notifications/hooks/useNotifications.test.tsx`
   ```
   feat(web): add notifications query and mutation hooks
@@ -5723,6 +5739,9 @@ BEFORE marking this task complete:
 
 ### Task 8.2: `NotificationBell` inside `HeaderIdentity` + tests (and hermetic-lane fix for existing auth specs)
 
+> **Deviation (executed):** Step 6's `tsc -b` gate is unsatisfiable as originally ordered — the typed `<Link to="/notifications">` only compiles once the route is registered, but `src/routes/notifications.tsx` belonged to Task 8.3. Resolved by folding a minimal placeholder route into this task (commit `25621f5`); Task 8.3 replaces it wholesale.
+
+
 ```
 BEFORE starting work:
 1. Invoke superpowers:test-driven-development
@@ -5737,7 +5756,7 @@ Follow TDD: write failing test → implement → verify green.
 - Modify: `app/frontend/web/e2e/helpers/api.ts` (add `AccountCall`, `readBody`, and the shared `interceptNotifications` helper — this task is its first consumer)
 - Modify: `app/frontend/web/e2e/auth.spec.ts` (the two authenticated tests — keep the lane hermetic)
 
-- [ ] **Step 1: Write the failing test.** Drives the bell through `renderApp('/contracts')` with authed `/me` and a stubbed count endpoint; asserts the `Link` to `/notifications` with `aria-label` "Notifications (N unread)", the badge shows N when N>0, and no badge number when N=0. COMPLETE file:
+- [x] **Step 1: Write the failing test.** Drives the bell through `renderApp('/contracts')` with authed `/me` and a stubbed count endpoint; asserts the `Link` to `/notifications` with `aria-label` "Notifications (N unread)", the badge shows N when N>0, and no badge number when N=0. COMPLETE file:
 
 ```tsx
 // ABOUTME: NotificationBell over the real header — Link to /notifications with an unread badge; badge hidden at zero.
@@ -5777,9 +5796,9 @@ describe('NotificationBell', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationBell.test.tsx --reporter=dot`. Expected: no Notifications link (bell not in the header yet).
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationBell.test.tsx --reporter=dot`. Expected: no Notifications link (bell not in the header yet).
 
-- [ ] **Step 3: Implement `NotificationBell.tsx`.** COMPLETE file:
+- [x] **Step 3: Implement `NotificationBell.tsx`.** COMPLETE file:
 
 ```tsx
 // ABOUTME: Header notification bell — a Link to /notifications with an unread-count badge; the badge is hidden at zero.
@@ -5809,7 +5828,7 @@ export function NotificationBell() {
 }
 ```
 
-- [ ] **Step 4: Wire `NotificationBell` into `HeaderIdentity`.** Add `import { NotificationBell } from '../../notifications/components/NotificationBell'`, and in the authenticated-branch return (HeaderIdentity.tsx line 32–46) place the bell first inside the cluster:
+- [x] **Step 4: Wire `NotificationBell` into `HeaderIdentity`.** Add `import { NotificationBell } from '../../notifications/components/NotificationBell'`, and in the authenticated-branch return (HeaderIdentity.tsx line 32–46) place the bell first inside the cluster:
 
 ```tsx
   return (
@@ -5832,7 +5851,7 @@ export function NotificationBell() {
 
 The bell renders only in this authed branch, so anonymous headers are unchanged; `useUnreadCount`'s `enabled: !!user` means no count request fires when anonymous. The existing `HeaderIdentity.test.tsx` authed tests have a fallback handler returning `{total:0,…}`, so the count query resolves to 0 (no badge) and those tests keep passing with no change.
 
-- [ ] **Step 5: Add the shared `interceptNotifications` E2E helper (first consumer) and keep the auth lane hermetic.** The header now fires `GET /me/notifications/?is_read=false&size=1` on every authed render, so the two authenticated tests in `e2e/auth.spec.ts` ("authenticated header shows portrait…" and "logout POSTs exactly once…") would leak an un-intercepted request (TEST-9 discipline). This task is the first consumer of the notifications intercept, so define it here (Phase 9 Task 9.1 reuses it verbatim and its `AccountCall`/`readBody` scaffolding). Append to `e2e/helpers/api.ts` after the existing helpers (`Page` is already imported at the top):
+- [x] **Step 5: Add the shared `interceptNotifications` E2E helper (first consumer) and keep the auth lane hermetic.** The header now fires `GET /me/notifications/?is_read=false&size=1` on every authed render, so the two authenticated tests in `e2e/auth.spec.ts` ("authenticated header shows portrait…" and "logout POSTs exactly once…") would leak an un-intercepted request (TEST-9 discipline). This task is the first consumer of the notifications intercept, so define it here (Phase 9 Task 9.1 reuses it verbatim and its `AccountCall`/`readBody` scaffolding). Append to `e2e/helpers/api.ts` after the existing helpers (`Page` is already imported at the top):
 
 ```ts
 export interface AccountCall {
@@ -5894,9 +5913,9 @@ export async function interceptNotifications(
 
 Note: the two routes are registered settings-first then notifications — Playwright runs last-registered-first, so `/me/notifications` (registered last) is evaluated first; its pattern does NOT match `/me/notification-settings` (different literal), so each request lands on the right handler. Then wire it into `e2e/auth.spec.ts`: add `interceptNotifications` to the `./helpers/api` import and call `await interceptNotifications(page, { unread: 0 })` (before `page.goto`) in both authenticated tests.
 
-- [ ] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationBell.test.tsx src/features/auth/components/HeaderIdentity.test.tsx --reporter=dot` (all pass). `npx tsc -b` and `npx eslint src/features/notifications src/features/auth/components/HeaderIdentity.tsx e2e/helpers/api.ts` (green). Fixture-lane smoke for the touched spec: `npx playwright test auth.spec.ts --project=desktop` (green).
+- [x] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationBell.test.tsx src/features/auth/components/HeaderIdentity.test.tsx --reporter=dot` (all pass). `npx tsc -b` and `npx eslint src/features/notifications src/features/auth/components/HeaderIdentity.tsx e2e/helpers/api.ts` (green). Fixture-lane smoke for the touched spec: `npx playwright test auth.spec.ts --project=desktop` (green).
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/frontend/web/src/features/notifications/components/NotificationBell.tsx app/frontend/web/src/features/notifications/components/NotificationBell.test.tsx app/frontend/web/src/features/auth/components/HeaderIdentity.tsx app/frontend/web/e2e/helpers/api.ts app/frontend/web/e2e/auth.spec.ts`
   ```
   feat(web): add notification bell to the header identity cluster
@@ -5912,6 +5931,9 @@ BEFORE marking this task complete:
 ```
 
 ### Task 8.3: `/notifications` route + `NotificationsPage` (paginated list, mark-read-on-click, mark-all-read, settings) + tests
+
+> **Note (from the 8.2 deviation):** `src/routes/notifications.tsx` ALREADY EXISTS as a placeholder. Your Files list says Create — treat it as REPLACE: overwrite the file's entire contents with the code in this task (Write, not an error/blocked condition). `routeTree.gen.ts` is already registered.
+
 
 ```
 BEFORE starting work:
@@ -5930,7 +5952,7 @@ Follow TDD: write failing test → implement → verify green.
 - Test: `app/frontend/web/src/features/notifications/components/NotificationsPage.test.tsx`
 - Test: `app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx` (vitest-axe, design §6)
 
-- [ ] **Step 1: Write the failing `format.ts` test.** COMPLETE file:
+- [x] **Step 1: Write the failing `format.ts` test.** COMPLETE file:
 
 ```ts
 // ABOUTME: timeAgo formats a past ISO timestamp as a coarse relative span; now is injectable for determinism (TEST-3).
@@ -5953,9 +5975,9 @@ describe('timeAgo', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/format.test.ts --reporter=dot`. Expected: `Failed to resolve import "./format"`.
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/format.test.ts --reporter=dot`. Expected: `Failed to resolve import "./format"`.
 
-- [ ] **Step 3: Implement `format.ts`.** COMPLETE file:
+- [x] **Step 3: Implement `format.ts`.** COMPLETE file:
 
 ```ts
 // ABOUTME: Relative-time formatting for notification timestamps ("3h ago"); now is injectable for deterministic tests.
@@ -5973,9 +5995,9 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
 }
 ```
 
-- [ ] **Step 4: Run `format.test.ts` green.** `cd app/frontend/web && npx vitest run src/features/notifications/format.test.ts --reporter=dot` (pass).
+- [x] **Step 4: Run `format.test.ts` green.** `cd app/frontend/web && npx vitest run src/features/notifications/format.test.ts --reporter=dot` (pass).
 
-- [ ] **Step 5: Add the optional `unitLabel` to `Pagination.tsx`.** Small backward-safe extension (default keeps `contracts`, so existing call sites and the contracts pagination E2E are unaffected). Replace the component signature + label line:
+- [x] **Step 5: Add the optional `unitLabel` to `Pagination.tsx`.** Small backward-safe extension (default keeps `contracts`, so existing call sites and the contracts pagination E2E are unaffected). Replace the component signature + label line:
 
 ```tsx
 export function Pagination({
@@ -6030,7 +6052,7 @@ export function CheckboxField({
 }
 ```
 
-- [ ] **Step 6: Write the failing NotificationsPage tests.** Cover: anonymous prompt; authed list after skeleton unmount (TEST-8); mark-read fires on row click; pagination wiring (page 2 requested); mark-all-read POST; settings checkbox PUT body; contract deep-link present. COMPLETE file:
+- [x] **Step 6: Write the failing NotificationsPage tests.** Cover: anonymous prompt; authed list after skeleton unmount (TEST-8); mark-read fires on row click; pagination wiring (page 2 requested); mark-all-read POST; settings checkbox PUT body; contract deep-link present. COMPLETE file:
 
 ```tsx
 // ABOUTME: NotificationsPage tests over the real /notifications route — auth branches, mark-read on click, pagination, mark-all-read, settings toggle.
@@ -6154,9 +6176,9 @@ describe('NotificationsPage', () => {
 })
 ```
 
-- [ ] **Step 7: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationsPage.test.tsx --reporter=dot`. Expected: route missing → sign-in heading not found.
+- [x] **Step 7: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationsPage.test.tsx --reporter=dot`. Expected: route missing → sign-in heading not found.
 
-- [ ] **Step 8: Create `src/routes/notifications.tsx`.** COMPLETE file:
+- [x] **Step 8: Create `src/routes/notifications.tsx`.** COMPLETE file:
 
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'
@@ -6171,7 +6193,7 @@ function RouteComponent() {
 }
 ```
 
-- [ ] **Step 9: Implement `NotificationsPage.tsx`.** COMPLETE file:
+- [x] **Step 9: Implement `NotificationsPage.tsx`.** COMPLETE file:
 
 ```tsx
 // ABOUTME: F007 notifications page — auth-gated paginated list, mark-read-on-click (+deep-link), mark-all-read, and the watchlist-alerts settings checkbox.
@@ -6317,7 +6339,7 @@ function NotificationRow({ n }: { n: Notification }) {
 }
 ```
 
-- [ ] **Step 10: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx`. COMPLETE file:
+- [x] **Step 10: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx`. COMPLETE file:
 
 ```tsx
 // ABOUTME: Automated axe accessibility checks for the notifications page — authed-with-data and anonymous states.
@@ -6369,9 +6391,9 @@ describe('accessibility (axe) — notifications', () => {
 })
 ```
 
-- [ ] **Step 11: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationsPage.test.tsx src/features/notifications/components/NotificationsPage.a11y.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 if needed). Regression-check the contracts pagination usage: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/routes/notifications.tsx src/features/notifications src/features/contracts/components/Pagination.tsx src/components/Checkbox.tsx` (green).
+- [x] **Step 11: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationsPage.test.tsx src/features/notifications/components/NotificationsPage.a11y.test.tsx --reporter=dot` (pass; force route-tree regen as in Task 6.4 if needed). Regression-check the contracts pagination usage: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/routes/notifications.tsx src/features/notifications src/features/contracts/components/Pagination.tsx src/components/Checkbox.tsx` (green).
 
-- [ ] **Step 12: Commit.**
+- [x] **Step 12: Commit.**
   `git add app/frontend/web/src/routes/notifications.tsx app/frontend/web/src/routeTree.gen.ts app/frontend/web/src/features/notifications/format.ts app/frontend/web/src/features/notifications/format.test.ts app/frontend/web/src/features/notifications/components/NotificationsPage.tsx app/frontend/web/src/features/notifications/components/NotificationsPage.test.tsx app/frontend/web/src/features/notifications/components/NotificationsPage.a11y.test.tsx app/frontend/web/src/features/contracts/components/Pagination.tsx app/frontend/web/src/components/Checkbox.tsx`
   ```
   feat(web): add notifications page with mark-read, pagination, and settings
@@ -6398,7 +6420,7 @@ Push: `git push`.
 
 ## Phase 9 — E2E (Playwright fixture lane)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `05a8800` on 2026-07-18
 
 Delivers: account wire fixtures, account intercept helpers (captured-calls shape), and three specs asserting the authed flows at the wire plus the anonymous prompts. **All specs: `interceptCurrentUser` FIRST in every test (TEST-9), `failUnexpectedApiCalls` registered first where used, role/label selectors only, `retries` stays 0.**
 
@@ -6417,9 +6439,9 @@ Because these are E2E fixtures/helpers (test infrastructure, not production code
 - Create: `app/frontend/web/e2e/fixtures/account.ts`
 - Modify: `app/frontend/web/e2e/helpers/api.ts` (add `interceptSavedSearches`, `interceptWatchlist`; `interceptNotifications` + `AccountCall`/`readBody` were already added in Task 8.2 — reuse them; update the `stubPortraits` JSDoc)
 
-- [ ] **Step 1: Read the current `e2e/helpers/api.ts`** (already reviewed in recon) to match the captured-calls shape and the last-registered-first routing discipline.
+- [x] **Step 1: Read the current `e2e/helpers/api.ts`** (already reviewed in recon) to match the captured-calls shape and the last-registered-first routing discipline.
 
-- [ ] **Step 2: Create `e2e/fixtures/account.ts`.** COMPLETE file:
+- [x] **Step 2: Create `e2e/fixtures/account.ts`.** COMPLETE file:
 
 ```ts
 // ABOUTME: Wire-shape fixtures for the M3 account APIs — saved searches, watchlist items, notifications.
@@ -6493,7 +6515,7 @@ export function makeNotification(overrides: Partial<WireNotification> = {}): Wir
 }
 ```
 
-- [ ] **Step 3: Add the saved-searches + watchlist intercept helpers to `e2e/helpers/api.ts`.** `interceptNotifications` and its `AccountCall`/`readBody` scaffolding are **already present** — added in Task 8.2 (its first consumer). Verify they exist and do NOT redefine them; the two helpers below reuse the existing `AccountCall`/`readBody`. Append after the existing helpers. Each returns a live captured-calls array `{ url, method, body }` (the same "captured calls" idea as `interceptContractList`, extended with `method`/`body` because these are write endpoints). COMPLETE additions:
+- [x] **Step 3: Add the saved-searches + watchlist intercept helpers to `e2e/helpers/api.ts`.** `interceptNotifications` and its `AccountCall`/`readBody` scaffolding are **already present** — added in Task 8.2 (its first consumer). Verify they exist and do NOT redefine them; the two helpers below reuse the existing `AccountCall`/`readBody`. Append after the existing helpers. Each returns a live captured-calls array `{ url, method, body }` (the same "captured calls" idea as `interceptContractList`, extended with `method`/`body` because these are write endpoints). COMPLETE additions:
 
 ```ts
 // (add to the imports at the top of e2e/helpers/api.ts)
@@ -6535,16 +6557,16 @@ export async function interceptWatchlist(page: Page, list: WireWatchlistItem[] =
 
 `interceptNotifications` (and `AccountCall`/`readBody`) already live in `e2e/helpers/api.ts` from Task 8.2 — the notifications specs (Task 9.4) import it from `./helpers/api` unchanged.
 
-- [ ] **Step 4: Confirm `stubPortraits` already covers type renders (no functional change needed).** The existing glob `**://images.evetech.net/**` already matches `images.evetech.net/types/{id}/render` — the watchlist row icon URL — so watchlist specs stay offline with the current helper. Update only the JSDoc to say so; do NOT narrow or duplicate the route. Replace the `stubPortraits` doc comment with:
+- [x] **Step 4: Confirm `stubPortraits` already covers type renders (no functional change needed).** The existing glob `**://images.evetech.net/**` already matches `images.evetech.net/types/{id}/render` — the watchlist row icon URL — so watchlist specs stay offline with the current helper. Update only the JSDoc to say so; do NOT narrow or duplicate the route. Replace the `stubPortraits` doc comment with:
 
 ```ts
 /** Serve a tiny PNG for ALL images.evetech.net requests — character portraits AND type renders
  * (e.g. /types/{id}/render on the watchlist page) — so authenticated specs stay fully offline. */
 ```
 
-- [ ] **Step 5: Verify it compiles.** `cd app/frontend/web && npx tsc -b` (green) and `npx eslint e2e/fixtures/account.ts e2e/helpers/api.ts` (green). No spec runs yet — the specs in 9.2–9.4 exercise these.
+- [x] **Step 5: Verify it compiles.** `cd app/frontend/web && npx tsc -b` (green) and `npx eslint e2e/fixtures/account.ts e2e/helpers/api.ts` (green). No spec runs yet — the specs in 9.2–9.4 exercise these.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
   `git add app/frontend/web/e2e/fixtures/account.ts app/frontend/web/e2e/helpers/api.ts`
   ```
   test(e2e): add account fixtures and intercept helpers
@@ -6571,7 +6593,7 @@ Follow TDD: write failing test → implement → verify green.
 **Files:**
 - Create: `app/frontend/web/e2e/saved-searches.spec.ts`
 
-- [ ] **Step 1: Write the spec.** `interceptCurrentUser` first in every test. COMPLETE file:
+- [x] **Step 1: Write the spec.** `interceptCurrentUser` first in every test. COMPLETE file:
 
 ```ts
 import { expect, test } from '@playwright/test'
@@ -6624,11 +6646,11 @@ test.describe('saved searches', () => {
 })
 ```
 
-- [ ] **Step 2: Run it.** `cd app/frontend/web && npx playwright test saved-searches.spec.ts --project=desktop`. Expected: green. If the save-flow assertion fails on the POST body, re-check `toSavedSearchParameters` (Task 6.3) — do NOT weaken the assertion (TEST-2).
+- [x] **Step 2: Run it.** `cd app/frontend/web && npx playwright test saved-searches.spec.ts --project=desktop`. Expected: green. If the save-flow assertion fails on the POST body, re-check `toSavedSearchParameters` (Task 6.3) — do NOT weaken the assertion (TEST-2).
 
-- [ ] **Step 3: Run mobile too.** `npx playwright test saved-searches.spec.ts --project=mobile` (green).
+- [x] **Step 3: Run mobile too.** `npx playwright test saved-searches.spec.ts --project=mobile` (green).
 
-- [ ] **Step 4: Commit.**
+- [x] **Step 4: Commit.**
   `git add app/frontend/web/e2e/saved-searches.spec.ts`
   ```
   test(e2e): cover saved-search save + apply flows
@@ -6655,7 +6677,7 @@ Follow TDD: write failing test → implement → verify green.
 **Files:**
 - Create: `app/frontend/web/e2e/watchlist.spec.ts`
 
-- [ ] **Step 1: Write the spec.** COMPLETE file:
+- [x] **Step 1: Write the spec.** COMPLETE file:
 
 ```ts
 import { expect, test } from '@playwright/test'
@@ -6702,9 +6724,9 @@ test.describe('watchlist', () => {
 })
 ```
 
-- [ ] **Step 2: Run desktop + mobile.** `cd app/frontend/web && npx playwright test watchlist.spec.ts --project=desktop` then `--project=mobile` (both green).
+- [x] **Step 2: Run desktop + mobile.** `cd app/frontend/web && npx playwright test watchlist.spec.ts --project=desktop` then `--project=mobile` (both green).
 
-- [ ] **Step 3: Commit.**
+- [x] **Step 3: Commit.**
   `git add app/frontend/web/e2e/watchlist.spec.ts`
   ```
   test(e2e): cover watchlist add-by-name and two-step remove
@@ -6741,7 +6763,7 @@ assertions (timing bounds).
 **Files:**
 - Create: `app/frontend/web/e2e/notifications.spec.ts`
 
-- [ ] **Step 1: Write the spec.** The list page's loading skeleton (`role="status"`, name "Loading notifications") coexists with the always-mounted live region — sync on skeleton unmount before asserting the list (TEST-8). COMPLETE file:
+- [x] **Step 1: Write the spec.** The list page's loading skeleton (`role="status"`, name "Loading notifications") coexists with the always-mounted live region — sync on skeleton unmount before asserting the list (TEST-8). COMPLETE file:
 
 ```ts
 import { expect, test } from '@playwright/test'
@@ -6792,9 +6814,9 @@ test.describe('notifications', () => {
 })
 ```
 
-- [ ] **Step 2: Run desktop + mobile.** `cd app/frontend/web && npx playwright test notifications.spec.ts --project=desktop` then `--project=mobile` (both green).
+- [x] **Step 2: Run desktop + mobile.** `cd app/frontend/web && npx playwright test notifications.spec.ts --project=desktop` then `--project=mobile` (both green).
 
-- [ ] **Step 3: Commit.**
+- [x] **Step 3: Commit.**
   `git add app/frontend/web/e2e/notifications.spec.ts`
   ```
   test(e2e): cover notification badge and mark-all-read
@@ -6821,7 +6843,7 @@ Push: `git push`.
 
 ## Phase 10 — Docs, gates, and PR
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `70592e8` on 2026-07-18 — pitfalls SQLA-2/TEST-11 + README/feature-index/spec deviation notes; all gates green (backend 320, vitest 135, e2e 90 pass / 7 skip, eslint + tsc clean). PR #46 to `dev` OPEN, awaiting Sam's review/merge (Review — schema + per-user authz).
 
 Delivers: two new pitfall entries with full completeness-checklist maintenance; README + feature-index + per-feature deviation notes; the full local gate run; and the (unmerged) PR to `dev`.
 
@@ -6840,7 +6862,7 @@ This task edits Markdown only (no production code / no test suite). TDD does not
 - Modify: `docs/pitfalls/implementation-pitfalls.md`
 - Modify: `docs/pitfalls/testing-pitfalls.md`
 
-- [ ] **Step 1: Add `SQLA-2` to implementation-pitfalls.md §Section 2 (Data & Persistence).** Insert after the SQLA-1 entry (before the `### §2.C — Review Checklist` heading). Follows the house `Flaw → Why It Matters → Fix → Where It Bit Us` shape; the "Where It Bit Us" is written pre-emptively (the design mandated the fix, so this documents the trap the matcher's write path would hit without it):
+- [x] **Step 1: Add `SQLA-2` to implementation-pitfalls.md §Section 2 (Data & Persistence).** Insert after the SQLA-1 entry (before the `### §2.C — Review Checklist` heading). Follows the house `Flaw → Why It Matters → Fix → Where It Bit Us` shape; the "Where It Bit Us" is written pre-emptively (the design mandated the fix, so this documents the trap the matcher's write path would hit without it):
 
 ```markdown
 ### SQLA-2: `ON CONFLICT` against a partial unique index must restate the index predicate
@@ -6854,27 +6876,27 @@ This task edits Markdown only (no production code / no test suite). TDD does not
 **Where It Bit Us:** Pre-empted in the M3 watchlist-matcher design (`docs/superpowers/specs/2026-07-17-m3-account-features-design.md` §4.4); the partial index `uq_notifications_watchlist_dedup` on `(user_id, contract_id, watch_type_id) WHERE type='watchlist_match'` requires the `index_where` restatement or the matcher's core insert raises on every run. See testing-pitfalls.md TEST-11.
 ```
 
-- [ ] **Step 2: Add the SQLA-2 review-checklist item.** Under `### §2.C — Review Checklist`, add a second bullet after the SQLA-1 item:
+- [x] **Step 2: Add the SQLA-2 review-checklist item.** Under `### §2.C — Review Checklist`, add a second bullet after the SQLA-1 item:
 
 ```markdown
 - [ ] **`ON CONFLICT` against a partial unique index restates the index predicate** — `index_where=` matches the index's `WHERE`, and every indexed column is non-NULL on insert (Postgres NULLs never conflict) (SQLA-2)
 ```
 
-- [ ] **Step 3: Update the TOC and Appendix B for SQLA-2.** In the Table of Contents row for section 2, change the Entries cell `SQLA-1` → `SQLA-1, SQLA-2`. In Appendix B (Unified Summary Table), add a row after the SQLA-1 row:
+- [x] **Step 3: Update the TOC and Appendix B for SQLA-2.** In the Table of Contents row for section 2, change the Entries cell `SQLA-1` → `SQLA-1, SQLA-2`. In Appendix B (Unified Summary Table), add a row after the SQLA-1 row:
 
 ```markdown
 | SQLA-2 | ON CONFLICT vs a partial unique index needs index_where | HIGH | VALIDATED | Data & Persistence |
 ```
 
-- [ ] **Step 4: Run the Appendix C completeness checklist for SQLA-2.** Confirm all of: entry added to the domain section ✓; review-checklist item added (§2.C) ✓; TOC entry list updated ✓; Appendix B row added ✓; cross-reference to testing-pitfalls TEST-11 present ✓. (These four+one are exactly the "Completeness Checklist" in Appendix C.)
+- [x] **Step 4: Run the Appendix C completeness checklist for SQLA-2.** Confirm all of: entry added to the domain section ✓; review-checklist item added (§2.C) ✓; TOC entry list updated ✓; Appendix B row added ✓; cross-reference to testing-pitfalls TEST-11 present ✓. (These four+one are exactly the "Completeness Checklist" in Appendix C.)
 
-- [ ] **Step 5: Add `TEST-11` to testing-pitfalls.md §8.** Append after the TEST-10 entry (before the `## How to Add a Testing-Pitfall` heading):
+- [x] **Step 5: Add `TEST-11` to testing-pitfalls.md §8.** Append after the TEST-10 entry (before the `## How to Add a Testing-Pitfall` heading):
 
 ```markdown
 - [ ] **🔥 TEST-11 — Writer-side bulk inserts need a test that crosses one chunk boundary.** A bulk insert split into fixed-size chunks (asyncpg caps a statement at 32767 bind params, so the matcher inserts ≤1000 rows/statement) has an off-by-one or last-chunk-dropped bug that is invisible to any test whose match set fits in a single chunk. **Do instead:** arrange a match set strictly larger than one insert chunk (e.g. > `NOTIFICATION_INSERT_CHUNK` rows) and assert every row lands — `created == len(match_set)` and the union of inserted dedup keys equals the expected set. **Bit us:** pre-empted in the M3 watchlist matcher (`services/watchlist_matcher.py`, `NOTIFICATION_INSERT_CHUNK=1000`); pairs with implementation-pitfalls SQLA-2 (the chunked insert is the same statement that carries the partial-index ON CONFLICT). Relates to §4 Bounded growth.
 ```
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
   `git add docs/pitfalls/implementation-pitfalls.md docs/pitfalls/testing-pitfalls.md`
   ```
   docs(pitfalls): add SQLA-2 (partial-index ON CONFLICT) and TEST-11 (chunk-boundary insert)
@@ -6905,13 +6927,13 @@ Docs only; TDD N/A. First **read** each file to match its existing structure bef
 - Modify: `design/features/feature-index.md` (F005/F006/F007 status cells)
 - Modify: `design/features/F005-Saved-Searches.md`, `design/features/F006-Watchlists.md`, `design/features/F007-Alerts-Notifications.md` (append a deviations note each)
 
-- [ ] **Step 1: Read the three target docs' current shape.** `cat README.md | sed -n '1,120p'` to find the implementation-status block; open `design/features/feature-index.md` and the three feature specs to see their status conventions and where a note belongs.
+- [x] **Step 1: Read the three target docs' current shape.** `cat README.md | sed -n '1,120p'` to find the implementation-status block; open `design/features/feature-index.md` and the three feature specs to see their status conventions and where a note belongs.
 
-- [ ] **Step 2: Update `README.md` Implementation Status.** Mark F005 Saved Searches, F006 Watchlists, and F007 Alerts/Notifications as implemented (zero-scope, this milestone), matching the surrounding table/list style. Reference the design spec path `docs/superpowers/specs/2026-07-17-m3-account-features-design.md` for the scope framing (self-identifying cross-reference: it is the authoritative M3 design).
+- [x] **Step 2: Update `README.md` Implementation Status.** Mark F005 Saved Searches, F006 Watchlists, and F007 Alerts/Notifications as implemented (zero-scope, this milestone), matching the surrounding table/list style. Reference the design spec path `docs/superpowers/specs/2026-07-17-m3-account-features-design.md` for the scope framing (self-identifying cross-reference: it is the authoritative M3 design).
 
-- [ ] **Step 3: Update `design/features/feature-index.md`.** Set the F005/F006/F007 status cells to "Implemented with deviations" (or the index's equivalent term), each linking the design spec.
+- [x] **Step 3: Update `design/features/feature-index.md`.** Set the F005/F006/F007 status cells to "Implemented with deviations" (or the index's equivalent term), each linking the design spec.
 
-- [ ] **Step 4: Append an "Implemented with deviations (M3)" note to each feature spec.** Each note lists the recorded §8 deviations relevant to that feature and links the design spec `docs/superpowers/specs/2026-07-17-m3-account-features-design.md`. COMPLETE note bodies:
+- [x] **Step 4: Append an "Implemented with deviations (M3)" note to each feature spec.** Each note lists the recorded §8 deviations relevant to that feature and links the design spec `docs/superpowers/specs/2026-07-17-m3-account-features-design.md`. COMPLETE note bodies:
 
   For `F005-Saved-Searches.md`:
 ```markdown
@@ -6949,7 +6971,7 @@ Implemented zero-scope per [the M3 design spec](../../docs/superpowers/specs/202
 
 Confirm the relative link depth (`../../docs/...`) matches `design/features/` → repo root when editing; adjust to the real relative path if the feature specs live at a different depth.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   `git add README.md design/features/feature-index.md design/features/F005-Saved-Searches.md design/features/F006-Watchlists.md design/features/F007-Alerts-Notifications.md`
   ```
   docs: mark F005/F006/F007 implemented with recorded M3 deviations
@@ -6975,21 +6997,21 @@ Follow TDD: write failing test → implement → verify green.
 
 No new code; this task runs the gates and opens the PR. Invoke `superpowers:verification-before-completion` before claiming green.
 
-- [ ] **Step 1: Backend gate — pytest.** From the campaign worktree: `docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.dependencies.yml up -d --wait postgres_db valkey_cache`, then `cd app/backend && pdm run pytest -q`. Expected: all pass, output pristine (TEST §1 — no stray errors/warnings). Record the pass count.
+- [x] **Step 1: Backend gate — pytest.** From the campaign worktree: `docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.dependencies.yml up -d --wait postgres_db valkey_cache`, then `cd app/backend && pdm run pytest -q`. Expected: all pass, output pristine (TEST §1 — no stray errors/warnings). Record the pass count.
 
-- [ ] **Step 2: Frontend lint.** `cd app/frontend/web && npx eslint .`. Expected: no errors.
+- [x] **Step 2: Frontend lint.** `cd app/frontend/web && npx eslint .`. Expected: no errors.
 
-- [ ] **Step 3: Frontend typecheck.** `cd app/frontend/web && npx tsc -b`. Expected: clean.
+- [x] **Step 3: Frontend typecheck.** `cd app/frontend/web && npx tsc -b`. Expected: clean.
 
-- [ ] **Step 4: Frontend unit/component suite.** `cd app/frontend/web && npm run test`. Expected: all pass (this is `vitest run`, which excludes `e2e/**` per TEST-6). Record the pass count.
+- [x] **Step 4: Frontend unit/component suite.** `cd app/frontend/web && npm run test`. Expected: all pass (this is `vitest run`, which excludes `e2e/**` per TEST-6). Record the pass count.
 
-- [ ] **Step 5: E2E fixture lane — desktop + mobile.** `cd app/frontend/web && npm run e2e` (runs the desktop + mobile projects; live-smoke auto-skips). Expected: all pass, `retries` at 0. If any spec flakes, fix with deterministic synchronization (TEST-2), never a retry bump. Record the pass count per project.
+- [x] **Step 5: E2E fixture lane — desktop + mobile.** `cd app/frontend/web && npm run e2e` (runs the desktop + mobile projects; live-smoke auto-skips). Expected: all pass, `retries` at 0. If any spec flakes, fix with deterministic synchronization (TEST-2), never a retry bump. Record the pass count per project.
 
-- [ ] **Step 6: Confirm the codegen artifacts are committed and current.** `git status --porcelain app/frontend/web/openapi.json app/frontend/web/src/lib/api/schema.d.ts app/frontend/web/src/routeTree.gen.ts` — expected: clean (no uncommitted regen diff). If `routeTree.gen.ts` shows a diff, commit it — subject `chore(web): regenerate route tree`, ending with the `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` trailer like every other commit. The backend-schema codegen (`openapi.json` + `schema.d.ts`) was committed in the backend phases; if a diff appears, STOP and raise — a late schema change means the client is stale.
+- [x] **Step 6: Confirm the codegen artifacts are committed and current.** `git status --porcelain app/frontend/web/openapi.json app/frontend/web/src/lib/api/schema.d.ts app/frontend/web/src/routeTree.gen.ts` — expected: clean (no uncommitted regen diff). If `routeTree.gen.ts` shows a diff, commit it — subject `chore(web): regenerate route tree`, ending with the `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` trailer like every other commit. The backend-schema codegen (`openapi.json` + `schema.d.ts`) was committed in the backend phases; if a diff appears, STOP and raise — a late schema change means the client is stale.
 
-- [ ] **Step 7: Push the branch.** `git push` (branch already tracks `origin/claude/m3-account-features` from Phase 6).
+- [x] **Step 7: Push the branch.** `git push` (branch already tracks `origin/claude/m3-account-features` from Phase 6).
 
-- [ ] **Step 8: Open the PR to `dev` (do NOT merge).** `gh pr create --base dev --head claude/m3-account-features --title "feat: M3 account features (F005 saved searches, F006 watchlists, F007 notifications)" --body "<body below>"`. Fill the test-evidence placeholders with the REAL numbers recorded in Steps 1/4/5. COMPLETE body template:
+- [x] **Step 8: Open the PR to `dev` (do NOT merge).** `gh pr create --base dev --head claude/m3-account-features --title "feat: M3 account features (F005 saved searches, F006 watchlists, F007 notifications)" --body "<body below>"`. Fill the test-evidence placeholders with the REAL numbers recorded in Steps 1/4/5. COMPLETE body template:
 
 ```markdown
 ## Summary
@@ -7019,7 +7041,7 @@ Recorded in design §8 and each feature spec's "Implemented with deviations" not
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-- [ ] **Step 9: Confirm the PR is open and unmerged.** `gh pr view --json state,mergeStateStatus` — expected `state: OPEN`. **The plan ends here — do NOT merge.** Report the PR URL and the recorded gate numbers to Sam.
+- [x] **Step 9: Confirm the PR is open and unmerged.** `gh pr view --json state,mergeStateStatus` — expected `state: OPEN`. **The plan ends here — do NOT merge.** Report the PR URL and the recorded gate numbers to Sam.
 
 ```
 BEFORE marking this task complete:

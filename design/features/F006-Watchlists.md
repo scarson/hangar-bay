@@ -277,3 +277,11 @@
     *   "Create a React component to display the user's watchlist. Each item should show ship name, max price, notes, and allow editing price/notes and removing the item."
     *   "Develop a mechanism for users to add items to their watchlist. This could be a modal with a ship name search that resolves to `type_id`, or buttons on F002/F003 views."
     *   "Ensure all user-facing text is internationalized. Ship names will be provided by the backend already localized if possible."
+
+## Implemented with deviations (M3, 2026-07-17)
+
+Implemented zero-scope per [the M3 design spec](../../docs/superpowers/specs/2026-07-17-m3-account-features-design.md). Recorded deviations (design §8):
+- **No `esi_type_cache` table** — type→name/category is resolved at add-time via public, version-pinned ESI (`/v3/universe/types/`, `/v1/universe/groups/`, `POST /v1/universe/ids/`) and denormalized onto the watchlist row.
+- **Per-user cap of 200 watchlist items** — best-effort count-then-insert; only the `(user_id, type_id)` uniqueness is constraint-backed.
+- **Two zero-scope add paths** — quick-watch on the contract detail page (one-click, no price) and add-by-exact-name on the watchlist page (satisfies Criterion 2.1 price-at-add-time and covers unlisted ships). Fuzzy type-ahead search is deferred (needs a local type dataset).
+- **No `GET /me/watchlist-items/{item_id}`** — deferred until a consumer needs it.

@@ -241,7 +241,13 @@ class ESIClient:
             raise ESIRequestFailedError(message=f"Network error for {path}: {last_exception}")
 
         response.raise_for_status()
-        data = response.json()
+        # A malformed 2xx body (e.g. an upstream HTML error page) must not escape as a raw
+        # ValueError/500 — decoding failures normalize to ESIRequestFailedError (status 0),
+        # which the caller maps to a retryable 502 alongside network/5xx outages (design §4.5).
+        try:
+            data = response.json()
+        except ValueError:
+            raise ESIRequestFailedError(message=f"Non-JSON body from {path}")
         if not isinstance(data, dict):
             raise ESIRequestFailedError(
                 message=f"Expected JSON object from {path}, got {type(data).__name__}"
@@ -285,3 +291,33 @@ class ESIClient:
                 continue
 
         return resolved_names
+
+    async def resolve_names(self, names: list[str]) -> dict[str, Any]:
+        """Resolve exact EVE names to ids via POST /v1/universe/ids/ (version-pinned per ESI-1).
+
+        Returns the parsed response body — a dict of category → [{id, name}, ...] (e.g.
+        `inventory_types`); an unmatched name yields a 200 with that category absent. Unlike
+        the enrichment fetches this is not cached: watchlist adds are rare and the caller wants
+        an authoritative resolution. Non-2xx statuses and network errors surface as
+        ESIRequestFailedError so the caller can map 4xx→400 / 5xx→502 (design §4.5).
+        """
+        try:
+            response = await self.http_client.post("/v1/universe/ids/", json=names)
+        except httpx.RequestError as e:
+            # RequestError covers ReadTimeout / ConnectError / ConnectTimeout / etc. — any transport
+            # failure surfaces as ESIRequestFailedError so the caller maps it to 502, never a raw 500.
+            raise ESIRequestFailedError(message=f"Network error resolving names: {e}")
+        if not (200 <= response.status_code < 300):
+            raise ESIRequestFailedError(
+                status_code=response.status_code,
+                message=f"universe/ids resolution failed: HTTP {response.status_code}",
+            )
+        try:
+            data = response.json()
+        except ValueError:
+            raise ESIRequestFailedError(message="Non-JSON body from /v1/universe/ids/")
+        if not isinstance(data, dict):
+            raise ESIRequestFailedError(
+                message=f"Expected JSON object from /v1/universe/ids/, got {type(data).__name__}"
+            )
+        return data

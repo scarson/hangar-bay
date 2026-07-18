@@ -9,10 +9,28 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WatchlistRouteImport } from './routes/watchlist'
+import { Route as SavedSearchesRouteImport } from './routes/saved-searches'
+import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ContractsIndexRouteImport } from './routes/contracts.index'
 import { Route as ContractsContractIdRouteImport } from './routes/contracts.$contractId'
 
+const WatchlistRoute = WatchlistRouteImport.update({
+  id: '/watchlist',
+  path: '/watchlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SavedSearchesRoute = SavedSearchesRouteImport.update({
+  id: '/saved-searches',
+  path: '/saved-searches',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotificationsRoute = NotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,36 +49,88 @@ const ContractsContractIdRoute = ContractsContractIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/notifications': typeof NotificationsRoute
+  '/saved-searches': typeof SavedSearchesRoute
+  '/watchlist': typeof WatchlistRoute
   '/contracts/$contractId': typeof ContractsContractIdRoute
   '/contracts/': typeof ContractsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/notifications': typeof NotificationsRoute
+  '/saved-searches': typeof SavedSearchesRoute
+  '/watchlist': typeof WatchlistRoute
   '/contracts/$contractId': typeof ContractsContractIdRoute
   '/contracts': typeof ContractsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/notifications': typeof NotificationsRoute
+  '/saved-searches': typeof SavedSearchesRoute
+  '/watchlist': typeof WatchlistRoute
   '/contracts/$contractId': typeof ContractsContractIdRoute
   '/contracts/': typeof ContractsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/contracts/$contractId' | '/contracts/'
+  fullPaths:
+    | '/'
+    | '/notifications'
+    | '/saved-searches'
+    | '/watchlist'
+    | '/contracts/$contractId'
+    | '/contracts/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/contracts/$contractId' | '/contracts'
-  id: '__root__' | '/' | '/contracts/$contractId' | '/contracts/'
+  to:
+    | '/'
+    | '/notifications'
+    | '/saved-searches'
+    | '/watchlist'
+    | '/contracts/$contractId'
+    | '/contracts'
+  id:
+    | '__root__'
+    | '/'
+    | '/notifications'
+    | '/saved-searches'
+    | '/watchlist'
+    | '/contracts/$contractId'
+    | '/contracts/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  NotificationsRoute: typeof NotificationsRoute
+  SavedSearchesRoute: typeof SavedSearchesRoute
+  WatchlistRoute: typeof WatchlistRoute
   ContractsContractIdRoute: typeof ContractsContractIdRoute
   ContractsIndexRoute: typeof ContractsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/watchlist': {
+      id: '/watchlist'
+      path: '/watchlist'
+      fullPath: '/watchlist'
+      preLoaderRoute: typeof WatchlistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/saved-searches': {
+      id: '/saved-searches'
+      path: '/saved-searches'
+      fullPath: '/saved-searches'
+      preLoaderRoute: typeof SavedSearchesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notifications': {
+      id: '/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof NotificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +157,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  NotificationsRoute: NotificationsRoute,
+  SavedSearchesRoute: SavedSearchesRoute,
+  WatchlistRoute: WatchlistRoute,
   ContractsContractIdRoute: ContractsContractIdRoute,
   ContractsIndexRoute: ContractsIndexRoute,
 }

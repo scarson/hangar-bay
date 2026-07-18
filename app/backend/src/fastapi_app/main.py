@@ -1,11 +1,11 @@
 import logging
+import math
 import structlog
 from fastapi import Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
-
-logger = logging.getLogger(__name__)
-
 
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -15,18 +15,24 @@ from redis.asyncio import Redis # For type hinting Redis client
 from .core.config import settings
 from .core.cache import init_cache, close_cache
 from .core.http_client import init_http_client, close_http_client
-from .core.scheduler import add_aggregation_job, create_scheduler
+from .core.scheduler import add_aggregation_job, add_watchlist_matcher_job, create_scheduler
 from .core.dependencies import get_cache
 from .core.logging import setup_logging, RequestIDMiddleware
 from .core.token_cipher import is_token_cipher_configured
 from .db import AsyncSessionLocal, async_engine, Base
 from .core.esi_client_class import ESIClient # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService # For manual service creation
+from .services.watchlist_matcher import WatchlistMatcherService
 from .api import contracts as contracts_router
 from .api import auth as auth_router
+from .api import saved_searches as saved_searches_router
+from .api import watchlist as watchlist_router
+from .api import notifications as notifications_router
 from .models import contracts # This import is crucial for Base.metadata to find the tables.
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 # Configure basic logging for early startup messages
 # This will be enhanced with structured logging in the lifespan function
@@ -54,6 +60,8 @@ async def lifespan(app: FastAPI):
         settings=settings,
     )
     add_aggregation_job(scheduler, aggregation_service, settings)
+    matcher_service = WatchlistMatcherService(settings=settings)
+    add_watchlist_matcher_job(scheduler, matcher_service, settings)
     scheduler.start()
     logging.info("Application startup complete with all services initialized.")
 
@@ -94,6 +102,35 @@ async def generic_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"detail": "An unexpected server error occurred."},
+    )
+
+
+def _json_safe(value):
+    """Coerce non-finite floats (inf/-inf/nan) to their string form, recursing through dict/list
+    containers, so a payload is renderable by Starlette's allow_nan=False JSON encoder."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Return the standard 422 body even when a rejected value is a non-finite float.
+
+    Pydantic echoes the offending input in every error entry. A client sending the JSON number
+    1e309 (which parses to inf) or a NaN token would otherwise crash Starlette's allow_nan=False
+    encoder while it renders the 422, surfacing a 500. Stringifying non-finite inputs keeps the
+    {"detail": [...]} shape valid JSON; behaviour is identical to FastAPI's default handler for
+    every finite input.
+    """
+    return JSONResponse(
+        status_code=422, content={"detail": _json_safe(jsonable_encoder(exc.errors()))}
     )
 
 # Add RequestID middleware for structured logging correlation
@@ -192,5 +229,9 @@ async def cache_test(rd: Optional[Redis] = Depends(get_cache)):
 app.include_router(contracts_router.router)
 app.include_router(auth_router.router)      # /auth/sso/login|callback|logout (bare, PROXY-1)
 app.include_router(auth_router.me_router)   # /me (bare)
+app.include_router(saved_searches_router.router)   # /me/saved-searches/* (bare, PROXY-1)
+app.include_router(watchlist_router.router)   # /me/watchlist-items (bare, PROXY-1)
+app.include_router(notifications_router.router)           # /me/notifications (bare, PROXY-1)
+app.include_router(notifications_router.settings_router)  # /me/notification-settings (bare)
 
 # Further application setup, routers, middleware, etc., will go here

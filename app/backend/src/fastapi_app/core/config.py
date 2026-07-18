@@ -57,6 +57,14 @@ class Settings(BaseSettings):
         description="For dev, limit the number of contracts processed. Set to None or 0 to disable.",
     )
 
+    # --- M3 account features ---
+    # Per-user soft caps (best-effort count-checks, design §3.5).
+    MAX_SAVED_SEARCHES_PER_USER: int = 100
+    MAX_WATCHLIST_ITEMS_PER_USER: int = 200
+    WATCHLIST_MATCH_INTERVAL_SECONDS: int = 900        # 15 min
+    WATCHLIST_MATCH_LOCK_TTL_SECONDS: int = 900
+    NOTIFICATION_RETENTION_DAYS: int = 90              # prune window (matcher §4.4 step 5)
+
     # Database + cache
     DATABASE_URL: str = Field(..., description="SQLAlchemy database connection string.")
     CACHE_URL: str = Field(..., description="Redis/Valkey cache connection string.")
