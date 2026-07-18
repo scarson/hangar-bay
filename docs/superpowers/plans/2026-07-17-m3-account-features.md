@@ -73,7 +73,7 @@ notes and commit messages.
 | 0 — Campaign branch setup | ✅ Shipped | `70e8d1a` | Baseline: backend 220 passed, frontend 12 files / 62 tests passed |
 | 1 — Backend foundations | ⬜ Not started | — | — |
 | 2 — F005 Saved Searches backend | ✅ Shipped | `c4c1dab` | CRUD + full HTTP/schema matrix; backend 257 passed |
-| 3 — F006 Watchlist backend | ⬜ Not started | — | — |
+| 3 — F006 Watchlist backend | ✅ Shipped | `bd3aa68` | ESIClient.resolve_names + watchlist CRUD add pipeline; backend 285 passed |
 | 4 — F007 Notifications backend + matcher | ⬜ Not started | — | — |
 | 5 — Codegen | ⬜ Not started | — | — |
 | 6 — Frontend F005 | ⬜ Not started | — | — |
@@ -1547,7 +1547,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 3 — F006 Watchlist backend (ESI resolution + watchlist CRUD)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `bd3aa68` on 2026-07-18
 
 Goal: `ESIClient.resolve_names`, the watchlist request/response schemas, `watchlist_service` (the design
 §4.5 add pipeline in binding order), `api/watchlist.py`, the `main.py` mount, the
@@ -1569,7 +1569,7 @@ Follow TDD: write failing test → implement → verify green.
   `resolve_ids_to_names`, ~line 288).
 - Test (Create): `app/backend/src/fastapi_app/tests/core/test_esi_client_resolve_names.py`.
 
-- [ ] **Step 1: Write the failing test module.** Create
+- [x] **Step 1: Write the failing test module.** Create
   `app/backend/src/fastapi_app/tests/core/test_esi_client_resolve_names.py`:
 
 ```python
@@ -1646,12 +1646,12 @@ async def test_resolve_names_non_json_body_raises(httpx_mock):
             await _client(http).resolve_names(["x"])
 ```
 
-- [ ] **Step 2: Run the test, confirm it fails.**
+- [x] **Step 2: Run the test, confirm it fails.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/core/test_esi_client_resolve_names.py -v`
   Expected failure: `AttributeError: 'ESIClient' object has no attribute 'resolve_names'` (collection
   passes; each test errors on the missing method).
 
-- [ ] **Step 3: Implement `resolve_names`.** In `core/esi_client_class.py`, add after
+- [x] **Step 3: Implement `resolve_names`.** In `core/esi_client_class.py`, add after
   `resolve_ids_to_names` (the file already imports `httpx` and `ESIRequestFailedError`):
 
 ```python
@@ -1686,11 +1686,11 @@ async def test_resolve_names_non_json_body_raises(httpx_mock):
         return data
 ```
 
-- [ ] **Step 4: Run the test, confirm green.**
+- [x] **Step 4: Run the test, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/core/test_esi_client_resolve_names.py -v`
   All 6 pass; output pristine.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   `git add app/backend/src/fastapi_app/core/esi_client_class.py app/backend/src/fastapi_app/tests/core/test_esi_client_resolve_names.py`
   ```
   feat(api): add ESIClient.resolve_names for exact ship-name resolution
@@ -1734,7 +1734,7 @@ with a deliberate same-name/distinct-type_id tiebreaker, never rely on insertion
 - Modify: `app/backend/src/fastapi_app/main.py` (import + mount `watchlist` router).
 - Test (Create): `app/backend/src/fastapi_app/tests/api/test_watchlist.py`.
 
-- [ ] **Step 1: Add the config field.** In `core/config.py`, append INTO the single
+- [x] **Step 1: Add the config field.** In `core/config.py`, append INTO the single
   `# --- M3 account features ---` block established in Task 2.2 (do NOT start a second M3 block) — add
   the field beside `MAX_SAVED_SEARCHES_PER_USER` (default present → no `_ENV_DEFAULTS` change needed):
 
@@ -1744,7 +1744,7 @@ with a deliberate same-name/distinct-type_id tiebreaker, never rely on insertion
 Also document it in `app/backend/.env.example` (ENV-4), under the same `# --- M3 account features ---`
 block: `MAX_WATCHLIST_ITEMS_PER_USER=200`.
 
-- [ ] **Step 2: Add the watchlist schemas.** Append to `schemas/account.py` (ensure imports at top of
+- [x] **Step 2: Add the watchlist schemas.** Append to `schemas/account.py` (ensure imports at top of
   the file include `from datetime import datetime`, `from typing import Optional`,
   `from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator`):
 
@@ -1791,7 +1791,7 @@ class WatchlistItemSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 ```
 
-- [ ] **Step 3: Write the failing test module.** Create
+- [x] **Step 3: Write the failing test module.** Create
   `app/backend/src/fastapi_app/tests/api/test_watchlist.py`. This is the full design-§6 matrix; it
   fails at import (`api.watchlist` / `services.watchlist_service` don't exist yet).
 
@@ -2066,12 +2066,12 @@ def test_openapi_watchlist_paths_bare_and_declared():
         assert "401" in paths[path][method]["responses"]
 ```
 
-- [ ] **Step 4: Run the test, confirm it fails.**
+- [x] **Step 4: Run the test, confirm it fails.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_watchlist.py -v`
   Expected failure: `ModuleNotFoundError: No module named 'fastapi_app.api.watchlist'` (import-time
   collection error).
 
-- [ ] **Step 5: Implement `watchlist_service.py`.** Create
+- [x] **Step 5: Implement `watchlist_service.py`.** Create
   `app/backend/src/fastapi_app/services/watchlist_service.py`:
 
 ```python
@@ -2223,7 +2223,7 @@ async def delete_watchlist_item(db: AsyncSession, user: User, item_id: int) -> N
     await db.flush()
 ```
 
-- [ ] **Step 6: Implement `api/watchlist.py`.** Create `app/backend/src/fastapi_app/api/watchlist.py`:
+- [x] **Step 6: Implement `api/watchlist.py`.** Create `app/backend/src/fastapi_app/api/watchlist.py`:
 
 ```python
 # ABOUTME: F006 watchlist router — /me/watchlist-items (bare-mounted, PROXY-1; auth-gated per user).
@@ -2304,7 +2304,7 @@ async def delete_watchlist_item(
     await watchlist_service.delete_watchlist_item(db, user, item_id)
 ```
 
-- [ ] **Step 7: Mount the router in `main.py`.** Add the import next to the other `from .api import …`
+- [x] **Step 7: Mount the router in `main.py`.** Add the import next to the other `from .api import …`
   lines (`main.py:25-26`): `from .api import watchlist as watchlist_router`. Add the mount after the
   saved-searches mount added by the earlier phase (near `main.py:192-194`):
 
@@ -2314,12 +2314,12 @@ app.include_router(watchlist_router.router)   # /me/watchlist-items (bare, PROXY
 **Shared-file note:** `main.py` is edited by the F005 section (saved-searches mount) and by Task 4.1
 (notifications mount) and Task 4.3 (matcher lifespan wiring). Add your line; never revert a sibling's.
 
-- [ ] **Step 8: Run the test, confirm green.**
+- [x] **Step 8: Run the test, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_watchlist.py -v`
   All pass. Then confirm the wider suite still passes and lint is clean:
   `cd app/backend && pdm run pytest -q && pdm run lint`
 
-- [ ] **Step 9: Commit.**
+- [x] **Step 9: Commit.**
   `git add app/backend/src/fastapi_app/schemas/account.py app/backend/src/fastapi_app/core/config.py app/backend/.env.example app/backend/src/fastapi_app/services/watchlist_service.py app/backend/src/fastapi_app/api/watchlist.py app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/api/test_watchlist.py`
   ```
   feat(api): add F006 watchlist CRUD with ESI add pipeline
