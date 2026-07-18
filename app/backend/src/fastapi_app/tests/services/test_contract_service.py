@@ -175,8 +175,26 @@ async def test_complex_query(db_session: AsyncSession, setup_contracts):
     assert result.items[0].contract_id == 101
 
 
-async def test_zero_results_returns_empty_page(db_session: AsyncSession, setup_contracts):
-    """No matching contracts short-circuits to an empty page that still echoes page/size."""
+async def test_zero_results_returns_empty_page(
+    db_session: AsyncSession, setup_contracts, monkeypatch
+):
+    """No matching contracts short-circuits to an empty page that still echoes page/size.
+
+    The short-circuit is pinned by the key event it emits, not by the response alone.
+    Deleting the early return would still yield an empty response through the normal
+    pagination path, so the response assertions cannot tell the two branches apart. The
+    early return's search_terms payload carries exactly four keys; the normal path's
+    carries eight, which is the difference this test locks.
+    """
+    events = []
+    real_log_key_event = contract_service.log_key_event
+
+    def recording_log_key_event(*args, **kwargs):
+        events.append(kwargs)
+        return real_log_key_event(*args, **kwargs)
+
+    monkeypatch.setattr(contract_service, "log_key_event", recording_log_key_event)
+
     filters = ContractFilters(search="no-such-ship-name-anywhere", page=1, size=10)
 
     result = await get_contracts(db_session, filters)
@@ -185,6 +203,15 @@ async def test_zero_results_returns_empty_page(db_session: AsyncSession, setup_c
     assert result.items == []
     assert result.page == 1
     assert result.size == 10
+
+    assert len(events) == 1
+    assert events[0]["event"] == "contract_search_executed"
+    assert events[0]["success"] is True
+    assert events[0]["results_count"] == 0
+    assert set(events[0]["search_terms"]) == {"search", "type_ids", "page", "size"}
+    assert events[0]["search_terms"]["search"] == "no-such-ship-name-anywhere"
+    assert events[0]["search_terms"]["page"] == 1
+    assert events[0]["search_terms"]["size"] == 10
 
 
 async def test_unmapped_sort_falls_back_to_date_issued(db_session: AsyncSession):
@@ -245,18 +272,33 @@ async def test_db_error_logs_failure_and_reraises(
 
     monkeypatch.setattr(contract_service, "log_key_event", recording_log_key_event)
 
+    boom_error = RuntimeError("simulated db failure")
+
     async def boom(*args, **kwargs):
-        raise RuntimeError("simulated db failure")
+        raise boom_error
 
     monkeypatch.setattr(db_session, "execute", boom)
 
     filters = ContractFilters(page=1, size=10)
-    with pytest.raises(RuntimeError, match="simulated db failure"):
+    with pytest.raises(RuntimeError, match="simulated db failure") as excinfo:
         await get_contracts(db_session, filters)
+
+    # The except block re-raises bare, so the ORIGINAL exception object propagates —
+    # not an equivalent instance wrapped around the same message.
+    assert excinfo.value is boom_error
 
     failure_events = [e for e in events if e.get("success") is False]
     assert len(failure_events) == 1
-    assert "simulated db failure" in failure_events[0]["error_message"]
+    assert failure_events[0]["event"] == "contract_search_executed"
+    assert failure_events[0]["error_message"] == "simulated db failure"
+    assert set(failure_events[0]["search_terms"]) == {
+        "search",
+        "type_ids",
+        "min_price",
+        "max_price",
+        "page",
+        "size",
+    }
 
 
 async def test_joined_pagination_tiebreaks_equal_sort_keys_by_contract_id(
