@@ -264,12 +264,37 @@ async def test_joined_pagination_tiebreaks_equal_sort_keys_by_contract_id(
 ):
     """Equal sort keys under the item join split deterministically on contract_id ASC.
 
-    SQLA-1 net: with the item join active (search filter) and EQUAL sort keys, pages must
-    split on the contract_id tiebreaker with no contract skipped or repeated across the
-    boundary (TEST-4).
+    SQLA-1 net: 930001 carries TWO matching items, so the joined row count (3) exceeds the
+    contract count (2). Every item shares one type_name, so the aggregate sort key ties and
+    930001's second row lands at offset 1 — paginating the joined rows directly repeats
+    930001 on page 2 and drops 930002 entirely. This is the assertion that bites: merging
+    the joined fetch path into the simple one turns page 2 into [930001]. The pages are
+    also asserted to partition the result set exactly, with no contract skipped or repeated
+    across the boundary (TEST-4).
+
+    Scope limit — what this test does NOT lock: the `Contract.contract_id.asc()` tiebreaker
+    on the joined path's id_query. At this fixture size Postgres feeds the final sort from a
+    GroupAggregate that is already sorted by contract_id, so tied keys emerge ascending
+    whether or not the tiebreaker is present and its removal is unobservable here. The
+    tiebreaker matters at scale, where a HashAggregate emits groups in arbitrary order; it
+    is covered behaviorally by test_pagination_sorted_by_ship_name_no_duplicates in
+    tests/api/test_contract_filters.py, whose larger row set does reach that plan.
     """
-    db_session.add_all([
-        Contract(
+    ship_name = "Tiebreakship"
+
+    def tiebreak_item(record_id: int, type_id: int) -> ContractItem:
+        return ContractItem(
+            record_id=record_id,
+            type_id=type_id,
+            type_name=ship_name,
+            quantity=1,
+            is_included=True,
+            is_singleton=False,
+            is_blueprint_copy=False,
+        )
+
+    def tiebreak_contract(contract_id: int, items: list[ContractItem]) -> Contract:
+        return Contract(
             contract_id=contract_id,
             title="Tiebreak Listing",
             price=500.0,
@@ -284,23 +309,19 @@ async def test_joined_pagination_tiebreaks_equal_sort_keys_by_contract_id(
             for_corporation=False,
             date_issued=datetime.now(timezone.utc),
             date_expired=datetime.now(timezone.utc) + timedelta(days=7),
-            items=[
-                ContractItem(
-                    record_id=record_id,
-                    type_id=587,
-                    type_name="Tiebreakship",
-                    quantity=1,
-                    is_included=True,
-                    is_singleton=False,
-                    is_blueprint_copy=False,
-                )
-            ],
+            items=items,
         )
-        for contract_id, record_id in ((930001, 9300011), (930002, 9300021))
+
+    db_session.add_all([
+        tiebreak_contract(930002, [tiebreak_item(9300021, 587)]),
+        tiebreak_contract(930001, [
+            tiebreak_item(9300011, 587),
+            tiebreak_item(9300012, 588),
+        ]),
     ])
     await db_session.flush()
 
-    filters_p1 = ContractFilters(search="tiebreakship", sort_by=SortableContractFields.price,
+    filters_p1 = ContractFilters(search=ship_name, sort_by=SortableContractFields.ship_name,
                                  sort_direction=SortDirection.asc, page=1, size=1)
     filters_p2 = filters_p1.model_copy(update={"page": 2})
 
@@ -310,3 +331,8 @@ async def test_joined_pagination_tiebreaks_equal_sort_keys_by_contract_id(
     assert page1.total == 2 and page2.total == 2
     assert [c.contract_id for c in page1.items] == [930001]
     assert [c.contract_id for c in page2.items] == [930002]
+
+    page1_ids = {c.contract_id for c in page1.items}
+    page2_ids = {c.contract_id for c in page2.items}
+    assert page1_ids | page2_ids == {930001, 930002}
+    assert page1_ids & page2_ids == set()
