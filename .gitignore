@@ -199,3 +199,9 @@ app/backend/pdm.toml
 
 # Git worktrees — see docs/git-strategy.md
 .claude/worktrees/
+
+# Beads issue-tracker local state (dolt server port, backups, machine config)
+.beads/
+
+# Machine-local skill symlinks into external skill packs
+.claude/skills/
