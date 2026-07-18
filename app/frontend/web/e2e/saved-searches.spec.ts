@@ -34,6 +34,23 @@ test.describe('saved searches', () => {
     expect(body.search_parameters).not.toHaveProperty('page')
   })
 
+  test('authed header nav exposes both account links and reaches saved searches', async ({ page }) => {
+    await interceptCurrentUser(page, makeCurrentUser())
+    await interceptNotifications(page, { unread: 0 })
+    await interceptContractList(page, pageOf(SEVEN_SHIPS))
+    await interceptSavedSearches(page, [makeSavedSearch({ name: 'Cheap frigates' })])
+    await stubPortraits(page)
+
+    await page.goto('/contracts')
+    const nav = page.getByRole('navigation', { name: /account/i })
+    await expect(nav.getByRole('link', { name: /saved searches/i })).toBeVisible()
+    await expect(nav.getByRole('link', { name: /watchlist/i })).toBeVisible()
+
+    await nav.getByRole('link', { name: /saved searches/i }).click()
+    await expect(page).toHaveURL(/\/saved-searches$/)
+    await expect(page.getByRole('heading', { level: 1, name: /saved searches/i })).toBeVisible()
+  })
+
   test('authed /saved-searches lists a saved search and applies it', async ({ page }) => {
     await interceptCurrentUser(page, makeCurrentUser())
     await interceptNotifications(page, { unread: 0 })

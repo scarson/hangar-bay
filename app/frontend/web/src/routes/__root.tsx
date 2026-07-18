@@ -1,4 +1,5 @@
 import { createRootRoute, Link, Outlet } from '@tanstack/react-router'
+import { AccountNav } from '../features/auth/components/AccountNav'
 import { HeaderIdentity } from '../features/auth/components/HeaderIdentity'
 import { SsoNotice } from '../features/auth/components/SsoNotice'
 
@@ -16,6 +17,7 @@ export const Route = createRootRoute({
           <span className="hidden text-meta text-ink-dim sm:inline">
             EVE Online ship contract market
           </span>
+          <AccountNav />
           <HeaderIdentity />
         </div>
         <SsoNotice />
