@@ -120,6 +120,7 @@ async def echo(full_path: str, request: Request):
         "body_len": len(body),
         "body_prefix": body[:100].decode(errors="replace"),
         "database_url_env": os.environ.get("DATABASE_URL", "")[:16],  # scheme prefix only, never creds
+        "render_git_commit": os.environ.get("RENDER_GIT_COMMIT", "MISSING"),  # P6: release-verification dependency
     })
 ```
 
@@ -139,7 +140,7 @@ COPY main.py .
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 ```
 
-- [ ] **Step 2: Deploy the spike** (free tier, Sam's Render account is NOT needed — a throwaway account on the free tier suffices; no payment method): push the scratch dir to a throwaway GitHub repo; create (a) a free Docker web service from it, (b) a free static site from any 2-file `index.html` + `404.html` scaffold in the same repo, with rewrite rules `Source /api/v1/*` → `Destination https://<spike-service>.onrender.com/*` (first) and `Source /*` → `Destination /index.html` (second), (c) a free Postgres attached to the web service via `fromDatabase` so `DATABASE_URL` is injected.
+- [ ] **Step 2: Deploy the spike** (free tier, Sam's Render account is NOT needed — a throwaway account on the free tier suffices; no payment method): push the scratch dir to a throwaway GitHub repo; create (a) a free Docker web service from it, (b) a free static site from a 3-file scaffold in the same repo — `index.html`, `404.html`, and `assets/app.abc123.js` (any content; exists so P4 can probe hashed-asset cache headers) — with rewrite rules `Source /api/v1/*` → `Destination https://<spike-service>.onrender.com/*` (first) and `Source /*` → `Destination /index.html` (second), (c) a free Postgres attached to the web service via `fromDatabase` so `DATABASE_URL` is injected.
 
 - [ ] **Step 3: Run the five probes** against the static-site origin and record raw outputs:
 
@@ -161,6 +162,11 @@ curl -s "https://<spike-site>.onrender.com/api/v1/anything" | jq .database_url_e
 curl -sI "https://<spike-site>.onrender.com/" | grep -iE 'strict-transport|cache-control|content-encoding|^HTTP'
 curl -sI "https://<spike-site>.onrender.com/assets/<any-hashed-file>" | grep -iE 'cache-control'
 # RECORD which of HSTS / index no-cache / assets immutable / compression Render provides by default
+
+# P6 — RENDER_GIT_COMMIT presence (release verification in deploy.yml and /ready's
+# "commit" field depend on it):
+curl -s "https://<spike-site>.onrender.com/api/v1/anything" | jq .render_git_commit
+# EXPECT: the spike repo's full head SHA, NOT "MISSING".
 
 # P5 — deploy pin + poll mechanism: create a Render API key on the spike account, then:
 curl -s -X POST -H "Authorization: Bearer $SPIKE_KEY" -H 'Content-Type: application/json' \
@@ -232,14 +238,15 @@ CMD ["sh", "-c", "uvicorn fastapi_app.main:app --host 0.0.0.0 --port ${PORT:-800
 ```bash
 cd app/backend
 docker build -t hb-api-test .
-docker run --rm -e ENVIRONMENT=production \
+docker run -d --name hb-api-smoke -e ENVIRONMENT=production \
   -e DATABASE_URL='postgresql+asyncpg://hangar:hangar@host.docker.internal:5432/hangar_bay' \
   -e CACHE_URL='redis://host.docker.internal:6379/0' \
   -e ESI_USER_AGENT='hangar-bay-docker-smoke (contact@example.com)' \
   -e AGGREGATION_REGION_IDS='[10000002]' \
-  -p 8001:8000 hb-api-test &
-sleep 5 && curl -sf http://localhost:8001/health   # EXPECT {"status":"ok"}
-docker logs (container) 2>&1 | grep "Skipping destructive"   # EXPECT the fail-closed skip line
+  -p 8001:8000 hb-api-test
+sleep 5 && curl -sf http://localhost:8001/health          # EXPECT {"status":"ok"}
+docker logs hb-api-smoke 2>&1 | grep "Skipping destructive"  # EXPECT the fail-closed skip line
+docker rm -f hb-api-smoke
 ```
 Note `AGGREGATION_REGION_IDS` is a JSON array string — ENV-1; a bare int crashes boot.
 
@@ -681,16 +688,21 @@ git commit -m "ci: add OpenAPI drift gate (export + regenerate + fail on dirty d
 
 **Execution Status:** ⏸ DEFERRED pending Sam's platform sign-off, billing, domain choice, and prod EVE app registration. See the design spec §11 (Blocked on Sam) — this phase IS that list, operationalized. The agent's role here is checklist support, not execution.
 
-**Sam's checklist** (order matters):
-1. Approve Render + billing (~$14–24/mo, spec §3.3) — or veto with a runner-up pick (spec §3.4 keeps Fly/VPS decidable without new recon).
-2. Register/choose the production domain; keep the registrar handy for DNS.
-3. Create the Render workspace; apply `render.yaml` via "New → Blueprint" pointed at the repo (after the Phase 1 PR merges to dev and a dev→main release PR publishes it — the blueprint reads from `main`).
-4. Add the custom domain to `hangar-bay-web`; set the registrar DNS records Render displays; wait for cert issuance.
-5. Dashboard-enter the `sync: false` secrets on `hangar-bay-api` (I-5 — dashboard only, never CLI/chat): `ESI_USER_AGENT` (real contact), `ESI_CLIENT_ID`/`ESI_CLIENT_SECRET` (step 7), `TOKEN_CIPHER_KEYS` (fresh: `python -c "import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"` — run locally, never reuse dev's), `METRICS_TOKEN` (fresh: `python -c "import secrets; print(secrets.token_urlsafe(32))"`), `ESI_SSO_CALLBACK_URL` = `https://<domain>/api/v1/auth/sso/callback`, `FRONTEND_ORIGIN` = `https://<domain>`.
-6. GitHub repo: add Actions secrets `RENDER_API_KEY` (Render API key), `RENDER_API_SERVICE_ID`, `RENDER_STATIC_SERVICE_ID` (service IDs from the dashboard URLs), and repo variable `PROD_ORIGIN` = `https://<domain>`.
-7. developers.eveonline.com: create the PRODUCTION application (separate from dev), callback `https://<domain>/api/v1/auth/sso/callback`, zero scopes; paste the client id/secret into step 5's dashboard fields.
+**SEQUENCING (load-bearing):** this phase is split. **2a needs nothing** and can happen any time. **2b MUST wait until the release PR carrying Phases 1 AND 3 has merged to `main`** — the blueprint reads from `main`, its `healthCheckPath: /ready` and pre-deploy `alembic upgrade head` are Phase 3 code, and applying the blueprint triggers an initial deploy: applied too early, that first deploy fails its own health check (no `/ready`) with an empty migration history. 2b is therefore executed as Phase 4 Step 0.
 
-- [ ] Agent step: when Sam reports completion, record date + any deviations here and flip the banner.
+**Sam's checklist — 2a (any time, no deploy dependency):**
+1. Approve Render + billing (~$14–24/mo, spec §3.3) — or veto with a runner-up pick (spec §3.4 keeps Fly/VPS decidable without new recon).
+2. Register/choose the production domain.
+3. developers.eveonline.com: create the PRODUCTION application (separate from dev), callback `https://<domain>/api/v1/auth/sso/callback`, zero scopes. Keep the client id/secret for 2b step 3 — in the EVE portal only, nowhere else yet.
+4. Create the Render workspace (no services yet) and a Render API key; GitHub repo: add Actions secrets `RENDER_API_KEY`, and repo variable `PROD_ORIGIN` = `https://<domain>`. (`RENDER_API_SERVICE_ID`/`RENDER_STATIC_SERVICE_ID` don't exist until 2b creates the services.)
+
+**Sam's checklist — 2b (= Phase 4 Step 0, AFTER Phases 1+3 are on `main`):**
+1. Apply `render.yaml` via "New → Blueprint" pointed at the repo (`main` branch).
+2. Add the custom domain to `hangar-bay-web`; set the registrar DNS records Render displays; wait for cert issuance.
+3. Dashboard-enter the `sync: false` secrets on `hangar-bay-api` (I-5 — dashboard only, never CLI/chat): `ESI_USER_AGENT` (real contact), `ESI_CLIENT_ID`/`ESI_CLIENT_SECRET` (from 2a step 3), `TOKEN_CIPHER_KEYS` (fresh: `python -c "import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"` — run locally, never reuse dev's), `METRICS_TOKEN` (fresh: `python -c "import secrets; print(secrets.token_urlsafe(32))"`), `ESI_SSO_CALLBACK_URL` = `https://<domain>/api/v1/auth/sso/callback`, `FRONTEND_ORIGIN` = `https://<domain>`.
+4. Add GitHub Actions secrets `RENDER_API_SERVICE_ID` / `RENDER_STATIC_SERVICE_ID` (service IDs from the dashboard URLs of the just-created services).
+
+- [ ] Agent step: when Sam reports 2a/2b completion, record dates + any deviations here and flip the banner.
 
 ---
 
@@ -991,7 +1003,7 @@ def test_sso_partial_config_fails_startup_in_production(...): # id set, secret e
 def test_sso_localhost_urls_fail_startup_in_production(...):  # id+secret+cipher set, callback contains localhost → RuntimeError naming ESI_SSO_CALLBACK_URL
 def test_sso_partial_config_only_warns_in_development(...):   # same partial config, ENVIRONMENT=development → warning, no raise
 ```
-Run → FAIL.
+Test mechanism: call `validate_sso_configuration()` DIRECTLY with monkeypatched settings values (`monkeypatch.setattr` on the settings singleton fields) — do NOT boot the app via TestClient for these; lifespan startup is exercised once by the existing boot tests. Run → FAIL.
 
 - [ ] **Step 2 (GREEN):** replace `warn_if_sso_unconfigured` with `validate_sso_configuration()` implementing: wholly-unconfigured (no client id AND cipher unconfigured) → `logger.warning` in every environment; in `production`, any of {client id set but secret empty, client id set but cipher unconfigured, `"localhost"` in `ESI_SSO_CALLBACK_URL` or `FRONTEND_ORIGIN` while client id set} → `raise RuntimeError("SSO misconfiguration: <named fields>")`; otherwise silent. Call site in `lifespan` unchanged. Run → PASS; full suite green.
 
@@ -1058,7 +1070,29 @@ def test_migrated_schema_matches_model_metadata(blank_migrated_sync_connection):
     diff = compare_metadata(ctx, Base.metadata)
     assert diff == [], f"schema drift between migrations and models: {diff}"
 ```
-Write the fixture following `conftest.py`'s existing DB-provisioning idioms (psycopg2 sync URL derived from `DATABASE_URL_TESTS` by swapping the driver). Run → PASS. Full suite green.
+The fixture uses the standard alembic-API pattern (env.py's `run_migrations_online` consumes the injected connection):
+```python
+@pytest.fixture(scope="session")
+def blank_migrated_sync_connection():
+    # Derive a sync psycopg2 URL for a throwaway DB from DATABASE_URL_TESTS
+    # (create/drop via conftest's existing DB-provisioning idioms).
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    sync_url = str(settings.DATABASE_URL_TESTS).replace("+asyncpg", "+psycopg2").replace("/hangar_bay_test", "/m4_equiv_check")
+    # ...create m4_equiv_check via autocommit connection to the postgres db (house idiom)...
+    engine = create_engine(sync_url)
+    with engine.connect() as conn:
+        cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+        cfg.attributes["connection"] = conn
+        command.upgrade(cfg, "head")
+        conn.commit()
+        yield conn
+    engine.dispose()
+    # ...drop m4_equiv_check...
+```
+Run → PASS. Full suite green.
 - [ ] **Step 5:** Run the same upgrade twice (idempotency: second run applies nothing) and `pdm run migrate-check` shows the baseline as current. Drop the scratch DBs. Commit `feat(db): generate the post-M3 baseline revision with a migration<->metadata equivalence guard`.
 
 ### Task 3.10: `live-smoke-prod` Playwright project
@@ -1099,9 +1133,10 @@ and change the `webServer` block to `webServer: process.env.E2E_PROD_BASE_URL ? 
 
 ## Phase 4 — First production deploy + live SSO verification (SAM-GATED exit)
 
-**Execution Status:** ⏸ DEFERRED pending Phases 1–3 shipped AND Phase 2 provisioning complete. Verify by this plan's own table.
+**Execution Status:** ⏸ DEFERRED pending Phases 1–3 shipped AND Phase 2a provisioning complete. Verify by this plan's own table.
 
-- [ ] **Step 1 (release):** open the dev→main publication PR per `docs/git-strategy.md` §Release branch; on merge, CI runs on `main` and `deploy.yml` fires via `workflow_run`. Watch it: backend deploy (pre-deploy runs `alembic upgrade head` → creates the full schema on the fresh DB), static deploy, release verification, smoke.
+- [ ] **Step 0 (release + provision):** open the dev→main publication PR per `docs/git-strategy.md` §Release branch carrying Phases 1+3. On merge, CI runs on `main`; `deploy.yml` fires but **fails at the deploy step** (no `RENDER_API_SERVICE_ID` yet) — expected, not an error to chase. Sam then executes **Phase 2b** (apply blueprint, domain/DNS, dashboard secrets, service-ID Actions secrets). The blueprint's initial deploy IS the first schema-creating deploy — watch pre-deploy run `alembic upgrade head` on the fresh DB.
+- [ ] **Step 1 (pipeline deploy):** re-run `deploy.yml` via `workflow_dispatch` with the released SHA to prove the full pipeline: backend deploy, static deploy, release verification, smoke.
 - [ ] **Step 2 (verify):** `curl -s https://<domain>/api/v1/ready | jq .` → `db: ok`, `cache: ok`, `commit` = released SHA; `data_stale: true` initially, flipping false after the first scheduler tick; contracts appear in the SPA. `curl -s -o /dev/null -w '%{http_code}' https://<domain>/metrics` → 401 (token required).
 - [ ] **Step 3 (Sam — the M4 exit criterion, spec §9.3):** on the production origin: login → EVE consent → callback → header shows character name → `/me` 200 → logout → 204/anonymous again; plus one denial path (`cancel` on the EVE consent screen → `?sso=denied`, no session). Report results in-session; the agent records them here with date.
 - [ ] **Step 4 (rollback drill — do it once while stakes are low):** `workflow_dispatch` deploy.yml with the previous good SHA; confirm `/ready`'s `commit` reverts. Record duration.
