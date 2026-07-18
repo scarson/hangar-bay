@@ -64,7 +64,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phase 0 shipped; Phase 1 next.
+**Overall:** Phases 0-5 shipped (backend + codegen complete); frontend phases next.
 
 **Baseline (Phase 0, captured against `origin/dev` tip `27dac66`):** backend `pdm run pytest -q` → `220 passed`; frontend `npx vitest run --reporter=dot` → `Test Files 12 passed (12)`, `Tests 62 passed (62)`. Phase 1/2 backend work must never drop the pytest count below 220.
 
