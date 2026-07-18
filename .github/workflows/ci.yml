@@ -74,6 +74,8 @@ jobs:
         run: PGPASSWORD=hangar psql -h localhost -U hangar -d hangar_bay -c 'CREATE DATABASE hangar_bay_test;'
       - name: Install backend deps
         run: pdm install -G dev
+      - name: Lint
+        run: pdm run lint
       - name: Run backend tests
         run: pdm run pytest
 

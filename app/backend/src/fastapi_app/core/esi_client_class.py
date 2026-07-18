@@ -80,7 +80,7 @@ class ESIClient:
         if self._managed_redis_client:
             await self._managed_redis_client.close()
 
-    async def get_esi_data_with_etag_caching(
+    async def get_esi_data_with_etag_caching(  # noqa: C901
         self, path: str, all_pages: bool = False, ignore_404: bool = False
     ) -> List[Dict[str, Any]]:
         """
@@ -131,7 +131,7 @@ class ESIClient:
             if response.status_code == 204:
                 logger.debug(f"Received 204 for {paginated_path}, treating as end of pages.")
                 break
-            
+
             page_data = []
             if response.status_code == 304:
                 logger.debug(f"ETag cache hit for {paginated_path}. Serving data from cache.")
@@ -167,10 +167,10 @@ class ESIClient:
 
             if not all_pages:
                 break
-            
+
             if not page_data:
                 break
-            
+
             total_pages_header = response.headers.get("X-Pages")
             if total_pages_header and page >= int(total_pages_header):
                 break
@@ -189,7 +189,7 @@ class ESIClient:
         path = f"/v1/contracts/public/items/{contract_id}/"
         return await self.get_esi_data_with_etag_caching(path)
 
-    async def _get_esi_object(self, path: str, cache_seconds: int = 86_400) -> dict[str, Any]:
+    async def _get_esi_object(self, path: str, cache_seconds: int = 86_400) -> dict[str, Any]:  # noqa: C901
         """GET a single-OBJECT ESI endpoint with a plain Valkey TTL cache.
 
         The paginated ETag helper is list-shaped: `full_data.extend(page)`
@@ -270,7 +270,6 @@ class ESIClient:
         """Resolves a list of EVE Online IDs to their names."""
         if not ids:
             return {}
-
 
         resolved_names = {}
         unique_ids = sorted(list(set(ids)))

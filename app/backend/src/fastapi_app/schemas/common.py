@@ -4,6 +4,7 @@ from typing import Generic, TypeVar, List
 
 T = TypeVar('T')
 
+
 class PaginatedResponse(BaseModel, Generic[T]):
     total: int = Field(..., description="Total number of items")
     page: int = Field(..., description="Current page number")

@@ -6,10 +6,6 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from ..core.logging import get_logger, log_key_event
-
-# Initialize logger for this module
-logger = get_logger(__name__)
-
 from ..models.contracts import Contract, ContractItem
 from ..schemas.common import PaginatedResponse
 from ..schemas.contracts import (
@@ -18,6 +14,9 @@ from ..schemas.contracts import (
     ContractSchema,
     SortableContractFields,
 )
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 # This SORT_MAP is a critical security feature. It prevents arbitrary column sorting
 # by mapping API-facing sort keys to the actual, safe SQLAlchemy model columns.
@@ -32,7 +31,7 @@ SORT_MAP = {
 }
 
 
-async def get_contracts(
+async def get_contracts(  # noqa: C901
     db: AsyncSession, filters: ContractFilters
 ) -> PaginatedResponse[ContractSchema]:
     """
@@ -44,7 +43,7 @@ async def get_contracts(
     when one-to-many relationships are involved.
     """
     start_time = time.time()
-    
+
     # Log the start of the contract search operation
     logger.info(
         "Starting contract search",
@@ -59,7 +58,7 @@ async def get_contracts(
             "sort_direction": filters.sort_direction.value if filters.sort_direction else None,
         }
     )
-    
+
     try:
         # Start with the base query for the Contract model.
         query = select(Contract)
@@ -134,7 +133,7 @@ async def get_contracts(
         # This is crucial because the join can create duplicate contract rows.
         count_subquery = select(query.subquery().c.contract_id).distinct().subquery()
         count_query = select(func.count()).select_from(count_subquery)
-        
+
         total_result = await db.execute(count_query)
         total = total_result.scalar_one()
 
@@ -208,14 +207,14 @@ async def get_contracts(
 
         # Calculate duration and log successful completion
         duration_ms = (time.time() - start_time) * 1000
-        
+
         response = PaginatedResponse(
             total=total,
             page=filters.page,
             size=filters.size,
             items=[ContractSchema.model_validate(c) for c in contracts],
         )
-        
+
         # Log successful contract search with key event schema
         log_key_event(
             logger=logger,
@@ -234,13 +233,13 @@ async def get_contracts(
                 "sort_direction": filters.sort_direction.value if filters.sort_direction else None,
             }
         )
-        
+
         return response
-        
+
     except Exception as e:
         # Calculate duration and log failure
         duration_ms = (time.time() - start_time) * 1000
-        
+
         log_key_event(
             logger=logger,
             event="contract_search_executed",
@@ -256,6 +255,6 @@ async def get_contracts(
                 "size": filters.size,
             }
         )
-        
+
         # Re-raise the exception to maintain existing error handling behavior
         raise
