@@ -63,7 +63,7 @@ notes and commit messages.
 |---|---|---|---|
 | 0 — Render verification spike | ⬜ Not started | — | free tier, no billing |
 | 1 — Collision-free implementation | ⬜ Not started | — | may run before/parallel to M3 merge |
-| 2 — Platform provisioning | ⬜ Not started | — | **Sam-gated** (billing, domain, EVE portal) |
+| 2 — Platform provisioning | ⬜ Not started | — | **Sam-gated**; split: 2a (billing/domain/EVE portal — any time), 2b (blueprint+secrets — runs as Phase 4 Step 0) |
 | 3 — Post-M3 backend/frontend work | ⬜ Not started | — | **gated on M3 merge to dev** |
 | 4 — First deploy + live SSO | ⬜ Not started | — | **Sam-gated exit criterion** |
 
@@ -1096,7 +1096,7 @@ def test_sso_partial_config_only_warns_in_development(...):   # same partial con
 
 Test mechanism: call `validate_sso_configuration()` DIRECTLY with monkeypatched settings values (`monkeypatch.setattr` on the settings singleton fields). PLUS one lifespan-wiring test proving startup actually invokes it (the rename must not silently orphan the call site): monkeypatch a production+partial settings combination AND patch the lifespan's external initializers (`init_cache`, `init_http_client`, `create_scheduler` — patch at their `fastapi_app.main` import sites), then assert `with pytest.raises(RuntimeError): async with app.router.lifespan_context(app): pass`. Run → FAIL.
 
-- [ ] **Step 2 (GREEN):** replace `warn_if_sso_unconfigured` with `validate_sso_configuration()` implementing: wholly-unconfigured (no client id AND cipher unconfigured) → `logger.warning` in every environment; in `production`, any of {client id set but secret empty, client id set but cipher unconfigured, `"localhost"` in `ESI_SSO_CALLBACK_URL` or `FRONTEND_ORIGIN` while client id set} → `raise RuntimeError("SSO misconfiguration: <named fields>")`; otherwise silent. Call site in `lifespan` unchanged. Run → PASS; full suite green.
+- [ ] **Step 2 (GREEN):** replace `warn_if_sso_unconfigured` with `validate_sso_configuration()` implementing exactly the Step-1 matrix: the trio is `{ESI_CLIENT_ID, ESI_CLIENT_SECRET, TOKEN_CIPHER_KEYS}` (cipher via `is_token_cipher_configured()`); ALL empty → `logger.warning` in every environment, continue; in `production`, ANY non-empty proper subset of the trio → `raise RuntimeError("SSO misconfiguration: missing <named empty fields>")`, and (also production) any of the trio set while `"localhost"` appears in `ESI_SSO_CALLBACK_URL` or `FRONTEND_ORIGIN` → `raise RuntimeError` naming the URL field; outside production, those same states log a warning and continue; full-trio-plus-real-URLs → silent. Call site in `lifespan` unchanged. Run → PASS; full suite green.
 
 - [ ] **Step 3:** Commit `feat(api): fail fast on partial or localhost SSO configuration in production`.
 
