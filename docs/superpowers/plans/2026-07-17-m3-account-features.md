@@ -64,7 +64,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phases 0-9 shipped (backend + codegen complete; frontend F005 Saved Searches + F006 Watchlists + F007 Alerts/Notifications done; E2E fixture lane done); docs + PR next.
+**Overall:** All phases (0-10) shipped. Backend + codegen complete; frontend F005 Saved Searches + F006 Watchlists + F007 Alerts/Notifications done; E2E fixture lane done; docs (pitfalls SQLA-2/TEST-11, README, feature-index, per-feature deviation notes) done; all local gates green. PR #46 is OPEN to `dev` and awaits Sam's review/merge — the plan ends here (do NOT merge).
 
 **Baseline (Phase 0, captured against `origin/dev` tip `27dac66`):** backend `pdm run pytest -q` → `220 passed`; frontend `npx vitest run --reporter=dot` → `Test Files 12 passed (12)`, `Tests 62 passed (62)`. Phase 1/2 backend work must never drop the pytest count below 220.
 
@@ -80,7 +80,9 @@ notes and commit messages.
 | 7 — Frontend F006 | ✅ Shipped | `6a0450b` | `/watchlist` route + page (add-by-name, inline edit, clear-to-null, two-step Remove) + `WatchButton`; frontend 21 files / 109 tests passed |
 | 8 — Frontend F007 | ✅ Shipped | `fdf5f9f` | `/notifications` route + page (paginated list, mark-read-on-click, mark-all-read, watchlist-alerts settings toggle) + `NotificationBell` in the header + notifications hooks; frontend 26 files / 135 tests passed |
 | 9 — E2E | ✅ Shipped | `05a8800` | account fixtures + intercept helpers; saved-searches/watchlist/notifications specs — 18 passed (desktop+mobile) |
-| 10 — Docs, gates, PR | ⬜ Not started | — | — |
+| 10 — Docs, gates, PR | ✅ Shipped | `46e6f5a`, `70592e8` | pitfalls SQLA-2 + TEST-11; README/feature-index/F005-F007 deviation notes; gates all green; PR #46 opened to `dev` (unmerged) |
+
+**PR:** [#46 — feat: M3 account features](https://github.com/scarson/hangar-bay/pull/46) → base `dev`, head `claude/m3-account-features`, state **OPEN** (Review — database schema + per-user data authorization; **Sam merges**, `/codex review` to be recorded before merge).
 
 ### Deviations
 - Task 8.2: typed-Link/route-registration ordering defect — `/notifications` route stub folded into 8.2 (commit `25621f5`) so `tsc` gates; 8.3 replaces the stub. Plan reviewers missed the TanStack typed-route compile-order constraint.
@@ -6839,7 +6841,7 @@ Push: `git push`.
 
 ## Phase 10 — Docs, gates, and PR
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `70592e8` on 2026-07-18 — pitfalls SQLA-2/TEST-11 + README/feature-index/spec deviation notes; all gates green (backend 320, vitest 135, e2e 90 pass / 7 skip, eslint + tsc clean). PR #46 to `dev` OPEN, awaiting Sam's review/merge (Review — schema + per-user authz).
 
 Delivers: two new pitfall entries with full completeness-checklist maintenance; README + feature-index + per-feature deviation notes; the full local gate run; and the (unmerged) PR to `dev`.
 
@@ -6858,7 +6860,7 @@ This task edits Markdown only (no production code / no test suite). TDD does not
 - Modify: `docs/pitfalls/implementation-pitfalls.md`
 - Modify: `docs/pitfalls/testing-pitfalls.md`
 
-- [ ] **Step 1: Add `SQLA-2` to implementation-pitfalls.md §Section 2 (Data & Persistence).** Insert after the SQLA-1 entry (before the `### §2.C — Review Checklist` heading). Follows the house `Flaw → Why It Matters → Fix → Where It Bit Us` shape; the "Where It Bit Us" is written pre-emptively (the design mandated the fix, so this documents the trap the matcher's write path would hit without it):
+- [x] **Step 1: Add `SQLA-2` to implementation-pitfalls.md §Section 2 (Data & Persistence).** Insert after the SQLA-1 entry (before the `### §2.C — Review Checklist` heading). Follows the house `Flaw → Why It Matters → Fix → Where It Bit Us` shape; the "Where It Bit Us" is written pre-emptively (the design mandated the fix, so this documents the trap the matcher's write path would hit without it):
 
 ```markdown
 ### SQLA-2: `ON CONFLICT` against a partial unique index must restate the index predicate
@@ -6872,27 +6874,27 @@ This task edits Markdown only (no production code / no test suite). TDD does not
 **Where It Bit Us:** Pre-empted in the M3 watchlist-matcher design (`docs/superpowers/specs/2026-07-17-m3-account-features-design.md` §4.4); the partial index `uq_notifications_watchlist_dedup` on `(user_id, contract_id, watch_type_id) WHERE type='watchlist_match'` requires the `index_where` restatement or the matcher's core insert raises on every run. See testing-pitfalls.md TEST-11.
 ```
 
-- [ ] **Step 2: Add the SQLA-2 review-checklist item.** Under `### §2.C — Review Checklist`, add a second bullet after the SQLA-1 item:
+- [x] **Step 2: Add the SQLA-2 review-checklist item.** Under `### §2.C — Review Checklist`, add a second bullet after the SQLA-1 item:
 
 ```markdown
 - [ ] **`ON CONFLICT` against a partial unique index restates the index predicate** — `index_where=` matches the index's `WHERE`, and every indexed column is non-NULL on insert (Postgres NULLs never conflict) (SQLA-2)
 ```
 
-- [ ] **Step 3: Update the TOC and Appendix B for SQLA-2.** In the Table of Contents row for section 2, change the Entries cell `SQLA-1` → `SQLA-1, SQLA-2`. In Appendix B (Unified Summary Table), add a row after the SQLA-1 row:
+- [x] **Step 3: Update the TOC and Appendix B for SQLA-2.** In the Table of Contents row for section 2, change the Entries cell `SQLA-1` → `SQLA-1, SQLA-2`. In Appendix B (Unified Summary Table), add a row after the SQLA-1 row:
 
 ```markdown
 | SQLA-2 | ON CONFLICT vs a partial unique index needs index_where | HIGH | VALIDATED | Data & Persistence |
 ```
 
-- [ ] **Step 4: Run the Appendix C completeness checklist for SQLA-2.** Confirm all of: entry added to the domain section ✓; review-checklist item added (§2.C) ✓; TOC entry list updated ✓; Appendix B row added ✓; cross-reference to testing-pitfalls TEST-11 present ✓. (These four+one are exactly the "Completeness Checklist" in Appendix C.)
+- [x] **Step 4: Run the Appendix C completeness checklist for SQLA-2.** Confirm all of: entry added to the domain section ✓; review-checklist item added (§2.C) ✓; TOC entry list updated ✓; Appendix B row added ✓; cross-reference to testing-pitfalls TEST-11 present ✓. (These four+one are exactly the "Completeness Checklist" in Appendix C.)
 
-- [ ] **Step 5: Add `TEST-11` to testing-pitfalls.md §8.** Append after the TEST-10 entry (before the `## How to Add a Testing-Pitfall` heading):
+- [x] **Step 5: Add `TEST-11` to testing-pitfalls.md §8.** Append after the TEST-10 entry (before the `## How to Add a Testing-Pitfall` heading):
 
 ```markdown
 - [ ] **🔥 TEST-11 — Writer-side bulk inserts need a test that crosses one chunk boundary.** A bulk insert split into fixed-size chunks (asyncpg caps a statement at 32767 bind params, so the matcher inserts ≤1000 rows/statement) has an off-by-one or last-chunk-dropped bug that is invisible to any test whose match set fits in a single chunk. **Do instead:** arrange a match set strictly larger than one insert chunk (e.g. > `NOTIFICATION_INSERT_CHUNK` rows) and assert every row lands — `created == len(match_set)` and the union of inserted dedup keys equals the expected set. **Bit us:** pre-empted in the M3 watchlist matcher (`services/watchlist_matcher.py`, `NOTIFICATION_INSERT_CHUNK=1000`); pairs with implementation-pitfalls SQLA-2 (the chunked insert is the same statement that carries the partial-index ON CONFLICT). Relates to §4 Bounded growth.
 ```
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
   `git add docs/pitfalls/implementation-pitfalls.md docs/pitfalls/testing-pitfalls.md`
   ```
   docs(pitfalls): add SQLA-2 (partial-index ON CONFLICT) and TEST-11 (chunk-boundary insert)
@@ -6923,13 +6925,13 @@ Docs only; TDD N/A. First **read** each file to match its existing structure bef
 - Modify: `design/features/feature-index.md` (F005/F006/F007 status cells)
 - Modify: `design/features/F005-Saved-Searches.md`, `design/features/F006-Watchlists.md`, `design/features/F007-Alerts-Notifications.md` (append a deviations note each)
 
-- [ ] **Step 1: Read the three target docs' current shape.** `cat README.md | sed -n '1,120p'` to find the implementation-status block; open `design/features/feature-index.md` and the three feature specs to see their status conventions and where a note belongs.
+- [x] **Step 1: Read the three target docs' current shape.** `cat README.md | sed -n '1,120p'` to find the implementation-status block; open `design/features/feature-index.md` and the three feature specs to see their status conventions and where a note belongs.
 
-- [ ] **Step 2: Update `README.md` Implementation Status.** Mark F005 Saved Searches, F006 Watchlists, and F007 Alerts/Notifications as implemented (zero-scope, this milestone), matching the surrounding table/list style. Reference the design spec path `docs/superpowers/specs/2026-07-17-m3-account-features-design.md` for the scope framing (self-identifying cross-reference: it is the authoritative M3 design).
+- [x] **Step 2: Update `README.md` Implementation Status.** Mark F005 Saved Searches, F006 Watchlists, and F007 Alerts/Notifications as implemented (zero-scope, this milestone), matching the surrounding table/list style. Reference the design spec path `docs/superpowers/specs/2026-07-17-m3-account-features-design.md` for the scope framing (self-identifying cross-reference: it is the authoritative M3 design).
 
-- [ ] **Step 3: Update `design/features/feature-index.md`.** Set the F005/F006/F007 status cells to "Implemented with deviations" (or the index's equivalent term), each linking the design spec.
+- [x] **Step 3: Update `design/features/feature-index.md`.** Set the F005/F006/F007 status cells to "Implemented with deviations" (or the index's equivalent term), each linking the design spec.
 
-- [ ] **Step 4: Append an "Implemented with deviations (M3)" note to each feature spec.** Each note lists the recorded §8 deviations relevant to that feature and links the design spec `docs/superpowers/specs/2026-07-17-m3-account-features-design.md`. COMPLETE note bodies:
+- [x] **Step 4: Append an "Implemented with deviations (M3)" note to each feature spec.** Each note lists the recorded §8 deviations relevant to that feature and links the design spec `docs/superpowers/specs/2026-07-17-m3-account-features-design.md`. COMPLETE note bodies:
 
   For `F005-Saved-Searches.md`:
 ```markdown
@@ -6967,7 +6969,7 @@ Implemented zero-scope per [the M3 design spec](../../docs/superpowers/specs/202
 
 Confirm the relative link depth (`../../docs/...`) matches `design/features/` → repo root when editing; adjust to the real relative path if the feature specs live at a different depth.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   `git add README.md design/features/feature-index.md design/features/F005-Saved-Searches.md design/features/F006-Watchlists.md design/features/F007-Alerts-Notifications.md`
   ```
   docs: mark F005/F006/F007 implemented with recorded M3 deviations
@@ -6993,21 +6995,21 @@ Follow TDD: write failing test → implement → verify green.
 
 No new code; this task runs the gates and opens the PR. Invoke `superpowers:verification-before-completion` before claiming green.
 
-- [ ] **Step 1: Backend gate — pytest.** From the campaign worktree: `docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.dependencies.yml up -d --wait postgres_db valkey_cache`, then `cd app/backend && pdm run pytest -q`. Expected: all pass, output pristine (TEST §1 — no stray errors/warnings). Record the pass count.
+- [x] **Step 1: Backend gate — pytest.** From the campaign worktree: `docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.dependencies.yml up -d --wait postgres_db valkey_cache`, then `cd app/backend && pdm run pytest -q`. Expected: all pass, output pristine (TEST §1 — no stray errors/warnings). Record the pass count.
 
-- [ ] **Step 2: Frontend lint.** `cd app/frontend/web && npx eslint .`. Expected: no errors.
+- [x] **Step 2: Frontend lint.** `cd app/frontend/web && npx eslint .`. Expected: no errors.
 
-- [ ] **Step 3: Frontend typecheck.** `cd app/frontend/web && npx tsc -b`. Expected: clean.
+- [x] **Step 3: Frontend typecheck.** `cd app/frontend/web && npx tsc -b`. Expected: clean.
 
-- [ ] **Step 4: Frontend unit/component suite.** `cd app/frontend/web && npm run test`. Expected: all pass (this is `vitest run`, which excludes `e2e/**` per TEST-6). Record the pass count.
+- [x] **Step 4: Frontend unit/component suite.** `cd app/frontend/web && npm run test`. Expected: all pass (this is `vitest run`, which excludes `e2e/**` per TEST-6). Record the pass count.
 
-- [ ] **Step 5: E2E fixture lane — desktop + mobile.** `cd app/frontend/web && npm run e2e` (runs the desktop + mobile projects; live-smoke auto-skips). Expected: all pass, `retries` at 0. If any spec flakes, fix with deterministic synchronization (TEST-2), never a retry bump. Record the pass count per project.
+- [x] **Step 5: E2E fixture lane — desktop + mobile.** `cd app/frontend/web && npm run e2e` (runs the desktop + mobile projects; live-smoke auto-skips). Expected: all pass, `retries` at 0. If any spec flakes, fix with deterministic synchronization (TEST-2), never a retry bump. Record the pass count per project.
 
-- [ ] **Step 6: Confirm the codegen artifacts are committed and current.** `git status --porcelain app/frontend/web/openapi.json app/frontend/web/src/lib/api/schema.d.ts app/frontend/web/src/routeTree.gen.ts` — expected: clean (no uncommitted regen diff). If `routeTree.gen.ts` shows a diff, commit it — subject `chore(web): regenerate route tree`, ending with the `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` trailer like every other commit. The backend-schema codegen (`openapi.json` + `schema.d.ts`) was committed in the backend phases; if a diff appears, STOP and raise — a late schema change means the client is stale.
+- [x] **Step 6: Confirm the codegen artifacts are committed and current.** `git status --porcelain app/frontend/web/openapi.json app/frontend/web/src/lib/api/schema.d.ts app/frontend/web/src/routeTree.gen.ts` — expected: clean (no uncommitted regen diff). If `routeTree.gen.ts` shows a diff, commit it — subject `chore(web): regenerate route tree`, ending with the `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` trailer like every other commit. The backend-schema codegen (`openapi.json` + `schema.d.ts`) was committed in the backend phases; if a diff appears, STOP and raise — a late schema change means the client is stale.
 
-- [ ] **Step 7: Push the branch.** `git push` (branch already tracks `origin/claude/m3-account-features` from Phase 6).
+- [x] **Step 7: Push the branch.** `git push` (branch already tracks `origin/claude/m3-account-features` from Phase 6).
 
-- [ ] **Step 8: Open the PR to `dev` (do NOT merge).** `gh pr create --base dev --head claude/m3-account-features --title "feat: M3 account features (F005 saved searches, F006 watchlists, F007 notifications)" --body "<body below>"`. Fill the test-evidence placeholders with the REAL numbers recorded in Steps 1/4/5. COMPLETE body template:
+- [x] **Step 8: Open the PR to `dev` (do NOT merge).** `gh pr create --base dev --head claude/m3-account-features --title "feat: M3 account features (F005 saved searches, F006 watchlists, F007 notifications)" --body "<body below>"`. Fill the test-evidence placeholders with the REAL numbers recorded in Steps 1/4/5. COMPLETE body template:
 
 ```markdown
 ## Summary
@@ -7037,7 +7039,7 @@ Recorded in design §8 and each feature spec's "Implemented with deviations" not
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-- [ ] **Step 9: Confirm the PR is open and unmerged.** `gh pr view --json state,mergeStateStatus` — expected `state: OPEN`. **The plan ends here — do NOT merge.** Report the PR URL and the recorded gate numbers to Sam.
+- [x] **Step 9: Confirm the PR is open and unmerged.** `gh pr view --json state,mergeStateStatus` — expected `state: OPEN`. **The plan ends here — do NOT merge.** Report the PR URL and the recorded gate numbers to Sam.
 
 ```
 BEFORE marking this task complete:
