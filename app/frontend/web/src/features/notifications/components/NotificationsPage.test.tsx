@@ -97,6 +97,37 @@ describe('NotificationsPage', () => {
     expect(JSON.parse(put.body!)).toEqual({ watchlist_alerts_enabled: false })
   })
 
+  it('shows the empty state only when the list is genuinely empty (total 0)', async () => {
+    const handle = notificationsHandler([])
+    stubFetch((url) => (/\/api\/v1\/me$/.test(url) ? jsonResponse(AUTHED) : (handle(url) ?? jsonResponse({}, 404))))
+    renderApp('/notifications')
+    expect(await screen.findByText(/no notifications yet/i)).toBeInTheDocument()
+  })
+
+  it('clamps to the last valid page when the current page is pruned to empty (not the empty state)', async () => {
+    // Page 1 has a full page + a Next (total 40); page 2 comes back pruned to empty with total 20
+    // (retention deleted its rows). The page must clamp back to the last valid page and render it,
+    // never the "No notifications yet" card — that is reserved for total === 0 (finding 7).
+    const page1 = Array.from({ length: 20 }, (_, i) => N({ id: i + 1, message: `Alert ${i + 1}`, contract_id: null }))
+    stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notification-settings/.test(url)) return jsonResponse({ watchlist_alerts_enabled: true })
+      if (/is_read=false&size=1/.test(url) || /size=1&is_read=false/.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/notifications\//.test(url)) {
+        const u = new URL(url)
+        const page = Number(u.searchParams.get('page') ?? '1')
+        if (page === 2) return jsonResponse({ total: 20, page: 2, size: 20, items: [] })
+        return jsonResponse({ total: 40, page: 1, size: 20, items: page1 })
+      }
+      return jsonResponse({}, 404)
+    })
+    renderApp('/notifications')
+    await screen.findByText('Alert 1')
+    await userEvent.click(screen.getByRole('button', { name: /next/i }))
+    await waitFor(() => expect(screen.getByText('Alert 1')).toBeInTheDocument())
+    expect(screen.queryByText(/no notifications yet/i)).not.toBeInTheDocument()
+  })
+
   it('disables the watchlist-alerts toggle until settings load (no PUT before load)', async () => {
     const calls: Call[] = []
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {

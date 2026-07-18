@@ -41,6 +41,22 @@ function NotificationsBody() {
   const { data, isPending, isError } = useNotifications({ page, size: PAGE_SIZE })
   const markAll = useMarkAllRead()
 
+  // Retention pruning can strand the current page past the end: the backend echoes {total>0,
+  // items:[]}. Clamp back to the last valid page instead of rendering the "No notifications yet"
+  // card (reserved for a genuinely empty list, total===0). Same clamp as ContractsPage; page lives
+  // in local state here, so adjust it during render (React's blessed "reset state when data
+  // changes" pattern) — the guard makes it converge in one extra render, no cascading loop.
+  const pageCount = data ? Math.max(1, Math.ceil(data.total / (data.size ?? PAGE_SIZE))) : 1
+  const pageOutOfRange = data !== undefined && data.total > 0 && page > pageCount
+  if (pageOutOfRange) setPage(pageCount)
+
+  const loadingSkeleton = (
+    <div role="status" aria-label="Loading notifications" className="mt-4">
+      <span className="skeleton block h-16 w-full" />
+      <span className="sr-only">Loading notifications…</span>
+    </div>
+  )
+
   return (
     <div className="mx-auto max-w-3xl">
       <p className="sr-only" role="status" aria-live="polite" />
@@ -54,15 +70,15 @@ function NotificationsBody() {
       <SettingsToggle />
 
       {isPending ? (
-        <div role="status" aria-label="Loading notifications" className="mt-4">
-          <span className="skeleton block h-16 w-full" />
-          <span className="sr-only">Loading notifications…</span>
-        </div>
+        loadingSkeleton
       ) : isError ? (
         <div role="alert" className="mt-4 rounded-md border border-danger/40 bg-danger-wash px-4 py-4 text-sm text-ink">
           Couldn’t load your notifications. Reload the page to try again.
         </div>
-      ) : data.items.length === 0 ? (
+      ) : pageOutOfRange ? (
+        // Transient: the effect above is clamping to the last valid page.
+        loadingSkeleton
+      ) : data.total === 0 ? (
         <div className="mt-4 rounded-md border border-line bg-surface px-5 py-8">
           <h2 className="text-base font-medium text-ink">No notifications yet</h2>
           <p className="mt-1 max-w-[52ch] text-sm text-ink-dim">
