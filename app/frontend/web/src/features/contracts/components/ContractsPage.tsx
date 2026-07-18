@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Button } from '../../../components/Button'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
 import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
+import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'
 import { useContracts } from '../hooks/useContracts'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
 import { FilterRail } from './FilterRail'
@@ -113,6 +114,7 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
               {data.total.toLocaleString('en-US')} matching
             </p>
           ) : null}
+          <SaveSearchControl search={search} />
         </div>
 
         {isPending ? (
