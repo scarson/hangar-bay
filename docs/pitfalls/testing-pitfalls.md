@@ -123,6 +123,8 @@ Disciplines discovered in *this* project's own history. Each is marked **🔥** 
 
 - [ ] **🔥 TEST-10 — `ASGITransport` does not run lifespan; wire `app.state` manually in the fixture.** `httpx.ASGITransport` bypasses the app's lifespan startup, so any app-state set up in a `lifespan` handler (`app.state.redis`, `app.state.http_client`) is never populated for tests built on it. **Do instead:** the `auth_client` test fixture sets `app.state.redis` / `app.state.http_client` by hand, and depends on `httpx_mock` structurally so no auth test can reach the network. **Bit us:** M2 Phase 6 auth API route tests (2026-07-12).
 
+- [ ] **🔥 TEST-11 — Writer-side bulk inserts need a test that crosses one chunk boundary.** A bulk insert split into fixed-size chunks (asyncpg caps a statement at 32767 bind params, so the matcher inserts ≤1000 rows/statement) has an off-by-one or last-chunk-dropped bug that is invisible to any test whose match set fits in a single chunk. **Do instead:** arrange a match set strictly larger than one insert chunk (e.g. > `NOTIFICATION_INSERT_CHUNK` rows) and assert every row lands — `created == len(match_set)` and the union of inserted dedup keys equals the expected set. **Bit us:** pre-empted in the M3 watchlist matcher (`services/watchlist_matcher.py`, `NOTIFICATION_INSERT_CHUNK=1000`); pairs with implementation-pitfalls SQLA-2 (the chunked insert is the same statement that carries the partial-index ON CONFLICT). Relates to §4 Bounded growth.
+
 ---
 
 ## How to Add a Testing-Pitfall

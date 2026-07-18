@@ -27,7 +27,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | § | Section | You're working on... | Entries | Checklist |
 |---|---------|---------------------|---------|-----------|
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, PROXY-1 | §1.C |
-| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1 | §2.C |
+| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, upstream status | ESI-1 | §4.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
@@ -101,9 +101,22 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### SQLA-2: `ON CONFLICT` against a partial unique index must restate the index predicate
+
+**The Flaw:** `INSERT … ON CONFLICT DO NOTHING` / `DO UPDATE` targeting a **partial** unique index (`CREATE UNIQUE INDEX … WHERE <predicate>`) will not infer the index from `index_elements` alone. Postgres raises `no unique or exclusion constraint matching the ON CONFLICT specification` at runtime — every insert fails, not just conflicting ones.
+
+**Why It Matters:** The failure is runtime-only (schema and query both look valid), so it surfaces on the first real insert, not at review or migration time. For a scheduled writer (the watchlist matcher) that means every run raises and zero notifications are ever created.
+
+**The Fix:** Restate the partial-index predicate in the conflict clause as a **literal identical to the index DDL**. SQLAlchemy: `insert(...).on_conflict_do_nothing(index_elements=["user_id", "contract_id", "watch_type_id"], index_where=text("type = 'watchlist_match'"))`. Use `text(...)`, not the ORM comparison `Notification.type == "watchlist_match"` — the latter compiles to a parameterized `type = $1`, which Postgres's partial-index implication check cannot match against the index's literal predicate, so inference can fail. Also populate **every** column in the index — Postgres treats NULLs as distinct in a unique index, so a NULL-bearing dedup column would never conflict and hollow out the guarantee.
+
+**Where It Bit Us:** Pre-empted in the M3 watchlist-matcher design (`docs/superpowers/specs/2026-07-17-m3-account-features-design.md` §4.4); the partial index `uq_notifications_watchlist_dedup` on `(user_id, contract_id, watch_type_id) WHERE type='watchlist_match'` requires the `index_where` restatement or the matcher's core insert raises on every run. See testing-pitfalls.md TEST-11.
+
+---
+
 ### §2.C — Review Checklist
 
 - [ ] **Pagination over a one-to-many join paginates distinct parent IDs, not duplicated joined rows** — grouped subquery with aggregate-based ordering; page entities re-loaded and restored to the ID order (SQLA-1)
+- [ ] **`ON CONFLICT` against a partial unique index restates the index predicate** — `index_where=` matches the index's `WHERE`, and every indexed column is non-NULL on insert (Postgres NULLs never conflict) (SQLA-2)
 
 ---
 
@@ -242,6 +255,11 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
+## 2026-07-18 — SQLA-2 added: partial-index ON CONFLICT needs index_where
+
+- Added SQLA-2 (`ON CONFLICT` against a partial unique index must restate the index predicate) from the M3 account-features work (Phase 10, Task 10.1). Pre-empted in the watchlist-matcher design (`docs/superpowers/specs/2026-07-17-m3-account-features-design.md` §4.4); pairs with testing-pitfalls.md TEST-11.
+- Grepped the backend for other `on_conflict` sites: the only partial-index target is `services/watchlist_matcher.py` (already restates `index_where`); `services/auth_service.py` and `services/db_upsert.py` target full unique constraints / primary keys, so SQLA-2 does not apply to them.
+
 ## 2026-07-13 — ENV-5 superseded: FastAPI-current / Python-3.14 migration
 
 - Lifted the FastAPI 0.115 hold: migrated the backend to FastAPI 0.139 / Starlette 1.3.1 (+ `prometheus-fastapi-instrumentator` 8.0.2, required for Starlette ≥1.0 — its 7.1.0 middleware crashes against Starlette 0.52.x despite a `starlette<1.0` pin). FastAPI 0.139 precomputes the dependant coroutine flag and no longer calls the 3.14-deprecated `asyncio.iscoroutinefunction`, eliminating the 16 DeprecationWarnings at the source (no filter mask). Flipped the backend venv and both CI `python-version` pins 3.12 → 3.14.
@@ -276,6 +294,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | FASTAPI-2 | Declared-but-unimplemented filter params ship dead controls | MEDIUM | UNIMPLEMENTED | API & Request Binding |
 | PROXY-1 | Trailing-slash 307 escapes a prefix-rewriting proxy | MEDIUM | VALIDATED | API & Request Binding |
 | SQLA-1 | Paginating a joined query paginates joined rows | HIGH | VALIDATED | Data & Persistence |
+| SQLA-2 | ON CONFLICT vs a partial unique index needs index_where | HIGH | VALIDATED | Data & Persistence |
 | ENV-1 | pydantic-settings JSON-decodes complex env fields early | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-2 | Backend restart wipes and re-ingests all data | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-3 | --reload + ingestion + Valkey lock interact badly in dev | MEDIUM | VALIDATED | Environment & Dev Loop |
