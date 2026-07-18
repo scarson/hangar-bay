@@ -57,6 +57,10 @@ class Settings(BaseSettings):
         description="For dev, limit the number of contracts processed. Set to None or 0 to disable.",
     )
 
+    # --- M3 account features ---
+    # Per-user soft caps (best-effort count-checks, design §3.5).
+    MAX_SAVED_SEARCHES_PER_USER: int = 100
+
     # Database + cache
     DATABASE_URL: str = Field(..., description="SQLAlchemy database connection string.")
     CACHE_URL: str = Field(..., description="Redis/Valkey cache connection string.")

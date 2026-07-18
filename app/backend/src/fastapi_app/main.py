@@ -24,6 +24,7 @@ from .core.esi_client_class import ESIClient # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService # For manual service creation
 from .api import contracts as contracts_router
 from .api import auth as auth_router
+from .api import saved_searches as saved_searches_router
 from .models import contracts # This import is crucial for Base.metadata to find the tables.
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -192,5 +193,6 @@ async def cache_test(rd: Optional[Redis] = Depends(get_cache)):
 app.include_router(contracts_router.router)
 app.include_router(auth_router.router)      # /auth/sso/login|callback|logout (bare, PROXY-1)
 app.include_router(auth_router.me_router)   # /me (bare)
+app.include_router(saved_searches_router.router)   # /me/saved-searches/* (bare, PROXY-1)
 
 # Further application setup, routers, middleware, etc., will go here
