@@ -64,7 +64,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phases 0-8 shipped (backend + codegen complete; frontend F005 Saved Searches + F006 Watchlists + F007 Alerts/Notifications done); E2E + docs next.
+**Overall:** Phases 0-9 shipped (backend + codegen complete; frontend F005 Saved Searches + F006 Watchlists + F007 Alerts/Notifications done; E2E fixture lane done); docs + PR next.
 
 **Baseline (Phase 0, captured against `origin/dev` tip `27dac66`):** backend `pdm run pytest -q` → `220 passed`; frontend `npx vitest run --reporter=dot` → `Test Files 12 passed (12)`, `Tests 62 passed (62)`. Phase 1/2 backend work must never drop the pytest count below 220.
 
@@ -79,7 +79,7 @@ notes and commit messages.
 | 6 — Frontend F005 | ✅ Shipped | `b2d3912` | `/saved-searches` route + page (Apply/Rename/two-step Delete) + `SaveSearchControl`; frontend 17 files / 89 tests passed |
 | 7 — Frontend F006 | ✅ Shipped | `6a0450b` | `/watchlist` route + page (add-by-name, inline edit, clear-to-null, two-step Remove) + `WatchButton`; frontend 21 files / 109 tests passed |
 | 8 — Frontend F007 | ✅ Shipped | `fdf5f9f` | `/notifications` route + page (paginated list, mark-read-on-click, mark-all-read, watchlist-alerts settings toggle) + `NotificationBell` in the header + notifications hooks; frontend 26 files / 135 tests passed |
-| 9 — E2E | ⬜ Not started | — | — |
+| 9 — E2E | ✅ Shipped | `05a8800` | account fixtures + intercept helpers; saved-searches/watchlist/notifications specs — 18 passed (desktop+mobile) |
 | 10 — Docs, gates, PR | ⬜ Not started | — | — |
 
 ### Deviations
@@ -6416,7 +6416,7 @@ Push: `git push`.
 
 ## Phase 9 — E2E (Playwright fixture lane)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `05a8800` on 2026-07-18
 
 Delivers: account wire fixtures, account intercept helpers (captured-calls shape), and three specs asserting the authed flows at the wire plus the anonymous prompts. **All specs: `interceptCurrentUser` FIRST in every test (TEST-9), `failUnexpectedApiCalls` registered first where used, role/label selectors only, `retries` stays 0.**
 
@@ -6435,9 +6435,9 @@ Because these are E2E fixtures/helpers (test infrastructure, not production code
 - Create: `app/frontend/web/e2e/fixtures/account.ts`
 - Modify: `app/frontend/web/e2e/helpers/api.ts` (add `interceptSavedSearches`, `interceptWatchlist`; `interceptNotifications` + `AccountCall`/`readBody` were already added in Task 8.2 — reuse them; update the `stubPortraits` JSDoc)
 
-- [ ] **Step 1: Read the current `e2e/helpers/api.ts`** (already reviewed in recon) to match the captured-calls shape and the last-registered-first routing discipline.
+- [x] **Step 1: Read the current `e2e/helpers/api.ts`** (already reviewed in recon) to match the captured-calls shape and the last-registered-first routing discipline.
 
-- [ ] **Step 2: Create `e2e/fixtures/account.ts`.** COMPLETE file:
+- [x] **Step 2: Create `e2e/fixtures/account.ts`.** COMPLETE file:
 
 ```ts
 // ABOUTME: Wire-shape fixtures for the M3 account APIs — saved searches, watchlist items, notifications.
@@ -6511,7 +6511,7 @@ export function makeNotification(overrides: Partial<WireNotification> = {}): Wir
 }
 ```
 
-- [ ] **Step 3: Add the saved-searches + watchlist intercept helpers to `e2e/helpers/api.ts`.** `interceptNotifications` and its `AccountCall`/`readBody` scaffolding are **already present** — added in Task 8.2 (its first consumer). Verify they exist and do NOT redefine them; the two helpers below reuse the existing `AccountCall`/`readBody`. Append after the existing helpers. Each returns a live captured-calls array `{ url, method, body }` (the same "captured calls" idea as `interceptContractList`, extended with `method`/`body` because these are write endpoints). COMPLETE additions:
+- [x] **Step 3: Add the saved-searches + watchlist intercept helpers to `e2e/helpers/api.ts`.** `interceptNotifications` and its `AccountCall`/`readBody` scaffolding are **already present** — added in Task 8.2 (its first consumer). Verify they exist and do NOT redefine them; the two helpers below reuse the existing `AccountCall`/`readBody`. Append after the existing helpers. Each returns a live captured-calls array `{ url, method, body }` (the same "captured calls" idea as `interceptContractList`, extended with `method`/`body` because these are write endpoints). COMPLETE additions:
 
 ```ts
 // (add to the imports at the top of e2e/helpers/api.ts)
@@ -6553,16 +6553,16 @@ export async function interceptWatchlist(page: Page, list: WireWatchlistItem[] =
 
 `interceptNotifications` (and `AccountCall`/`readBody`) already live in `e2e/helpers/api.ts` from Task 8.2 — the notifications specs (Task 9.4) import it from `./helpers/api` unchanged.
 
-- [ ] **Step 4: Confirm `stubPortraits` already covers type renders (no functional change needed).** The existing glob `**://images.evetech.net/**` already matches `images.evetech.net/types/{id}/render` — the watchlist row icon URL — so watchlist specs stay offline with the current helper. Update only the JSDoc to say so; do NOT narrow or duplicate the route. Replace the `stubPortraits` doc comment with:
+- [x] **Step 4: Confirm `stubPortraits` already covers type renders (no functional change needed).** The existing glob `**://images.evetech.net/**` already matches `images.evetech.net/types/{id}/render` — the watchlist row icon URL — so watchlist specs stay offline with the current helper. Update only the JSDoc to say so; do NOT narrow or duplicate the route. Replace the `stubPortraits` doc comment with:
 
 ```ts
 /** Serve a tiny PNG for ALL images.evetech.net requests — character portraits AND type renders
  * (e.g. /types/{id}/render on the watchlist page) — so authenticated specs stay fully offline. */
 ```
 
-- [ ] **Step 5: Verify it compiles.** `cd app/frontend/web && npx tsc -b` (green) and `npx eslint e2e/fixtures/account.ts e2e/helpers/api.ts` (green). No spec runs yet — the specs in 9.2–9.4 exercise these.
+- [x] **Step 5: Verify it compiles.** `cd app/frontend/web && npx tsc -b` (green) and `npx eslint e2e/fixtures/account.ts e2e/helpers/api.ts` (green). No spec runs yet — the specs in 9.2–9.4 exercise these.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
   `git add app/frontend/web/e2e/fixtures/account.ts app/frontend/web/e2e/helpers/api.ts`
   ```
   test(e2e): add account fixtures and intercept helpers
@@ -6589,7 +6589,7 @@ Follow TDD: write failing test → implement → verify green.
 **Files:**
 - Create: `app/frontend/web/e2e/saved-searches.spec.ts`
 
-- [ ] **Step 1: Write the spec.** `interceptCurrentUser` first in every test. COMPLETE file:
+- [x] **Step 1: Write the spec.** `interceptCurrentUser` first in every test. COMPLETE file:
 
 ```ts
 import { expect, test } from '@playwright/test'
@@ -6642,11 +6642,11 @@ test.describe('saved searches', () => {
 })
 ```
 
-- [ ] **Step 2: Run it.** `cd app/frontend/web && npx playwright test saved-searches.spec.ts --project=desktop`. Expected: green. If the save-flow assertion fails on the POST body, re-check `toSavedSearchParameters` (Task 6.3) — do NOT weaken the assertion (TEST-2).
+- [x] **Step 2: Run it.** `cd app/frontend/web && npx playwright test saved-searches.spec.ts --project=desktop`. Expected: green. If the save-flow assertion fails on the POST body, re-check `toSavedSearchParameters` (Task 6.3) — do NOT weaken the assertion (TEST-2).
 
-- [ ] **Step 3: Run mobile too.** `npx playwright test saved-searches.spec.ts --project=mobile` (green).
+- [x] **Step 3: Run mobile too.** `npx playwright test saved-searches.spec.ts --project=mobile` (green).
 
-- [ ] **Step 4: Commit.**
+- [x] **Step 4: Commit.**
   `git add app/frontend/web/e2e/saved-searches.spec.ts`
   ```
   test(e2e): cover saved-search save + apply flows
@@ -6673,7 +6673,7 @@ Follow TDD: write failing test → implement → verify green.
 **Files:**
 - Create: `app/frontend/web/e2e/watchlist.spec.ts`
 
-- [ ] **Step 1: Write the spec.** COMPLETE file:
+- [x] **Step 1: Write the spec.** COMPLETE file:
 
 ```ts
 import { expect, test } from '@playwright/test'
@@ -6720,9 +6720,9 @@ test.describe('watchlist', () => {
 })
 ```
 
-- [ ] **Step 2: Run desktop + mobile.** `cd app/frontend/web && npx playwright test watchlist.spec.ts --project=desktop` then `--project=mobile` (both green).
+- [x] **Step 2: Run desktop + mobile.** `cd app/frontend/web && npx playwright test watchlist.spec.ts --project=desktop` then `--project=mobile` (both green).
 
-- [ ] **Step 3: Commit.**
+- [x] **Step 3: Commit.**
   `git add app/frontend/web/e2e/watchlist.spec.ts`
   ```
   test(e2e): cover watchlist add-by-name and two-step remove
@@ -6759,7 +6759,7 @@ assertions (timing bounds).
 **Files:**
 - Create: `app/frontend/web/e2e/notifications.spec.ts`
 
-- [ ] **Step 1: Write the spec.** The list page's loading skeleton (`role="status"`, name "Loading notifications") coexists with the always-mounted live region — sync on skeleton unmount before asserting the list (TEST-8). COMPLETE file:
+- [x] **Step 1: Write the spec.** The list page's loading skeleton (`role="status"`, name "Loading notifications") coexists with the always-mounted live region — sync on skeleton unmount before asserting the list (TEST-8). COMPLETE file:
 
 ```ts
 import { expect, test } from '@playwright/test'
@@ -6810,9 +6810,9 @@ test.describe('notifications', () => {
 })
 ```
 
-- [ ] **Step 2: Run desktop + mobile.** `cd app/frontend/web && npx playwright test notifications.spec.ts --project=desktop` then `--project=mobile` (both green).
+- [x] **Step 2: Run desktop + mobile.** `cd app/frontend/web && npx playwright test notifications.spec.ts --project=desktop` then `--project=mobile` (both green).
 
-- [ ] **Step 3: Commit.**
+- [x] **Step 3: Commit.**
   `git add app/frontend/web/e2e/notifications.spec.ts`
   ```
   test(e2e): cover notification badge and mark-all-read
