@@ -71,7 +71,7 @@ notes and commit messages.
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 0 — Campaign branch setup | ✅ Shipped | `70e8d1a` | Baseline: backend 220 passed, frontend 12 files / 62 tests passed |
-| 1 — Backend foundations | ⬜ Not started | — | — |
+| 1 — Backend foundations | ✅ Shipped | `c0c341c` | Task 1.4 recovered via cherry-pick (wrong-cwd executor) |
 | 2 — F005 Saved Searches backend | ✅ Shipped | `c4c1dab` | CRUD + full HTTP/schema matrix; backend 257 passed |
 | 3 — F006 Watchlist backend | ✅ Shipped | `bd3aa68` | ESIClient.resolve_names + watchlist CRUD add pipeline; backend 285 passed |
 | 4 — F007 Notifications backend + matcher | ✅ Shipped | `b6d1e13` | notifications API + `WatchlistMatcherService` + scheduler/lifespan wiring; backend 319 passed |
@@ -83,6 +83,7 @@ notes and commit messages.
 | 10 — Docs, gates, PR | ⬜ Not started | — | — |
 
 ### Deviations
+- Task 1.4: the original executor performed the work in the wrong checkout (inherited session cwd) and committed there; recovered by cherry-picking `8638582` → `c0c341c` onto the campaign branch. Work verified green in-branch (12 passed incl. the two-session race test). Remaining executors carry an explicit cwd-guard.
 
 - **Design §9.2 — backfilling real `users` rows into the `test_auth_flow` sessions "where trivial" — deliberately deferred.** No reduction in duplication materialized from the migration: the new `authed_user` fixture (Task 1.2) already covers the M3 tests that need a real `users` row, and the existing `test_auth_flow` tests keep their minted-session `user_id` values, which no longer FK anywhere they insert. Recorded here so the design and plan agree with an audit trail rather than a silent drop (round-2 review MINOR-7); mirror this line into the Task 10.2 PR-body deviation notes at ship time.
 
@@ -172,7 +173,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 1 — Backend foundations
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `c0c341c` on 2026-07-18 (Task 1.4 recovered via cherry-pick from a wrong-cwd executor commit — see Deviations)
 
 The auth backbone and data model every M3 feature stands on: the three per-user tables + the `users.watchlist_alerts_enabled` column (Task 1.1), the `authed_user` fixture + `login_as` helper that make FK'd-table tests possible (Task 1.2), the `get_current_user` session→row resolution dependency (Task 1.3), and the ride-along first-login upsert race fix (Task 1.4). Design authority: §4.1, §4.2, §9.1.
 
@@ -738,7 +739,7 @@ assertions (timing bounds).
 
 **Nature of the change:** this refactor closes the first-login race (design §9.1). The new deterministic two-session test below IS the red-first behavior test: it drives two concurrent first logins for the same `character_id` on independent connections, and Postgres's unique-index lock on the winner's uncommitted insert makes the ordering deterministic (a lock wait, not a timing race). Against the current select-then-insert the losing session raises `IntegrityError` once the winner commits (RED); against `INSERT ... ON CONFLICT DO UPDATE` it lands on the winner's row (GREEN). The existing `test_auth_service.py` suite remains the regression guard for external behavior (encryption, rotation, owner-hash transfer). The red→green cycle here is: new test RED against current code → rewrite → new test GREEN + existing suite still green.
 
-- [ ] **Step 1: Add the failing concurrency test.** Append to `app/backend/src/fastapi_app/tests/services/test_auth_service.py`. It needs three imports the module does not have yet — add to the import block: `import asyncio`, `from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine`, and `from fastapi_app.db import Base`:
+- [x] **Step 1: Add the failing concurrency test.** Append to `app/backend/src/fastapi_app/tests/services/test_auth_service.py`. It needs three imports the module does not have yet — add to the import block: `import asyncio`, `from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine`, and `from fastapi_app.db import Base`:
   ```python
   @pytest.mark.asyncio
   async def test_concurrent_first_login_both_succeed_single_row():
@@ -810,7 +811,7 @@ assertions (timing bounds).
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_auth_service.py::test_concurrent_first_login_both_succeed_single_row -v
   ```
-- [ ] **Step 2: Rewrite `upsert_user`.** In `services/auth_service.py`, change the import line `from sqlalchemy import select` to:
+- [x] **Step 2: Rewrite `upsert_user`.** In `services/auth_service.py`, change the import line `from sqlalchemy import select` to:
   ```python
   from sqlalchemy import func, select
   from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -860,17 +861,17 @@ assertions (timing bounds).
       return user
   ```
   Leave the `refresh_user_tokens` `TODO(M3)` block (lines ~88-94) and the `mark_for_reauth` deferred-note (lines ~52-54) exactly as they are — those items are scope-gated to the first token-using caller (design §1, §8), not this milestone.
-- [ ] **Step 3: Run the auth-service suite and confirm green.**
+- [x] **Step 3: Run the auth-service suite and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_auth_service.py -v
   ```
   Expected: every existing test (create+encrypt, refresh-token-present, owner-hash transfer, mark_for_reauth, all refresh_user_tokens paths) plus the new two-session concurrency test pass. The owner-hash-transfer test in particular proves the ON-CONFLICT update path (`len(rows) == 1`, `owner_hash == "OWN2"`, `last_login_at` advanced) still holds.
-- [ ] **Step 4: Confirm the callback flow is unaffected.** Run the auth-flow HTTP suite (it exercises `_finalize_login` → `upsert_user`):
+- [x] **Step 4: Confirm the callback flow is unaffected.** Run the auth-flow HTTP suite (it exercises `_finalize_login` → `upsert_user`):
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_auth_flow.py -v
   ```
   Expected: green. (`_finalize_login`'s try/except-rollback stays as defensive handling for other failure shapes; it is not modified here.)
-- [ ] **Step 5: Lint + commit.**
+- [x] **Step 5: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/services/auth_service.py app/backend/src/fastapi_app/tests/services/test_auth_service.py
