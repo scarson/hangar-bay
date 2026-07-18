@@ -22,9 +22,14 @@ class SsoTokenError(Exception):
     errors) so callers can tell an invalid-grant 400 from a transient outage (§4.3).
     """
 
-    def __init__(self, message: str, *, status_code: Optional[int] = None) -> None:
-        super().__init__(message)
+    def __init__(self, message: str, status_code: Optional[int] = None) -> None:
+        # All ctor args go to BaseException verbatim so pickle/copy can
+        # reconstruct via cls(*args) without corrupting attributes (B042).
+        super().__init__(message, status_code)
         self.status_code = status_code
+
+    def __str__(self) -> str:
+        return str(self.args[0]) if self.args else ""
 
 
 class SsoJwtError(Exception):
