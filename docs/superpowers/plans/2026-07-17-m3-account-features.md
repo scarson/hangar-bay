@@ -64,7 +64,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phases 0-5 shipped (backend + codegen complete); frontend phases next.
+**Overall:** Phases 0-6 shipped (backend + codegen complete; frontend F005 Saved Searches done); frontend F006/F007 + E2E + docs next.
 
 **Baseline (Phase 0, captured against `origin/dev` tip `27dac66`):** backend `pdm run pytest -q` → `220 passed`; frontend `npx vitest run --reporter=dot` → `Test Files 12 passed (12)`, `Tests 62 passed (62)`. Phase 1/2 backend work must never drop the pytest count below 220.
 
@@ -76,7 +76,7 @@ notes and commit messages.
 | 3 — F006 Watchlist backend | ✅ Shipped | `bd3aa68` | ESIClient.resolve_names + watchlist CRUD add pipeline; backend 285 passed |
 | 4 — F007 Notifications backend + matcher | ✅ Shipped | `b6d1e13` | notifications API + `WatchlistMatcherService` + scheduler/lifespan wiring; backend 319 passed |
 | 5 — Codegen | ✅ Shipped | `6e64674` | openapi.json + schema.d.ts regenerated for F005/F006/F007; `npx tsc -b` clean |
-| 6 — Frontend F005 | ⬜ Not started | — | — |
+| 6 — Frontend F005 | ✅ Shipped | `b2d3912` | `/saved-searches` route + page (Apply/Rename/two-step Delete) + `SaveSearchControl`; frontend 17 files / 89 tests passed |
 | 7 — Frontend F006 | ⬜ Not started | — | — |
 | 8 — Frontend F007 | ⬜ Not started | — | — |
 | 9 — E2E | ⬜ Not started | — | — |
@@ -3566,7 +3566,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 6 — Frontend F005: Saved Searches
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `b2d3912` on 2026-07-18
 
 Delivers: the five type aliases; the saved-searches query + three mutations with fetch-seam tests; the reusable `RequireSignIn` auth-gate; the in-header `SaveSearchControl`; and the `/saved-searches` page with Apply / Rename / two-step Delete.
 
@@ -3584,7 +3584,7 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.ts`
 - Test: `app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.test.tsx`
 
-- [ ] **Step 1: Add the five type aliases and the shared 401 helper to `client.ts`.** Insert the aliases after the existing `CurrentUser` alias (client.ts line 7); add the `QueryClient` type import at the top and the `raiseApiError` helper after the `ApiError` class. These are re-exports of generated types plus one shared helper (not feature logic), so this precedes the TDD loop; a `tsc` run confirms the underlying schemas exist.
+- [x] **Step 1: Add the five type aliases and the shared 401 helper to `client.ts`.** Insert the aliases after the existing `CurrentUser` alias (client.ts line 7); add the `QueryClient` type import at the top and the `raiseApiError` helper after the `ApiError` class. These are re-exports of generated types plus one shared helper (not feature logic), so this precedes the TDD loop; a `tsc` run confirms the underlying schemas exist.
 
 ```ts
 // at the top of client.ts, alongside the other imports:
@@ -3609,9 +3609,9 @@ export function raiseApiError(queryClient: QueryClient, status: number): never {
 }
 ```
 
-- [ ] **Step 2: Verify the aliases resolve.** Run `cd app/frontend/web && npx tsc -b`. Expected: green. If it errors with "Property 'SavedSearchSchema' does not exist", the backend codegen chain did not land those schemas — STOP and raise to the dispatching agent (the backend phases must complete first); do not hand-edit `schema.d.ts`.
+- [x] **Step 2: Verify the aliases resolve.** Run `cd app/frontend/web && npx tsc -b`. Expected: green. If it errors with "Property 'SavedSearchSchema' does not exist", the backend codegen chain did not land those schemas — STOP and raise to the dispatching agent (the backend phases must complete first); do not hand-edit `schema.d.ts`.
 
-- [ ] **Step 3: Write the failing hook tests.** Create `useSavedSearches.test.tsx`. Mirrors `useLogout.test.tsx` exactly: stub `fetch` at the seam, capture `{url, method, body}`, assert them, and assert `invalidateQueries` is/ isn't called. COMPLETE file:
+- [x] **Step 3: Write the failing hook tests.** Create `useSavedSearches.test.tsx`. Mirrors `useLogout.test.tsx` exactly: stub `fetch` at the seam, capture `{url, method, body}`, assert them, and assert `invalidateQueries` is/ isn't called. COMPLETE file:
 
 ```tsx
 // ABOUTME: useSavedSearches hook contracts — query + create/rename/delete mutations at the fetch seam.
@@ -3769,9 +3769,9 @@ describe('useDeleteSavedSearch', () => {
 })
 ```
 
-- [ ] **Step 4: Run the tests, confirm they fail.** `cd app/frontend/web && npx vitest run src/features/saved-searches/hooks/useSavedSearches.test.tsx --reporter=dot`. Expected: failure — `Failed to resolve import "./useSavedSearches"` (module does not exist yet).
+- [x] **Step 4: Run the tests, confirm they fail.** `cd app/frontend/web && npx vitest run src/features/saved-searches/hooks/useSavedSearches.test.tsx --reporter=dot`. Expected: failure — `Failed to resolve import "./useSavedSearches"` (module does not exist yet).
 
-- [ ] **Step 5: Implement `useSavedSearches.ts`.** COMPLETE file:
+- [x] **Step 5: Implement `useSavedSearches.ts`.** COMPLETE file:
 
 ```ts
 // ABOUTME: TanStack Query hooks for F005 saved searches — list query + create/rename/delete mutations.
@@ -3835,9 +3835,9 @@ export function useDeleteSavedSearch() {
 }
 ```
 
-- [ ] **Step 6: Run the tests green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/hooks/useSavedSearches.test.tsx --reporter=dot`. Expected: all pass. Then `npx tsc -b` (green) and `npx eslint src/features/saved-searches src/lib/api/client.ts` (green).
+- [x] **Step 6: Run the tests green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/hooks/useSavedSearches.test.tsx --reporter=dot`. Expected: all pass. Then `npx tsc -b` (green) and `npx eslint src/features/saved-searches src/lib/api/client.ts` (green).
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/frontend/web/src/lib/api/client.ts app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.ts app/frontend/web/src/features/saved-searches/hooks/useSavedSearches.test.tsx`
   ```
   feat(web): add saved-search type aliases and CRUD query hooks
@@ -3865,7 +3865,7 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/features/auth/components/RequireSignIn.tsx`
 - Test: `app/frontend/web/src/features/auth/components/RequireSignIn.test.tsx`
 
-- [ ] **Step 1: Write the failing test.** Renders `RequireSignIn` inside a minimal TanStack memory router (so `useLocation` resolves) at a URL carrying a transient `?sso=` plus a real param, and asserts the login link's `href` carries `next` = encoded path+search with `sso` stripped — the exact `HeaderIdentity` mechanic (recon §5.3). COMPLETE file:
+- [x] **Step 1: Write the failing test.** Renders `RequireSignIn` inside a minimal TanStack memory router (so `useLocation` resolves) at a URL carrying a transient `?sso=` plus a real param, and asserts the login link's `href` carries `next` = encoded path+search with `sso` stripped — the exact `HeaderIdentity` mechanic (recon §5.3). COMPLETE file:
 
 ```tsx
 // ABOUTME: RequireSignIn renders the sign-in prompt; its login href mirrors HeaderIdentity (next=encoded path+search, sso stripped).
@@ -3910,9 +3910,9 @@ describe('RequireSignIn', () => {
 })
 ```
 
-- [ ] **Step 2: Run it, confirm failure.** `cd app/frontend/web && npx vitest run src/features/auth/components/RequireSignIn.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./RequireSignIn"`.
+- [x] **Step 2: Run it, confirm failure.** `cd app/frontend/web && npx vitest run src/features/auth/components/RequireSignIn.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./RequireSignIn"`.
 
-- [ ] **Step 3: Implement `RequireSignIn.tsx`.** COMPLETE file:
+- [x] **Step 3: Implement `RequireSignIn.tsx`.** COMPLETE file:
 
 ```tsx
 // ABOUTME: Shared auth-gate prompt for the M3 pages — a sign-in card whose login link deep-links back to the current path.
@@ -3943,9 +3943,9 @@ export function RequireSignIn({ feature }: { feature: string }) {
 }
 ```
 
-- [ ] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/auth/components/RequireSignIn.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/auth/components/RequireSignIn.tsx` (green).
+- [x] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/auth/components/RequireSignIn.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/auth/components/RequireSignIn.tsx` (green).
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   `git add app/frontend/web/src/features/auth/components/RequireSignIn.tsx app/frontend/web/src/features/auth/components/RequireSignIn.test.tsx`
   ```
   feat(web): add RequireSignIn auth-gate prompt
@@ -3974,7 +3974,7 @@ Follow TDD: write failing test → implement → verify green.
 - Modify: `app/frontend/web/src/features/contracts/components/ContractsPage.tsx` (results-header `<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">`, lines 107–116)
 - Test: `app/frontend/web/src/features/saved-searches/components/SaveSearchControl.test.tsx`
 
-- [ ] **Step 1: Write the failing integration test.** Drives the control through `renderApp('/contracts')` so the real ContractsPage + header render; stubs `/me` (authed/anonymous), the contract list, and captures the saved-search POST at the seam. COMPLETE file:
+- [x] **Step 1: Write the failing integration test.** Drives the control through `renderApp('/contracts')` so the real ContractsPage + header render; stubs `/me` (authed/anonymous), the contract list, and captures the saved-search POST at the seam. COMPLETE file:
 
 ```tsx
 // ABOUTME: SaveSearchControl integration over the real /contracts route — hidden when anonymous; posts search-minus-page; 409 inline.
@@ -4060,9 +4060,9 @@ describe('SaveSearchControl', () => {
 })
 ```
 
-- [ ] **Step 2: Run it, confirm failure.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SaveSearchControl.test.tsx --reporter=dot`. Expected: no "Save search" button found (control not wired into ContractsPage yet).
+- [x] **Step 2: Run it, confirm failure.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SaveSearchControl.test.tsx --reporter=dot`. Expected: no "Save search" button found (control not wired into ContractsPage yet).
 
-- [ ] **Step 3: Implement `SaveSearchControl.tsx`.** Exports the pure `toSavedSearchParameters` (search-minus-page + sub-min search drop) plus the control. COMPLETE file:
+- [x] **Step 3: Implement `SaveSearchControl.tsx`.** Exports the pure `toSavedSearchParameters` (search-minus-page + sub-min search drop) plus the control. COMPLETE file:
 
 ```tsx
 // ABOUTME: Authed-only "Save search" control for the ContractsPage results header — inline name disclosure, posts search-minus-page.
@@ -4154,7 +4154,7 @@ export function SaveSearchControl({ search }: { search: ContractSearch }) {
 }
 ```
 
-- [ ] **Step 4: Wire `SaveSearchControl` into ContractsPage.** Add the import and render it in the results-header flex row. Edit `ContractsPage.tsx`: add `import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'` alongside the other imports, and inside the `<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">` (after the `{data !== undefined ? (<p …>… matching</p>) : null}` block, still inside the div) add:
+- [x] **Step 4: Wire `SaveSearchControl` into ContractsPage.** Add the import and render it in the results-header flex row. Edit `ContractsPage.tsx`: add `import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'` alongside the other imports, and inside the `<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">` (after the `{data !== undefined ? (<p …>… matching</p>) : null}` block, still inside the div) add:
 
 ```tsx
           <SaveSearchControl search={search} />
@@ -4162,9 +4162,9 @@ export function SaveSearchControl({ search }: { search: ContractSearch }) {
 
 The control's own `ml-auto` pushes it to the right of the count; for anonymous users it returns `null` so the header is unchanged (existing `pages.test.tsx` uses `anonymousMe`, so nothing there regresses).
 
-- [ ] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SaveSearchControl.test.tsx --reporter=dot` (pass). Then re-run the neighbouring suite to prove no regression: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/features/saved-searches src/features/contracts/components/ContractsPage.tsx` (green).
+- [x] **Step 5: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SaveSearchControl.test.tsx --reporter=dot` (pass). Then re-run the neighbouring suite to prove no regression: `npx vitest run src/features/contracts/components/pages.test.tsx --reporter=dot` (pass). Then `npx tsc -b` and `npx eslint src/features/saved-searches src/features/contracts/components/ContractsPage.tsx` (green).
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
   `git add app/frontend/web/src/features/saved-searches/components/SaveSearchControl.tsx app/frontend/web/src/features/saved-searches/components/SaveSearchControl.test.tsx app/frontend/web/src/features/contracts/components/ContractsPage.tsx`
   ```
   feat(web): add Save Search control to the contracts results header
@@ -4194,7 +4194,7 @@ Follow TDD: write failing test → implement → verify green.
 - Test: `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.test.tsx`
 - Test: `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx` (vitest-axe, design §6)
 
-- [ ] **Step 1: Write the failing page tests.** Cover the three auth branches, the empty state, Apply (navigates to `/contracts` with parsed params), Rename, two-step Delete, and the TEST-7 (error) + TEST-8 (skeleton-unmount sync) disciplines. Because `renderApp` builds a QueryClient with `retry: false`, error-state stubs fail **every** call to the endpoint (the robust form of TEST-7). Every authed stub answers the header bell's unread-count query (`GET /me/notifications/?is_read=false&size=1`) with the page shape `{ total: 0, page: 1, size: 1, items: [] }` — once Task 8.2 mounts the bell into `HeaderIdentity`, a bare `[]` would leave that count query with `data.total === undefined` and silently error (NIT-9); stubbing the real shape now keeps these tests hermetic afterward. COMPLETE file:
+- [x] **Step 1: Write the failing page tests.** Cover the three auth branches, the empty state, Apply (navigates to `/contracts` with parsed params), Rename, two-step Delete, and the TEST-7 (error) + TEST-8 (skeleton-unmount sync) disciplines. Because `renderApp` builds a QueryClient with `retry: false`, error-state stubs fail **every** call to the endpoint (the robust form of TEST-7). Every authed stub answers the header bell's unread-count query (`GET /me/notifications/?is_read=false&size=1`) with the page shape `{ total: 0, page: 1, size: 1, items: [] }` — once Task 8.2 mounts the bell into `HeaderIdentity`, a bare `[]` would leave that count query with `data.total === undefined` and silently error (NIT-9); stubbing the real shape now keeps these tests hermetic afterward. COMPLETE file:
 
 ```tsx
 // ABOUTME: SavedSearchesPage tests over the real /saved-searches route — auth branches, empty state, Apply/Rename/Delete, error + skeleton sync.
@@ -4354,9 +4354,9 @@ describe('summarizeSearch', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SavedSearchesPage.test.tsx --reporter=dot`. Expected failure: the `/saved-searches` route does not exist, so `renderApp` renders a not-found and the prompt/heading assertions fail.
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SavedSearchesPage.test.tsx --reporter=dot`. Expected failure: the `/saved-searches` route does not exist, so `renderApp` renders a not-found and the prompt/heading assertions fail.
 
-- [ ] **Step 3: Create the route file `src/routes/saved-searches.tsx`.** Named-`RouteComponent` pattern (recon §1). COMPLETE file:
+- [x] **Step 3: Create the route file `src/routes/saved-searches.tsx`.** Named-`RouteComponent` pattern (recon §1). COMPLETE file:
 
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'
@@ -4373,7 +4373,7 @@ function RouteComponent() {
 }
 ```
 
-- [ ] **Step 4: Implement `SavedSearchesPage.tsx`.** Exports `summarizeSearch` (criteria summary) plus the page. COMPLETE file:
+- [x] **Step 4: Implement `SavedSearchesPage.tsx`.** Exports `summarizeSearch` (criteria summary) plus the page. COMPLETE file:
 
 ```tsx
 // ABOUTME: F005 saved-searches manage page — auth-gated list with per-row Apply (navigate to /contracts), inline Rename, and two-step Delete.
@@ -4531,7 +4531,7 @@ function SavedSearchRow({ saved }: { saved: SavedSearch }) {
 
 Note on `parseContractSearch(saved.search_parameters …)`: the stored blob is re-validated on the way back out (design §5) — `parseContractSearch` accepts arbitrary input and always returns a well-formed `ContractSearch`, so a drifted blob can never break navigation.
 
-- [ ] **Step 5: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx`. COMPLETE file:
+- [x] **Step 5: Add the accessibility (axe) test.** Design §6 binds a `vitest-axe` pass on each new page. Mirror the house pattern (`src/features/contracts/components/a11y.test.tsx`) — create `app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx`. COMPLETE file:
 
 ```tsx
 // ABOUTME: Automated axe accessibility checks for the saved-searches page — authed-with-data and anonymous states.
@@ -4581,9 +4581,9 @@ describe('accessibility (axe) — saved searches', () => {
 })
 ```
 
-- [ ] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SavedSearchesPage.test.tsx src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx --reporter=dot` (pass). `routeTree.gen.ts` regenerates automatically when Vite/the test harness picks up the new route file; if the route is not found, run `npx vite build --mode development` once to force tree regeneration, or start `npm run dev` briefly — do NOT hand-edit `routeTree.gen.ts`. Then `npx tsc -b` and `npx eslint src/routes/saved-searches.tsx src/features/saved-searches` (green).
+- [x] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/saved-searches/components/SavedSearchesPage.test.tsx src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx --reporter=dot` (pass). `routeTree.gen.ts` regenerates automatically when Vite/the test harness picks up the new route file; if the route is not found, run `npx vite build --mode development` once to force tree regeneration, or start `npm run dev` briefly — do NOT hand-edit `routeTree.gen.ts`. Then `npx tsc -b` and `npx eslint src/routes/saved-searches.tsx src/features/saved-searches` (green).
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/frontend/web/src/routes/saved-searches.tsx app/frontend/web/src/routeTree.gen.ts app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.tsx app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.test.tsx app/frontend/web/src/features/saved-searches/components/SavedSearchesPage.a11y.test.tsx`
   ```
   feat(web): add saved-searches manage page with apply/rename/delete
