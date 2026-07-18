@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, DateTime, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, String, Text, func, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -20,6 +20,9 @@ class User(Base):
     esi_access_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     esi_refresh_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)           # Fernet ciphertext
     esi_scopes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)                  # empty in F004; F005+ fills
+    watchlist_alerts_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=true()
+    )
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
