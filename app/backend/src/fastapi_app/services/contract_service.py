@@ -31,7 +31,147 @@ SORT_MAP = {
 }
 
 
-async def get_contracts(  # noqa: C901
+def _needs_item_join(filters: ContractFilters) -> bool:
+    """
+    Determine if a JOIN on the ContractItem table is necessary. A join is
+    required if we need to filter or sort on item attributes.
+    """
+    return bool(
+        filters.search
+        or filters.type_ids
+        or filters.is_bpc is not None
+        or filters.min_runs is not None
+        or filters.max_runs is not None
+        # Add sorting by ship name to the condition
+        or filters.sort_by == SortableContractFields.ship_name
+    )
+
+
+def _apply_contract_filters(query, filters: ContractFilters):
+    """Apply the contract-level filters, narrowing the results."""
+    # 1. Text search (on contract title or item name)
+    if filters.search:
+        search_term = f"%{filters.search}%"
+        # This OR condition requires the join to be present.
+        query = query.filter(
+            or_(
+                Contract.title.ilike(search_term),
+                ContractItem.type_name.ilike(search_term),
+            )
+        )
+
+    # 2. Price and Collateral filters
+    if filters.min_price is not None:
+        query = query.filter(Contract.price >= filters.min_price)
+    if filters.max_price is not None:
+        query = query.filter(Contract.price <= filters.max_price)
+    if filters.min_collateral is not None:
+        query = query.filter(Contract.collateral >= filters.min_collateral)
+    if filters.max_collateral is not None:
+        query = query.filter(Contract.collateral <= filters.max_collateral)
+
+    # 2b. Contract-level flags (indexed column; no item join required)
+    if filters.is_ship_contract is not None:
+        query = query.filter(Contract.is_ship_contract == filters.is_ship_contract)
+
+    # 3. Location filters
+    if filters.region_ids:
+        query = query.filter(Contract.start_location_region_id.in_(filters.region_ids))
+    if filters.system_ids:
+        query = query.filter(Contract.start_location_system_id.in_(filters.system_ids))
+    if filters.station_ids:
+        query = query.filter(Contract.start_location_id.in_(filters.station_ids))
+
+    return query
+
+
+def _apply_item_filters(query, filters: ContractFilters):
+    """Apply the Contract Item specific filters."""
+    if filters.type_ids:
+        query = query.filter(ContractItem.type_id.in_(filters.type_ids))
+    if filters.is_bpc is not None:
+        query = query.filter(ContractItem.is_blueprint_copy == filters.is_bpc)
+    # BPC Run filters (Note: ME/TE not implemented as data is not in model)
+    if filters.min_runs is not None:
+        query = query.filter(ContractItem.raw_quantity >= filters.min_runs)
+    if filters.max_runs is not None:
+        query = query.filter(ContractItem.raw_quantity <= filters.max_runs)
+
+    return query
+
+
+async def _count_distinct_contracts(db: AsyncSession, query) -> int:
+    """
+    To get an accurate total count of matching *contracts* (not items),
+    we must count the distinct contract_ids from our filtered query.
+    This is crucial because the join can create duplicate contract rows.
+    """
+    count_subquery = select(query.subquery().c.contract_id).distinct().subquery()
+    count_query = select(func.count()).select_from(count_subquery)
+
+    total_result = await db.execute(count_query)
+    return total_result.scalar_one()
+
+
+async def _fetch_page_joined(
+    db: AsyncSession,
+    query,
+    filters: ContractFilters,
+    sort_column,
+    descending: bool,
+) -> list[Contract]:
+    # Paginating the joined query directly would offset/limit over
+    # joined (duplicated) rows, producing short pages and contracts
+    # skipped or repeated across page boundaries. Paginate over
+    # distinct contract IDs first, then load that page's contracts.
+    # Ordering uses an aggregate of the sort column (min/max picks
+    # the sort-direction-appropriate representative when a contract
+    # has multiple items) with contract_id as a deterministic
+    # tiebreaker.
+    sort_aggregate = func.max(sort_column) if descending else func.min(sort_column)
+    order_expr = sort_aggregate.desc() if descending else sort_aggregate.asc()
+    id_query = (
+        query.with_only_columns(Contract.contract_id)
+        .group_by(Contract.contract_id)
+        .order_by(order_expr, Contract.contract_id.asc())
+        .offset((filters.page - 1) * filters.size)
+        .limit(filters.size)
+    )
+    id_result = await db.execute(id_query)
+    page_ids = [row[0] for row in id_result.all()]
+
+    data_query = (
+        select(Contract)
+        .where(Contract.contract_id.in_(page_ids))
+        .options(selectinload(Contract.items))
+    )
+    result = await db.execute(data_query)
+    contracts = list(result.scalars().unique().all())
+    # Restore the page order computed by id_query.
+    position = {cid: index for index, cid in enumerate(page_ids)}
+    contracts.sort(key=lambda contract: position[contract.contract_id])
+    return contracts
+
+
+async def _fetch_page_simple(
+    db: AsyncSession,
+    query,
+    filters: ContractFilters,
+    sort_column,
+    descending: bool,
+) -> list[Contract]:
+    order_expr = sort_column.desc() if descending else sort_column.asc()
+    data_query = (
+        query.order_by(order_expr, Contract.contract_id.asc())
+        .offset((filters.page - 1) * filters.size)
+        .limit(filters.size)
+        .options(selectinload(Contract.items))
+    )
+    result = await db.execute(data_query)
+    return result.scalars().unique().all()
+
+
+async def get_contracts(
     db: AsyncSession, filters: ContractFilters
 ) -> PaginatedResponse[ContractSchema]:
     """
@@ -63,17 +203,7 @@ async def get_contracts(  # noqa: C901
         # Start with the base query for the Contract model.
         query = select(Contract)
 
-        # Determine if a JOIN on the ContractItem table is necessary. A join is
-        # required if we need to filter or sort on item attributes.
-        needs_item_join = (
-            filters.search
-            or filters.type_ids
-            or filters.is_bpc is not None
-            or filters.min_runs is not None
-            or filters.max_runs is not None
-            # Add sorting by ship name to the condition
-            or filters.sort_by == SortableContractFields.ship_name
-        )
+        needs_item_join = _needs_item_join(filters)
 
         if needs_item_join:
             # Use an outer join to ensure contracts without items are not excluded
@@ -82,60 +212,11 @@ async def get_contracts(  # noqa: C901
 
         # --- Apply Filters ---
         # Each filter is applied to the query object, narrowing the results.
-
-        # 1. Text search (on contract title or item name)
-        if filters.search:
-            search_term = f"%{filters.search}%"
-            # This OR condition requires the join to be present.
-            query = query.filter(
-                or_(
-                    Contract.title.ilike(search_term),
-                    ContractItem.type_name.ilike(search_term),
-                )
-            )
-
-        # 2. Price and Collateral filters
-        if filters.min_price is not None:
-            query = query.filter(Contract.price >= filters.min_price)
-        if filters.max_price is not None:
-            query = query.filter(Contract.price <= filters.max_price)
-        if filters.min_collateral is not None:
-            query = query.filter(Contract.collateral >= filters.min_collateral)
-        if filters.max_collateral is not None:
-            query = query.filter(Contract.collateral <= filters.max_collateral)
-
-        # 2b. Contract-level flags (indexed column; no item join required)
-        if filters.is_ship_contract is not None:
-            query = query.filter(Contract.is_ship_contract == filters.is_ship_contract)
-
-        # 3. Location filters
-        if filters.region_ids:
-            query = query.filter(Contract.start_location_region_id.in_(filters.region_ids))
-        if filters.system_ids:
-            query = query.filter(Contract.start_location_system_id.in_(filters.system_ids))
-        if filters.station_ids:
-            query = query.filter(Contract.start_location_id.in_(filters.station_ids))
-
-        # 4. Contract Item specific filters
-        if filters.type_ids:
-            query = query.filter(ContractItem.type_id.in_(filters.type_ids))
-        if filters.is_bpc is not None:
-            query = query.filter(ContractItem.is_blueprint_copy == filters.is_bpc)
-        # BPC Run filters (Note: ME/TE not implemented as data is not in model)
-        if filters.min_runs is not None:
-            query = query.filter(ContractItem.raw_quantity >= filters.min_runs)
-        if filters.max_runs is not None:
-            query = query.filter(ContractItem.raw_quantity <= filters.max_runs)
+        query = _apply_contract_filters(query, filters)
+        query = _apply_item_filters(query, filters)
 
         # --- Count Query ---
-        # To get an accurate total count of matching *contracts* (not items),
-        # we must count the distinct contract_ids from our filtered query.
-        # This is crucial because the join can create duplicate contract rows.
-        count_subquery = select(query.subquery().c.contract_id).distinct().subquery()
-        count_query = select(func.count()).select_from(count_subquery)
-
-        total_result = await db.execute(count_query)
-        total = total_result.scalar_one()
+        total = await _count_distinct_contracts(db, query)
 
         if total == 0:
             duration_ms = (time.time() - start_time) * 1000
@@ -164,46 +245,9 @@ async def get_contracts(  # noqa: C901
         descending = filters.sort_direction == SortDirection.desc
 
         if needs_item_join:
-            # Paginating the joined query directly would offset/limit over
-            # joined (duplicated) rows, producing short pages and contracts
-            # skipped or repeated across page boundaries. Paginate over
-            # distinct contract IDs first, then load that page's contracts.
-            # Ordering uses an aggregate of the sort column (min/max picks
-            # the sort-direction-appropriate representative when a contract
-            # has multiple items) with contract_id as a deterministic
-            # tiebreaker.
-            sort_aggregate = func.max(sort_column) if descending else func.min(sort_column)
-            order_expr = sort_aggregate.desc() if descending else sort_aggregate.asc()
-            id_query = (
-                query.with_only_columns(Contract.contract_id)
-                .group_by(Contract.contract_id)
-                .order_by(order_expr, Contract.contract_id.asc())
-                .offset((filters.page - 1) * filters.size)
-                .limit(filters.size)
-            )
-            id_result = await db.execute(id_query)
-            page_ids = [row[0] for row in id_result.all()]
-
-            data_query = (
-                select(Contract)
-                .where(Contract.contract_id.in_(page_ids))
-                .options(selectinload(Contract.items))
-            )
-            result = await db.execute(data_query)
-            contracts = list(result.scalars().unique().all())
-            # Restore the page order computed by id_query.
-            position = {cid: index for index, cid in enumerate(page_ids)}
-            contracts.sort(key=lambda contract: position[contract.contract_id])
+            contracts = await _fetch_page_joined(db, query, filters, sort_column, descending)
         else:
-            order_expr = sort_column.desc() if descending else sort_column.asc()
-            data_query = (
-                query.order_by(order_expr, Contract.contract_id.asc())
-                .offset((filters.page - 1) * filters.size)
-                .limit(filters.size)
-                .options(selectinload(Contract.items))
-            )
-            result = await db.execute(data_query)
-            contracts = result.scalars().unique().all()
+            contracts = await _fetch_page_simple(db, query, filters, sort_column, descending)
 
         # Calculate duration and log successful completion
         duration_ms = (time.time() - start_time) * 1000
