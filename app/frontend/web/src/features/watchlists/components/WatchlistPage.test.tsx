@@ -5,6 +5,7 @@ import { act, fireEvent, screen, waitFor, waitForElementToBeRemoved } from '@tes
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
+import { parseMaxPrice } from './WatchlistPage'
 
 const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
 const ROWS = [{ id: 1, type_id: 587, type_name: 'Rifter', max_price: 5000000, notes: 'cheap', created_at: 'x', updated_at: 'x' }]
@@ -129,6 +130,77 @@ describe('WatchlistPage', () => {
     expect(calls.some((c) => /\/me\/watchlist-items\//.test(c.url) && c.method === 'POST')).toBe(false)
   })
 
+  it('rejects an edited max price of 0 with an inline message and does not PUT', async () => {
+    const calls = stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse(ROWS)
+      return jsonResponse([])
+    })
+    renderApp('/watchlist')
+    await screen.findByText('Rifter')
+    const input = screen.getByRole('spinbutton', { name: /max price for rifter/i })
+    await userEvent.clear(input)
+    await userEvent.type(input, '0')
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    expect(await screen.findByText(/max price must be at least 0\.01/i)).toBeInTheDocument()
+    expect(calls.some((c) => /\/me\/watchlist-items\/1/.test(c.url) && c.method === 'PUT')).toBe(false)
+  })
+
+  it('rejects a negative edited max price with an inline message and does not PUT', async () => {
+    const calls = stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse(ROWS)
+      return jsonResponse([])
+    })
+    renderApp('/watchlist')
+    await screen.findByText('Rifter')
+    const input = screen.getByRole('spinbutton', { name: /max price for rifter/i })
+    await userEvent.clear(input)
+    await userEvent.type(input, '-5')
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    expect(await screen.findByText(/max price must be at least 0\.01/i)).toBeInTheDocument()
+    expect(calls.some((c) => /\/me\/watchlist-items\/1/.test(c.url) && c.method === 'PUT')).toBe(false)
+  })
+
+  it('reverts the edited max price and shows an error when the PUT fails (500)', async () => {
+    stubFetch((url, call) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/watchlist-items\/1/.test(url) && call.method === 'PUT') return jsonResponse({ detail: 'boom' }, 500)
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse(ROWS)
+      return jsonResponse([])
+    })
+    renderApp('/watchlist')
+    await screen.findByText('Rifter')
+    const input = screen.getByRole('spinbutton', { name: /max price for rifter/i })
+    await userEvent.clear(input)
+    await userEvent.type(input, '1234')
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    expect(await screen.findByText(/couldn.t save/i)).toBeInTheDocument()
+    // The unsaved value is reverted to the last persisted price (5000000), never left dangling.
+    await waitFor(() => expect(input).toHaveValue(5000000))
+  })
+
+  it('reverts the edited max price and shows an error when the PUT is rejected (422)', async () => {
+    stubFetch((url, call) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+      if (/\/me\/watchlist-items\/1/.test(url) && call.method === 'PUT') return jsonResponse({ detail: 'invalid' }, 422)
+      if (/\/me\/watchlist-items\//.test(url)) return jsonResponse(ROWS)
+      return jsonResponse([])
+    })
+    renderApp('/watchlist')
+    await screen.findByText('Rifter')
+    const input = screen.getByRole('spinbutton', { name: /max price for rifter/i })
+    await userEvent.clear(input)
+    await userEvent.type(input, '9999')
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    expect(await screen.findByText(/couldn.t save/i)).toBeInTheDocument()
+    await waitFor(() => expect(input).toHaveValue(5000000))
+  })
+
   it('auto-disarms the two-step remove after 5s (timeout reset)', async () => {
     stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
@@ -151,5 +223,29 @@ describe('WatchlistPage', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('parseMaxPrice', () => {
+  it('treats an empty (or whitespace) field as a clear-to-null', () => {
+    expect(parseMaxPrice('')).toEqual({ price: null })
+    expect(parseMaxPrice('   ')).toEqual({ price: null })
+  })
+
+  it('accepts finite values at or above the 0.01 minimum', () => {
+    expect(parseMaxPrice('0.01')).toEqual({ price: 0.01 })
+    expect(parseMaxPrice('1000')).toEqual({ price: 1000 })
+  })
+
+  it('rejects zero and negative values', () => {
+    expect(parseMaxPrice('0')).toHaveProperty('error')
+    expect(parseMaxPrice('-5')).toHaveProperty('error')
+  })
+
+  it('rejects non-finite values (Infinity / NaN)', () => {
+    // 1e309 overflows a double to Infinity; a real number input keeps the string (jsdom sanitizes it,
+    // so this guard is exercised here rather than through the DOM). NaN comes from unparseable input.
+    expect(parseMaxPrice('1e309')).toHaveProperty('error')
+    expect(parseMaxPrice('abc')).toHaveProperty('error')
   })
 })

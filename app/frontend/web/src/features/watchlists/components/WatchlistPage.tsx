@@ -10,6 +10,20 @@ import { useCurrentUser } from '../../auth/hooks/useCurrentUser'
 import { formatIsk } from '../../contracts/format'
 import { useAddWatchlistItem, useRemoveWatchlistItem, useUpdateWatchlistItem, useWatchlist } from '../hooks/useWatchlist'
 
+const MAX_PRICE_MESSAGE = 'Max price must be at least 0.01 ISK, or leave it blank for any price.'
+
+// Shared max-price guard for the add form and the inline row editor. An empty field clears the
+// price (null); any other value must parse to a finite number >= 0.01 (the backend minimum) — a
+// non-finite value (e.g. 1e309 overflows a double to Infinity) or a sub-minimum value is rejected
+// here so the UI never fires a PUT/POST the backend would 422 (finding 5).
+export function parseMaxPrice(raw: string): { price: number | null } | { error: string } {
+  const trimmed = raw.trim()
+  if (trimmed === '') return { price: null }
+  const value = Number(trimmed)
+  if (!Number.isFinite(value) || value < 0.01) return { error: MAX_PRICE_MESSAGE }
+  return { price: value }
+}
+
 export function WatchlistPage() {
   useDocumentTitle('Watchlist')
   const { data: user, isPending } = useCurrentUser()
@@ -71,19 +85,19 @@ function AddByNameForm() {
     event.preventDefault()
     const typeName = name.trim()
     if (typeName.length === 0) return
-    const price = maxPrice.trim()
     const note = notes.trim()
-    // The backend requires max_price >= 0.01; guard 0 (and anything below) here and show an inline
-    // message instead of POSTing a value we know will 422.
-    if (price !== '' && Number(price) < 0.01) {
-      setPriceError('Max price must be at least 0.01 ISK, or leave it blank for any price.')
+    // Guard the price with the shared finite/>=0.01 rule and show an inline message instead of
+    // POSTing a value we know will 422. An empty field omits max_price (create semantics).
+    const parsed = parseMaxPrice(maxPrice)
+    if ('error' in parsed) {
+      setPriceError(parsed.error)
       return
     }
     setPriceError('')
     add.mutate(
       {
         type_name: typeName,
-        ...(price !== '' ? { max_price: Number(price) } : {}),
+        ...(parsed.price !== null ? { max_price: parsed.price } : {}),
         ...(note !== '' ? { notes: note } : {}),
       },
       {
@@ -146,6 +160,7 @@ function WatchlistRow({ item }: { item: WatchlistItem }) {
   const [maxPrice, setMaxPrice] = useState(item.max_price != null ? String(item.max_price) : '')
   const [notes, setNotes] = useState(item.notes ?? '')
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [priceError, setPriceError] = useState('')
 
   // Auto-disarm the two-step remove after 5s so a stray first click can't leave the row armed
   // indefinitely (blur also disarms; this covers the focus-retained case). Cleared on unmount/re-arm.
@@ -155,20 +170,36 @@ function WatchlistRow({ item }: { item: WatchlistItem }) {
     return () => clearTimeout(timer)
   }, [confirmRemove])
 
-  // Empty input → explicit null (clear); a value → the number/string. Both fields are
-  // always sent, so the backend's omit-preserves path is never relied on from the UI.
-  const save = () =>
-    update.mutate({
-      id: item.id,
-      body: {
-        max_price: maxPrice.trim() === '' ? null : Number(maxPrice),
-        notes: notes.trim() === '' ? null : notes.trim(),
+  // Restore the input to the last persisted price; run after a rejected write so the row never
+  // keeps displaying a value the server refused (finding 5).
+  const revertPrice = () => setMaxPrice(item.max_price != null ? String(item.max_price) : '')
+
+  // Guard the edited price with the same finite/>=0.01 rule as the add form before mutating; an
+  // empty input clears it (explicit null). Both fields are always sent, so the backend's
+  // omit-preserves path is never relied on from the UI. On failure, revert to the persisted value.
+  const save = () => {
+    const parsed = parseMaxPrice(maxPrice)
+    if ('error' in parsed) {
+      setPriceError(parsed.error)
+      return
+    }
+    setPriceError('')
+    update.mutate(
+      {
+        id: item.id,
+        body: {
+          max_price: parsed.price,
+          notes: notes.trim() === '' ? null : notes.trim(),
+        },
       },
-    })
+      { onError: revertPrice },
+    )
+  }
 
   const clearMaxPrice = () => {
+    setPriceError('')
     setMaxPrice('')
-    update.mutate({ id: item.id, body: { max_price: null } })
+    update.mutate({ id: item.id, body: { max_price: null } }, { onError: revertPrice })
   }
 
   return (
@@ -190,8 +221,10 @@ function WatchlistRow({ item }: { item: WatchlistItem }) {
           step="0.01"
           className="w-32 text-data"
           value={maxPrice}
-          onChange={(e) => setMaxPrice(e.target.value)}
+          onChange={(e) => { setMaxPrice(e.target.value); if (priceError) setPriceError('') }}
           placeholder={item.max_price != null ? formatIsk(item.max_price) : 'any price'}
+          aria-invalid={priceError ? true : undefined}
+          aria-describedby={priceError ? `price-error-${item.id}` : undefined}
         />
         <Button type="button" onClick={clearMaxPrice} aria-label={`Clear max price for ${item.type_name}`}>Clear</Button>
       </div>
@@ -207,6 +240,11 @@ function WatchlistRow({ item }: { item: WatchlistItem }) {
       ) : (
         <Button type="button" className="text-danger" onClick={() => setConfirmRemove(true)}>Remove</Button>
       )}
+      {priceError ? (
+        <p id={`price-error-${item.id}`} role="alert" aria-live="polite" className="w-full text-xs text-danger">{priceError}</p>
+      ) : update.isError ? (
+        <p role="status" aria-live="polite" className="w-full text-xs text-danger">Couldn’t save that change. Try again.</p>
+      ) : null}
     </li>
   )
 }
