@@ -70,7 +70,7 @@ notes and commit messages.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Campaign branch setup | ✅ Shipped | (pending) | Baseline: backend 220 passed, frontend 12 files / 62 tests passed |
+| 0 — Campaign branch setup | ✅ Shipped | `70e8d1a` | Baseline: backend 220 passed, frontend 12 files / 62 tests passed |
 | 1 — Backend foundations | ⬜ Not started | — | — |
 | 2 — F005 Saved Searches backend | ⬜ Not started | — | — |
 | 3 — F006 Watchlist backend | ⬜ Not started | — | — |
@@ -105,7 +105,7 @@ These bind every task below and are stated here so no task repeats them:
 
 ## Phase 0 — Campaign branch setup
 
-**Execution Status:** ✅ SHIPPED at (pending) on 2026-07-18
+**Execution Status:** ✅ SHIPPED at `70e8d1a` on 2026-07-18
 
 Establishes the campaign worktree off `origin/dev` and captures the green baseline (backend pytest + frontend vitest) so every later phase measures against a known-good starting point. No production code.
 
