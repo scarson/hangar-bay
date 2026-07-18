@@ -74,7 +74,7 @@ notes and commit messages.
 | 1 — Backend foundations | ⬜ Not started | — | — |
 | 2 — F005 Saved Searches backend | ✅ Shipped | `c4c1dab` | CRUD + full HTTP/schema matrix; backend 257 passed |
 | 3 — F006 Watchlist backend | ✅ Shipped | `bd3aa68` | ESIClient.resolve_names + watchlist CRUD add pipeline; backend 285 passed |
-| 4 — F007 Notifications backend + matcher | ⬜ Not started | — | — |
+| 4 — F007 Notifications backend + matcher | ✅ Shipped | `b6d1e13` | notifications API + `WatchlistMatcherService` + scheduler/lifespan wiring; backend 319 passed |
 | 5 — Codegen | ⬜ Not started | — | — |
 | 6 — Frontend F005 | ⬜ Not started | — | — |
 | 7 — Frontend F006 | ⬜ Not started | — | — |
@@ -2344,7 +2344,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 4 — F007 Alerts backend (notifications API + matcher job + scheduler)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `b6d1e13` on 2026-07-18
 
 Goal: the notifications schemas + `api/notifications.py` (list/mark-read/mark-all-read/settings), the
 `WatchlistMatcherService` (design §4.4, exactly), the config fields + scheduler wiring + lifespan
@@ -2377,7 +2377,7 @@ tiebreaker, crossing a page boundary.)
 - Modify: `app/backend/src/fastapi_app/main.py` (mount `router` + `settings_router`).
 - Test (Create): `app/backend/src/fastapi_app/tests/api/test_notifications.py`.
 
-- [ ] **Step 1: Add the notification schemas + filter model.** Append to `schemas/account.py`:
+- [x] **Step 1: Add the notification schemas + filter model.** Append to `schemas/account.py`:
 
 ```python
 class NotificationSchema(BaseModel):
@@ -2407,7 +2407,7 @@ class NotificationFilters(BaseModel):
     size: int = Field(default=50, ge=1, le=100)
 ```
 
-- [ ] **Step 2: Write the failing test module.** Create
+- [x] **Step 2: Write the failing test module.** Create
   `app/backend/src/fastapi_app/tests/api/test_notifications.py`:
 
 ```python
@@ -2554,11 +2554,11 @@ def test_openapi_notification_paths_bare():
         assert "401" in paths[path][method]["responses"]
 ```
 
-- [ ] **Step 3: Run the test, confirm it fails.**
+- [x] **Step 3: Run the test, confirm it fails.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_notifications.py -v`
   Expected failure: `ModuleNotFoundError: No module named 'fastapi_app.api.notifications'`.
 
-- [ ] **Step 4: Implement `api/notifications.py`.** Create
+- [x] **Step 4: Implement `api/notifications.py`.** Create
   `app/backend/src/fastapi_app/api/notifications.py`:
 
 ```python
@@ -2671,7 +2671,7 @@ decorators use `""` (empty), yielding the exact path `/me/notification-settings`
 it's a singleton resource, not a collection; the collection trailing-slash convention applies to
 `/me/notifications/`).
 
-- [ ] **Step 5: Mount both routers in `main.py`.** Add the import
+- [x] **Step 5: Mount both routers in `main.py`.** Add the import
   `from .api import notifications as notifications_router` next to the others, and after the watchlist
   mount:
 
@@ -2680,11 +2680,11 @@ app.include_router(notifications_router.router)           # /me/notifications (b
 app.include_router(notifications_router.settings_router)  # /me/notification-settings (bare)
 ```
 
-- [ ] **Step 6: Run the test, confirm green.**
+- [x] **Step 6: Run the test, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_notifications.py -v`
   All pass.
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/backend/src/fastapi_app/schemas/account.py app/backend/src/fastapi_app/api/notifications.py app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/api/test_notifications.py`
   ```
   feat(api): add F007 notifications list, mark-read, and settings routes
@@ -2728,7 +2728,7 @@ with backdated `created_at` fixtures. All deterministic — no timing bounds.)
 - Create: `app/backend/src/fastapi_app/services/watchlist_matcher.py`.
 - Test (Create): `app/backend/src/fastapi_app/tests/services/test_watchlist_matcher.py`.
 
-- [ ] **Step 1: Promote the lock double.** Create `app/backend/src/fastapi_app/tests/lock_double.py`
+- [x] **Step 1: Promote the lock double.** Create `app/backend/src/fastapi_app/tests/lock_double.py`
   with the byte-identical behavior of `_FakeLockRedis` (`test_background_aggregation.py:275-295`):
 
 ```python
@@ -2763,13 +2763,13 @@ add `from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis` 
 (keeping the `_FakeLockRedis` local alias so the two existing lock tests at lines ~298-321 read
 unchanged).
 
-- [ ] **Step 2: Run the aggregation lock tests, confirm still green after the refactor.**
+- [x] **Step 2: Run the aggregation lock tests, confirm still green after the refactor.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_background_aggregation.py -v -k lock`
   Both `test_lock_release_deletes_only_its_own_token` and
   `test_lock_release_does_not_delete_a_reacquired_lock` pass unchanged (proves the promotion preserved
   behavior).
 
-- [ ] **Step 3: Write the failing matcher test module.** Create
+- [x] **Step 3: Write the failing matcher test module.** Create
   `app/backend/src/fastapi_app/tests/services/test_watchlist_matcher.py`:
 
 ```python
@@ -3057,11 +3057,11 @@ async def test_concurrency_lock_raises_when_held():
                 pass
 ```
 
-- [ ] **Step 4: Run the matcher tests, confirm they fail.**
+- [x] **Step 4: Run the matcher tests, confirm they fail.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_watchlist_matcher.py -v`
   Expected failure: `ModuleNotFoundError: No module named 'fastapi_app.services.watchlist_matcher'`.
 
-- [ ] **Step 5: Implement `watchlist_matcher.py`.** Create
+- [x] **Step 5: Implement `watchlist_matcher.py`.** Create
   `app/backend/src/fastapi_app/services/watchlist_matcher.py`:
 
 ```python
@@ -3264,11 +3264,11 @@ class WatchlistMatcherService:
         return result.rowcount
 ```
 
-- [ ] **Step 6: Run the matcher tests, confirm green.**
+- [x] **Step 6: Run the matcher tests, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_watchlist_matcher.py -v`
   All pass; output pristine (the run-failure path is not triggered in these tests, so no error spam).
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/backend/src/fastapi_app/tests/lock_double.py app/backend/src/fastapi_app/tests/services/test_background_aggregation.py app/backend/src/fastapi_app/services/watchlist_matcher.py app/backend/src/fastapi_app/tests/services/test_watchlist_matcher.py`
   ```
   feat(api): add watchlist matcher service with dedup and defensive prune
@@ -3311,7 +3311,7 @@ assertion, never a running clock.)
 - Modify: `app/backend/src/fastapi_app/main.py` (lifespan: build matcher service + register job).
 - Test (Create): `app/backend/src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py`.
 
-- [ ] **Step 1: Add the config fields.** In `core/config.py`, append these three fields INTO the single
+- [x] **Step 1: Add the config fields.** In `core/config.py`, append these three fields INTO the single
   `# --- M3 account features ---` block (established in Task 2.2, extended in Task 3.2) — do NOT start a
   second M3 block. The consolidated block then reads:
 
@@ -3328,7 +3328,7 @@ Document all three new fields in `app/backend/.env.example` (ENV-4), under the s
 `MAX_SAVED_SEARCHES_PER_USER` is somehow missing here — its owning F005 section didn't run — add it in
 this same block.)
 
-- [ ] **Step 2: Write the failing thin tests.** Create
+- [x] **Step 2: Write the failing thin tests.** Create
   `app/backend/src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py`:
 
 ```python
@@ -3381,12 +3381,12 @@ async def test_run_watchlist_matcher_job_swallows_exceptions():
 to construct the service with the real `Settings` and leave `now_fn=None`. The test asserts exactly
 that: the round-tripped service's default `now_fn` is `None`, not a lambda, and its settings survive.)
 
-- [ ] **Step 3: Run the tests, confirm they fail.**
+- [x] **Step 3: Run the tests, confirm they fail.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py -v`
   Expected failure: `ImportError: cannot import name 'add_watchlist_matcher_job'` /
   `'run_watchlist_matcher_job'`.
 
-- [ ] **Step 4: Implement `run_watchlist_matcher_job`.** In `services/scheduled_jobs.py`, add
+- [x] **Step 4: Implement `run_watchlist_matcher_job`.** In `services/scheduled_jobs.py`, add
   (top-level, importable, picklable-reference; mirrors `run_aggregation_job`):
 
 ```python
@@ -3401,7 +3401,7 @@ async def run_watchlist_matcher_job(matcher_service):
         logger.info("Finished scheduled job: run_watchlist_matcher_job")
 ```
 
-- [ ] **Step 5: Implement `add_watchlist_matcher_job`.** In `core/scheduler.py`, add the import
+- [x] **Step 5: Implement `add_watchlist_matcher_job`.** In `core/scheduler.py`, add the import
   `from datetime import datetime, timedelta` (extend the existing `from datetime import datetime`),
   `from ..services.scheduled_jobs import run_watchlist_matcher_job`, and
   `from ..services.watchlist_matcher import WatchlistMatcherService`; then:
@@ -3431,7 +3431,7 @@ def add_watchlist_matcher_job(
     )
 ```
 
-- [ ] **Step 6: Wire the lifespan in `main.py`.** Extend the scheduler import to
+- [x] **Step 6: Wire the lifespan in `main.py`.** Extend the scheduler import to
   `from .core.scheduler import add_aggregation_job, add_watchlist_matcher_job, create_scheduler`, add
   `from .services.watchlist_matcher import WatchlistMatcherService`, and in `lifespan` after
   `add_aggregation_job(scheduler, aggregation_service, settings)` (main.py:56), before
@@ -3442,14 +3442,14 @@ def add_watchlist_matcher_job(
     add_watchlist_matcher_job(scheduler, matcher_service, settings)
 ```
 
-- [ ] **Step 7: Run the thin tests, confirm green.**
+- [x] **Step 7: Run the thin tests, confirm green.**
   `cd app/backend && pdm run pytest src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py -v`
   All pass.
 
-- [ ] **Step 8: Run the full backend suite + lint (whole phase green before the PR gate).**
+- [x] **Step 8: Run the full backend suite + lint (whole phase green before the PR gate).**
   `cd app/backend && pdm run pytest -q && pdm run lint`
 
-- [ ] **Step 9: Commit.**
+- [x] **Step 9: Commit.**
   `git add app/backend/src/fastapi_app/core/config.py app/backend/.env.example app/backend/src/fastapi_app/core/scheduler.py app/backend/src/fastapi_app/services/scheduled_jobs.py app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/services/test_scheduled_jobs_watchlist.py`
   ```
   feat(api): register the watchlist matcher as a scheduled interval job
