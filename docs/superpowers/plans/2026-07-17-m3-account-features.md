@@ -83,6 +83,7 @@ notes and commit messages.
 | 10 — Docs, gates, PR | ⬜ Not started | — | — |
 
 ### Deviations
+- Task 8.2: typed-Link/route-registration ordering defect — `/notifications` route stub folded into 8.2 (commit `25621f5`) so `tsc` gates; 8.3 replaces the stub. Plan reviewers missed the TanStack typed-route compile-order constraint.
 - Task 1.4: the original executor performed the work in the wrong checkout (inherited session cwd) and committed there; recovered by cherry-picking `8638582` → `c0c341c` onto the campaign branch. Work verified green in-branch (12 passed incl. the two-session race test). Remaining executors carry an explicit cwd-guard.
 
 - **Task 7.3 — three defects in the plan's verbatim COMPLETE files, all fixed with intent preserved (ship `6a0450b`).** (1) *Impl bug:* the add-by-name `<form>` needed `noValidate`. The price `<Input type="number" min="0.01">` triggers native constraint validation that blocks form submit when a user enters `0`, so the JS guard that shows the friendly "Max price must be at least 0.01" message never ran (in a real browser the native bubble would preempt the designed message too). Verified empirically that jsdom drops the submit event on a min-violation; `noValidate` lets JS own the validation UX. (2) *Test-stub bug (`adds by name`):* GET (list) and POST (create) share the `/me/watchlist-items/` collection URL, and the stub returned the created object for both, so the list query received a non-array and `WatchlistBody` crashed on `data.map`. Fixed by branching the stub on `call.method` (array for GET, object for POST) — matches the real contract and the SavedSearches house pattern. (3) *Test-mechanics bug (`auto-disarms`):* the plan's test used `userEvent.setup({advanceTimers})` + `await user.click` under `vi.useFakeTimers()`, which deadlocks (userEvent's async event-flush awaits a real timer the fake clock never advances); switched the arming click to synchronous `fireEvent.click`, exactly as the already-shipped `SavedSearchesPage.test.tsx` auto-disarms test does (with the same documented rationale). All 8 page tests + 2 axe tests green; full frontend suite 21 files / 109 tests passed.
@@ -5462,7 +5463,7 @@ Follow TDD: write failing test → implement → verify green.
 - Create: `app/frontend/web/src/features/notifications/hooks/useNotifications.ts`
 - Test: `app/frontend/web/src/features/notifications/hooks/useNotifications.test.tsx`
 
-- [ ] **Step 1: Write the failing tests.** Per the brief: fake timers are NOT required — assert the queryOptions object fields directly (the `unreadCountQueryOptions` factory carries `refetchInterval: 60_000` and `enabled`), drive its `queryFn` to assert the count URL (`is_read=false&size=1`) and that it returns `total`; the list hook asserts its URL/params; mutations assert URL/method + invalidation; the list error path uses a persistent failure (TEST-7). COMPLETE file:
+- [x] **Step 1: Write the failing tests.** Per the brief: fake timers are NOT required — assert the queryOptions object fields directly (the `unreadCountQueryOptions` factory carries `refetchInterval: 60_000` and `enabled`), drive its `queryFn` to assert the count URL (`is_read=false&size=1`) and that it returns `total`; the list hook asserts its URL/params; mutations assert URL/method + invalidation; the list error path uses a persistent failure (TEST-7). COMPLETE file:
 
 ```tsx
 // ABOUTME: useNotifications hook contracts — list, unread-count queryOptions factory, mark-read/all, settings.
@@ -5619,9 +5620,9 @@ describe('notification settings', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/hooks/useNotifications.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./useNotifications"`.
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/hooks/useNotifications.test.tsx --reporter=dot`. Expected: `Failed to resolve import "./useNotifications"`.
 
-- [ ] **Step 3: Implement `useNotifications.ts`.** `unreadCountQueryOptions` is a standalone factory (independently testable) that now takes the caller's `queryClient` so its poll routes 401s through `raiseApiError` like every other query; `useUnreadCount` supplies that `queryClient` and calls `useCurrentUser` to derive `enabled`. COMPLETE file:
+- [x] **Step 3: Implement `useNotifications.ts`.** `unreadCountQueryOptions` is a standalone factory (independently testable) that now takes the caller's `queryClient` so its poll routes 401s through `raiseApiError` like every other query; `useUnreadCount` supplies that `queryClient` and calls `useCurrentUser` to derive `enabled`. COMPLETE file:
 
 ```ts
 // ABOUTME: TanStack Query hooks for F007 notifications — paginated list, unread-count poll, mark-read/all, settings.
@@ -5715,9 +5716,9 @@ export function useUpdateNotificationSettings() {
 }
 ```
 
-- [ ] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/hooks/useNotifications.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/notifications` (green).
+- [x] **Step 4: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/hooks/useNotifications.test.tsx --reporter=dot` (pass), then `npx tsc -b` and `npx eslint src/features/notifications` (green).
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   `git add app/frontend/web/src/features/notifications/hooks/useNotifications.ts app/frontend/web/src/features/notifications/hooks/useNotifications.test.tsx`
   ```
   feat(web): add notifications query and mutation hooks
@@ -5734,6 +5735,9 @@ BEFORE marking this task complete:
 
 ### Task 8.2: `NotificationBell` inside `HeaderIdentity` + tests (and hermetic-lane fix for existing auth specs)
 
+> **Deviation (executed):** Step 6's `tsc -b` gate is unsatisfiable as originally ordered — the typed `<Link to="/notifications">` only compiles once the route is registered, but `src/routes/notifications.tsx` belonged to Task 8.3. Resolved by folding a minimal placeholder route into this task (commit `25621f5`); Task 8.3 replaces it wholesale.
+
+
 ```
 BEFORE starting work:
 1. Invoke superpowers:test-driven-development
@@ -5748,7 +5752,7 @@ Follow TDD: write failing test → implement → verify green.
 - Modify: `app/frontend/web/e2e/helpers/api.ts` (add `AccountCall`, `readBody`, and the shared `interceptNotifications` helper — this task is its first consumer)
 - Modify: `app/frontend/web/e2e/auth.spec.ts` (the two authenticated tests — keep the lane hermetic)
 
-- [ ] **Step 1: Write the failing test.** Drives the bell through `renderApp('/contracts')` with authed `/me` and a stubbed count endpoint; asserts the `Link` to `/notifications` with `aria-label` "Notifications (N unread)", the badge shows N when N>0, and no badge number when N=0. COMPLETE file:
+- [x] **Step 1: Write the failing test.** Drives the bell through `renderApp('/contracts')` with authed `/me` and a stubbed count endpoint; asserts the `Link` to `/notifications` with `aria-label` "Notifications (N unread)", the badge shows N when N>0, and no badge number when N=0. COMPLETE file:
 
 ```tsx
 // ABOUTME: NotificationBell over the real header — Link to /notifications with an unread badge; badge hidden at zero.
@@ -5788,9 +5792,9 @@ describe('NotificationBell', () => {
 })
 ```
 
-- [ ] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationBell.test.tsx --reporter=dot`. Expected: no Notifications link (bell not in the header yet).
+- [x] **Step 2: Run, confirm failure.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationBell.test.tsx --reporter=dot`. Expected: no Notifications link (bell not in the header yet).
 
-- [ ] **Step 3: Implement `NotificationBell.tsx`.** COMPLETE file:
+- [x] **Step 3: Implement `NotificationBell.tsx`.** COMPLETE file:
 
 ```tsx
 // ABOUTME: Header notification bell — a Link to /notifications with an unread-count badge; the badge is hidden at zero.
@@ -5820,7 +5824,7 @@ export function NotificationBell() {
 }
 ```
 
-- [ ] **Step 4: Wire `NotificationBell` into `HeaderIdentity`.** Add `import { NotificationBell } from '../../notifications/components/NotificationBell'`, and in the authenticated-branch return (HeaderIdentity.tsx line 32–46) place the bell first inside the cluster:
+- [x] **Step 4: Wire `NotificationBell` into `HeaderIdentity`.** Add `import { NotificationBell } from '../../notifications/components/NotificationBell'`, and in the authenticated-branch return (HeaderIdentity.tsx line 32–46) place the bell first inside the cluster:
 
 ```tsx
   return (
@@ -5843,7 +5847,7 @@ export function NotificationBell() {
 
 The bell renders only in this authed branch, so anonymous headers are unchanged; `useUnreadCount`'s `enabled: !!user` means no count request fires when anonymous. The existing `HeaderIdentity.test.tsx` authed tests have a fallback handler returning `{total:0,…}`, so the count query resolves to 0 (no badge) and those tests keep passing with no change.
 
-- [ ] **Step 5: Add the shared `interceptNotifications` E2E helper (first consumer) and keep the auth lane hermetic.** The header now fires `GET /me/notifications/?is_read=false&size=1` on every authed render, so the two authenticated tests in `e2e/auth.spec.ts` ("authenticated header shows portrait…" and "logout POSTs exactly once…") would leak an un-intercepted request (TEST-9 discipline). This task is the first consumer of the notifications intercept, so define it here (Phase 9 Task 9.1 reuses it verbatim and its `AccountCall`/`readBody` scaffolding). Append to `e2e/helpers/api.ts` after the existing helpers (`Page` is already imported at the top):
+- [x] **Step 5: Add the shared `interceptNotifications` E2E helper (first consumer) and keep the auth lane hermetic.** The header now fires `GET /me/notifications/?is_read=false&size=1` on every authed render, so the two authenticated tests in `e2e/auth.spec.ts` ("authenticated header shows portrait…" and "logout POSTs exactly once…") would leak an un-intercepted request (TEST-9 discipline). This task is the first consumer of the notifications intercept, so define it here (Phase 9 Task 9.1 reuses it verbatim and its `AccountCall`/`readBody` scaffolding). Append to `e2e/helpers/api.ts` after the existing helpers (`Page` is already imported at the top):
 
 ```ts
 export interface AccountCall {
@@ -5905,9 +5909,9 @@ export async function interceptNotifications(
 
 Note: the two routes are registered settings-first then notifications — Playwright runs last-registered-first, so `/me/notifications` (registered last) is evaluated first; its pattern does NOT match `/me/notification-settings` (different literal), so each request lands on the right handler. Then wire it into `e2e/auth.spec.ts`: add `interceptNotifications` to the `./helpers/api` import and call `await interceptNotifications(page, { unread: 0 })` (before `page.goto`) in both authenticated tests.
 
-- [ ] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationBell.test.tsx src/features/auth/components/HeaderIdentity.test.tsx --reporter=dot` (all pass). `npx tsc -b` and `npx eslint src/features/notifications src/features/auth/components/HeaderIdentity.tsx e2e/helpers/api.ts` (green). Fixture-lane smoke for the touched spec: `npx playwright test auth.spec.ts --project=desktop` (green).
+- [x] **Step 6: Run green.** `cd app/frontend/web && npx vitest run src/features/notifications/components/NotificationBell.test.tsx src/features/auth/components/HeaderIdentity.test.tsx --reporter=dot` (all pass). `npx tsc -b` and `npx eslint src/features/notifications src/features/auth/components/HeaderIdentity.tsx e2e/helpers/api.ts` (green). Fixture-lane smoke for the touched spec: `npx playwright test auth.spec.ts --project=desktop` (green).
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   `git add app/frontend/web/src/features/notifications/components/NotificationBell.tsx app/frontend/web/src/features/notifications/components/NotificationBell.test.tsx app/frontend/web/src/features/auth/components/HeaderIdentity.tsx app/frontend/web/e2e/helpers/api.ts app/frontend/web/e2e/auth.spec.ts`
   ```
   feat(web): add notification bell to the header identity cluster
@@ -5923,6 +5927,9 @@ BEFORE marking this task complete:
 ```
 
 ### Task 8.3: `/notifications` route + `NotificationsPage` (paginated list, mark-read-on-click, mark-all-read, settings) + tests
+
+> **Note (from the 8.2 deviation):** `src/routes/notifications.tsx` ALREADY EXISTS as a placeholder. Your Files list says Create — treat it as REPLACE: overwrite the file's entire contents with the code in this task (Write, not an error/blocked condition). `routeTree.gen.ts` is already registered.
+
 
 ```
 BEFORE starting work:
