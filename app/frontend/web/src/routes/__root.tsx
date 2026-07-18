@@ -7,7 +7,10 @@ export const Route = createRootRoute({
   component: () => (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex w-full max-w-[1400px] items-baseline gap-3 px-4 py-3 sm:px-6">
+        {/* flex-wrap so the account nav + identity cluster drop to a second row on narrow
+            viewports instead of overflowing and overlapping (the header never wraps at desktop
+            widths, where there is ample room). */}
+        <div className="mx-auto flex w-full max-w-[1400px] flex-wrap items-baseline gap-3 px-4 py-3 sm:px-6">
           <Link
             to="/contracts"
             className="font-mono text-sm font-semibold tracking-[0.18em] text-ink"
