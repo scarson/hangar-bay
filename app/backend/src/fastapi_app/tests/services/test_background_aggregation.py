@@ -413,3 +413,39 @@ async def test_structure_ids_are_excluded_from_name_resolution(db_session: Async
         )
     ).scalar_one()
     assert row.start_location_name is None  # 99999999999 resolves to nothing in the stub map
+
+
+async def test_resolved_location_names_land_on_persisted_contract_rows(db_session: AsyncSession):
+    """Resolved names reach all three denormalized columns on the persisted row.
+
+    `_build_contract_rows` takes `id_to_name_map` as an explicit parameter, so the
+    resolve step and the row build are wired together at the call site. Nothing else
+    in the suite asserts a POPULATED name, which leaves that wiring free to break
+    silently — an empty map would still produce rows, just nameless ones. This pins
+    all three lookups (start location, issuer, issuer corporation) through the full
+    build-and-upsert path.
+    """
+    service = _make_service()
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            1001: "Test Issuer",
+            2002: "Test Issuer Corp",
+        }
+    )
+    contract = dict(_ship_contract_dict(910004))
+    contract["start_location_id"] = 60003760
+    contract["issuer_id"] = 1001
+    contract["issuer_corporation_id"] = 2002
+    contract["type"] = "courier"  # skip the item-fetch loop entirely
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910004)
+        )
+    ).scalar_one()
+    assert row.start_location_name == "Jita IV - Moon 4 - Caldari Navy Assembly Plant"
+    assert row.issuer_name == "Test Issuer"
+    assert row.issuer_corporation_name == "Test Issuer Corp"
