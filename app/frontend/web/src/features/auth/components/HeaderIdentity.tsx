@@ -2,6 +2,7 @@
 // ABOUTME: Login is a FULL navigation to the backend redirect, with next=encodeURIComponent(path+search), sso stripped.
 import { useLocation } from '@tanstack/react-router'
 import { Button, buttonClasses } from '../../../components/Button'
+import { NotificationBell } from '../../notifications/components/NotificationBell'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { useLogout } from '../hooks/useLogout'
 
@@ -31,6 +32,7 @@ export function HeaderIdentity() {
 
   return (
     <div className="ml-auto flex items-center gap-3">
+      <NotificationBell />
       <img
         src={`https://images.evetech.net/characters/${user.character_id}/portrait?size=64`}
         alt=""
