@@ -1,5 +1,6 @@
 # ABOUTME: HTTP-level tests for the /me/watchlist-items surface (F006) — add pipeline, CRUD, auth.
 # ABOUTME: ESI is mocked at the app.state.http_client seam (base http://sso.test) via pytest-httpx.
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -99,6 +100,51 @@ async def test_add_esi_5xx_is_502(authed_user, httpx_mock, db_session):
     # Repeatable response; DO NOT assert request count == 1 (retries are load-bearing).
     user, client = authed_user
     httpx_mock.add_response(method="GET", url=_type_url(587), status_code=503, text="down", is_reusable=True)
+    resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
+    assert resp.status_code == 502
+    assert (await db_session.execute(select(WatchlistItem))).first() is None
+
+
+@pytest.mark.asyncio
+async def test_add_esi_type_420_is_502_rate_limit(authed_user, httpx_mock, db_session):
+    # 420 is ESI error-limiting, not user error: normalize to a retryable upstream 502, not a 400.
+    user, client = authed_user
+    httpx_mock.add_response(method="GET", url=_type_url(587), status_code=420, json={"error": "err-limited"})
+    resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "ESI is rate-limiting requests; try again shortly"
+    assert (await db_session.execute(select(WatchlistItem))).first() is None
+
+
+@pytest.mark.asyncio
+async def test_add_esi_type_429_is_502_rate_limit(authed_user, httpx_mock, db_session):
+    # 429 is ESI rate-limiting, not user error: same retryable-upstream 502 mapping as 420.
+    user, client = authed_user
+    httpx_mock.add_response(method="GET", url=_type_url(587), status_code=429, json={"error": "slow down"})
+    resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "ESI is rate-limiting requests; try again shortly"
+    assert (await db_session.execute(select(WatchlistItem))).first() is None
+
+
+@pytest.mark.asyncio
+async def test_add_type_connect_timeout_is_502(authed_user, httpx_mock, db_session):
+    # ConnectTimeout is NOT a ConnectError/ReadTimeout subclass, so the client retry loop lets it
+    # escape; the service must catch httpx.RequestError broadly and map transport failures to 502
+    # (never a raw 500). add_exception raises on the request, no request-count assertion needed.
+    user, client = authed_user
+    httpx_mock.add_exception(httpx.ConnectTimeout("connect timed out"), method="GET", url=_type_url(587))
+    resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
+    assert resp.status_code == 502
+    assert (await db_session.execute(select(WatchlistItem))).first() is None
+
+
+@pytest.mark.asyncio
+async def test_add_type_non_json_body_is_502(authed_user, httpx_mock, db_session):
+    # A 200 with a non-JSON body (upstream HTML error page) must not escape as a raw ValueError/500;
+    # decoding failures on the type lookup normalize to a retryable upstream 502.
+    user, client = authed_user
+    httpx_mock.add_response(method="GET", url=_type_url(587), status_code=200, text="<html>not json</html>")
     resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
     assert resp.status_code == 502
     assert (await db_session.execute(select(WatchlistItem))).first() is None

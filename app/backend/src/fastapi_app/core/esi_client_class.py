@@ -241,7 +241,13 @@ class ESIClient:
             raise ESIRequestFailedError(message=f"Network error for {path}: {last_exception}")
 
         response.raise_for_status()
-        data = response.json()
+        # A malformed 2xx body (e.g. an upstream HTML error page) must not escape as a raw
+        # ValueError/500 — decoding failures normalize to ESIRequestFailedError (status 0),
+        # which the caller maps to a retryable 502 alongside network/5xx outages (design §4.5).
+        try:
+            data = response.json()
+        except ValueError:
+            raise ESIRequestFailedError(message=f"Non-JSON body from {path}")
         if not isinstance(data, dict):
             raise ESIRequestFailedError(
                 message=f"Expected JSON object from {path}, got {type(data).__name__}"

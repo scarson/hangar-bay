@@ -1,5 +1,5 @@
 # ABOUTME: F006 watchlist CRUD + the design §4.5 add pipeline (cap -> resolve -> validate -> insert).
-# ABOUTME: ESI error discrimination: 4xx -> 400 (bad request), 5xx/network -> 502 (retryable outage).
+# ABOUTME: ESI error discrimination: 4xx -> 400 (bad request); 5xx/network/malformed/throttle (420,429) -> 502 (retryable).
 from typing import Any, Optional
 
 import httpx
@@ -17,20 +17,33 @@ from ..schemas.account import WatchlistItemCreate, WatchlistItemUpdate
 SHIP_CATEGORY_ID = 6  # EVE static "Ship" category
 
 
+_UPSTREAM_UNAVAILABLE = "Ship metadata service is unavailable; try again."
+_RATE_LIMITED = "ESI is rate-limiting requests; try again shortly"
+
+
 def _map_esi_failure(status_code: int, invalid_msg: str) -> HTTPException:
-    """4xx from ESI is a bad request (400); 5xx / network (status 0) is a retryable outage (502)."""
+    """Map an ESI failure status to the account-API surface.
+
+    ESI 420 (error-limited) / 429 (rate-limited) are upstream throttling, not user error, so they
+    surface as a retryable outage (502) — same shape as 5xx. Other 4xx is a genuine bad request
+    (400); 5xx / network / malformed body (status 0) is a retryable outage (502).
+    """
+    if status_code in (420, 429):
+        return HTTPException(status_code=502, detail=_RATE_LIMITED)
     if 400 <= status_code < 500:
         return HTTPException(status_code=400, detail=invalid_msg)
-    return HTTPException(status_code=502, detail="Ship metadata service is unavailable; try again.")
+    return HTTPException(status_code=502, detail=_UPSTREAM_UNAVAILABLE)
 
 
 async def _fetch_type_or_400_502(esi_client: ESIClient, type_id: int) -> dict[str, Any]:
     try:
         return await esi_client.get_universe_type(type_id)
-    except ESIRequestFailedError as e:                 # 5xx / network after retries
+    except ESIRequestFailedError as e:                 # 5xx / network / malformed body after retries
         raise _map_esi_failure(e.status_code, "unknown or invalid type")
-    except httpx.HTTPStatusError as e:                 # 4xx (e.g. 404) — see source note #1
+    except httpx.HTTPStatusError as e:                 # 4xx (404, 420, 429) — see source note #1
         raise _map_esi_failure(e.response.status_code, "unknown or invalid type")
+    except httpx.RequestError:                         # transport failure the client retry didn't catch
+        raise HTTPException(status_code=502, detail=_UPSTREAM_UNAVAILABLE)
 
 
 async def _fetch_group_or_400_502(esi_client: ESIClient, group_id: int) -> dict[str, Any]:
@@ -40,6 +53,8 @@ async def _fetch_group_or_400_502(esi_client: ESIClient, group_id: int) -> dict[
         raise _map_esi_failure(e.status_code, "unknown or invalid type")
     except httpx.HTTPStatusError as e:
         raise _map_esi_failure(e.response.status_code, "unknown or invalid type")
+    except httpx.RequestError:                         # transport failure the client retry didn't catch
+        raise HTTPException(status_code=502, detail=_UPSTREAM_UNAVAILABLE)
 
 
 async def _resolve_name_to_type_id(esi_client: ESIClient, name: str) -> int:
