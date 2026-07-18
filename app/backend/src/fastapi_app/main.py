@@ -15,13 +15,14 @@ from redis.asyncio import Redis # For type hinting Redis client
 from .core.config import settings
 from .core.cache import init_cache, close_cache
 from .core.http_client import init_http_client, close_http_client
-from .core.scheduler import add_aggregation_job, create_scheduler
+from .core.scheduler import add_aggregation_job, add_watchlist_matcher_job, create_scheduler
 from .core.dependencies import get_cache
 from .core.logging import setup_logging, RequestIDMiddleware
 from .core.token_cipher import is_token_cipher_configured
 from .db import AsyncSessionLocal, async_engine, Base
 from .core.esi_client_class import ESIClient # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService # For manual service creation
+from .services.watchlist_matcher import WatchlistMatcherService
 from .api import contracts as contracts_router
 from .api import auth as auth_router
 from .api import saved_searches as saved_searches_router
@@ -57,6 +58,8 @@ async def lifespan(app: FastAPI):
         settings=settings,
     )
     add_aggregation_job(scheduler, aggregation_service, settings)
+    matcher_service = WatchlistMatcherService(settings=settings)
+    add_watchlist_matcher_job(scheduler, matcher_service, settings)
     scheduler.start()
     logging.info("Application startup complete with all services initialized.")
 
