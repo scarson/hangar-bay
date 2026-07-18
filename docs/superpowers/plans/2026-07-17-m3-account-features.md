@@ -72,7 +72,7 @@ notes and commit messages.
 |---|---|---|---|
 | 0 — Campaign branch setup | ✅ Shipped | `70e8d1a` | Baseline: backend 220 passed, frontend 12 files / 62 tests passed |
 | 1 — Backend foundations | ⬜ Not started | — | — |
-| 2 — F005 Saved Searches backend | ⬜ Not started | — | — |
+| 2 — F005 Saved Searches backend | ✅ Shipped | `c4c1dab` | CRUD + full HTTP/schema matrix; backend 257 passed |
 | 3 — F006 Watchlist backend | ⬜ Not started | — | — |
 | 4 — F007 Notifications backend + matcher | ⬜ Not started | — | — |
 | 5 — Codegen | ⬜ Not started | — | — |
@@ -199,7 +199,7 @@ assertions (timing bounds).
 - Modify: `app/backend/src/fastapi_app/models/__init__.py` (register the three new models)
 - Test: `app/backend/src/fastapi_app/tests/models/test_account_models.py`
 
-- [ ] **Step 1: Write the failing model tests.** Create `app/backend/src/fastapi_app/tests/models/test_account_models.py`:
+- [x] **Step 1: Write the failing model tests.** Create `app/backend/src/fastapi_app/tests/models/test_account_models.py`:
   ```python
   # ABOUTME: Registration + constraint-binding guards for the M3 account tables.
   # ABOUTME: Proves FK-to-users, the two UniqueConstraints, and the notifications partial dedup index.
@@ -299,12 +299,12 @@ assertions (timing bounds).
       )).scalars().all()
       assert len(rows) == 2  # the first watchlist_match + the other_kind row
   ```
-- [ ] **Step 2: Run the tests and confirm they fail.**
+- [x] **Step 2: Run the tests and confirm they fail.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/models/test_account_models.py -v
   ```
   Expected failure: `ImportError: cannot import name 'Notification' from 'fastapi_app.models'` (the account module does not exist yet).
-- [ ] **Step 3: Create `app/backend/src/fastapi_app/models/account.py`.**
+- [x] **Step 3: Create `app/backend/src/fastapi_app/models/account.py`.**
   ```python
   # ABOUTME: M3 per-user account tables — saved searches, watchlist items, notifications — FK'd to users.id (ondelete CASCADE).
   # ABOUTME: Notifications carry the uq_notifications_watchlist_dedup partial unique index the matcher relies on for ON CONFLICT dedup.
@@ -408,7 +408,7 @@ assertions (timing bounds).
           ),
       )
   ```
-- [ ] **Step 4: Add `watchlist_alerts_enabled` to `models/user.py`.** Change the import line `from sqlalchemy import BigInteger, DateTime, String, Text, func` to also import `Boolean` and `true`:
+- [x] **Step 4: Add `watchlist_alerts_enabled` to `models/user.py`.** Change the import line `from sqlalchemy import BigInteger, DateTime, String, Text, func` to also import `Boolean` and `true`:
   ```python
   from sqlalchemy import BigInteger, Boolean, DateTime, String, Text, func, true
   ```
@@ -418,7 +418,7 @@ assertions (timing bounds).
           Boolean, nullable=False, server_default=true()
       )
   ```
-- [ ] **Step 5: Register the models in `models/__init__.py`.** Replace the file body with:
+- [x] **Step 5: Register the models in `models/__init__.py`.** Replace the file body with:
   ```python
   from .user import User
   from .contracts import Contract, ContractItem, EsiMarketGroupCache
@@ -435,12 +435,12 @@ assertions (timing bounds).
   ]
   ```
   (Registration is sufficient for `create_all` in dev and tests because `main.py` imports `from .models import contracts`, which runs this package `__init__` and imports `account`; `conftest.py` pulls the app import chain too — recon backend-data-auth §1.)
-- [ ] **Step 6: Run the tests and confirm green.**
+- [x] **Step 6: Run the tests and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/models/test_account_models.py -v
   ```
   Expected: all pass. Also run the existing user-model guard to confirm no regression: `pdm run pytest src/fastapi_app/tests/models/test_user_model.py -v`.
-- [ ] **Step 7: Lint + commit.**
+- [x] **Step 7: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/models/account.py app/backend/src/fastapi_app/models/user.py app/backend/src/fastapi_app/models/__init__.py app/backend/src/fastapi_app/tests/models/test_account_models.py
@@ -473,7 +473,7 @@ Follow TDD: write failing test → implement → verify green.
 - Modify: `app/backend/src/fastapi_app/tests/conftest.py` (add two imports, `login_as`, `authed_user`)
 - Test: `app/backend/src/fastapi_app/tests/api/test_account_fixtures.py`
 
-- [ ] **Step 1: Write the failing fixture tests.** Create `app/backend/src/fastapi_app/tests/api/test_account_fixtures.py`:
+- [x] **Step 1: Write the failing fixture tests.** Create `app/backend/src/fastapi_app/tests/api/test_account_fixtures.py`:
   ```python
   # ABOUTME: Round-trip proofs for the M3 authed_user fixture and login_as helper (real session in FakeRedis).
   import pytest
@@ -501,12 +501,12 @@ Follow TDD: write failing test → implement → verify green.
       assert resp.json()["character_id"] == 91000042
       assert other.character_id == 91000042
   ```
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_account_fixtures.py -v
   ```
   Expected failure: `ImportError: cannot import name 'login_as' from 'fastapi_app.tests.conftest'`.
-- [ ] **Step 3: Add the fixture + helper to `conftest.py`.** Add these imports near the existing `from fastapi_app.core.config import settings` (top region of the file):
+- [x] **Step 3: Add the fixture + helper to `conftest.py`.** Add these imports near the existing `from fastapi_app.core.config import settings` (top region of the file):
   ```python
   from fastapi_app.core import session as sess
   from fastapi_app.models import User
@@ -540,12 +540,12 @@ Follow TDD: write failing test → implement → verify green.
       )
       return user, auth_client
   ```
-- [ ] **Step 4: Run and confirm green.**
+- [x] **Step 4: Run and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_account_fixtures.py -v
   ```
   Expected: both pass.
-- [ ] **Step 5: Lint + commit.**
+- [x] **Step 5: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/tests/conftest.py app/backend/src/fastapi_app/tests/api/test_account_fixtures.py
@@ -580,7 +580,7 @@ Follow TDD: write failing test → implement → verify green.
 
 Design §4.1: resolve `session["user_id"]` to a live `users` row; if the row is absent OR its `character_id` differs from the session's, destroy the server-side session (re-reading the sid from the request cookie, since the session payload does not carry its own sid) and raise 401. The `character_id` equality check is load-bearing — after a dev wipe + a different user's re-login, `users.id` can be reassigned, so an existence check alone would silently read/write another character's data.
 
-- [ ] **Step 1: Write the failing tests.** Create `app/backend/src/fastapi_app/tests/core/test_current_user.py`:
+- [x] **Step 1: Write the failing tests.** Create `app/backend/src/fastapi_app/tests/core/test_current_user.py`:
   ```python
   # ABOUTME: get_current_user resolves session->users row and forces re-login on miss/mismatch (design §4.1).
   # ABOUTME: Direct-call unit tests; HTTP-level coverage (401 anon, cross-user) lands in Phase 2's CRUD suite.
@@ -649,12 +649,12 @@ Design §4.1: resolve `session["user_id"]` to a live `users` row; if the row is 
       assert exc.value.status_code == 401
       assert await redis.exists(f"session:{sid}") == 0
   ```
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/core/test_current_user.py -v
   ```
   Expected failure: `ModuleNotFoundError: No module named 'fastapi_app.core.current_user'`.
-- [ ] **Step 3: Create `app/backend/src/fastapi_app/core/current_user.py`.**
+- [x] **Step 3: Create `app/backend/src/fastapi_app/core/current_user.py`.**
   ```python
   # ABOUTME: get_current_user — the M3 auth backbone: resolves the session to a live users row and
   # ABOUTME: verifies character_id, forcing re-login (destroy session + 401) on a missing/reassigned row (design §4.1).
@@ -690,12 +690,12 @@ Design §4.1: resolve `session["user_id"]` to a live `users` row; if the row is 
           raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
       return user
   ```
-- [ ] **Step 4: Run and confirm green.**
+- [x] **Step 4: Run and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/core/test_current_user.py -v
   ```
   Expected: all three pass.
-- [ ] **Step 5: Lint + commit.**
+- [x] **Step 5: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/core/current_user.py app/backend/src/fastapi_app/tests/core/test_current_user.py
@@ -901,7 +901,7 @@ Minimum 3 review rounds. If round 3 still finds issues, keep going until clean.
 
 ## Phase 2 — F005 Saved Searches backend
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `c4c1dab` on 2026-07-18
 
 The complete F005 backend: the `search_parameters` validation model + request/response schemas (Task 2.1), then the ownership-scoped CRUD service, the auth-gated router, its `main.py` mount, the `MAX_SAVED_SEARCHES_PER_USER` setting, and the full HTTP + schema test matrix (Task 2.2). Design authority: §4.5, §3.5. All routes are bare-mounted (PROXY-1), auth-gated via `get_current_user`, and ownership-scoped; not-found and not-owned are the same 404 (anti-enumeration).
 
@@ -920,7 +920,7 @@ Follow TDD: write failing test → implement → verify green.
 
 `SavedSearchParameters` mirrors the frontend `ContractSearch` shape minus `page` (design §4.5) and sets `extra="forbid"` — this rejects the four inert ME/TE params (FASTAPI-2), `is_ship_contract` (the wire name; the saved blob uses the frontend `ships_only` form per design Appendix A), `page`, and arbitrary junk by construction, at the API boundary. It reuses the existing `SortableContractFields` / `SortDirection` enums.
 
-- [ ] **Step 1: Write the failing schema tests.** Create `app/backend/src/fastapi_app/tests/api/test_account_schemas.py`:
+- [x] **Step 1: Write the failing schema tests.** Create `app/backend/src/fastapi_app/tests/api/test_account_schemas.py`:
   ```python
   # ABOUTME: Unit tests for the SavedSearchParameters validation model + saved-search request/response schemas.
   # ABOUTME: Pins extra="forbid" (ME/TE + junk rejection), constraint bounds, and name trimming.
@@ -980,12 +980,12 @@ Follow TDD: write failing test → implement → verify green.
       with pytest.raises(ValidationError):
           SavedSearchUpdate(name="")
   ```
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_account_schemas.py -v
   ```
   Expected failure: `ModuleNotFoundError: No module named 'fastapi_app.schemas.account'`.
-- [ ] **Step 3: Create `app/backend/src/fastapi_app/schemas/account.py`.**
+- [x] **Step 3: Create `app/backend/src/fastapi_app/schemas/account.py`.**
   ```python
   # ABOUTME: Pydantic schemas for M3 saved searches — the extra="forbid" search_parameters model + CRUD request/response shapes.
   # ABOUTME: search_parameters mirrors the frontend ContractSearch minus page; ME/TE and unknown keys are rejected at the boundary (FASTAPI-2).
@@ -1044,12 +1044,12 @@ Follow TDD: write failing test → implement → verify green.
 
       model_config = ConfigDict(from_attributes=True)
   ```
-- [ ] **Step 4: Run and confirm green.**
+- [x] **Step 4: Run and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_account_schemas.py -v
   ```
   Expected: all pass.
-- [ ] **Step 5: Lint + commit.**
+- [x] **Step 5: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/schemas/account.py app/backend/src/fastapi_app/tests/api/test_account_schemas.py
@@ -1096,7 +1096,7 @@ assertions (timing bounds).
 
 **Codegen note:** mounting the router changes `app.openapi()` (the schema tests below read the live schema, so they pass immediately). The committed `openapi.json` / `schema.d.ts` FILES are NOT regenerated in this phase — the design batches the codegen chain into one dedicated step after all backend surface lands (design §7). No backend test asserts file-freshness (`tests/test_export_openapi.py` regenerates to a tmp path and only checks `/contracts`), so this phase stays green without regenerating.
 
-- [ ] **Step 1: Write the failing HTTP + schema test matrix.** Create `app/backend/src/fastapi_app/tests/api/test_saved_searches.py`:
+- [x] **Step 1: Write the failing HTTP + schema test matrix.** Create `app/backend/src/fastapi_app/tests/api/test_saved_searches.py`:
   ```python
   # ABOUTME: HTTP-level (TEST-1) + app.openapi() schema tests for the F005 saved-searches CRUD surface.
   # ABOUTME: Covers CRUD, 401 anon, cross-user 404, 409 duplicate/rename via real constraint, cap 400, 422s, ordering, PROXY-1.
@@ -1240,12 +1240,12 @@ assertions (timing bounds).
       comps = schema["components"]["schemas"]
       assert comps["SavedSearchParameters"]["additionalProperties"] is False  # extra="forbid"
   ```
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_saved_searches.py -v
   ```
   Expected failure: collection/import error — `ModuleNotFoundError: No module named 'fastapi_app.services.saved_search_service'` (and the schema test asserts a `/me/saved-searches/` path that is not mounted yet).
-- [ ] **Step 3: Add the config setting.** In `core/config.py`, add under the Aggregation block (any location with the other scalars is fine). This establishes the single canonical `# --- M3 account features ---` block that Tasks 3.2 and 4.3 append their config fields INTO (do not start a second M3 block later):
+- [x] **Step 3: Add the config setting.** In `core/config.py`, add under the Aggregation block (any location with the other scalars is fine). This establishes the single canonical `# --- M3 account features ---` block that Tasks 3.2 and 4.3 append their config fields INTO (do not start a second M3 block later):
   ```python
       # --- M3 account features ---
       # Per-user soft caps (best-effort count-checks, design §3.5).
@@ -1257,7 +1257,7 @@ assertions (timing bounds).
   # Per-user soft cap on saved searches (best-effort; enforced count-then-insert).
   MAX_SAVED_SEARCHES_PER_USER=100
   ```
-- [ ] **Step 4: Create the service `app/backend/src/fastapi_app/services/saved_search_service.py`.**
+- [x] **Step 4: Create the service `app/backend/src/fastapi_app/services/saved_search_service.py`.**
   ```python
   # ABOUTME: F005 saved-search CRUD — ownership-scoped queries, best-effort per-user cap, and unique-name
   # ABOUTME: 409 mapping via a SAVEPOINT (so a duplicate leaves the sibling row + outer transaction intact).
@@ -1353,7 +1353,7 @@ assertions (timing bounds).
       await db.delete(row)
       await db.flush()
   ```
-- [ ] **Step 5: Create the router `app/backend/src/fastapi_app/api/saved_searches.py`.**
+- [x] **Step 5: Create the router `app/backend/src/fastapi_app/api/saved_searches.py`.**
   ```python
   # ABOUTME: F005 saved-searches router — bare-mounted /me/saved-searches (PROXY-1), auth-gated via get_current_user.
   # ABOUTME: Declares 400/401/404/409 with ErrorDetail so the typed client sees the real error bodies (design §4.5).
@@ -1424,7 +1424,7 @@ assertions (timing bounds).
       await saved_search_service.delete_saved_search(db, user.id, search_id)
       return Response(status_code=status.HTTP_204_NO_CONTENT)
   ```
-- [ ] **Step 6: Mount the router in `main.py`.** Add the import beside the existing router imports (near `main.py:25-26`):
+- [x] **Step 6: Mount the router in `main.py`.** Add the import beside the existing router imports (near `main.py:25-26`):
   ```python
   from .api import saved_searches as saved_searches_router
   ```
@@ -1432,17 +1432,17 @@ assertions (timing bounds).
   ```python
   app.include_router(saved_searches_router.router)   # /me/saved-searches/* (bare, PROXY-1)
   ```
-- [ ] **Step 7: Run the F005 suite and confirm green.**
+- [x] **Step 7: Run the F005 suite and confirm green.**
   ```bash
   cd app/backend && pdm run pytest src/fastapi_app/tests/api/test_saved_searches.py -v
   ```
   Expected: all pass (CRUD, 401×4, cross-user 404×3, 409 duplicate+rename, cap 400, 422×5, ordering, schema).
-- [ ] **Step 8: Run the full backend suite to confirm no regression.**
+- [x] **Step 8: Run the full backend suite to confirm no regression.**
   ```bash
   cd app/backend && pdm run pytest -q
   ```
   Expected: the Phase-0 baseline count plus all Section-A additions, green. In particular `test_me_schema.py`'s PROXY-1 sentinel still passes (no `/api/v1` path introduced).
-- [ ] **Step 9: Lint + commit.**
+- [x] **Step 9: Lint + commit.**
   ```bash
   cd app/backend && pdm run lint
   git add app/backend/src/fastapi_app/services/saved_search_service.py app/backend/src/fastapi_app/api/saved_searches.py app/backend/src/fastapi_app/core/config.py app/backend/.env.example app/backend/src/fastapi_app/main.py app/backend/src/fastapi_app/tests/api/test_saved_searches.py
@@ -1453,7 +1453,7 @@ assertions (timing bounds).
 
   Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   ```
-- [ ] **Step 10: Push the campaign branch (first push of the campaign).**
+- [x] **Step 10: Push the campaign branch (first push of the campaign).**
   ```bash
   git push -u origin claude/m3-account-features
   ```
