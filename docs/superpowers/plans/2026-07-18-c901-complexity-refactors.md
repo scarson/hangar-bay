@@ -130,14 +130,35 @@ failures that look like real test defects. Reviewers doing mutation testing must
 their own `DATABASE_URL_TESTS` at a scratch database. This bit the Phase 1 review round (2026-07-18)
 and cost one reviewer several confusing runs before it was diagnosed.
 
-**Contracts stranded at `PENDING_ITEMS` are never re-driven (Phase 2, latent design gap).** When a
-contract's item fetch raises, `_fetch_item_rows` isolates the failure and omits that contract from
-`processed_contract_ids`, so it is marked neither COMPLETED nor ENRICHMENT_INCOMPLETE and keeps the
-model default `PENDING_ITEMS` (`models/contracts.py`). Nothing in the codebase selects on
-`PENDING_ITEMS` to retry those contracts, so a transient ESI item-fetch failure leaves a contract
-un-enriched until its next full re-ingest happens to succeed. This is CURRENT behavior and is locked
-by `test_item_fetch_failure_for_one_contract_does_not_abort_batch`; recorded here, not fixed
-(ground rule 4). Worth a decision on whether a retry sweep is wanted.
+**CORRECTED — contracts at `PENDING_ITEMS` recover on their own; no retry sweep is needed.** An
+earlier revision of this entry (and PR #57's body) claimed a transient item-fetch failure strands a
+contract "until its next full re-ingest happens to succeed", and asked whether a retry sweep was
+wanted. **That claim was wrong and is retracted.** Verified 2026-07-18 by reading the loop and then
+proving it empirically:
+
+- `_fetch_item_rows` gates ONLY on `contract["type"] not in ["item_exchange", "auction"]`. There is no
+  status gate. Every run re-fetches items for every eligible contract in the batch, so a contract left
+  at `PENDING_ITEMS` is retried by the very next aggregation run with no machinery at all.
+- `test_failed_item_fetch_recovers_on_the_next_run` pins this: run 1 fails the fetch (status stays
+  `PENDING_ITEMS`), run 2 succeeds (status becomes `COMPLETED`, items land). Mutation-verified — adding
+  a plausible once-per-contract skip strands the contract and turns the test red.
+
+**Decision: no retry sweep.** It would be machinery for a problem that does not exist, and it would key
+off a column that currently signals nothing to anyone (see the next entry).
+
+**`item_processing_status` is a write-only column.** Nothing reads it — not the API layer, not the
+frontend, not any query, not any retry logic. `grep` over `src/` outside tests finds only the model
+definition (`models/contracts.py:65`, which also carries `index=True`) and the three write sites in
+`background_aggregation.py`. So the column, and the index backing it, currently cost writes and space
+while informing no consumer. Not deleted here (out of scope, and it is plausibly intended for future
+ops/observability) — but if no reader is planned, the column and its index are dead weight.
+
+**`ESINotModifiedError` handlers are unreachable.** The exception is defined
+(`core/exceptions.py:19`), imported, and caught in TWO places (`background_aggregation.py:239` and
+`:373`) — but it is **raised nowhere in the codebase**. `get_esi_data_with_etag_caching` serves a 304
+from cache rather than raising. Both `except ESINotModifiedError:` arms are therefore dead code, and
+the `logger.info("Items for contract ... not modified.")` line can never fire. Relevant to Phase 5,
+whose 304 characterization tests will confirm the serve-from-cache path. Recorded, not removed.
 
 **Backend tests are excluded from flake8.** `app/backend/.flake8` line 24 carries
 `exclude = .venv,.git,__pycache__,docs,migrations,*/tests/*,src/alembic`,
