@@ -70,9 +70,9 @@ notes and commit messages.
 |---|---|---|---|
 | 1 — get_contracts | ✅ Merged | `69b0112`, `3d4e61e`, `1ca0aa0`, `7ae0576`, `63e5ddb`, `bca290b` → merge `e84aa8a` | PR #54, merged 2026-07-18; complexity 20 → 7; suite 358 → 362 |
 | 2 — _process_contracts | ✅ Merged | `455f586`, `6bd9f63`, `8962daf`, `656a383`, `bca8d00` → merge `c271f19` | PR #57, merged 2026-07-18; complexity 18 → 7; suite 362 → 365 |
-| 3 — run_aggregation | 🚧 PR open (v2) | `433eb9a`, `467f6f3` | branch `claude/c901-run-aggregation-v2` off `e80103a`; **redone against a rewritten base — see Deviations**; complexity 16 → 8 |
-| 4 — _get_esi_object + shared retry helper | 🚧 PR open | `4c4e158`, `402658a` | branch `claude/c901-esi-object`; complexity 16 → 9; introduces `_get_with_transient_retry` (8); `Review — data-integrity`, **Sam merges** |
-| 5 — get_esi_data_with_etag_caching | ⬜ Not started | — | blocked by Phase 4 (uses its helper); write its missing tests FIRST |
+| 3 — run_aggregation | ✅ Merged | `9cbafc8`, `433eb9a`, `467f6f3`, `516f8ed`, `939d561` → merge `727d84f` | PR #62, merged 2026-07-19; **redone against a base rewritten by PR #60 — see Deviations**; complexity 16 → 8; suite 416 → 423 |
+| 4 — _get_esi_object + shared retry helper | ✅ Merged | `4c4e158`, `402658a` → merge `e5d304d` | PR #59, merged 2026-07-19; complexity 16 → 9; introduced `_get_with_transient_retry` (8) |
+| 5 — get_esi_data_with_etag_caching | 🚧 PR #68 open | `e25883c`, `fc17fdf`, `7122d98` | branch `claude/c901-etag-caching`; complexity 24 → 9; **clears the last suppression**; `Review — data-integrity`, **Sam merges** |
 
 ### Deviations
 
@@ -796,7 +796,54 @@ async def _get_with_transient_retry(
 
 ## Phase 5 — `get_esi_data_with_etag_caching` (complexity 23 → ≤ 10)
 
-**Execution Status:** ⬜ NOT STARTED — MUST NOT start until Phase 4's PR is merged (uses `_get_with_transient_retry`).
+**Execution Status:** 🚧 PR OPEN — branch `claude/c901-etag-caching`. Commits `e25883c` (20-test
+characterization suite), `fc17fdf` (Task 5.2a str/bytes fix), `7122d98` (decomposition). Gates: red gate
+observed at **24** (not the plan's 23 — Task 5.2a's `isinstance` check added a decision point after the
+plan was written); after decomposition `pdm run lint` exit 0, `--select=C901` empty,
+`get_esi_data_with_etag_caching` 24 → 9 (`_cache_ttl_seconds` 5, `_last_page_reached` 3,
+`_read_etag_cached_page` 2, `_store_page_cache` 2); suite 435 passed.
+
+**Phase 5 mutation evidence (persisted per TEST-12).** Task 5.1's suite: seven mutations, each
+producing EXACTLY ONE failure (no collateral, so each test is pinned to its own named behavior rather
+than riding a shared crash) — reordering `not page_data` after the X-Pages parse and reordering
+`not all_pages` after it both raised `ValueError: invalid literal for int() ... 'garbage'`; a 304
+falling through to a live parse gave `assert [{'contract_id': 999}] == []`; a hardcoded 600 TTL gave
+`expected an Expires-derived TTL, got 600`; `max_retries` 3→2 gave `assert 2 == 3`; removing the
+empty-content guard gave `assert [{'contract_id': 1}] == []`; dropping `If-None-Match` gave
+`KeyError: 'If-None-Match'`. Task 5.2's four re-verified the suite grips the DECOMPOSED code
+(reorder `_last_page_reached`, flatten `_cache_ttl_seconds` to 600, stub `_read_etag_cached_page` to
+`[]`, no-op `_store_page_cache` — all red, all reverted). Task 5.2a verified BOTH directions: reverting
+the fix reddened the new str test, and inverting the `isinstance` reddened the existing bytes test
+(catching raw bytes leaking into the header). The post-review round added six more:
+
+| Mutation | Observed failure |
+|---|---|
+| remove the `if not new_etag: return` gate in `_store_page_cache` | `Expected set to not have been awaited. Awaited 2 times.` |
+| replace the backoff `await asyncio.sleep(...)` with `pass` | `assert [] == [0.5, 1.0]` |
+| delete the 404 debug log | `assert 'Received 404 for /v1/test/?page=2, treating as end of pages.' in []` |
+| delete the 204 debug log | `assert 'Received 204 for /v1/test/?page=2, treating as end of pages.' in []` |
+| delete the 304 debug log | `assert 'ETag cache hit for /v1/test/?page=1. Serving data from cache.' in []` |
+| hoist `_store_page_cache` above the JSON parse | `Expected set to not have been awaited. Awaited 2 times.` |
+
+**Two test-construction traps recorded for future readers of this file.** (1) `_ok_response` never
+sets `headers`, so on a bare `MagicMock` `response.headers.get("ETag")` returns a TRUTHY MagicMock and
+silently takes the cache-write branch with a garbage etag — every response double must set an explicit
+`headers` dict. (2) A `caplog.text` substring check passes on a record emitted at ANY level, so the
+mutation that matters (a log DOWNGRADED rather than deleted) slips through it; the suite uses a
+level-filtering helper asserting on `caplog.records` instead.
+
+**Task 5.3 live sanity check — PASSED (2026-07-19).** Dev server run against real ESI on this branch:
+`"Public contract aggregation run finished successfully and changes committed."` appeared, **100
+contracts / 152 contract_items** landed in `hangar_bay_dev` (100 is the configured dev limit), **zero**
+`ERROR` lines in the log, and **134 `etag:*` keys** were written to Valkey — direct evidence that the
+extracted `_store_page_cache` and the conditional-GET path work against the live API, not just under
+mocks. Server stopped cleanly afterward.
+
+**Sequencing deviation:** Task 5.1's characterization suite was written while Phase 4's PR was still
+open, on a branch stacked on Phase 4 rather than off `dev`. This was safe because the suite targets
+`get_esi_data_with_etag_caching`, which Phase 4 left byte-identical by contract — so the tests were
+valid regardless of Phase 4's outcome. The branch was rebased onto `dev` after Phase 4 merged
+(`e5d304d`); the Phase 4 commits dropped out as already-applied and no conflict arose.
 
 **Files:**
 - Modify: `app/backend/src/fastapi_app/core/esi_client_class.py`
@@ -851,8 +898,16 @@ test_empty_page_breaks_before_x_pages_is_parsed
     # checked before the X-Pages parse.
 test_404_without_ignore_propagates_http_status_error
     # ignore_404=False + a 404 response → httpx.HTTPStatusError from
-    # raise_for_status propagates — NOT ESIRequestFailedError. Pin this asymmetry
-    # vs _get_esi_object (which normalizes); do NOT "harmonize" it in the refactor.
+    # raise_for_status propagates — NOT ESIRequestFailedError.
+    # ⚠️ CORRECTION (2026-07-19): this task originally said to "pin this asymmetry
+    # vs _get_esi_object (which normalizes)". THAT CLAIM IS FALSE and was caught by
+    # codex review only after it had propagated into a test docstring and a PR body.
+    # BOTH paths call a bare response.raise_for_status() with no normalization
+    # (esi_client_class.py:117 and :267); _get_esi_object's own inline comment says
+    # "4xx (e.g. 404) still falls straight through to raise_for_status below".
+    # What _get_esi_object DOES normalize is the JSON-decode failure (ValueError →
+    # ESIRequestFailedError) and a non-dict body — not status codes. The test is
+    # still correct and worth keeping; only the rationale was wrong.
 test_redis_read_failure_propagates_on_etag_path
     # redis.get raising RuntimeError → RuntimeError propagates. Unlike
     # _get_esi_object, the ETag path has NO cache-failure guard — pin the
