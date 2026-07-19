@@ -7,11 +7,9 @@ from typing import Iterable, Iterator, List, Callable  # Added Callable
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis  # For on-demand client creation
-from fastapi import Depends
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.dependencies import get_cache, get_esi_client, get_settings
 from ..core.config import Settings  # Settings type for hinting
 from ..core.esi_client_class import ESIClient  # ESIClient class for type hint
 from ..core.exceptions import ESINotModifiedError  # Restored ESINotModifiedError
@@ -564,18 +562,3 @@ class ContractAggregationService:
             if is_ship and item["is_included"]:
                 ship_contract_ids.add(item["contract_id"])
         return ship_contract_ids
-
-
-# Dependency for getting the service
-async def get_aggregation_service(
-    # cache: Redis = Depends(get_cache), # Service no longer takes cache client directly
-    esi_client: ESIClient = Depends(get_esi_client),
-    settings: Settings = Depends(get_settings),  # Use the new get_settings dependency
-) -> ContractAggregationService:
-    """
-    FastAPI dependency to get an instance of the ContractAggregationService.
-    The service manages its own database sessions for scheduled tasks.
-    The global `settings` object from `..core.config` is used by default.
-    """
-    # If specific settings injection per request is needed later, that would require a `Depends(get_settings_func)`
-    return ContractAggregationService(esi_client=esi_client, settings=settings)
