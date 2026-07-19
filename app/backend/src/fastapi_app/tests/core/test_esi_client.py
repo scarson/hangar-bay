@@ -123,3 +123,29 @@ async def test_get_esi_object_raises_after_exhausting_retries():
             await client.get_universe_type(587)
 
     assert get_mock.await_count == 3
+
+
+async def test_get_esi_object_survives_cache_read_failure(caplog):
+    """An unreachable cache degrades to a live fetch instead of failing the call."""
+    client = _client_with_response(TYPE_PAYLOAD)
+    client.redis_client.get = AsyncMock(side_effect=RuntimeError("valkey down"))
+
+    with caplog.at_level("WARNING"):
+        result = await client.get_universe_type(587)
+
+    assert result["name"] == "Tristan"
+    client.http_client.get.assert_awaited_once()
+    assert "Object cache read failed for /v3/universe/types/587/: valkey down" in caplog.text
+
+
+async def test_get_esi_object_survives_cache_write_failure(caplog):
+    """A cache write that blows up must not lose the object already fetched."""
+    client = _client_with_response(TYPE_PAYLOAD)
+    client.redis_client.set = AsyncMock(side_effect=RuntimeError("valkey down"))
+
+    with caplog.at_level("WARNING"):
+        result = await client.get_universe_type(587)
+
+    assert result["name"] == "Tristan"
+    client.redis_client.set.assert_awaited_once()
+    assert "Object cache write failed for /v3/universe/types/587/: valkey down" in caplog.text
