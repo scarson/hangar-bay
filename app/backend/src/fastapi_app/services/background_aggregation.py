@@ -16,6 +16,7 @@ from ..core.config import Settings  # Settings type for hinting
 from ..core.esi_client_class import ESIClient  # ESIClient class for type hint
 from ..core.exceptions import ESINotModifiedError  # Restored ESINotModifiedError
 
+from ..db import AsyncSessionLocal
 from ..models.contracts import Contract, ContractItem  # Models
 # Removed incorrect import: from ..services.esi_client import ESIClient as ESIClientService
 from .db_upsert import bulk_upsert  # Upsert utility
@@ -203,26 +204,13 @@ class ContractAggregationService:
             logger.warning("AGGREGATION_REGION_IDS is empty. Skipping aggregation.")
             return
 
-        engine = None  # Initialize engine to None for the finally block
         try:
             async with self._concurrency_lock():  # Handles concurrent job runs
                 # Use the ESIClient as a context manager to ensure its http_client is initialized.
                 async with self.esi_client:
                     logger.info("Concurrency lock acquired. Starting public contract aggregation run.")
 
-                    # Dynamically create engine and session factory
-                    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-                    from sqlalchemy.orm import sessionmaker
-
-                    logger.info(f"Creating database engine with URL: {self.settings.DATABASE_URL[:30]}...")  # Log part of URL for privacy
-                    engine = create_async_engine(self.settings.DATABASE_URL)
-                    local_session_factory = sessionmaker(
-                        bind=engine,
-                        class_=AsyncSession,
-                        expire_on_commit=False
-                    )
-
-                    async with local_session_factory() as db_session:  # Obtain a new session for this run
+                    async with AsyncSessionLocal() as db_session:  # Obtain a new session for this run
                         logger.info(f"Processing contracts for region IDs: {current_region_ids}")
                         all_contracts_data: List[dict] = []
 
@@ -270,11 +258,6 @@ class ContractAggregationService:
             # No explicit rollback here as the session context manager handles it.
             # If the error was in _concurrency_lock, no db_session was active yet.
             return
-        finally:
-            if engine:  # Check if engine was initialized
-                logger.info("Disposing of database engine.")
-                await engine.dispose()
-                logger.info("Database engine disposed.")
 
     async def _process_contracts(self, db_session: AsyncSession, contracts: List[dict]):
         """

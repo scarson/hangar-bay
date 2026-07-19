@@ -508,3 +508,41 @@ async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSessi
         )
     ).scalars().all()
     assert len(item_rows) == 1
+async def test_run_aggregation_reuses_app_session_factory_and_never_logs_database_url(
+    caplog, monkeypatch: pytest.MonkeyPatch
+):
+    """Secret-hygiene + single-engine contract (M4 spec §2/§6): run_aggregation must
+    source its session from fastapi_app.db.AsyncSessionLocal (no per-run engine) and
+    no log line may carry any fragment of DATABASE_URL (a real managed-PG URL prefix
+    can include username and password)."""
+    import fastapi_app.db as app_db
+
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = [10000002]
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 0
+    service.settings.DATABASE_URL = (
+        "postgresql+asyncpg://secret_user:secret_pw@db.internal:5432/hb"
+    )
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[])
+
+    entered = {"count": 0}
+    real_factory = app_db.AsyncSessionLocal
+
+    def recording_factory():
+        entered["count"] += 1
+        return real_factory()
+
+    monkeypatch.setattr(bg_agg, "AsyncSessionLocal", recording_factory, raising=False)
+
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        with caplog.at_level("INFO"):
+            await service.run_aggregation()
+
+    assert entered["count"] == 1, (
+        "run_aggregation must obtain its session from fastapi_app.db.AsyncSessionLocal"
+    )
+    for rec in caplog.records:
+        msg = rec.getMessage()
+        assert "Creating database engine" not in msg
+        assert service.settings.DATABASE_URL[:16] not in msg
