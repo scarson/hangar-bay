@@ -791,7 +791,7 @@ git commit -m "ci: add OpenAPI drift gate (export + regenerate + fail on dirty d
 
 ## Phase 3 — Post-M3 backend/frontend work
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-19T01:35Z on branch `claude/m4-phase3-prod-hardening` (worktree `.claude/worktrees/m4-phase3-prod-hardening`), off dev @ `6885b67` (Phases 1 and M3 both merged; the M3 gate was satisfied by PR #46, merge `20ee513`, 2026-07-18).
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-19T01:35Z on branch `claude/m4-phase3-prod-hardening` (worktree `.claude/worktrees/m4-phase3-prod-hardening`), off dev @ `6885b67`. Tasks 3.0–3.12 ALL implemented (TDD red→green per task; full gates green: flake8, 398 pytest, tsc, 161 vitest, 92 e2e). Reviews applied: 3-lens batch review + codex cross-model round — 6 confirmed findings fixed, incl. codex P1 (/ready self-heal) and the watchlist-matcher per-run engine the plan couldn't have known about (M3 post-dates plan authoring); `docs/audits/m4-phase3-review/summary.md`. PR pending — **Review classification; Sam merges**.
 
 Branch: `claude/m4-phase3-prod-hardening` off fresh `origin/dev` AFTER the M3 merge. **Every task below cites file:line against pre-M3 dev** — M3 touches most of these files, so Task 3.0 re-anchors every citation first. TDD per Standing Order 4 applies to every task in this phase except 3.9's revision generation, 3.11, and 3.12 (docs/config).
 
