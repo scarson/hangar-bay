@@ -69,7 +69,7 @@ notes and commit messages.
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 1 — get_contracts | ✅ Merged | `69b0112`, `3d4e61e`, `1ca0aa0`, `7ae0576`, `63e5ddb`, `bca290b` → merge `e84aa8a` | PR #54, merged 2026-07-18; complexity 20 → 7; suite 358 → 362 |
-| 2 — _process_contracts | 🚧 PR open | `455f586`, `6bd9f63`, `8962daf` | branch `claude/c901-process-contracts`; complexity 18 → 7; suite 362 → 365; `Review — data-integrity`, Sam merges |
+| 2 — _process_contracts | 🚧 PR #57 open | `455f586`, `6bd9f63`, `8962daf`, `656a383`, `bca8d00` | branch `claude/c901-process-contracts`; complexity 18 → 7; suite 362 → 365; `Review — data-integrity`, **Sam merges** |
 | 3 — run_aggregation | ⬜ Not started | — | blocked by Phase 2 (same file) |
 | 4 — _get_esi_object + shared retry helper | ⬜ Not started | — | introduces `_get_with_transient_retry` |
 | 5 — get_esi_data_with_etag_caching | ⬜ Not started | — | blocked by Phase 4 (uses its helper); write its missing tests FIRST |
