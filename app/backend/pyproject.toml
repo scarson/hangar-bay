@@ -39,3 +39,6 @@ lint = "flake8 ."
 format = "black ."
 dev = "uvicorn fastapi_app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir src"
 export-openapi = "python src/export_openapi.py"
+migrate = {shell = "cd src && python -m alembic upgrade head"}
+makemigration = {shell = "cd src && python -m alembic revision --autogenerate -m {args}"}
+migrate-check = {shell = "cd src && python -m alembic current"}

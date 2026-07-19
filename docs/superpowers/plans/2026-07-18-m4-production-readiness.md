@@ -57,21 +57,31 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** In progress (execution session claimed 2026-07-18T23:57Z).
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Render verification spike | ⬜ Not started | — | free tier, no billing |
-| 1 — Collision-free implementation | ⬜ Not started | — | may run before/parallel to M3 merge |
-| 2 — Platform provisioning | ⬜ Not started | — | **Sam-gated**; split: 2a (billing/domain/EVE portal — any time), 2b (blueprint+secrets — runs as Phase 4 Step 0) |
-| 3 — Post-M3 backend/frontend work | ⬜ Not started | — | **gated on M3 merge to dev** |
+| 0 — Render verification spike | ⏸ BLOCKED on Render credential | — | session env lacks `RENDER_API_KEY` (MCP `unauthorized`, curl fallback impossible); docs-based verification substituted — see Deviations D-1 |
+| 1 — Collision-free implementation | 🚧 IN PROGRESS (claimed 2026-07-18T23:57Z, branch `claude/m4-phase1-deploy-scaffolding`) | — | proceeding on Topology A (plan default) per Deviation D-1 |
+| 2 — Platform provisioning | ⬜ 2a partially done by Sam (billing connected, domain `hangarbay.app`, prod EVE app registered) | — | **Sam-gated**; 2b (blueprint+secrets) runs as Phase 4 Step 0; see Deviation D-3 (callback `:443` mismatch to resolve at 2b) |
+| 3 — Post-M3 backend/frontend work | ⬜ Not started | — | gate SATISFIED: M3 merged to dev 2026-07-18 (PR #46, merge `20ee513`) |
 | 4 — First deploy + live SSO | ⬜ Not started | — | **Sam-gated exit criterion** |
 
 ### Deviations
-(none yet)
+
+- **D-1 (Phase 0 blocked → docs-based fallback; topology committed as A pending empirical spike).** The execution session (2026-07-18, autonomous) has no `RENDER_API_KEY` in its environment: the project-scoped Render MCP (`.mcp.json`, `${RENDER_API_KEY}` expansion) returns `unauthorized`, and the plan's curl+API fallback needs the same missing variable. The empirical probes P1–P6 therefore cannot run in this session. Substituted: a documentation-based verification of the same six questions (blueprint field names, deploy-API create/poll shapes + status enums, static-site default headers, rewrite semantics, `fromDatabase` scheme, `RENDER_GIT_COMMIT`), recorded at `docs/audits/m4-recon/render-docs-verification-2026-07-18.md`. Phase 1 proceeds on **Topology A** (the plan's committed default; Appendix B remains the specified contingency). **Unblock condition:** Sam relaunches a session with `RENDER_API_KEY` exported (1Password → env, per `.mcp.json`), then Task 0.1 runs as written; the empirical spike MUST complete before Phase 2b applies the blueprint (its P1/P2 verdict and P2b hostname check gate the apply). `docs/audits/m4-recon/render-spike-results.md` is reserved for the real spike results.
+- **D-2 (spike account).** When the spike runs, it may use Sam's real Render account (billing now connected) with free-tier resources only, instead of the plan's throwaway account. Authorized by Sam 2026-07-18.
+- **D-3 (prod EVE callback carries `:443`).** Sam registered the prod EVE application with callback `https://hangarbay.app:443/api/v1/auth/sso/callback` (explicit `:443`). At Phase 2b, `ESI_SSO_CALLBACK_URL` must match char-for-char — either set the env var WITH `:443` or Sam first edits the EVE portal to drop it. Decision is Sam's at 2b; surface it then.
+- **D-4 (Task 1.1: Dockerfile gained a compile stage).** The plan's two-stage Dockerfile fails to build: the locked `asyncpg 0.30.0`/`httptools 0.6.4`/`uvloop 0.21.0` publish no CPython 3.14 wheels, and `python:3.14-slim` has no compiler (`pip install` dies on missing `assert.h`, then uvloop's bundled-libuv `./configure` needs `make`). Fix stayed inside the allowed file surface: a dedicated `build` stage installs `build-essential` and `pip install --prefix=/install`s the deps; the runtime stage `COPY --from=build /install /usr/local` and stays slim. Verified: image builds, boots prod-shaped, `/health` ok, fail-closed skip line present.
+- **D-5 (Task 1.2: `off` enum values quoted).** The plan's inline render.yaml writes `autoDeployTrigger: off` / `generation: off` unquoted; YAML 1.1 parses bare `off` as boolean `false` (verified with pyyaml), which would corrupt these string enums — worst case `autoDeployTrigger` silently reverting to deploy-on-commit, racing CI. All three occurrences are quoted `"off"` in the committed file, matching Render's own spec example (`autoDeployTrigger: 'off'`). Details: `docs/audits/m4-recon/render-docs-verification-2026-07-18.md` §Corrections.
+- **D-6 (Task 1.2: static site pinned to `branch: main`).** The plan's inline render.yaml omits `branch:` on `hangar-bay-web`; the repo's GitHub default branch is `dev`, so at blueprint apply the static site would build integration-branch frontend code while the API builds `main` — frontend/backend out of lockstep. Found by the Phase-1 adversarial review (finding config-1); `branch: main` added to match the API service and the release-branch model.
+- **D-7 (Task 1.3 vs Standing Order 2 reconciliation).** Task 1.3 Step 4 mandates creating `app/backend/src/fastapi_app/tests/test_migrations.py`, which Standing Order 2's "exactly"-scoped Phase-1 allowlist omits (it blocklists `fastapi_app/**`). The collision purpose of that rule is moot (M3 merged to dev 2026-07-18 before Phase 1 started, and the test file is net-new — nothing to collide with), so the file ships in Phase 1 per Task 1.3's explicit instruction. This is a plan-authoring inconsistency, not an execution deviation (review findings PF-2/PO-2).
+- **D-8 (Task 1.3: `versions/` kept present via `.gitkeep`).** Deleting all revision files left `alembic/versions/` empty and therefore absent from git — on a fresh checkout `alembic revision --autogenerate` (Task 3.9's `pdm run makemigration`) dies with FileNotFoundError because alembic does not create the missing directory (`upgrade head`/`current` no-op cleanly either way). A `.gitkeep` now keeps the directory present (review finding PO-1).
 
 ### Discoveries
-(none yet)
+
+- **cp314 wheel gap in the C-extension pins.** `asyncpg 0.30.0`, `httptools 0.6.4`, `uvloop 0.21.0` all predate CPython 3.14 and ship no cp314 wheels on any platform — every install (CI, local venv, Docker) silently compiles them from source, which is why CI needs nothing (runners carry build-essential) but slim containers break (Deviation D-4). A future lock refresh would pick up real cp314 wheels and let the Dockerfile drop its compile stage; out of M4 scope.
+- **Phase 3 file:line citations are stale by several PRs.** Since plan authoring, dev gained M3 (#46), lint-debt (#47), flake8-bugbear (#48), gitignore (#49), pricing verification (#52, #53), and the Render MCP config (#55). Task 3.0's re-anchor is mandatory real work; drift recorded per-task in Deviations as Phase 3 executes.
 
 ---
 
@@ -89,7 +99,7 @@ notes and commit messages.
 
 ## Phase 0 — Render verification spike
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ⏸ BLOCKED (2026-07-18T23:57Z) — the session environment lacks `RENDER_API_KEY`, so neither the Render MCP nor the curl fallback can create spike resources (Deviation D-1 has the full record and the docs-based substitute). **Unblock:** a session launched with `RENDER_API_KEY` exported runs Task 0.1 as written (Deviation D-2: Sam's real account, free-tier resources only, is authorized). The empirical spike MUST complete before Phase 2b applies the blueprint.
 
 **Purpose (spec §3.5):** prove five load-bearing Render behaviors on the free tier before any billing or topology commitment. No production resources; the spike project is throwaway and deleted at the end.
 
@@ -203,7 +213,7 @@ git commit -m "docs(m4): record Render spike results (edge, URL scheme, headers,
 
 ## Phase 1 — Collision-free implementation
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-18T23:57Z on branch `claude/m4-phase1-deploy-scaffolding` (worktree `.claude/worktrees/m4-phase1-deploy-scaffolding`). Proceeding on Topology A per Deviation D-1; Task 1.2's blueprint-spec field validation and Task 1.4's deploy-API shapes are verified against Render documentation (docs-based, see D-1) rather than the live spike. Tasks 1.1–1.5 implemented and verified (image builds + prod-shaped boot smoke; blank-DB migrate + 363-test suite green; actionlint clean; OpenAPI drift chain clean). Adversarial review (3 lenses, 12 findings, 7 confirmed) applied — `docs/audits/m4-phase1-review/summary.md`; deviations D-4..D-8. PR pending.
 
 Branch: `claude/m4-phase1-deploy-scaffolding` off fresh `origin/dev`. All tasks here are TDD-exempt config/scaffolding EXCEPT nothing — but every task has verification commands. One PR at the end (Routine; single-PR decision is binding — Task 1.6).
 

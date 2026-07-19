@@ -124,3 +124,35 @@ jobs:
           path: app/frontend/web/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  openapi-drift:
+    # The committed openapi.json / schema.d.ts must match what the backend exports —
+    # neither existing job runs the export chain, so drift was previously invisible.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: pdm-project/setup-pdm@v4
+        with:
+          python-version: '3.14'
+      - name: Install backend deps
+        working-directory: app/backend
+        run: pdm install -G dev
+      - name: Export OpenAPI schema
+        working-directory: app/backend
+        run: pdm run export-openapi
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/frontend/web/package-lock.json
+      - name: Regenerate typed client
+        working-directory: app/frontend/web
+        run: npm ci && npm run generate:api
+      - name: Fail on drift
+        run: |
+          git diff --exit-code -- app/frontend/web/openapi.json app/frontend/web/src/lib/api/schema.d.ts \
+            || { echo '::error::openapi.json / schema.d.ts are stale — run pdm run export-openapi && npm run generate:api and commit'; exit 1; }

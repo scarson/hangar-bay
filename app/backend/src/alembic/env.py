@@ -1,157 +1,87 @@
+# ABOUTME: Alembic environment — async-engine CLI migrations + pytest-injected-connection support.
+# ABOUTME: Import-safe: the invocation tail only fires under an alembic-provided context (tests import this module).
 import asyncio
-import sys
 import os
+import sys
 
-# Add the 'src' directory to sys.path
-# The 'src' directory is the parent of 'alembic' and 'fastapi_app'
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# 'src' (parent of alembic/ and fastapi_app/) must be importable.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import asyncio
 from logging.config import fileConfig
 
-from sqlalchemy.ext.asyncio import (
-    create_async_engine,
-)  # For online mode if not using shared engine
 from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from alembic import context
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
-# The config object and logging are configured within the migration functions
-# to ensure the context is fully initialized before being accessed.
-
-# Import your application's settings and Base model
-# Ensure your application's path is discoverable by Alembic.
-# The `prepend_sys_path = .` in alembic.ini should handle this if running alembic from app/backend/src
 from fastapi_app.core.config import get_settings
 from fastapi_app.db import Base
-# Ensure all models are registered with Base.metadata
-# Import the modules first to ensure their top-level code runs
-from fastapi_app.models import user, contracts # noqa: F401
-# Then, explicitly import the model classes themselves
-from fastapi_app.models.user import User # noqa: F401
-from fastapi_app.models.contracts import Contract, ContractItem, EsiMarketGroupCache # noqa: F401
+from fastapi_app.models import user, contracts  # noqa: F401  (registers tables on Base.metadata)
 
 settings = get_settings()
-
-
-
-# Import your models here so that Alembic's autogenerate can detect them
-# --- BEGIN ALEMBIC METADATA DEBUG ---
-print("--- ALEMBIC METADATA DEBUG START (stdout) ---", flush=True)
-sys.stderr.write("--- ALEMBIC METADATA DEBUG START (stderr) ---\n")
-sys.stderr.flush()
-if Base.metadata.tables:
-    for table_name, table_obj in Base.metadata.tables.items():
-        msg = f"  Table: {table_name}\n"
-        print(msg, flush=True)
-        sys.stderr.write(msg)
-        for column in table_obj.columns:
-            col_msg = f"    Column: {column.name} (Type: {column.type}, Nullable: {column.nullable}, Default: {column.default}, Server Default: {column.server_default})\n"
-            print(col_msg, flush=True)
-            sys.stderr.write(col_msg)
-else:
-    print("  No tables found in Base.metadata (stdout)", flush=True)
-    sys.stderr.write("  No tables found in Base.metadata (stderr)\n")
-print("--- ALEMBIC METADATA DEBUG END (stdout) ---", flush=True)
-sys.stderr.write("--- ALEMBIC METADATA DEBUG END (stderr) ---\n")
-sys.stderr.flush()
-# --- END ALEMBIC METADATA DEBUG ---
-
 target_metadata = Base.metadata
-
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
 
 
 def run_migrations_offline() -> None:
     config = context.config
-    # Interpret the config file for Python logging.
     if config.config_file_name is not None:
         fileConfig(config.config_file_name)
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
     context.configure(
-        url=str(settings.DATABASE_URL),  # Use URL from app settings
+        url=str(settings.DATABASE_URL),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        # compare_type=True,  # Temporarily commented out to detect type changes
+        compare_type=True,
+        compare_server_default=True,
     )
-
     context.run_migrations()
 
 
 def do_run_migrations(connection):
-    """
-    Run Alembic migrations on a given connection.
-    This function assumes the caller (either the CLI entrypoint or a pytest fixture)
-    has already started a transaction. It configures the context and runs the
-    migrations within that existing transactional context.
-    """
+    """Run migrations on a caller-managed connection/transaction (CLI engine or pytest fixture)."""
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
     )
-    # The transaction is managed by the pytest fixture's `engine.begin()` or
-    # the CLI runner's `connectable.begin()`.
-    # We must not start a new transaction here with `context.begin_transaction()`,
-    # as that can interfere with the externally managed transaction.
     context.run_migrations()
 
 
 async def run_migrations_online_async_cli():
-    """
-    Run migrations in 'online' mode for an async engine.
-    This is the path used when running `alembic` from the command line.
-    It creates an engine, starts a transaction with `begin()`, and then
-    runs the migrations within that transaction.
-    """
     connectable = create_async_engine(
         str(settings.DATABASE_URL),
         poolclass=pool.NullPool,
         future=True,
     )
-
     async with connectable.begin() as connection:
         await connection.run_sync(do_run_migrations)
-
     await connectable.dispose()
 
 
 def run_migrations_online():
     config = context.config
-    # Interpret the config file for Python logging.
     if config.config_file_name is not None:
         fileConfig(config.config_file_name)
-    """
-    Run migrations in 'online' mode.
-    This function handles two scenarios:
-    1. Running from the `alembic` CLI: It creates a new async engine.
-    2. Running from pytest: It uses the existing synchronous connection
-       provided by the test fixture via `context.config.attributes`.
-    """
     connectable = context.config.attributes.get("connection", None)
-
     if connectable is None:
-        # We're running from the CLI, create a new engine.
         asyncio.run(run_migrations_online_async_cli())
     else:
-        # We're running from pytest, use the existing connection.
         do_run_migrations(connectable)
 
 
-# The CLI execution block has been removed to make this module safely importable by pytest.
-# The test suite now calls do_run_migrations() directly.
+def _running_under_alembic() -> bool:
+    """True only when alembic's EnvironmentContext is active (i.e. invoked via the alembic CLI/API);
+    plain `import env` from pytest must not trigger migrations."""
+    try:
+        context.config
+        return True
+    except AttributeError:
+        return False
+
+
+if _running_under_alembic():
+    if context.is_offline_mode():
+        run_migrations_offline()
+    else:
+        run_migrations_online()
