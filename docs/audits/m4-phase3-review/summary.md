@@ -29,6 +29,13 @@ verification (full reports in this directory), and (2) a codex cross-model `code
 the Phase-1 drift gate would have failed CI) was fixed as commit `ec63276` while verification ran;
 its verifier refuted it against the updated tree.
 
+## Codex round 2 (fix verification on the default model — gate: FAIL → fixed)
+
+| Finding | Severity | Fix |
+|---|---|---|
+| The cache self-heal is unreachable for a PERSISTENT boot-time outage: `scheduler.start()`'s RedisJobStore write crashes the lifespan first (pre-existing posture; platform restart loop recovers) | P1 | Docstring corrected to the honest scope (the reinit covers the ping-blip window only); posture recorded as a plan Discovery, scheduler-start tolerance parked to M5 |
+| A `db.rollback()` that itself raises falls through to `get_db`'s post-yield `commit()` on the dead session → 500; rollback also sat outside the probe timeout | P2 | The db probe moved to a dedicated `async_engine.connect()` (no session, no commit path at all) inside the timeout; `/ready` no longer takes the `get_db` dependency |
+
 ## Refuted (see lens reports for the full verifier reasoning)
 
 - P3-1 (non-generator get_db double masks real cleanup) — the rollback-mechanism test pins the interplay; the real-session path is covered by the dependency's own tests.

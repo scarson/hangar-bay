@@ -83,6 +83,7 @@ notes and commit messages.
 
 ### Discoveries
 
+- **Boot-time Valkey outage crashes the process at `scheduler.start()` (pre-existing posture).** APScheduler's `RedisJobStore` writes pending jobs synchronously when the scheduler starts; with Valkey down at boot the lifespan raises before `yield` and uvicorn exits — recovery is the platform's restart loop, and during a deploy that boot window failing marks the deploy failed. `/ready`'s cache reinit therefore covers only the narrower blip where `init_cache`'s single ping failed but Valkey returned before `scheduler.start()` (codex round-2 finding; docstring corrected to say so). Deferring/tolerating scheduler start on an unavailable cache is a design change parked with the scheduler-split thread (M5).
 - **cp314 wheel gap in the C-extension pins.** `asyncpg 0.30.0`, `httptools 0.6.4`, `uvloop 0.21.0` all predate CPython 3.14 and ship no cp314 wheels on any platform — every install (CI, local venv, Docker) silently compiles them from source, which is why CI needs nothing (runners carry build-essential) but slim containers break (Deviation D-4). A future lock refresh would pick up real cp314 wheels and let the Dockerfile drop its compile stage; out of M4 scope.
 - **Phase 3 file:line citations are stale by several PRs.** Since plan authoring, dev gained M3 (#46), lint-debt (#47), flake8-bugbear (#48), gitignore (#49), pricing verification (#52, #53), and the Render MCP config (#55). Task 3.0's re-anchor is mandatory real work; drift recorded per-task in Deviations as Phase 3 executes.
 

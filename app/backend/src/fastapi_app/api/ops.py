@@ -5,13 +5,12 @@ import json
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Request, Response
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.cache import init_cache
 from ..core.config import get_settings
-from ..db import get_db
+from ..db import async_engine
 from ..services.background_aggregation import INGEST_LAST_RUN_KEY
 
 router = APIRouter(tags=["Ops"])  # bare mount (PROXY-1)
@@ -19,19 +18,20 @@ router = APIRouter(tags=["Ops"])  # bare mount (PROXY-1)
 READINESS_CHECK_TIMEOUT_SECONDS = 2.0  # spec §8.1: short timeouts so /ready never hangs a deploy gate
 
 
-async def _probe_db(db: AsyncSession) -> bool:
+async def _probe_db() -> bool:
+    """SELECT 1 on a dedicated engine connection — never a request-scoped session.
+
+    A session-based probe leaves a failed/canceled transaction for get_db's post-yield
+    commit()/rollback() cleanup, which can raise on the dead connection and replace the
+    structured 503 with a 500. The connection context here never commits; its close/
+    rollback failures are contained in this except.
+    """
     try:
         async with asyncio.timeout(READINESS_CHECK_TIMEOUT_SECONDS):
-            await db.execute(text("SELECT 1"))
+            async with async_engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
         return True
     except Exception:            # includes TimeoutError — a hung probe is an unhealthy component
-        # get_db commits on a normally-returning request; a failed/canceled probe left
-        # uncommitted would make that cleanup commit raise and turn the structured
-        # 503 into a 500 (PendingRollbackError). Roll back here, best-effort.
-        try:
-            await db.rollback()
-        except Exception:
-            pass
         return False
 
 
@@ -41,8 +41,10 @@ async def _probe_cache(request: Request) -> tuple[bool, object]:
     The client comes straight off app.state, NOT the get_cache dependency — that
     dependency raises when startup init failed, which would replace the structured
     readiness body with a bare 503 and never re-probe. A missing client gets one
-    self-heal attempt per call so a transient Valkey outage at boot cannot brick
-    readiness until a manual restart.
+    reinit attempt per call. Reachability note: a Valkey outage that persists through
+    startup crashes the process at scheduler.start() (RedisJobStore) before /ready ever
+    serves — platform restarts recover that case; this reinit covers the narrower blip
+    where init_cache's single ping failed but Valkey returned afterwards.
     """
     try:
         async with asyncio.timeout(READINESS_CHECK_TIMEOUT_SECONDS):
@@ -75,9 +77,9 @@ def _freshness_fields(freshness) -> tuple[object, object]:
 
 
 @router.get("/ready")
-async def ready(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+async def ready(request: Request, response: Response):
     settings = get_settings()
-    db_ok = await _probe_db(db)
+    db_ok = await _probe_db()
     cache_ok, freshness = await _probe_cache(request)
     age, outcome = _freshness_fields(freshness)
     checks: dict[str, object] = {
