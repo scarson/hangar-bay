@@ -55,6 +55,73 @@ def _chunk_ids(ids: Iterable[int]) -> Iterator[list[int]]:
         yield id_list[start : start + UPDATE_ID_CHUNK_SIZE]
 
 
+def _parse_esi_datetime(date_string: str | None) -> datetime | None:
+    """Parse ESI's ISO 8601 date strings into datetime objects."""
+    if date_string is None:
+        return None
+    # ESI dates are like "2024-05-20T14:47:32Z". The 'Z' means UTC.
+    # fromisoformat handles this correctly if we replace 'Z' with '+00:00'.
+    return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+
+
+def _collect_resolvable_ids(contracts: List[dict]) -> list[int]:
+    """Collect the unique issuer/corporation/location IDs resolvable to names."""
+    issuer_ids = {c['issuer_id'] for c in contracts}
+    corporation_ids = {c['issuer_corporation_id'] for c in contracts}
+    start_location_ids = {c.get('start_location_id') for c in contracts if c.get('start_location_id')}
+    end_location_ids = {c.get('end_location_id') for c in contracts if c.get('end_location_id')}
+
+    all_ids_to_resolve = list(
+        issuer_ids.union(corporation_ids).union(start_location_ids).union(end_location_ids)
+    )
+
+    # Player-owned structures have IDs > 10^11 and are not resolvable
+    # by the public /universe/names/ endpoint. We filter them out.
+    original_id_count = len(all_ids_to_resolve)
+    all_ids_to_resolve = [
+        id_ for id_ in all_ids_to_resolve if id_ < 100_000_000_000
+    ]
+    filtered_count = len(all_ids_to_resolve)
+    if original_id_count > filtered_count:
+        logger.info(f"Filtered out {original_id_count - filtered_count} unresolvable structure IDs.")
+    return all_ids_to_resolve
+
+
+def _build_contract_rows(contracts: List[dict], id_to_name_map: dict) -> list[dict]:
+    """Transform ESI contract payloads into Contract upsert rows, enriched with names."""
+    return [
+        {
+            "contract_id": c["contract_id"],
+            "issuer_id": c["issuer_id"],
+            "issuer_corporation_id": c["issuer_corporation_id"],
+            "start_location_id": c.get("start_location_id"),
+            "start_location_region_id": c.get("_hb_region_id"),
+            "end_location_id": c.get("end_location_id"),
+            "type": c["type"],  # Direct mapping - field names now match
+            "status": c.get("status", "unknown"),
+            "title": c.get("title"),
+            "for_corporation": c.get("for_corporation", False),
+            "date_issued": _parse_esi_datetime(c["date_issued"]),
+            "date_expired": _parse_esi_datetime(c["date_expired"]),
+            "date_completed": _parse_esi_datetime(c.get("date_completed")),
+            "price": c.get("price"),
+            "collateral": c.get("collateral", 0.0),  # Default to 0.0 if null
+            "reward": c.get("reward"),
+            "volume": c.get("volume"),
+            # Denormalized data for search performance
+            "start_location_name": id_to_name_map.get(c.get("start_location_id")),
+            "issuer_name": id_to_name_map.get(c.get('issuer_id')),
+            "issuer_corporation_name": id_to_name_map.get(c.get('issuer_corporation_id')),
+            # is_ship_contract and item_processing_status are deliberately
+            # ABSENT: they are maintained by item enrichment, and the upsert
+            # copies every mapped column on conflict — including them here
+            # decayed ship flags to False whenever items were ETag-304'd and
+            # skipped re-enrichment. Column defaults cover fresh inserts.
+        }
+        for c in contracts
+    ]
+
+
 class ConcurrencyLockError(Exception):
     """Custom exception for when the aggregation lock cannot be acquired."""
     pass
@@ -209,37 +276,12 @@ class ContractAggregationService:
                 await engine.dispose()
                 logger.info("Database engine disposed.")
 
-    async def _process_contracts(self, db_session: AsyncSession, contracts: List[dict]):  # noqa: C901
+    async def _process_contracts(self, db_session: AsyncSession, contracts: List[dict]):
         """
         Processes a list of contracts, fetches their items, and upserts them using the provided db_session.
         """
-        # Helper to parse ESI's ISO 8601 date strings into datetime objects.
-        def _parse_datetime(date_string: str | None) -> datetime | None:
-            if date_string is None:
-                return None
-            # ESI dates are like "2024-05-20T14:47:32Z". The 'Z' means UTC.
-            # fromisoformat handles this correctly if we replace 'Z' with '+00:00'.
-            return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
-
         # Step 1: Collect all unique IDs from the current batch of contracts.
-        issuer_ids = {c['issuer_id'] for c in contracts}
-        corporation_ids = {c['issuer_corporation_id'] for c in contracts}
-        start_location_ids = {c.get('start_location_id') for c in contracts if c.get('start_location_id')}
-        end_location_ids = {c.get('end_location_id') for c in contracts if c.get('end_location_id')}
-
-        all_ids_to_resolve = list(
-            issuer_ids.union(corporation_ids).union(start_location_ids).union(end_location_ids)
-        )
-
-        # Player-owned structures have IDs > 10^11 and are not resolvable
-        # by the public /universe/names/ endpoint. We filter them out.
-        original_id_count = len(all_ids_to_resolve)
-        all_ids_to_resolve = [
-            id_ for id_ in all_ids_to_resolve if id_ < 100_000_000_000
-        ]
-        filtered_count = len(all_ids_to_resolve)
-        if original_id_count > filtered_count:
-            logger.info(f"Filtered out {original_id_count - filtered_count} unresolvable structure IDs.")
+        all_ids_to_resolve = _collect_resolvable_ids(contracts)
 
         # Step 2: Resolve all IDs to names in a single batch operation.
         id_to_name_map = {}
@@ -249,37 +291,7 @@ class ContractAggregationService:
             logger.info(f"Successfully resolved {len(id_to_name_map)} names.")
 
         # Step 3: Transform contracts into the format for the database model, enriching with names.
-        contract_values = [
-            {
-                "contract_id": c["contract_id"],
-                "issuer_id": c["issuer_id"],
-                "issuer_corporation_id": c["issuer_corporation_id"],
-                "start_location_id": c.get("start_location_id"),
-                "start_location_region_id": c.get("_hb_region_id"),
-                "end_location_id": c.get("end_location_id"),
-                "type": c["type"],  # Direct mapping - field names now match
-                "status": c.get("status", "unknown"),
-                "title": c.get("title"),
-                "for_corporation": c.get("for_corporation", False),
-                "date_issued": _parse_datetime(c["date_issued"]),
-                "date_expired": _parse_datetime(c["date_expired"]),
-                "date_completed": _parse_datetime(c.get("date_completed")),
-                "price": c.get("price"),
-                "collateral": c.get("collateral", 0.0),  # Default to 0.0 if null
-                "reward": c.get("reward"),
-                "volume": c.get("volume"),
-                # Denormalized data for search performance
-                "start_location_name": id_to_name_map.get(c.get("start_location_id")),
-                "issuer_name": id_to_name_map.get(c.get('issuer_id')),
-                "issuer_corporation_name": id_to_name_map.get(c.get('issuer_corporation_id')),
-                # is_ship_contract and item_processing_status are deliberately
-                # ABSENT: they are maintained by item enrichment, and the upsert
-                # copies every mapped column on conflict — including them here
-                # decayed ship flags to False whenever items were ETag-304'd and
-                # skipped re-enrichment. Column defaults cover fresh inserts.
-            }
-            for c in contracts
-        ]
+        contract_values = _build_contract_rows(contracts, id_to_name_map)
 
         batch_size = 500  # Number of contracts to process in each batch
         total_contracts = len(contract_values)
@@ -293,6 +305,43 @@ class ContractAggregationService:
 
         logger.info(f"Finished upserting all {total_contracts} contracts.")
 
+        all_items, processed_contract_ids = await self._fetch_item_rows(contracts)
+
+        # Enrich items with static type data BEFORE upserting so a single
+        # write carries names/categories, and collect which contracts hold an
+        # included ship (fills the gap that left is_ship_contract permanently
+        # False — "will be updated later" never happened; found during the
+        # /impeccable design phase when the ships-only default matched nothing).
+        ship_contract_ids = await self._enrich_items_and_find_ships(all_items)
+
+        if all_items:
+            logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
+            BATCH_SIZE = 50  # Number of items to process in each batch
+            for i in range(0, len(all_items), BATCH_SIZE):
+                batch_items = all_items[i:i + BATCH_SIZE]
+                logger.info(f"Upserting batch of {len(batch_items)} contract items (items {i + 1}-{i + len(batch_items)} of {len(all_items)}).")
+                await bulk_upsert(db_session, ContractItem, batch_items)
+            logger.info(f"Finished upserting all {len(all_items)} contract items.")
+        else:
+            logger.info("No new contract items to process.")
+
+        for chunk in _chunk_ids(ship_contract_ids):
+            await db_session.execute(
+                update(Contract)
+                .where(Contract.contract_id.in_(chunk))
+                .values(is_ship_contract=True)
+            )
+        if ship_contract_ids:
+            logger.info(f"Flagged {len(ship_contract_ids)} contracts as ship contracts.")
+
+        await self._update_item_processing_status(db_session, processed_contract_ids, all_items)
+
+    async def _fetch_item_rows(self, contracts: List[dict]) -> tuple[list[dict], set[int]]:
+        """Fetch contract items from ESI, returning the item rows and the contract IDs reached.
+
+        A per-contract fetch failure is isolated: that contract is left out of the
+        processed set and the run continues.
+        """
         all_items: List[dict] = []
         processed_contract_ids: set[int] = set()
         for contract in contracts:
@@ -326,33 +375,15 @@ class ContractAggregationService:
             except Exception as e:
                 logger.error(f"Failed to fetch items for contract {contract['contract_id']}: {e}", exc_info=True)
 
-        # Enrich items with static type data BEFORE upserting so a single
-        # write carries names/categories, and collect which contracts hold an
-        # included ship (fills the gap that left is_ship_contract permanently
-        # False — "will be updated later" never happened; found during the
-        # /impeccable design phase when the ships-only default matched nothing).
-        ship_contract_ids = await self._enrich_items_and_find_ships(all_items)
+        return all_items, processed_contract_ids
 
-        if all_items:
-            logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
-            BATCH_SIZE = 50  # Number of items to process in each batch
-            for i in range(0, len(all_items), BATCH_SIZE):
-                batch_items = all_items[i:i + BATCH_SIZE]
-                logger.info(f"Upserting batch of {len(batch_items)} contract items (items {i + 1}-{i + len(batch_items)} of {len(all_items)}).")
-                await bulk_upsert(db_session, ContractItem, batch_items)
-            logger.info(f"Finished upserting all {len(all_items)} contract items.")
-        else:
-            logger.info("No new contract items to process.")
-
-        for chunk in _chunk_ids(ship_contract_ids):
-            await db_session.execute(
-                update(Contract)
-                .where(Contract.contract_id.in_(chunk))
-                .values(is_ship_contract=True)
-            )
-        if ship_contract_ids:
-            logger.info(f"Flagged {len(ship_contract_ids)} contracts as ship contracts.")
-
+    async def _update_item_processing_status(
+        self,
+        db_session: AsyncSession,
+        processed_contract_ids: set[int],
+        all_items: list[dict],
+    ) -> None:
+        """Record per-contract item enrichment outcome on the Contract rows."""
         # item_processing_status must not imply enrichment SUCCESS: a contract
         # whose type/group resolution failed keeps NULL enrichment (the
         # graceful-degrade path), so a future consumer trusting 'COMPLETED' would
