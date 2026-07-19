@@ -189,7 +189,47 @@ class ESIClient:
         path = f"/v1/contracts/public/items/{contract_id}/"
         return await self.get_esi_data_with_etag_caching(path)
 
-    async def _get_esi_object(self, path: str, cache_seconds: int = 86_400) -> dict[str, Any]:  # noqa: C901
+    async def _get_with_transient_retry(
+        self, path: str, headers: Optional[Dict[str, str]] = None
+    ) -> httpx.Response:
+        """GET with bounded retry on transient failures (5xx + network errors).
+
+        4xx responses return normally — callers decide what non-5xx statuses mean.
+        Exhausted retries surface as ESIRequestFailedError (status carried when the
+        failure was HTTP, absent for pure network errors).
+        """
+        max_retries = 3
+        backoff_factor = 0.5  # seconds
+        response = None
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                response = await self.http_client.get(path, headers=headers)
+                if response.status_code < 500:
+                    last_exception = None
+                    break
+                last_exception = httpx.HTTPStatusError(
+                    f"Server error '{response.status_code}'", request=response.request, response=response
+                )
+                logger.warning(
+                    f"ESI request to {path} failed with status {response.status_code}. "
+                    f"Attempt {attempt + 1}/{max_retries}."
+                )
+            except (httpx.ReadTimeout, httpx.ConnectError) as e:
+                last_exception = e
+                logger.warning(f"Network error for {path} on attempt {attempt + 1}/{max_retries}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(backoff_factor * (2 ** attempt))
+
+        if last_exception is not None:
+            if isinstance(last_exception, httpx.HTTPStatusError):
+                raise ESIRequestFailedError(
+                    status_code=last_exception.response.status_code, message=str(last_exception)
+                )
+            raise ESIRequestFailedError(message=f"Network error for {path}: {last_exception}")
+        return response
+
+    async def _get_esi_object(self, path: str, cache_seconds: int = 86_400) -> dict[str, Any]:
         """GET a single-OBJECT ESI endpoint with a plain Valkey TTL cache.
 
         The paginated ETag helper is list-shaped: `full_data.extend(page)`
@@ -206,39 +246,10 @@ class ESIClient:
         except Exception as e:
             logger.warning(f"Object cache read failed for {path}: {e}")
 
-        # Bounded retry/backoff mirroring get_esi_data_with_etag_caching: retry
-        # only transient failures (5xx + network errors) so a blip on
+        # Transient failures (5xx + network) are retried so a blip on
         # /universe/types|groups doesn't silently un-enrich a run's ship contracts.
         # 4xx (e.g. 404) still falls straight through to raise_for_status below.
-        max_retries = 3
-        backoff_factor = 0.5  # seconds
-        response = None
-        last_exception = None
-        for attempt in range(max_retries):
-            try:
-                response = await self.http_client.get(path)
-                if response.status_code < 500:
-                    last_exception = None
-                    break
-                last_exception = httpx.HTTPStatusError(
-                    f"Server error '{response.status_code}'", request=response.request, response=response
-                )
-                logger.warning(
-                    f"ESI object request to {path} failed with status {response.status_code}. "
-                    f"Attempt {attempt + 1}/{max_retries}."
-                )
-            except (httpx.ReadTimeout, httpx.ConnectError) as e:
-                last_exception = e
-                logger.warning(f"Network error for {path} on attempt {attempt + 1}/{max_retries}: {e}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(backoff_factor * (2 ** attempt))
-
-        if last_exception is not None:
-            if isinstance(last_exception, httpx.HTTPStatusError):
-                raise ESIRequestFailedError(
-                    status_code=last_exception.response.status_code, message=str(last_exception)
-                )
-            raise ESIRequestFailedError(message=f"Network error for {path}: {last_exception}")
+        response = await self._get_with_transient_retry(path)
 
         response.raise_for_status()
         # A malformed 2xx body (e.g. an upstream HTML error page) must not escape as a raw
