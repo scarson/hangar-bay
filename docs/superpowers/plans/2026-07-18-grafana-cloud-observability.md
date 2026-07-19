@@ -59,16 +59,23 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** 3/6 phases shipped (file work); Phase 0 + all cloud-side verification blocked on browser access (Sam away).
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Grafana Cloud stack setup | ⬜ Not started | — | — |
-| 1 — Backend `LOG_FILE` sink (TDD) | ⬜ Not started | — | — |
-| 2 — Alloy service + config | ⬜ Not started | — | — |
-| 3 — Dashboards as code | ⬜ Not started | — | — |
-| 4 — Teardown + docs sweep | ⬜ Not started | — | — |
+| 0 — Grafana Cloud stack setup | ⏸ Blocked | — | needs Sam: grafana.com login (app Browser pane) or Chrome extension |
+| 1 — Backend `LOG_FILE` sink (TDD) | ✅ Shipped | `906fdd2` | 3 new tests; full suite 365 passed; lint green |
+| 2 — Alloy service + config | ✅ Shipped (files) | `39a1ced` | Task 2.4 verification pending Phase 0 |
+| 3 — Dashboards as code | ✅ Shipped (files) | see log | Task 3.4 provisioning/verification pending Phase 0 |
+| 4 — Teardown + docs sweep | ⬜ Not started | — | gated on Task 2.4 verification |
 | 5 — Verification + PR | ⬜ Not started | — | — |
+
+### Deviations
+
+- **Phase 1 executed inline by the orchestrator, not a dispatched subagent** — the Agent-dispatch safety classifier was unavailable (outage) throughout; the parallelism rationale was moot with Phase 0 blocked. TDD sequence followed exactly (RED confirmed → GREEN → full suite).
+- **Phases 2/3 file tasks committed before their cloud verification steps** (Tasks 2.4/3.4 pend Phase 0). Any verification finding becomes a follow-up commit before the PR.
+- **Task 3.4 Step 3 rewritten**: `pdm run format` is repo-wide black on a non-black repo — ran once, churned 64 files, fully reverted (`git restore app/backend/src`); instruction now file-scoped.
+- **Task 1.3 extended**: fixed BOTH `.env.example` DB URLs (dev + tests) — the dev `DATABASE_URL` example had the same uncopyable `user:password` creds and wrong db name (`hangar_bay_db` vs compose's `hangar_bay_dev`).
 
 ### Discoveries
 
@@ -76,6 +83,9 @@ notes and commit messages.
 - **`app/backend/.env.example` test-DB example is uncopyable:** its `DATABASE_URL_TESTS` uses `user:password`, but compose creates `hangar_bay_user`/`hangar_bay_password` (`docker/compose.dependencies.yml:36-37`). Fix folded into Task 1.3.
 - **Main checkout's `src/.env` lacks `DATABASE_URL_TESTS`** despite conftest hard-requiring it — Sam's local runs presumably export it another way; worth a question later, not blocking.
 - **Claude-in-Chrome extension not connected on this machine (2026-07-18)** — Phase 0 is blocked until Sam either logs into grafana.com in the app Browser pane or connects the extension.
+- **Port 5432 has an ssh listener (`ssh` PID 64957 binding `*:5432`)**, yet connections from the host reach the compose Postgres — verified by matching `pg_control_system()` system identifiers (container vs `localhost:5432`: both `7661406024165437474`). The main checkout's `src/.env` uses `user:password@localhost/hangar_bay_db`, which matches NEITHER the compose container nor anything reachable now — probably a relic of whatever that tunnel once pointed at. Worktree `src/.env` fixed to compose creds; suite then 365-green. Ask Sam about the tunnel.
+- **Main checkout's `src/.env` contains a real `ESI_CLIENT_SECRET`** (fine in a gitignored file, but it surfaced during debugging reads this session — Sam may want to rotate it on the EVE dev portal out of caution).
+- **`pdm run format` (= `black .`) is unsafe on this repo** — see Deviations; candidate for a pitfalls entry (ENV-7) in the PR.
 
 ---
 
@@ -146,7 +156,7 @@ Cross-task file conflicts: none — each file is owned by exactly one task above
 
 ## Phase 0 — Grafana Cloud stack setup (browser + op CLI; orchestrator-only)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ⏸ BLOCKED (2026-07-19 00:18Z) pending browser access to grafana.com: Sam must either log in on the app's Browser-pane sign-in page (already open) or connect the Claude-in-Chrome extension. Everything else in Phases 1-3 shipped ahead; Tasks 2.4, 3.4, Phase 4, Phase 5 queue behind this.
 
 > **NOT subagent-dispatchable.** This phase needs the orchestrator's browser access (Claude in Chrome, where Sam's grafana.com session/1Password live) and the `op` CLI. No repo files change except the gitignored `grafana-cloud.env`. Sam has granted standing permission for Grafana Cloud actions (2026-07-18 session).
 
@@ -199,7 +209,7 @@ GRAFANA_SA_TOKEN=<service account token>
 
 ## Phase 1 — Backend `LOG_FILE` sink (TDD)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ SHIPPED at `906fdd2` on 2026-07-19 (inline by orchestrator — see Deviations; RED→GREEN verified, full suite 365 passed, lint green)
 
 > BEFORE starting work:
 > 1. Invoke /superpowers:test-driven-development
@@ -392,7 +402,7 @@ git commit -m "feat(api): add optional LOG_FILE JSON sink for Loki shipping"
 
 ## Phase 2 — Alloy service + config
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ FILES SHIPPED at `39a1ced` on 2026-07-19; ⏸ Task 2.4 verification DEFERRED pending Phase 0 (Grafana Cloud credentials — see the Phase 0 banner for the unblock condition)
 
 > Pitfalls in play: **ENV-3** (verification below starts the dev server — batch ALL backend edits first, clear the Valkey lock, one clean cycle), universal **no-secrets-in-flags** (credentials only via env_file), **ORCH-1** n/a (no parallel dispatch in this phase).
 > Dependency: Phase 0 must be complete (real `grafana-cloud.env` exists) before the **verification steps**; the file edits can proceed without it.
@@ -592,7 +602,7 @@ docker compose -f app/backend/docker/compose.yml -f app/backend/docker/compose.o
 
 ## Phase 3 — Dashboards as code
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ FILES SHIPPED on 2026-07-19 (dashboard JSON validated, script flake8/black-clean file-scoped); ⏸ Task 3.4 provisioning + verification DEFERRED pending Phase 0 (see the Phase 0 banner)
 
 > TDD note: `provision_dashboards.py` is a script, and dashboard JSON is config — both outside the repo's TDD scope (CLAUDE.md §TDD Scope). Verification is by running against the real stack (Task 3.4). Do NOT add a mocked-HTTP unit test for the script — it would test the mock (testing-pitfalls §7).
 
@@ -809,7 +819,7 @@ provision-dashboards = "python observability/provision_dashboards.py"
 - [ ] **Step 1:** `cd app/backend && pdm run provision-dashboards`
 Expected stdout: `hangar-bay-backend.json: success -> https://<stack>.grafana.net/d/hangar-bay-backend/...`
 - [ ] **Step 2:** Open the dashboard in the stack Grafana; if the `DS_PROM`/`DS_LOKI` variable dropdowns come up unselected, pick the stack's default `grafanacloud-…-prom` / `grafanacloud-…-logs` datasources (variable selection is view-state, not dashboard content — re-provisioning won't fight it). With the Phase 2 pipeline running, panels 1/3/5 show data (error panels may legitimately be empty), and the logs panel streams key events. Re-run the script once more to confirm idempotent overwrite (`overwrite: true` → still `success`).
-- [ ] **Step 3:** Run `pdm run format` then `pdm run lint` (the script is inside the black/flake8 walk; fix any findings).
+- [x] **Step 3:** Format/lint the NEW script only: `.venv/bin/black observability/provision_dashboards.py && .venv/bin/flake8 observability/provision_dashboards.py` (from `app/backend`). **Do NOT run `pdm run format`** — it is repo-wide `black .` and this codebase is NOT black-formatted (the 2026-07-18 lint-debt cleanup used autopep8); a repo-wide run reformats ~64 files and re-exposes noqa'd C901/E704 findings by moving their lines. (Deviation note: the original instruction here said `pdm run format`; executing it produced exactly that churn, which was fully reverted via `git restore app/backend/src` before the Phase 3 commit.)
 - [ ] **Step 4: Commit**
 
 ```bash
