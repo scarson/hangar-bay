@@ -69,12 +69,44 @@ notes and commit messages.
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 1 — get_contracts | ✅ Merged | `69b0112`, `3d4e61e`, `1ca0aa0`, `7ae0576`, `63e5ddb`, `bca290b` → merge `e84aa8a` | PR #54, merged 2026-07-18; complexity 20 → 7; suite 358 → 362 |
-| 2 — _process_contracts | 🚧 PR #57 open | `455f586`, `6bd9f63`, `8962daf`, `656a383`, `bca8d00` | branch `claude/c901-process-contracts`; complexity 18 → 7; suite 362 → 365; `Review — data-integrity`, **Sam merges** |
-| 3 — run_aggregation | ⬜ Not started | — | blocked by Phase 2 (same file) |
+| 2 — _process_contracts | ✅ Merged | `455f586`, `6bd9f63`, `8962daf`, `656a383`, `bca8d00` → merge `c271f19` | PR #57, merged 2026-07-18; complexity 18 → 7; suite 362 → 365 |
+| 3 — run_aggregation | 🚧 PR open (v2) | `433eb9a`, `467f6f3` | branch `claude/c901-run-aggregation-v2` off `e80103a`; **redone against a rewritten base — see Deviations**; complexity 16 → 8 |
 | 4 — _get_esi_object + shared retry helper | 🚧 PR open | `4c4e158`, `402658a` | branch `claude/c901-esi-object`; complexity 16 → 9; introduces `_get_with_transient_retry` (8); `Review — data-integrity`, **Sam merges** |
 | 5 — get_esi_data_with_etag_caching | ⬜ Not started | — | blocked by Phase 4 (uses its helper); write its missing tests FIRST |
 
 ### Deviations
+
+**Phase 3 was redone from scratch against a rewritten base (2026-07-19).** The first attempt
+(branch `claude/c901-run-aggregation`, PR #62) was built against `run_aggregation` as it existed at
+`f206399`. While that PR sat in review, **PR #60 (M4 phase-3 prod hardening) rewrote the function**:
+the per-run `create_async_engine`/`sessionmaker`/`engine.dispose()` lifecycle was replaced by the app's
+`AsyncSessionLocal()` factory, `regions_ok`/`regions_failed` counters were added, `_record_run_outcome`
+now writes a Valkey freshness record (including a `forced_failure=True` call on the processing/commit
+abort path), and an `ESINotModifiedError` arm was added to the region loop counting a 304 region as OK.
+Complexity moved 14 → 16.
+
+That made the first attempt's conflicts **substantive rather than textual**. Its `_fetch_regions`
+returned only a list, so applying it would have DROPPED the new counters — an observability regression
+in code PR #60 had just added — and two of its tests (engine disposal, `create_async_engine`/
+`sessionmaker` monkeypatching) targeted machinery that no longer exists. PR #62 was therefore closed
+unmerged rather than force-resolved, and Phase 3 was redone on `claude/c901-run-aggregation-v2` off
+`e80103a`. Carried over unchanged: the two guard characterization tests and the TEST-12 pitfall entry.
+Redone: `_fetch_regions` now returns `(contracts, regions_ok, regions_failed)`; its tests assert the
+counters, the 304-counts-as-OK arm, and per-region stamping across two successful regions.
+
+**Phase 3's Task 3.1 scoping note (below) is now OBSOLETE.** It argued that end-to-end
+characterization of the middle section was impractical because of the dynamically created engine. That
+engine is gone, and PR #60 shipped four `test_freshness_*` tests that already exercise `run_aggregation`
+end-to-end through a `FakeLockRedis` and a real session factory, asserting the counter values that land
+in the Valkey record. The section was already characterized. This turned out to help: the counter
+mutations below went red at BOTH the new unit layer and those pre-existing end-to-end tests.
+
+**One semantic subtlety checked and dismissed during the redo.** The counters previously incremented
+in place, so an exception escaping mid-loop would leave the `forced_failure` handler with partial
+counts; with `_fetch_regions` returning a tuple it would see `0, 0`. Unreachable in practice — the
+loop's bare `except Exception` swallows everything the outer handler would also catch, and
+`BaseException` (e.g. `CancelledError`) escapes both paths identically. Worth knowing if that
+`except Exception` is ever narrowed.
 
 **Phase 1, Task 1.1 — the plan's tiebreaker test as written was vacuous; its fixture was reshaped.**
 `test_joined_pagination_tiebreaks_equal_sort_keys_by_contract_id` was specified with a normative body
@@ -122,6 +154,39 @@ the map is emptied. Note the adversarial review round REFUTED this finding as a 
 gap; that is half right — the gap predates the diff, but the wiring error it now permits does not.
 
 ### Discoveries
+
+**Ingestion failure observability — largely addressed by PR #60; a bounded residual remains
+(2026-07-19, codex-reviewed).** An earlier revision of this section claimed `run_aggregation` swallows
+total ingestion failure with no signal beyond one log line. **That is now stale**: PR #60's
+`_record_run_outcome` writes a Valkey freshness record with `outcome` (success/partial/failure),
+`regions_ok`/`regions_failed`, `finished_at`, and a preserved `last_success_at`, plus a
+`forced_failure=True` record on the processing/commit abort path, and advances a Prometheus gauge.
+An operator can now distinguish a failed run from a successful one.
+
+An independent codex review (high effort) confirmed the broad concern is dead and identified the
+bounded residual, **none of which is in scope for this refactor plan** — recorded here for the
+observability backlog:
+
+- `run_aggregation` still `return`s rather than re-raising, so APScheduler emits no job-error event.
+  Codex notes a fix requires changing BOTH `run_aggregation` and the `run_aggregation_job` wrapper,
+  since the wrapper also swallows. Its recommendation: re-raise unexpected fatal failures, while
+  keeping lock contention and isolated per-region failures as normal returns.
+- **Outcome-free failure paths exist**: a failure before the lock is acquired (reading
+  `AGGREGATION_REGION_IDS`, redis client construction, the lock `SET`) produces no outcome record at
+  all. Real but bounded; scheduler propagation is the dependable fix, since a fallback record through
+  a second redis client cannot survive a failure caused by redis itself.
+- `/ready` exposes the freshness fields but **still returns HTTP 200 for stale or failed ingestion** —
+  readiness status is not actually derived from them. (This corrects an assumption stated earlier in
+  this plan's own PR notes.) There is also no failure counter/metric and no alert.
+
+Two findings about `_record_run_outcome` itself, also from that review:
+
+- The `GET`/`SET` update is **neither atomic nor fenced**. If the lock TTL expires and runners overlap,
+  a failure writer can overwrite a newer `last_success_at` with an older value.
+- The Prometheus gauge update sits **inside the same `try` as the Valkey write**, so a Valkey outage
+  needlessly prevents the independent gauge from advancing.
+- `success` does not mean complete ingestion: the classification covers region fetch and the
+  transaction, not item-fetch or enrichment failures.
 
 **Concurrent pytest runs clobber the shared test database.** `pdm run pytest` drops and recreates the
 database named by `DATABASE_URL_TESTS`; isolation comes from per-run drop/recreate, not per-test
@@ -478,6 +543,10 @@ async def _update_item_processing_status(self, db_session, processed_contract_id
 **Context.** `run_aggregation` = region-config validation (two early returns) → concurrency lock → ESI client context → dynamic engine/session creation → per-region fetch loop with `_hb_region_id` stamping and per-region failure isolation → dev-limit truncation → `_process_contracts` + commit → `ConcurrencyLockError` and generic exception handlers → engine disposal in `finally`. Lock behavior is tested; the config-validation early returns, per-region failure isolation, and dev-limit truncation are NOT directly tested.
 
 ### Task 3.1: Characterization tests (config guards only — see the scoping note)
+
+**⚠️ OBSOLETE — see the Phase 3 entry in Deviations.** The dynamic engine this note reasons about was
+removed by PR #60, and that PR's own `test_freshness_*` tests already characterize the middle section
+end-to-end. The note is retained below for provenance only; do not act on it.
 
 **Scoping note (deliberate tradeoff, not an oversight).** `run_aggregation`'s middle section runs inside `_concurrency_lock()` + a dynamically created engine/session, so pre-refactor end-to-end characterization of the per-region loop and dev limit would need patches for redis-lock creation and `sqlalchemy.ext.asyncio.create_async_engine` (imported inside the function body), plus pointing the dynamic engine at `DATABASE_URL_TESTS` — note the conftest `db_session` fixture COMMITS on successful exit (isolation comes from drop/recreate-all-tables per run, not rollback), and the dynamically created engine is not governed by that fixture at all. That harness costs more than it protects for what Task 3.2 moves VERBATIM. Instead: the two config guards (which return before the lock) are characterized pre-refactor here; the region-isolation and dev-limit behaviors get direct unit tests against the extracted helpers in Task 3.2 Step 3, immediately after extraction, locking them against future regressions. The diff review in Task 3.3 is the no-change check for the verbatim moves.
 
