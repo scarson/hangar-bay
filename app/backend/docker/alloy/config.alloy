@@ -1,0 +1,57 @@
+// ABOUTME: Alloy pipeline config — scrapes the FastAPI backend on the host and
+// ABOUTME: ships metrics + JSON logs to Grafana Cloud (creds from grafana-cloud.env).
+
+// ---- Metrics: scrape FastAPI /metrics -> Grafana Cloud hosted Prometheus ----
+
+prometheus.scrape "fastapi" {
+  targets = [
+    {"__address__" = "host.docker.internal:8000", "job" = "fastapi"},
+  ]
+  // 60s = 1 data-point-per-minute per series, Grafana Cloud's included rate.
+  scrape_interval = "60s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROM_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROM_USERNAME")
+      password = sys.env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+
+  external_labels = {"env" = "dev"}
+}
+
+// ---- Logs: tail the backend's JSON log file -> Grafana Cloud Loki ----
+// Entries are stamped at read time (no timestamp parsing stage), which keeps
+// every push inside Loki's out-of-order acceptance window by construction.
+
+local.file_match "backend_logs" {
+  path_targets = [{
+    "__path__" = "/var/log/hangar-bay/*.jsonl",
+    "job"      = "fastapi",
+    "app"      = "hangar-bay",
+    "env"      = "dev",
+  }]
+  sync_period = "10s"
+}
+
+loki.source.file "backend_logs" {
+  targets       = local.file_match.backend_logs.targets
+  forward_to    = [loki.write.grafana_cloud.receiver]
+  tail_from_end = true
+}
+
+loki.write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_LOKI_USERNAME")
+      password = sys.env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+}

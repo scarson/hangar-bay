@@ -1,45 +1,48 @@
-# Hangar Bay - Observability Stack
+# Hangar Bay - Observability Collection
 #
-# This file manages auxiliary services for local development, specifically for
-# observability: Prometheus for metrics collection and Grafana for visualization.
+# A single Grafana Alloy container ships backend telemetry to Grafana Cloud
+# (org: scarson):
+#   - scrapes the FastAPI /metrics endpoint on the HOST (dev runs the backend
+#     as a host process on :8000, so the scrape target is host.docker.internal)
+#   - tails the backend's JSON log file (app/backend/logs/, written when
+#     LOG_FILE is set) and pushes it to Grafana Cloud Loki
+#
+# Visualization and storage live in Grafana Cloud; there is no local
+# Prometheus or Grafana. Dashboards are committed JSON under
+# app/backend/observability/dashboards/, provisioned with
+# `pdm run provision-dashboards`.
 #
 # --- NETWORK CONNECTIONS ---
-# In line with the Zero Trust principle of Microsegmentation, these services
-# are isolated on their own private network, `hb-monitoring-net`.
+# In line with the Zero Trust principle of Microsegmentation, Alloy is
+# isolated on `hb-monitoring-net`: it has no path to the data tier. Its only
+# egress is the host scrape target and Grafana Cloud.
 #
-# - prometheus: Connects ONLY to `hb-monitoring-net`.
-# - grafana: Connects ONLY to `hb-monitoring-net`.
-#
-# They can only communicate with each other and with the backend FastAPI app
-# (which is also on this network), allowing Prometheus to scrape metrics and
-# Grafana to query Prometheus. They have no direct network path to the data tier.
+# --- CREDENTIALS ---
+# ./grafana-cloud.env (gitignored; template: ./grafana-cloud.env.example).
+# Canonical copies live in 1Password ("Grafana Cloud hangar-bay-*" items).
 
 services:
-  prometheus:
-    image: prom/prometheus:v3.4.2
-    container_name: prometheus
+  alloy:
+    image: grafana/alloy:v1.17.1
+    container_name: alloy
     ports:
-      - "9090:9090"
+      - "12345:12345"   # Alloy debug UI
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy_data:/var/lib/alloy/data
+      - ../logs:/var/log/hangar-bay:ro
+    env_file:
+      - ./grafana-cloud.env
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-    networks:
-      - hb-monitoring-net
-
-  grafana:
-    image: grafana/grafana:12.0.2
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning/:/etc/grafana/provisioning/
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
     networks:
       - hb-monitoring-net
 
 volumes:
-  prometheus_data: {}
-  grafana_data: {}
+  alloy_data: {}

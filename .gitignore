@@ -143,6 +143,7 @@ cython_debug/
 # Hangar Bay specific
 app/backend/.venv/
 app/backend/.env
+app/backend/docker/grafana-cloud.env
 
 # PDM specific (within app/backend/)
 app/backend/.pdm-python
