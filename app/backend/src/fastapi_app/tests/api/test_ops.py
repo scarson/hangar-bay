@@ -240,3 +240,19 @@ async def test_ready_null_freshness_before_first_run(
     assert body["last_ingest_age_seconds"] is None
     assert body["last_ingest_outcome"] is None
     assert body["data_stale"] is True  # never-ingested IS stale
+
+
+@pytest.mark.parametrize("corrupt", ["null", "[]", '"str"', "42"])
+async def test_ready_treats_non_object_freshness_json_as_absent(
+    client: AsyncClient, test_app: FastAPI, monkeypatch: pytest.MonkeyPatch, corrupt
+):
+    """Valid-but-non-object JSON in the freshness key must read as no-record — never
+    an AttributeError 500 that wedges the deployment health gate."""
+    _set_db_engine(monkeypatch, _FakeEngine())
+    _set_cache(test_app, monkeypatch, _OpsFakeCache({INGEST_LAST_RUN_KEY: corrupt}))
+    r = await client.get("/ready")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["last_ingest_age_seconds"] is None
+    assert body["last_ingest_outcome"] is None
+    assert body["data_stale"] is True

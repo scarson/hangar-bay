@@ -36,6 +36,13 @@ its verifier refuted it against the updated tree.
 | The cache self-heal is unreachable for a PERSISTENT boot-time outage: `scheduler.start()`'s RedisJobStore write crashes the lifespan first (pre-existing posture; platform restart loop recovers) | P1 | Docstring corrected to the honest scope (the reinit covers the ping-blip window only); posture recorded as a plan Discovery, scheduler-start tolerance parked to M5 |
 | A `db.rollback()` that itself raises falls through to `get_db`'s post-yield `commit()` on the dead session → 500; rollback also sat outside the probe timeout | P2 | The db probe moved to a dedicated `async_engine.connect()` (no session, no commit path at all) inside the timeout; `/ready` no longer takes the `get_db` dependency |
 
+## Codex 5.6-Sol high round (the delegated merge gate — Sam, in-session 2026-07-19)
+
+Round 1 (1 finding → fixed): valid-but-non-object JSON (`null`, `[]`) in the freshness key raised
+`AttributeError` past both except-tuples — permanently skipping the recorder's repairing SET and
+500-wedging `/ready`, the deployment health gate. Both sites now isinstance-guard and treat
+non-object JSON as no-record; pinned by 5 tests. Final Sol round on the fixed head: see below.
+
 ## Refuted (see lens reports for the full verifier reasoning)
 
 - P3-1 (non-generator get_db double masks real cleanup) — the rollback-mechanism test pins the interplay; the real-session path is covered by the dependency's own tests.

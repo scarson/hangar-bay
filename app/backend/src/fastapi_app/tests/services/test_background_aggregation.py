@@ -701,3 +701,25 @@ async def test_freshness_failure_when_commit_raises(
     assert record["regions_failed"] == 0
     assert record["last_success_at"] == prior
     assert _gauge_value() == before
+
+
+async def test_freshness_recorder_overwrites_a_non_object_prior_record(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A corrupt (valid JSON, non-object) prior record must be treated as no-prior and
+    OVERWRITTEN — an uncaught AttributeError would skip the SET forever, leaving every
+    future run unable to repair the key."""
+    import json as _json
+
+    service = _freshness_service([10000002])
+    from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=_NotModified("304"))
+
+    store: dict = {INGEST_KEY: "[]"}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert isinstance(record, dict)
+    assert record["outcome"] == "success"
+    assert record["last_success_at"] == record["finished_at"]

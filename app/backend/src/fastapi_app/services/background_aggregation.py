@@ -303,7 +303,11 @@ class ContractAggregationService:
             prior_success = None
             if prior_raw:
                 try:
-                    prior_success = json.loads(prior_raw).get("last_success_at")
+                    prior_record = json.loads(prior_raw)
+                    # Valid-but-non-object JSON (null, [], "str") is corrupt: treat as
+                    # no-prior so this SET repairs the key instead of raising forever.
+                    if isinstance(prior_record, dict):
+                        prior_success = prior_record.get("last_success_at")
                 except (ValueError, TypeError):
                     prior_success = None
             last_success_at = now if outcome in ("success", "partial") else prior_success

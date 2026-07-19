@@ -66,6 +66,10 @@ def _freshness_fields(freshness) -> tuple[object, object]:
         return None, None
     try:
         record = json.loads(freshness)
+        if not isinstance(record, dict):
+            # Valid-but-non-object JSON is corrupt — read as no-record; an
+            # AttributeError here would 500 the deployment health gate.
+            return None, None
         outcome = record.get("outcome")
         last_success = record.get("last_success_at")
         age = None
