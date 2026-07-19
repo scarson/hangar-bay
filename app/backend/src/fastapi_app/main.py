@@ -1,10 +1,9 @@
 import logging
 import math
 import structlog
-from fastapi import Request, Response
+from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from starlette.middleware.base import BaseHTTPMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from contextlib import asynccontextmanager
@@ -18,7 +17,7 @@ from .core.http_client import init_http_client, close_http_client
 from .core.scheduler import add_aggregation_job, add_watchlist_matcher_job, create_scheduler
 from .core.logging import setup_logging, RequestIDMiddleware
 from .core.token_cipher import is_token_cipher_configured
-from .db import AsyncSessionLocal, async_engine, Base
+from .db import async_engine, Base
 from .core.esi_client_class import ESIClient  # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService  # For manual service creation
 from .services.watchlist_matcher import WatchlistMatcherService

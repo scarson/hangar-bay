@@ -21,6 +21,11 @@ def test_migrated_schema_matches_model_metadata(blank_migrated_sync_connection):
 
     from fastapi_app.db import Base
 
-    ctx = MigrationContext.configure(blank_migrated_sync_connection)
+    # Match env.py's comparison flags — without compare_server_default the guard is
+    # blind to exactly the server-default autogen-hazard class spec §5 hand-reviews.
+    ctx = MigrationContext.configure(
+        blank_migrated_sync_connection,
+        opts={"compare_type": True, "compare_server_default": True},
+    )
     diff = compare_metadata(ctx, Base.metadata)
     assert diff == [], f"schema drift between migrations and models: {diff}"
