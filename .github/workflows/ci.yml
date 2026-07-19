@@ -13,9 +13,10 @@ on:
   # which the default activity types don't run on).
   pull_request:
 
-# Nothing here uses the token — pin it to read-only.
+# Read-only: the only token use is listing a PR's changed files in `changes`.
 permissions:
   contents: read
+  pull-requests: read
 
 # Rapid pushes to the same ref (stacked-PR rebases) supersede in-flight runs.
 concurrency:
@@ -23,7 +24,83 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    # Which lanes does this PR actually need? This gates the JOBS rather than the
+    # workflow, because a `paths-ignore` filter makes the checks vanish entirely —
+    # indistinguishable from "CI never ran", which docs/git-strategy.md §Merge
+    # authority instructs agents to treat as a failure. A job skipped by `if:`
+    # reports as skipped with a visible reason, and still satisfies a required
+    # status check if one is ever configured.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.classify.outputs.backend }}
+      frontend: ${{ steps.classify.outputs.frontend }}
+    steps:
+      - name: Classify changed paths
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          run_everything() {
+            echo 'backend=true'  >> "$GITHUB_OUTPUT"
+            echo 'frontend=true' >> "$GITHUB_OUTPUT"
+          }
+
+          # Only pull_request narrows the lanes. Pushes to dev/main run everything:
+          # CI's success on main is what fires deploy.yml's workflow_run chain, so a
+          # narrowed push would strand production's reported commit behind main.
+          if [ "$EVENT_NAME" != 'pull_request' ]; then
+            echo "event=$EVENT_NAME — running every lane"
+            run_everything; exit 0
+          fi
+
+          # A failed or empty file list must never silently skip a lane.
+          if ! files=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename'); then
+            echo '::warning::could not list the PR files — running every lane'
+            run_everything; exit 0
+          fi
+          if [ -z "$files" ]; then
+            echo '::warning::PR reports no changed files — running every lane'
+            run_everything; exit 0
+          fi
+
+          echo "changed files:"; printf '  %s\n' $files
+
+          backend=false
+          frontend=false
+          while IFS= read -r f; do
+            # `case` globs match `/`, so a trailing `*` covers a whole subtree.
+            case "$f" in
+              # Prose and agent/editor tooling — no build or test consumes these.
+              docs/*|design/*|plans/*|.claude/*|.windsurf/*|.beads/*|LICENSE) : ;;
+              app/backend/*)      backend=true ;;
+              app/frontend/web/*) frontend=true ;;
+              *.md)
+                # Root-level markdown is prose. Markdown nested anywhere else is
+                # unclassified and falls through to the conservative default —
+                # app/backend/pyproject.toml declares readme = "README.md", so a PR
+                # deleting that file breaks `pdm install` and must still run CI.
+                case "$f" in */*) backend=true; frontend=true ;; esac
+                ;;
+              # Anything unrecognized (root config, .github/*, render.yaml, or a new
+              # top-level directory) is assumed to matter. New paths fail safe into
+              # full CI rather than silently skipping it.
+              *) backend=true; frontend=true ;;
+            esac
+          done <<< "$files"
+
+          echo "backend=$backend"   | tee -a "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" | tee -a "$GITHUB_OUTPUT"
+
   backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -80,6 +157,8 @@ jobs:
         run: pdm run pytest
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -128,6 +207,10 @@ jobs:
   openapi-drift:
     # The committed openapi.json / schema.d.ts must match what the backend exports —
     # neither existing job runs the export chain, so drift was previously invisible.
+    # Straddles both lanes: the backend produces the schema, the frontend holds the
+    # committed copies and the generator that renders them.
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
