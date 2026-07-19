@@ -10,9 +10,10 @@ from typing import Callable, Optional
 import redis.asyncio as aioredis
 from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import Settings
+from ..db import AsyncSessionLocal
 from ..core.logging import get_logger, log_key_event
 from ..models.account import Notification, WatchlistItem
 from ..models.contracts import Contract, ContractItem
@@ -90,17 +91,10 @@ class WatchlistMatcherService:
         matched = created = pruned = 0
         try:
             async with self._concurrency_lock():
-                engine = create_async_engine(self.settings.DATABASE_URL)
-                try:
-                    session_factory = async_sessionmaker(
-                        bind=engine, class_=AsyncSession, expire_on_commit=False
-                    )
-                    async with session_factory() as db_session:
-                        matched, created = await self._match_and_notify(db_session)
-                        pruned = await self._prune(db_session)
-                        await db_session.commit()
-                finally:
-                    await engine.dispose()
+                async with AsyncSessionLocal() as db_session:
+                    matched, created = await self._match_and_notify(db_session)
+                    pruned = await self._prune(db_session)
+                    await db_session.commit()
         except ConcurrencyLockError:
             logger.info("Watchlist matcher skipped: lock held by another run.")
             return

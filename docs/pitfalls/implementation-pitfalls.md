@@ -30,6 +30,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, upstream status | ESI-1 | §4.C |
+| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -244,6 +245,43 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+# Section 5: Deployment & Platform
+
+> **Reader context:** I'm wiring production configuration — platform-injected env vars, process topology, launch commands — for a managed host (Render or similar).
+
+---
+
+### DEPLOY-1: Managed platforms inject `postgresql://` URLs; the async stack needs `postgresql+asyncpg://`
+
+**The Flaw:** Render (and most managed platforms) injects `DATABASE_URL` with the plain `postgresql://` scheme, but `create_async_engine` — both the app engine (`db.py`) and Alembic's CLI path (`alembic/env.py`) — requires the driver-qualified `postgresql+asyncpg://` scheme.
+
+**Why It Matters:** The very first production boot (and the pre-deploy `alembic upgrade head`) dies on `sqlalchemy.exc.InvalidRequestError` before serving a request — a deploy that cannot come up at all, discovered only on the platform.
+
+**The Fix:** Normalize in `Settings` — a `mode="before"` field validator on `DATABASE_URL` rewrites `postgresql://` → `postgresql+asyncpg://` (`core/config.py`). Never hand-edit platform-injected URLs; blueprint references stay untouched (I-5).
+
+**Where It Bit Us:** M4 codex design review (pre-deploy, 2026-07-18) — caught before the first deploy; the spike-substitute docs verification confirmed Render's documented format is `postgresql://user:password@host:port/database`.
+
+---
+
+### DEPLOY-2: uvicorn stays `--workers 1` — the scheduler runs in-process
+
+**The Flaw:** The APScheduler ingestion job runs inside the FastAPI process. N uvicorn workers = N schedulers racing the Valkey ingestion lock every tick.
+
+**Why It Matters:** The fencing-tokened lock makes overlap a wasted-tick problem rather than data corruption, but N−1 workers burn every tick contending, logs fill with skip warnings, and the "single scheduler" operational invariant (I-3) silently becomes a lie that masks real double-scheduling bugs.
+
+**The Fix:** Every production launch command pins `--workers 1` (Dockerfile CMD, any future Procfile). Scale reads by splitting the scheduler out into its own process/service — never by adding workers.
+
+**Where It Bit Us:** Pre-empted in the M4 design (spec §2); the Dockerfile carries the constraint as an inline comment.
+
+---
+
+### §5.C — Review Checklist
+
+- [ ] **`DATABASE_URL` reaches the engine driver-qualified** — the Settings validator normalizes `postgresql://`; no code assumes the platform sends `+asyncpg` (DEPLOY-1)
+- [ ] **Every production launch command pins `--workers 1`** — scaling proposals split the scheduler out instead of raising the worker count (DEPLOY-2)
+
+---
+
 ## Orchestration
 
 Pitfalls that arise when a session dispatches parallel subagents and consolidates their output. The canonical rules live in `docs/git-strategy.md` → §Multi-agent coordination → Output persistence. This section is the discovery hook for plan writers who arrive here via the `writing-plans-enhanced` (or equivalent) mandated-read path — it does NOT restate the rules in full.
@@ -267,6 +305,10 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 ---
 
 # Appendix A: Historical Changelog
+
+## 2026-07-19 — DEPLOY-1/DEPLOY-2 added: managed-platform URL scheme + single-worker topology
+
+- Added Section 5 (Deployment & Platform) with DEPLOY-1 (`postgresql://` → `postgresql+asyncpg://` normalization in Settings) and DEPLOY-2 (uvicorn `--workers 1`; in-process scheduler) from M4 Phase 3 (plan Task 3.12). DEPLOY-1's fix is implemented and tested (`core/config.py` validator, `test_config.py`); DEPLOY-2 is carried by the production Dockerfile CMD.
 
 ## 2026-07-18 — ENV-7 added: repo-wide `pdm run format` trap
 
@@ -320,6 +362,8 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ENV-6 | F811 cascade when removing debug prints/functions | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-7 | `pdm run format` is repo-wide black on a non-black codebase | LOW | VALIDATED | Environment & Dev Loop |
 | ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
+| DEPLOY-1 | Managed platforms inject postgresql:// URLs; async stack needs +asyncpg | HIGH | VALIDATED | Deployment & Platform |
+| DEPLOY-2 | uvicorn stays --workers 1 (in-process scheduler) | MEDIUM | VALIDATED | Deployment & Platform |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
 Severity levels: `CRITICAL` (production data loss / security), `HIGH` (correctness bug under predictable conditions), `MEDIUM` (correctness bug under edge cases), `LOW` (cleanliness / clarity / dev-loop hazard).

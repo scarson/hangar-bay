@@ -233,3 +233,36 @@ async def authed_user(auth_client, db_session):
         character_id=91000001, character_name="Sesta Hound", owner_hash="OWN1",
     )
     return user, auth_client
+
+
+@pytest.fixture(scope="session")
+def blank_migrated_sync_connection():
+    """Create a disposable database, run `alembic upgrade head` against it via env.py's
+    injected-connection path (the house pattern), and yield a sync connection for
+    migration<->metadata comparison. Owns the full DB lifecycle (no shared helper exists)."""
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url
+
+    base_url = make_url(str(settings.DATABASE_URL_TESTS)).set(drivername="postgresql+psycopg2")
+    equiv_url = base_url.set(database="m4_equiv_check")
+    admin = create_engine(base_url.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text("DROP DATABASE IF EXISTS m4_equiv_check WITH (FORCE)"))  # tolerate a prior failed run
+        conn.execute(text("CREATE DATABASE m4_equiv_check"))
+    engine = create_engine(equiv_url)
+    try:
+        with engine.connect() as conn:
+            cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "head")
+            conn.commit()
+            yield conn
+    finally:
+        engine.dispose()
+        with admin.connect() as conn:
+            conn.execute(text("DROP DATABASE IF EXISTS m4_equiv_check WITH (FORCE)"))
+        admin.dispose()

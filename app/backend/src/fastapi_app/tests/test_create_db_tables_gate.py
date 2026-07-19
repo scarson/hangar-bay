@@ -119,41 +119,137 @@ async def test_create_db_tables_runs_in_development(monkeypatch):
     assert synced == [Base.metadata.drop_all, Base.metadata.create_all]
 
 
-@pytest.mark.parametrize(
-    "env,client_id,keys,expect_warning",
-    [
-        ("development", "", "", True),        # unconfigured in dev → exactly one warning
-        ("development", "cid", "some-key", False),  # configured in dev → silent
-        ("development", "cid", "", True),     # client id set, cipher unset → still warns (pins the OR)
-        ("development", "", "some-key", True),  # cipher set, client id unset → still warns (pins the OR)
-        ("production", "", "", False),        # never warns outside development
-    ],
-)
-def test_sso_unconfigured_startup_warning(monkeypatch, caplog, env, client_id, keys, expect_warning):
+# --- validate_sso_configuration (M4 Task 3.7, spec §6 two-tier diagnostic) ---
+# Tier (a): the trio {ESI_CLIENT_ID, ESI_CLIENT_SECRET, TOKEN_CIPHER_KEYS} wholly empty
+# → warn in EVERY environment and continue (anonymous marketplace stays valid).
+# Tier (b), production only: ANY non-empty proper subset of the trio, or any of the trio
+# set while a localhost URL remains → RuntimeError naming the offending fields.
+# Outside production a partial trio warns; localhost URLs are the CORRECT dev config
+# and stay silent there (plan Deviation D-10).
+
+_REAL_CALLBACK = "https://hangarbay.example/api/v1/auth/sso/callback"
+_REAL_ORIGIN = "https://hangarbay.example"
+
+
+def _set_sso(monkeypatch, *, env, cid="", secret="", keys="",
+             callback=_REAL_CALLBACK, origin=_REAL_ORIGIN):
     from pydantic import SecretStr
 
     monkeypatch.setattr(main_mod.settings, "ENVIRONMENT", env)
-    monkeypatch.setattr(main_mod.settings, "ESI_CLIENT_ID", client_id)
+    monkeypatch.setattr(main_mod.settings, "ESI_CLIENT_ID", cid)
+    monkeypatch.setattr(main_mod.settings, "ESI_CLIENT_SECRET", SecretStr(secret))
     monkeypatch.setattr(main_mod.settings, "TOKEN_CIPHER_KEYS", SecretStr(keys))
+    monkeypatch.setattr(main_mod.settings, "ESI_SSO_CALLBACK_URL", callback)
+    monkeypatch.setattr(main_mod.settings, "FRONTEND_ORIGIN", origin)
+
+
+@pytest.mark.parametrize("env", ["development", "production", "test"])
+def test_sso_wholly_unconfigured_warns_and_boots(monkeypatch, caplog, env):
+    _set_sso(monkeypatch, env=env)
     with caplog.at_level(logging.WARNING):
-        main_mod.warn_if_sso_unconfigured()
+        main_mod.validate_sso_configuration()   # must not raise in ANY environment
     warnings = [r for r in caplog.records if "EVE SSO is not configured" in r.getMessage()]
-    assert len(warnings) == (1 if expect_warning else 0)
+    assert len(warnings) == 1
 
 
-def test_sso_unconfigured_startup_warning_names_only_login_and_callback(monkeypatch, caplog):
-    # Finding 11: the message previously claimed every /auth/sso/* route 503s,
-    # but logout stays operational (204, not guarded) — the warning must name
-    # login and callback specifically, not the whole route family.
-    monkeypatch.setattr(main_mod.settings, "ENVIRONMENT", "development")
-    monkeypatch.setattr(main_mod.settings, "ESI_CLIENT_ID", "")
-    from pydantic import SecretStr
-    monkeypatch.setattr(main_mod.settings, "TOKEN_CIPHER_KEYS", SecretStr(""))
+def test_sso_wholly_unconfigured_warning_names_only_login_and_callback(monkeypatch, caplog):
+    # Logout stays operational (204, not guarded) — the message must name the two
+    # affected routes, never the whole /auth/sso/* family.
+    _set_sso(monkeypatch, env="development")
     with caplog.at_level(logging.WARNING):
-        main_mod.warn_if_sso_unconfigured()
+        main_mod.validate_sso_configuration()
     messages = [r.getMessage() for r in caplog.records if "EVE SSO is not configured" in r.getMessage()]
     assert len(messages) == 1
     assert "/auth/sso/login" in messages[0]
     assert "/auth/sso/callback" in messages[0]
-    assert "/auth/sso/*" not in messages[0]   # the over-broad claim must be gone
-    assert "/auth/sso/logout" not in messages[0]   # logout is never guarded (§4.4)
+    assert "/auth/sso/*" not in messages[0]
+    assert "/auth/sso/logout" not in messages[0]
+
+
+# Every non-empty proper subset of the trio — a leftover credential with no client id
+# is as much a deploy mistake as the reverse.
+_PARTIAL_SUBSETS = [
+    dict(cid="cid"),
+    dict(secret="sec"),
+    dict(keys="key"),
+    dict(cid="cid", secret="sec"),
+    dict(cid="cid", keys="key"),
+    dict(secret="sec", keys="key"),
+]
+
+
+@pytest.mark.parametrize("subset", _PARTIAL_SUBSETS)
+def test_sso_partial_config_fails_startup_in_production(monkeypatch, subset):
+    _set_sso(monkeypatch, env="production", **subset)
+    with pytest.raises(RuntimeError) as excinfo:
+        main_mod.validate_sso_configuration()
+    message = str(excinfo.value)
+    empty_fields = {"ESI_CLIENT_ID", "ESI_CLIENT_SECRET", "TOKEN_CIPHER_KEYS"} - {
+        {"cid": "ESI_CLIENT_ID", "secret": "ESI_CLIENT_SECRET", "keys": "TOKEN_CIPHER_KEYS"}[k]
+        for k in subset
+    }
+    for field in empty_fields:
+        assert field in message
+
+
+@pytest.mark.parametrize(
+    "url_kwargs,named_field",
+    [
+        (dict(callback="https://localhost:5173/api/v1/auth/sso/callback"), "ESI_SSO_CALLBACK_URL"),
+        (dict(origin="https://localhost:5173"), "FRONTEND_ORIGIN"),
+    ],
+)
+def test_sso_localhost_urls_fail_startup_in_production(monkeypatch, url_kwargs, named_field):
+    _set_sso(monkeypatch, env="production", cid="cid", secret="sec", keys="key", **url_kwargs)
+    with pytest.raises(RuntimeError) as excinfo:
+        main_mod.validate_sso_configuration()
+    assert named_field in str(excinfo.value)
+
+
+@pytest.mark.parametrize("env", ["development", "test"])
+def test_sso_partial_config_only_warns_outside_production(monkeypatch, caplog, env):
+    _set_sso(monkeypatch, env=env, cid="cid")
+    with caplog.at_level(logging.WARNING):
+        main_mod.validate_sso_configuration()   # must not raise
+    assert any("SSO misconfiguration" in r.getMessage() for r in caplog.records)
+
+
+def test_sso_fully_configured_production_is_silent(monkeypatch, caplog):
+    _set_sso(monkeypatch, env="production", cid="cid", secret="sec", keys="key")
+    with caplog.at_level(logging.WARNING):
+        main_mod.validate_sso_configuration()
+    assert not caplog.records
+
+
+def test_sso_dev_localhost_urls_are_silent_when_fully_configured(monkeypatch, caplog):
+    # localhost URLs ARE the correct dev configuration (registered dev callback) —
+    # a configured dev boot must not warn (D-10).
+    _set_sso(
+        monkeypatch, env="development", cid="cid", secret="sec", keys="key",
+        callback="https://localhost:5173/api/v1/auth/sso/callback",
+        origin="https://localhost:5173",
+    )
+    with caplog.at_level(logging.WARNING):
+        main_mod.validate_sso_configuration()
+    assert not caplog.records
+
+
+@pytest.mark.asyncio
+async def test_lifespan_invokes_sso_validation(monkeypatch):
+    # The rename must not orphan the startup call site: a production+partial config
+    # must abort the lifespan itself, with every external initializer patched out.
+    _set_sso(monkeypatch, env="production", cid="cid")
+
+    async def _noop_async(*a, **k):
+        return None
+
+    def _noop(*a, **k):
+        return None
+
+    monkeypatch.setattr(main_mod, "create_db_tables", _noop_async)
+    monkeypatch.setattr(main_mod, "init_http_client", _noop)
+    monkeypatch.setattr(main_mod, "init_cache", _noop_async)
+    monkeypatch.setattr(main_mod, "create_scheduler", _noop)
+    with pytest.raises(RuntimeError):
+        async with main_mod.app.router.lifespan_context(main_mod.app):
+            pass

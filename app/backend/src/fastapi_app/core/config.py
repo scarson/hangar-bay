@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     SESSION_ABSOLUTE_TTL_SECONDS: int = 2_592_000  # 30 days (hard cap)
     TOKEN_CIPHER_KEYS: SecretStr = SecretStr("")   # comma-separated Fernet keys, first=primary
 
+    # Observability — when set, /metrics requires "Authorization: Bearer <token>";
+    # empty (dev default) leaves /metrics open (design spec §8.3).
+    METRICS_TOKEN: SecretStr = SecretStr("")
+
     # Aggregation
     AGGREGATION_SCHEDULER_INTERVAL_SECONDS: int = 3600
     AGGREGATION_REGION_IDS: List[int] = Field(default_factory=lambda: [10000002])
@@ -73,6 +77,15 @@ class Settings(BaseSettings):
     CACHE_URL: str = Field(..., description="Redis/Valkey cache connection string.")
     DATABASE_URL_TESTS: Optional[PostgresDsn] = None   # conftest requires this
     CACHE_URL_TESTS: Optional[AnyUrl] = None
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url_driver(cls, value: Any) -> Any:
+        """Render/most managed platforms inject postgresql:// URLs; the async engine and
+        Alembic require the asyncpg driver scheme (design spec §4)."""
+        if isinstance(value, str) and value.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + value[len("postgresql://"):]
+        return value
 
     @field_validator("AGGREGATION_REGION_IDS", mode="before")
     @classmethod

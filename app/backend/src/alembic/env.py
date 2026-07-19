@@ -16,7 +16,7 @@ from alembic import context
 
 from fastapi_app.core.config import get_settings
 from fastapi_app.db import Base
-from fastapi_app.models import user, contracts  # noqa: F401  (registers tables on Base.metadata)
+from fastapi_app.models import user, contracts, account  # noqa: F401  (registers tables on Base.metadata)
 
 settings = get_settings()
 target_metadata = Base.metadata

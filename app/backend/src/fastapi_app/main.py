@@ -1,30 +1,29 @@
 import logging
 import math
 import structlog
-from fastapi import Request, Response
+from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from starlette.middleware.base import BaseHTTPMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from typing import Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, APIRouter
-from redis.asyncio import Redis  # For type hinting Redis client
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from .core.config import settings
 from .core.cache import init_cache, close_cache
 from .core.http_client import init_http_client, close_http_client
 from .core.scheduler import add_aggregation_job, add_watchlist_matcher_job, create_scheduler
-from .core.dependencies import get_cache
 from .core.logging import setup_logging, RequestIDMiddleware
 from .core.token_cipher import is_token_cipher_configured
-from .db import AsyncSessionLocal, async_engine, Base
+from .db import async_engine, Base
 from .core.esi_client_class import ESIClient  # For manual ESI client creation
 from .services.background_aggregation import ContractAggregationService  # For manual service creation
 from .services.watchlist_matcher import WatchlistMatcherService
 from .api import contracts as contracts_router
 from .api import auth as auth_router
+from .api import ops as ops_router
 from .api import saved_searches as saved_searches_router
 from .api import watchlist as watchlist_router
 from .api import notifications as notifications_router
@@ -44,7 +43,7 @@ async def lifespan(app: FastAPI):
     # Startup logic
     # Setup structured logging first
     setup_logging(settings)
-    warn_if_sso_unconfigured()
+    validate_sso_configuration()
 
     await create_db_tables()
     init_http_client(app)
@@ -147,7 +146,16 @@ instrumentator = Instrumentator(
     inprogress_labels=True,
 )
 instrumentator.instrument(app)
-instrumentator.expose(app, endpoint="/metrics")
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics(request: Request):
+    """Prometheus exposition, bearer-gated when METRICS_TOKEN is set (spec §8.3);
+    an empty token (dev default) leaves the endpoint open."""
+    token = settings.METRICS_TOKEN.get_secret_value()
+    if token and request.headers.get("authorization") != f"Bearer {token}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/")
@@ -187,11 +195,24 @@ async def create_db_tables():
     logger.info("Database tables successfully recreated.")
 
 
-def warn_if_sso_unconfigured() -> None:
-    """Development-only startup notice (spec §4.4): SSO routes 503 until .env is filled."""
-    if settings.ENVIRONMENT != "development":
-        return
-    if not settings.ESI_CLIENT_ID or not is_token_cipher_configured():
+def validate_sso_configuration() -> None:
+    """Two-tier SSO configuration diagnostic (M4 spec §6).
+
+    Tier (a): the trio {ESI_CLIENT_ID, ESI_CLIENT_SECRET, TOKEN_CIPHER_KEYS} wholly
+    empty → warn in every environment and continue; SSO-less operation is valid, the
+    marketplace works anonymously.
+    Tier (b), production only: a partially-configured trio, or any of the trio set
+    while ESI_SSO_CALLBACK_URL/FRONTEND_ORIGIN still contains localhost, is always a
+    deploy mistake — fail startup naming the offending fields. Outside production a
+    partial trio only warns, and localhost URLs are the correct dev configuration
+    (the registered dev callback), so they stay silent there.
+    """
+    trio = {
+        "ESI_CLIENT_ID": bool(settings.ESI_CLIENT_ID),
+        "ESI_CLIENT_SECRET": bool(settings.ESI_CLIENT_SECRET.get_secret_value()),
+        "TOKEN_CIPHER_KEYS": is_token_cipher_configured(),
+    }
+    if not any(trio.values()):
         # Only login and callback are guarded (require_sso_configured) — logout
         # stays operational (204) regardless, so the message must name the two
         # affected routes rather than claim the whole /auth/sso/* family 503s.
@@ -199,27 +220,19 @@ def warn_if_sso_unconfigured() -> None:
             "EVE SSO is not configured (ESI_CLIENT_ID/TOKEN_CIPHER_KEYS empty); "
             "/auth/sso/login and /auth/sso/callback return 503."
         )
-
-
-# CASCADE-PROD-CHECK: Remove or disable this endpoint for production.
-@app.get("/cache-test", tags=["Development/Test"])
-async def cache_test(rd: Optional[Redis] = Depends(get_cache)):
-    """Temporary endpoint to test cache connectivity and basic operations."""
-    if not rd:
-        return {"status": "error", "message": "Redis client not available"}
-    try:
-        test_key = "temp_cache_test_key"
-        test_value = "Hello Hangar Bay Cache! - Temporary Test"
-        await rd.set(test_key, test_value, ex=60)  # Set with a 60-second expiry
-        retrieved_value = await rd.get(test_key)
-        if retrieved_value == test_value:
-            return {"status": "ok", "key_set": test_key, "value_retrieved": retrieved_value}
-        else:
-            return {"status": "error", "message": "Value mismatch after set/get", "expected": test_value, "got": retrieved_value}
-    except Exception as e:
-        # Log the exception for more details during development
-        logging.error(f"Cache test endpoint error: {e}", exc_info=True)
-        return {"status": "error", "message": str(e)}
+        return
+    problems = []
+    if not all(trio.values()):
+        missing = [name for name, configured in trio.items() if not configured]
+        problems.append("missing " + ", ".join(missing))
+    if settings.ENVIRONMENT == "production":
+        for field in ("ESI_SSO_CALLBACK_URL", "FRONTEND_ORIGIN"):
+            if "localhost" in getattr(settings, field):
+                problems.append(f"{field} contains localhost")
+        if problems:
+            raise RuntimeError("SSO misconfiguration: " + "; ".join(problems))
+    elif problems:
+        logger.warning("SSO misconfiguration: " + "; ".join(problems))
 
 
 # Include API routers
@@ -232,5 +245,6 @@ app.include_router(saved_searches_router.router)   # /me/saved-searches/* (bare,
 app.include_router(watchlist_router.router)   # /me/watchlist-items (bare, PROXY-1)
 app.include_router(notifications_router.router)           # /me/notifications (bare, PROXY-1)
 app.include_router(notifications_router.settings_router)  # /me/notification-settings (bare)
+app.include_router(ops_router.router)                     # /ready (bare; Render health-check gate)
 
 # Further application setup, routers, middleware, etc., will go here

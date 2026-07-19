@@ -999,26 +999,6 @@
         ]
       }
     },
-    "/cache-test": {
-      "get": {
-        "description": "Temporary endpoint to test cache connectivity and basic operations.",
-        "operationId": "cache_test_cache_test_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Cache Test",
-        "tags": [
-          "Development/Test"
-        ]
-      }
-    },
     "/contracts/": {
       "get": {
         "description": "Retrieves a paginated list of contracts based on specified filters.\n\nThis endpoint uses a service layer to apply advanced filtering, sorting,\nand pagination to public contracts.",
@@ -2230,10 +2210,9 @@
         ]
       }
     },
-    "/metrics": {
+    "/ready": {
       "get": {
-        "description": "Endpoint that serves Prometheus metrics.",
-        "operationId": "metrics_metrics_get",
+        "operationId": "ready_ready_get",
         "responses": {
           "200": {
             "content": {
@@ -2244,7 +2223,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Metrics"
+        "summary": "Ready",
+        "tags": [
+          "Ops"
+        ]
       }
     }
   }

@@ -280,3 +280,42 @@ async def test_concurrency_lock_raises_when_held():
         with pytest.raises(ConcurrencyLockError):
             async with svc._concurrency_lock():
                 pass
+
+
+@pytest.mark.asyncio
+async def test_run_matching_reuses_app_session_factory(monkeypatch: pytest.MonkeyPatch):
+    """Pool-policy coverage (M4 spec §5): the matcher must source its session from
+    fastapi_app.db.AsyncSessionLocal — a per-run create_async_engine() would sit outside
+    the tuned pre-ping/bounded pool and multiply connections against Render Basic's budget."""
+    import fastapi_app.db as app_db
+
+    service = wm.WatchlistMatcherService(settings=MagicMock())
+    service.settings.CACHE_URL = "redis://unused/0"
+    service.settings.WATCHLIST_MATCH_LOCK_TTL_SECONDS = 900
+    service.settings.NOTIFICATION_RETENTION_DAYS = 90
+
+    entered = {"count": 0}
+    real_factory = app_db.AsyncSessionLocal
+
+    def recording_factory():
+        entered["count"] += 1
+        return real_factory()
+
+    monkeypatch.setattr(wm, "AsyncSessionLocal", recording_factory, raising=False)
+
+    async def _no_match(self_, db_session):
+        return 0, 0
+
+    async def _no_prune(self_, db_session):
+        return 0
+
+    monkeypatch.setattr(wm.WatchlistMatcherService, "_match_and_notify", _no_match)
+    monkeypatch.setattr(wm.WatchlistMatcherService, "_prune", _no_prune)
+
+    store: dict = {}
+    with patch.object(wm.aioredis, "from_url", return_value=FakeLockRedis(store)):
+        await service.run_matching()
+
+    assert entered["count"] == 1, (
+        "run_matching must obtain its session from fastapi_app.db.AsyncSessionLocal"
+    )
