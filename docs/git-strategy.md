@@ -358,7 +358,7 @@ If none of the above apply → `Routine`, auto-merge on green CI. When genuinely
 
 Requirements for a Routine PR to auto-merge:
 
-- Green CI. Skipped checks must be verifiably not-applicable to the changed files (e.g. a frontend check skipped because only backend files changed). Unexplained skips count as failures — investigate per §Handling CI failures; don't classify up as an escape hatch.
+- Green CI. Skipped checks must be verifiably not-applicable to the changed files (e.g. a frontend check skipped because only backend files changed). CI's `changes` job is what makes this verifiable: it classifies every path in the PR and gates the `backend`, `frontend`, and `openapi-drift` jobs on the result, printing the changed-file list and the resulting `backend=` / `frontend=` decision. A skipped lane is legitimate exactly when that log accounts for it — read the log, don't assume. Unexplained skips count as failures — investigate per §Handling CI failures; don't classify up as an escape hatch.
 - PR title + body accurately describe what was done; scope matches the original ask.
 - No dependency on a still-open `Review`-class PR. "Dependency" means: the PR imports, calls, or otherwise depends on code or types introduced by the open PR; the PRs modify overlapping files in ways that would conflict; or the PRs were authored to ship together as one logical change.
 
