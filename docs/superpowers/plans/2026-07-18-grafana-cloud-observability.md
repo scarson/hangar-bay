@@ -59,16 +59,16 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** 3/6 phases shipped (file work); Phase 0 + all cloud-side verification blocked on browser access (Sam away).
+**Overall:** 5/6 phases shipped and verified end-to-end; Phase 5 (PR) in flight.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Grafana Cloud stack setup | ⏸ Blocked | — | needs Sam: grafana.com login (app Browser pane) or Chrome extension |
+| 0 — Grafana Cloud stack setup | ✅ Done | — (no repo files) | tokens in 1Password; see banner for endpoints/IDs |
 | 1 — Backend `LOG_FILE` sink (TDD) | ✅ Shipped | `906fdd2` | 3 new tests; full suite 365 passed; lint green |
-| 2 — Alloy service + config | ✅ Shipped (files) | `39a1ced` | Task 2.4 verification pending Phase 0 |
-| 3 — Dashboards as code | ✅ Shipped (files) | see log | Task 3.4 provisioning/verification pending Phase 0 |
-| 4 — Teardown + docs sweep | ⬜ Not started | — | gated on Task 2.4 verification |
-| 5 — Verification + PR | ⬜ Not started | — | — |
+| 2 — Alloy service + config | ✅ Shipped + verified | `39a1ced` | Alloy ready; remote_write pushing; Loki 8.9KB sent / 0 dropped; `up{job="fastapi"}=1` in cloud |
+| 3 — Dashboards as code | ✅ Shipped + verified | `15eaa3e`, `c884808` (DS regex) | provisioned idempotently; panels render live data |
+| 4 — Teardown + docs sweep | ✅ Shipped | `c884808` | prometheus/+grafana/ dirs deleted; no local containers/volumes existed |
+| 5 — Verification + PR | 🚧 In progress | — | — |
 
 ### Deviations
 
@@ -156,7 +156,7 @@ Cross-task file conflicts: none — each file is owned by exactly one task above
 
 ## Phase 0 — Grafana Cloud stack setup (browser + op CLI; orchestrator-only)
 
-**Execution Status:** ⏸ BLOCKED (2026-07-19 00:18Z) pending browser access to grafana.com: Sam must either log in on the app's Browser-pane sign-in page (already open) or connect the Claude-in-Chrome extension. Everything else in Phases 1-3 shipped ahead; Tasks 2.4, 3.4, Phase 4, Phase 5 queue behind this.
+**Execution Status:** ✅ DONE 2026-07-19 (no committed files). Sam logged in via the app Browser pane + clicked the instance-wake reCAPTCHA (agent-prohibited action). Collected: Prometheus push `prometheus-prod-67-prod-us-west-0.grafana.net/api/prom/push` (user 3030558), Loki push `logs-prod-021.grafana.net/loki/api/v1/push` (user 1510954), stack `scarson.grafana.net`. Created: access policy `hangar-bay-dev` (ID 872a3ca6, realm stack-scarson, metrics:write+logs:write) + token `hangar-bay-dev-alloy`; service account `sa-1-hangar-bay-provisioner` (Editor) + token. Both tokens stored in 1Password (Private vault: "Grafana Cloud hangar-bay-dev (Alloy)", "Grafana Cloud hangar-bay-provisioner (dashboards)") via `op --template` with template cleanup; runtime copies in gitignored `grafana-cloud.env` (verified `git check-ignore`).
 
 > **NOT subagent-dispatchable.** This phase needs the orchestrator's browser access (Claude in Chrome, where Sam's grafana.com session/1Password live) and the `op` CLI. No repo files change except the gitignored `grafana-cloud.env`. Sam has granted standing permission for Grafana Cloud actions (2026-07-18 session).
 
