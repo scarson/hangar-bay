@@ -18,6 +18,19 @@ refute it. 7 confirmed, 5 refuted.
 | config-2: `ipAllowList: []` comment stated inference as fact | P3 | Comment now cites the blueprint-spec's documented empty-list-blocks-all statement (post-review WebFetch of the spec's Inbound IP rules section resolved the lane's gap) |
 | config-3: deploy.yml references `live-smoke-prod` / `E2E_PROD_BASE_URL` before Phase 3 delivers them | P3 | Intentional forward reference; inert until Phase 2b secrets exist, and Phase 3 merges before the first real deploy. No change; ordering constraint already recorded in plan Phase 4 Step 0 |
 
+## Codex adversarial round (cross-model, post-lens-review)
+
+`codex review` (model_reasoning_effort=high) against the branch diff. Gate: **FAIL → fixed → clean**.
+
+| Finding | Severity | Fix |
+|---|---|---|
+| deploy.yml id-less-202 fallback binds to the FIRST deploy matching the SHA — on a rollback (re-deployed SHA) that is an OLD live/deactivated deploy, so the job reports success without awaiting the new deploy; HTTP status of the create was never validated | P1 | Both deploy steps now snapshot pre-create deploy ids, validate the create status (201/202 only), and bind the fallback to a deploy that did not exist pre-create (retry loop, 12×5s) |
+| Worst-case poll budget (30+10+10 min) exceeds the 40-minute job timeout — slow-but-valid deploys get killed | P2 | `timeout-minutes: 60` |
+
+Cross-model overlap with the 3-lens Claude review: **0/2** — codex's two findings were both missed by
+the lens review, and the lens review's confirmed findings (branch pin, versions dir, plan-state) were
+not raised by codex. Both rounds earned their keep independently.
+
 ## Refuted (kept for the record — see lens reports for full claims)
 
 - PF-3 (checkbox flipping / unverified claims) — verification evidence exists in session transcript; checkboxes are updated at phase ship per the Living Document cadence.

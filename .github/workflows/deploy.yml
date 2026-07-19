@@ -24,7 +24,8 @@ jobs:
   deploy:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Worst-case poll budget: backend 30 min + static 10 min + release verification 10 min.
+    timeout-minutes: 60
     env:
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
       PROD_ORIGIN: ${{ vars.PROD_ORIGIN }}          # e.g. https://hangar-bay.example — repo variable, set in Phase 2
@@ -50,20 +51,32 @@ jobs:
           DEPLOY_SHA: ${{ steps.sha.outputs.sha }}
         run: |
           set -euo pipefail
+          # Snapshot existing deploy ids BEFORE creating: a re-deployed SHA (rollback) also
+          # matches OLDER deploys in the list, so the id-less-202 fallback must bind to a
+          # deploy that did not exist pre-create, never to the first SHA match.
+          pre_ids=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
+            "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=20" \
+            | jq -r '[.[] | (.deploy // .) | .id] | join(" ")') || pre_ids=""
           resp=$(curl -s -w '\n%{http_code}' -X POST \
             -H "Authorization: Bearer $RENDER_API_KEY" -H 'Content-Type: application/json' \
             -d "{\"commitId\": \"$DEPLOY_SHA\"}" \
             "https://api.render.com/v1/services/$SERVICE_ID/deploys")
           code=$(tail -1 <<<"$resp"); body=$(sed '$d' <<<"$resp")
+          case "$code" in 201|202) ;; *) echo "deploy create failed: HTTP $code: $body"; exit 1 ;; esac
           deploy_id=$(jq -r '.id // empty' <<<"$body")
-          # 202 Queued may omit the id — resolve it from the deploy list for our commit.
+          # 202 Queued carries no documented body — resolve the NEW deploy for our commit.
           if [ -z "$deploy_id" ]; then
-            echo "create returned HTTP $code without an id; resolving from the deploy list"
-            deploy_id=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
-              "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=10" \
-              | jq -r --arg sha "$DEPLOY_SHA" '[.[] | (.deploy // .) | select(.commit.id == $sha)][0].id // empty')
+            echo "create returned HTTP $code without an id; resolving the new deploy from the list"
+            for _ in $(seq 1 12); do
+              deploy_id=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
+                "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=20" \
+                | jq -r --arg sha "$DEPLOY_SHA" --arg pre "$pre_ids" \
+                  '[.[] | (.deploy // .) | select(.commit.id == $sha) | select(.id as $i | (($pre | split(" ")) | index($i)) | not)][0].id // empty')
+              [ -n "$deploy_id" ] && break
+              sleep 5
+            done
           fi
-          [ -n "$deploy_id" ] || { echo "no deploy id for $DEPLOY_SHA (HTTP $code): $body"; exit 1; }
+          [ -n "$deploy_id" ] || { echo "no NEW deploy appeared for $DEPLOY_SHA (HTTP $code): $body"; exit 1; }
           echo "backend deploy: $deploy_id"
           for i in $(seq 1 120); do
             status=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
@@ -83,19 +96,29 @@ jobs:
           DEPLOY_SHA: ${{ steps.sha.outputs.sha }}
         run: |
           set -euo pipefail
+          # Same new-deploy binding as the backend step (rollback re-deploys a known SHA).
+          pre_ids=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
+            "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=20" \
+            | jq -r '[.[] | (.deploy // .) | .id] | join(" ")') || pre_ids=""
           resp=$(curl -s -w '\n%{http_code}' -X POST \
             -H "Authorization: Bearer $RENDER_API_KEY" -H 'Content-Type: application/json' \
             -d "{\"commitId\": \"$DEPLOY_SHA\"}" \
             "https://api.render.com/v1/services/$SERVICE_ID/deploys")
           code=$(tail -1 <<<"$resp"); body=$(sed '$d' <<<"$resp")
+          case "$code" in 201|202) ;; *) echo "deploy create failed: HTTP $code: $body"; exit 1 ;; esac
           deploy_id=$(jq -r '.id // empty' <<<"$body")
           if [ -z "$deploy_id" ]; then
-            echo "create returned HTTP $code without an id; resolving from the deploy list"
-            deploy_id=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
-              "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=10" \
-              | jq -r --arg sha "$DEPLOY_SHA" '[.[] | (.deploy // .) | select(.commit.id == $sha)][0].id // empty')
+            echo "create returned HTTP $code without an id; resolving the new deploy from the list"
+            for _ in $(seq 1 12); do
+              deploy_id=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
+                "https://api.render.com/v1/services/$SERVICE_ID/deploys?limit=20" \
+                | jq -r --arg sha "$DEPLOY_SHA" --arg pre "$pre_ids" \
+                  '[.[] | (.deploy // .) | select(.commit.id == $sha) | select(.id as $i | (($pre | split(" ")) | index($i)) | not)][0].id // empty')
+              [ -n "$deploy_id" ] && break
+              sleep 5
+            done
           fi
-          [ -n "$deploy_id" ] || { echo "no deploy id for $DEPLOY_SHA (HTTP $code): $body"; exit 1; }
+          [ -n "$deploy_id" ] || { echo "no NEW deploy appeared for $DEPLOY_SHA (HTTP $code): $body"; exit 1; }
           echo "static deploy: $deploy_id"
           for i in $(seq 1 60); do
             status=$(curl -sf -H "Authorization: Bearer $RENDER_API_KEY" \
