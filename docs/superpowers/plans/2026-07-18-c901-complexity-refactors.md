@@ -60,7 +60,21 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** In progress — Phase 1 shipped; Phase 2 claimed 2026-07-18.
+**Overall:** ✅ **COMPLETE — all five phases merged (2026-07-18/19).** `grep -rn "noqa: C901"` over
+`app/backend/src` on `origin/dev` returns **nothing**: the goal is met. Suite grew 358 → 445. Both
+authorized behavior changes shipped (Phase 4's retry-warning log prefix; Phase 5's str/bytes
+cached-etag normalization). Merge SHAs are in the per-phase rows below.
+
+**Follow-up shipped separately:** the dead `get_aggregation_service` provider flagged in Task 5.1 was
+removed after Sam's decision, in its own PR rather than inside a zero-behavior-change phase (removing a
+public module symbol is a behavior change). Deleting it also orphaned `from fastapi import Depends` and
+the entire `..core.dependencies` import, so `services/background_aggregation.py` no longer imports the
+web framework at all.
+
+**Deferred, NOT done here:** the ingestion-failure observability residual recorded under Discoveries
+(scheduler propagation, pre-lock failures producing no outcome record, `/ready` returning 200 while
+stale, and the non-atomic `_record_run_outcome` GET/SET). Those are behavior changes for the
+observability backlog.
 
 **Baseline at Phase 1 claim** (branch point `bfaf495`, fresh `origin/dev`): `pdm run pytest` = **358 passed**; `pdm run lint` = exit 0; `grep -rn "noqa: C901" src/` = the 5 expected sites.
 
@@ -855,7 +869,7 @@ valid regardless of Phase 4's outcome. The branch was rebased onto `dev` after P
 
 - [ ] **Step 1: Build fixtures.** Mirror the existing `_get_esi_object` test idiom in this file: `MagicMock` http/redis clients with `AsyncMock` methods (`_client_with_response` / `_client_with_get` helpers) — NOT `pytest_httpx` and NOT `tests/fake_redis.py`'s `FakeRedis`. Two contracts to respect:
   - **Redis values are BYTES on this path.** `ESIClient`'s managed client is `aioredis.from_url(...)` with default `decode_responses=False`, and the ETag code calls `cached_etag.decode()`. Stub `redis.get` to return `b"..."` (or `None`), never `str` — `FakeRedis` is str-valued (house `decode_responses=True` pattern) and would crash this path with `AttributeError` against the CURRENT code, which is exactly why it is the wrong double for characterization. (Task 5.2a later makes str clients tolerated; the characterization suite still runs on the bytes contract, which stays the production reality for this client.)
-  - **Wiring already verified (2026-07-18, plan-authoring session) — latent hazard, not live:** the shared cache client (`core/cache.py:45`, `decode_responses=True`, str-valued) never reaches the ETag path today. The aggregation service — the only ETag-method caller — is built at `main.py:55` as `ESIClient(settings=settings)` with no injected redis, so it uses the managed bytes-returning client; `get_esi_client` (which injects the str client) is consumed only by the watchlist API, whose calls (`get_universe_type`/`get_universe_group`/`resolve_names`) avoid the ETag path; and `get_aggregation_service` (`background_aggregation.py:458`) — the one wiring that WOULD combine the str client with the ETag path — has zero callers (dead code). Task 5.2a fixes the latent crash; flag the dead provider in this phase's PR body for Sam's removal decision (do NOT delete it yourself).
+  - **Wiring already verified (2026-07-18, plan-authoring session) — latent hazard, not live:** the shared cache client (`core/cache.py:45`, `decode_responses=True`, str-valued) never reaches the ETag path today. The aggregation service — the only ETag-method caller — is built at `main.py:55` as `ESIClient(settings=settings)` with no injected redis, so it uses the managed bytes-returning client; `get_esi_client` (which injects the str client) is consumed only by the watchlist API, whose calls (`get_universe_type`/`get_universe_group`/`resolve_names`) avoid the ETag path; and `get_aggregation_service` (`background_aggregation.py:458`) — the one wiring that WOULD combine the str client with the ETag path — has zero callers (dead code). Task 5.2a fixes the latent crash; flag the dead provider in this phase's PR body for Sam's removal decision (do NOT delete it yourself). **RESOLVED 2026-07-19: Sam chose deletion; the provider was removed in a separate follow-up PR after Phase 5 merged.** The 5.2a fix stays regardless — deleting the provider removed the only route to the hazard, the type-tolerant read removes the hazard class.
   - Monkeypatch `asyncio.sleep` inside retry tests so backoff is a no-op (mechanism assertion: count requests, don't time them).
 - [ ] **Step 2: Write these tests** (names are normative; bodies follow the existing file's idioms):
 
