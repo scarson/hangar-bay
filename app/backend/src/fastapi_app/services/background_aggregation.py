@@ -196,19 +196,75 @@ class ContractAggregationService:
                     )
             await redis_client.close()  # Ensure redis client is closed
 
-    async def run_aggregation(self):  # noqa: C901
-        """
-        Runs the full public contract aggregation and ingestion process.
-        Uses a database session from the session factory.
+    def _usable_region_ids(self) -> List[int] | None:
+        """Validate the configured region list, or None when the run must be skipped.
+
+        A non-list (or non-int-element) config is a deployment error and aborts at
+        ERROR; an empty list is a benign no-op and skips at WARNING. Both bail out
+        before the concurrency lock so a misconfigured deployment cannot occupy the
+        lock slot.
         """
         current_region_ids = self.settings.AGGREGATION_REGION_IDS
 
         if not isinstance(current_region_ids, list) or not all(isinstance(x, int) for x in current_region_ids):
             logger.error(f"CRITICAL_ERROR_AGG_SERVICE: AGGREGATION_REGION_IDS is not a list of int: {current_region_ids!r} (type: {type(current_region_ids)}) Aborting aggregation.")
-            return
+            return None
 
         if not current_region_ids:
             logger.warning("AGGREGATION_REGION_IDS is empty. Skipping aggregation.")
+            return None
+
+        return current_region_ids
+
+    async def _fetch_regions(self, region_ids: List[int]) -> tuple[List[dict], int, int]:
+        """Fetch public contracts for each region, returning (contracts, ok, failed).
+
+        The counters feed the freshness record: a 304 counts as CHECKED OK (ESI
+        answered healthily and our data is already current), while a fetch error
+        isolates that one region without aborting the others.
+        """
+        all_contracts_data: List[dict] = []
+        regions_ok = 0
+        regions_failed = 0
+
+        for region_id in region_ids:
+            try:
+                contracts_page = await self.esi_client.get_public_contracts(region_id)
+                logger.info(f"Fetched {len(contracts_page)} contracts for region {region_id}.")
+                # ESI contract payloads carry no region; stamp the
+                # fetch region so it survives into the DB (the
+                # region_ids filter reads start_location_region_id).
+                for contract_data in contracts_page:
+                    contract_data["_hb_region_id"] = region_id
+                all_contracts_data.extend(contracts_page)
+                regions_ok += 1
+            except ESINotModifiedError:
+                # ESI answered healthily and our data is already
+                # current — a 304 region counts as CHECKED OK.
+                logger.info(f"Contracts for region {region_id} not modified.")
+                regions_ok += 1
+            except Exception as e:
+                logger.error(f"Failed to fetch contracts for region {region_id}: {e}", exc_info=True)
+                regions_failed += 1
+
+        return all_contracts_data, regions_ok, regions_failed
+
+    def _apply_dev_limit(self, contracts: List[dict]) -> List[dict]:
+        """Truncate the batch to AGGREGATION_DEV_CONTRACT_LIMIT when one is configured."""
+        if self.settings.AGGREGATION_DEV_CONTRACT_LIMIT and self.settings.AGGREGATION_DEV_CONTRACT_LIMIT > 0:
+            limit = self.settings.AGGREGATION_DEV_CONTRACT_LIMIT
+            if len(contracts) > limit:
+                logger.warning(f"DEV_MODE: Limiting contracts to process from {len(contracts)} to {limit}.")
+                return contracts[:limit]
+        return contracts
+
+    async def run_aggregation(self):
+        """
+        Runs the full public contract aggregation and ingestion process.
+        Uses a database session from the session factory.
+        """
+        current_region_ids = self._usable_region_ids()
+        if current_region_ids is None:
             return
 
         try:
@@ -222,38 +278,16 @@ class ContractAggregationService:
 
                         async with AsyncSessionLocal() as db_session:  # Obtain a new session for this run
                             logger.info(f"Processing contracts for region IDs: {current_region_ids}")
-                            all_contracts_data: List[dict] = []
 
-                            for region_id in current_region_ids:
-                                try:
-                                    contracts_page = await self.esi_client.get_public_contracts(region_id)
-                                    logger.info(f"Fetched {len(contracts_page)} contracts for region {region_id}.")
-                                    # ESI contract payloads carry no region; stamp the
-                                    # fetch region so it survives into the DB (the
-                                    # region_ids filter reads start_location_region_id).
-                                    for contract_data in contracts_page:
-                                        contract_data["_hb_region_id"] = region_id
-                                    all_contracts_data.extend(contracts_page)
-                                    regions_ok += 1
-                                except ESINotModifiedError:
-                                    # ESI answered healthily and our data is already
-                                    # current — a 304 region counts as CHECKED OK.
-                                    logger.info(f"Contracts for region {region_id} not modified.")
-                                    regions_ok += 1
-                                except Exception as e:
-                                    logger.error(f"Failed to fetch contracts for region {region_id}: {e}", exc_info=True)
-                                    regions_failed += 1
+                            all_contracts_data, regions_ok, regions_failed = await self._fetch_regions(
+                                current_region_ids
+                            )
 
                             if not all_contracts_data:
                                 logger.info("No new contracts found across all specified regions.")
                                 # No need to commit or process further if no data was fetched.
                             else:
-                                # Apply development limit if configured
-                                if self.settings.AGGREGATION_DEV_CONTRACT_LIMIT and self.settings.AGGREGATION_DEV_CONTRACT_LIMIT > 0:
-                                    limit = self.settings.AGGREGATION_DEV_CONTRACT_LIMIT
-                                    if len(all_contracts_data) > limit:
-                                        logger.warning(f"DEV_MODE: Limiting contracts to process from {len(all_contracts_data)} to {limit}.")
-                                        all_contracts_data = all_contracts_data[:limit]
+                                all_contracts_data = self._apply_dev_limit(all_contracts_data)
 
                                 await self._process_contracts(db_session, all_contracts_data)
 

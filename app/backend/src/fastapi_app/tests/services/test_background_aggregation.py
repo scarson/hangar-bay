@@ -723,3 +723,169 @@ async def test_freshness_recorder_overwrites_a_non_object_prior_record(
     assert isinstance(record, dict)
     assert record["outcome"] == "success"
     assert record["last_success_at"] == record["finished_at"]
+
+
+async def test_run_aggregation_rejects_non_list_region_config(caplog):
+    """A region config that is not a list of int aborts the run before the
+    concurrency lock is ever created, so a misconfigured deployment cannot
+    occupy the lock slot or open a database engine it will never use."""
+    caplog.set_level("ERROR")  # the type guard logs at ERROR
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = "10000002"  # str, not list[int]
+
+    with patch.object(service, "_concurrency_lock") as lock:
+        await service.run_aggregation()
+
+    lock.assert_not_called()  # bailed before ever touching the lock
+    assert "CRITICAL_ERROR_AGG_SERVICE" in caplog.text
+
+
+async def test_run_aggregation_rejects_region_list_containing_a_non_int(caplog):
+    """The type guard has two clauses — `not isinstance(..., list)` AND
+    `not all(isinstance(x, int) ...)`. A LIST carrying a non-int element clears
+    the first clause and must be caught by the second: env parsing can yield
+    `["10000002"]` from a JSON string list, which would otherwise reach ESI as a
+    string region id. Asserts the exact level and full message, so dropping the
+    element check cannot be masked by some other ERROR record."""
+    caplog.set_level("ERROR")
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = [10000002, "not-an-int"]
+
+    with patch.object(service, "_concurrency_lock") as lock:
+        await service.run_aggregation()
+
+    lock.assert_not_called()  # bailed before ever touching the lock
+    assert [(r.levelname, r.getMessage()) for r in caplog.records] == [
+        (
+            "ERROR",
+            "CRITICAL_ERROR_AGG_SERVICE: AGGREGATION_REGION_IDS is not a list of int: "
+            "[10000002, 'not-an-int'] (type: <class 'list'>) Aborting aggregation.",
+        )
+    ]
+
+
+async def test_run_aggregation_skips_on_empty_region_list(caplog):
+    """An empty list clears the type guard (all() is vacuously true) and trips
+    the separate emptiness guard, which is a WARNING skip rather than an ERROR
+    abort — and still returns ahead of the lock."""
+    caplog.set_level("WARNING")  # the emptiness guard logs at WARNING
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = []
+
+    with patch.object(service, "_concurrency_lock") as lock:
+        await service.run_aggregation()
+
+    lock.assert_not_called()
+    assert "AGGREGATION_REGION_IDS is empty" in caplog.text
+
+
+# --- Per-region fetch loop -------------------------------------------------
+# regions_ok/regions_failed are load-bearing: they are the sole input to the
+# freshness record's outcome, so a miscount silently changes what readiness
+# reports. These exercise the loop directly; the end-to-end consequences of the
+# same counters are covered by the freshness tests above.
+
+
+async def test_fetch_regions_isolates_one_regions_failure(caplog):
+    """A fetch error in one region must not lose the other region's contracts,
+    and must land in regions_failed rather than regions_ok."""
+    caplog.set_level("ERROR")  # the per-region failure logs at ERROR
+    service = _make_service()
+    service.esi_client.get_public_contracts = AsyncMock(
+        side_effect=[RuntimeError("ESI 500"), [_ship_contract_dict(920001)]]
+    )
+
+    contracts, regions_ok, regions_failed = await service._fetch_regions(
+        [10000002, 10000043]
+    )
+
+    assert [c["contract_id"] for c in contracts] == [920001]
+    assert regions_ok == 1
+    assert regions_failed == 1
+    assert "Failed to fetch contracts for region 10000002" in caplog.text
+
+
+async def test_fetch_regions_counts_a_304_region_as_ok():
+    """A 304 means ESI answered healthily and our data is current — it is a
+    CHECKED-OK region, not a failure, so an all-304 run still reports success."""
+    from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
+
+    service = _make_service()
+    service.esi_client.get_public_contracts = AsyncMock(
+        side_effect=[_NotModified("304"), [_ship_contract_dict(920002)]]
+    )
+
+    contracts, regions_ok, regions_failed = await service._fetch_regions(
+        [10000002, 10000043]
+    )
+
+    assert [c["contract_id"] for c in contracts] == [920002]
+    assert regions_ok == 2
+    assert regions_failed == 0
+
+
+async def test_fetch_regions_stamps_each_contract_with_its_own_region():
+    """Two successful regions: each contract must carry the region it was
+    fetched FROM. A global stamp would give both contracts the same id."""
+    service = _make_service()
+    first = _ship_contract_dict(920003)
+    second = _ship_contract_dict(920004)
+    # The shared fixture pre-stamps every contract with region 10000002, which is
+    # also the FIRST region fetched here — so a run that never stamped anything
+    # would still satisfy the first contract's assertion by accident. Overwrite
+    # both stamps with a value no region uses, making the assertion reachable
+    # only if the fetch loop actually writes the stamp.
+    first["_hb_region_id"] = -1
+    second["_hb_region_id"] = -1
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=[[first], [second]])
+
+    contracts, regions_ok, regions_failed = await service._fetch_regions(
+        [10000002, 10000043]
+    )
+
+    stamped = {c["contract_id"]: c["_hb_region_id"] for c in contracts}
+    assert stamped == {920003: 10000002, 920004: 10000043}
+    assert regions_ok == 2
+    assert regions_failed == 0
+
+
+async def test_apply_dev_limit_truncates_and_warns(caplog):
+    """With a limit configured, an over-limit batch is truncated to the limit."""
+    caplog.set_level("WARNING")  # the DEV_MODE truncation logs at WARNING
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 2
+    batch = [_ship_contract_dict(cid) for cid in (920005, 920006, 920007)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920005, 920006]
+    assert "DEV_MODE: Limiting contracts to process from 3 to 2." in caplog.text
+
+
+async def test_apply_dev_limit_passes_through_when_unset(caplog):
+    """Limit 0 (the production setting) must not truncate or warn."""
+    caplog.set_level("WARNING")
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 0
+    batch = [_ship_contract_dict(cid) for cid in (920008, 920009, 920010)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920008, 920009, 920010]
+    assert "DEV_MODE" not in caplog.text
+
+
+async def test_apply_dev_limit_passes_through_when_none(caplog):
+    """AGGREGATION_DEV_CONTRACT_LIMIT is typed `int | None`, so None is a reachable
+    value distinct from 0. The guard is truthiness-first, so None short-circuits
+    before the `> 0` comparison that would raise on a None operand — the batch
+    passes through untruncated and unwarned, exactly as it does for 0."""
+    caplog.set_level("WARNING")
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = None
+    batch = [_ship_contract_dict(cid) for cid in (920011, 920012, 920013)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920011, 920012, 920013]
+    assert "DEV_MODE" not in caplog.text
