@@ -73,6 +73,27 @@ def test_log_file_writes_json_lines(restore_logging, tmp_path, monkeypatch):
     assert matching[0]["level"] == "info"
 
 
+def test_repeated_setup_closes_replaced_handlers(
+    restore_logging, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("LOG_FILE", raising=False)
+    settings = _make_settings(LOG_FILE=str(tmp_path / "backend.jsonl"))
+    setup_logging(settings)
+    first_handlers = logging.getLogger().handlers[:]
+    first_file_handler = next(
+        h for h in first_handlers if isinstance(h, logging.FileHandler)
+    )
+
+    setup_logging(settings)
+
+    root = logging.getLogger()
+    assert len(root.handlers) == 2  # no growth across reconfiguration
+    assert first_file_handler not in root.handlers
+    # A closed FileHandler has no open stream; emitting on it would reopen,
+    # so check the underlying stream was closed by setup_logging.
+    assert first_file_handler.stream is None or first_file_handler.stream.closed
+
+
 def test_log_file_and_stdout_both_attached(restore_logging, tmp_path, monkeypatch):
     monkeypatch.delenv("LOG_FILE", raising=False)
     setup_logging(_make_settings(LOG_FILE=str(tmp_path / "backend.jsonl")))

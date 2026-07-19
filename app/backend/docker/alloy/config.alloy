@@ -40,8 +40,13 @@ local.file_match "backend_logs" {
 }
 
 loki.source.file "backend_logs" {
-  targets       = local.file_match.backend_logs.targets
-  forward_to    = [loki.write.grafana_cloud.receiver]
+  targets    = local.file_match.backend_logs.targets
+  forward_to = [loki.write.grafana_cloud.receiver]
+  // Deliberate tradeoff: without a stored position (first start, wiped
+  // alloy_data volume) skip existing file content instead of replaying it —
+  // replay would push old lines that Loki's out-of-order window rejects and
+  // would duplicate lines already shipped. Costs: lines written before Alloy
+  // first attaches are not shipped (they remain in the local file).
   tail_from_end = true
 }
 

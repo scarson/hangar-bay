@@ -23,7 +23,9 @@
 # 3. hb-monitoring-net:
 #    - Purpose: A private network for observability collection.
 #    - Services: FastAPI App, Alloy (ships metrics/logs to Grafana Cloud).
-#    - This lets the collector scrape the backend without gaining access to the data tier.
+#    - Keeps the collector off the data-tier container network. (Limit: the
+#      data tier publishes host ports for dev, and Alloy can reach the host
+#      gateway to scrape the backend — see compose.observability.yml.)
 #
 # The FastAPI application container is the only service connected to all three
 # networks, acting as a secure, controlled bridge between them.

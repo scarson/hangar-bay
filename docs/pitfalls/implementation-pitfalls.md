@@ -198,7 +198,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 **The Fix:** Never run `pdm run format` repo-wide. Format NEW files individually: `.venv/bin/black <file>` (verify with `.venv/bin/black --check <file>` + `.venv/bin/flake8 <file>`). Recovery if run by accident: `git restore app/backend/src` (untracked new files keep their formatting). Adopting black repo-wide remains a separate decision for Sam.
 
-**Where It Bit Us:** Grafana Cloud migration Phase 3 (2026-07-19) — the plan's original "run `pdm run format`" step churned 64 files; fully reverted before commit.
+**Where It Bit Us:** Grafana Cloud migration Phase 3 (2026-07-18) — the plan's original "run `pdm run format`" step churned 64 files; fully reverted before commit.
 
 ---
 
@@ -268,7 +268,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
-## 2026-07-19 — ENV-7 added: repo-wide `pdm run format` trap
+## 2026-07-18 — ENV-7 added: repo-wide `pdm run format` trap
 
 - Added ENV-7 from the Grafana Cloud observability migration (`docs/superpowers/plans/2026-07-18-grafana-cloud-observability.md`): `pdm run format` = `black .` churns ~64 files on this non-black codebase and re-exposes noqa'd C901s plus E704. Cross-referenced from the migration plan's Deviations and session memory.
 

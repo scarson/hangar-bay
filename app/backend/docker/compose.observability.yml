@@ -13,13 +13,19 @@
 # `pdm run provision-dashboards`.
 #
 # --- NETWORK CONNECTIONS ---
-# In line with the Zero Trust principle of Microsegmentation, Alloy is
-# isolated on `hb-monitoring-net`: it has no path to the data tier. Its only
-# egress is the host scrape target and Grafana Cloud.
+# Alloy sits alone on `hb-monitoring-net`, so it has no container-network
+# path to the data tier. NOTE the honest limit of that isolation: Alloy is
+# given `host.docker.internal` (required to scrape the host-run backend), and
+# the data-tier services publish host ports (5432/6379), so the host gateway
+# remains a reachable path. The network split reduces blast radius; it is not
+# a hard boundary while the backend runs on the host.
 #
 # --- CREDENTIALS ---
-# ./grafana-cloud.env (gitignored; template: ./grafana-cloud.env.example).
-# Canonical copies live in 1Password ("Grafana Cloud hangar-bay-*" items).
+# ./grafana-cloud.env (gitignored; template: ./grafana-cloud.env.example)
+# carries ONLY the ingestion credentials Alloy needs. Dashboard-provisioning
+# credentials live in ./grafana-cloud-provisioning.env (also gitignored) and
+# are never injected into this container. Canonical copies in 1Password
+# ("Grafana Cloud hangar-bay-*" items).
 
 services:
   alloy:

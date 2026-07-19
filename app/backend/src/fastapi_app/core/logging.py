@@ -81,7 +81,10 @@ def setup_logging(settings: Settings) -> None:
     # Configure root logger to use structlog
     root_logger = logging.getLogger()
 
-    # Clear any existing handlers
+    # Close and clear any existing handlers so reconfiguration does not leak
+    # file descriptors (FileHandler holds an open file until closed).
+    for existing_handler in root_logger.handlers[:]:
+        existing_handler.close()
     root_logger.handlers.clear()
 
     # Add new handler
