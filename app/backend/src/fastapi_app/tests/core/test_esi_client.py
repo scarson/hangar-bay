@@ -516,3 +516,31 @@ async def test_malformed_200_json_propagates():
         await client.get_esi_data_with_etag_caching(ETAG_PATH)
 
     assert not isinstance(excinfo.value, ESIRequestFailedError)
+
+
+async def test_etag_path_tolerates_str_valued_redis_client():
+    """A `decode_responses=True` cache client hands back str, not bytes.
+
+    The conditional-request header must carry the cached etag through verbatim
+    for either representation, so the ETag path stays correct whichever cache
+    client it is wired to.
+    """
+    get_mock = AsyncMock(
+        return_value=_etag_response(
+            json_data=[{"contract_id": 1}],
+            content=b'[{"contract_id": 1}]',
+            headers={},
+        )
+    )
+    store = {ETAG_KEY_PAGE_1: "an-etag-as-str"}
+    http_client = MagicMock()
+    http_client.get = get_mock
+    redis_client = MagicMock()
+    redis_client.get = AsyncMock(side_effect=lambda key: store.get(key))
+    redis_client.set = AsyncMock()
+    client = ESIClient(settings=MagicMock(), http_client=http_client, redis_client=redis_client)
+
+    data = await client.get_esi_data_with_etag_caching(ETAG_PATH)
+
+    assert data == [{"contract_id": 1}]
+    assert get_mock.await_args.kwargs["headers"]["If-None-Match"] == "an-etag-as-str"

@@ -98,7 +98,9 @@ class ESIClient:
             data_key = f"data:{paginated_path}"
 
             cached_etag = await self.redis_client.get(etag_key)
-            headers = {"If-None-Match": cached_etag.decode() if cached_etag else ""}
+            if isinstance(cached_etag, bytes):
+                cached_etag = cached_etag.decode()
+            headers = {"If-None-Match": cached_etag or ""}
 
             response = None
             last_exception = None
