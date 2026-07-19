@@ -23,7 +23,8 @@ ABOUTME: Authoritative state lives in the plan (2026-07-18-m4-production-readine
 
 1. **Sam removes `:443` from the prod EVE callback** (portal edit, his action) → at 2b, `ESI_SSO_CALLBACK_URL` is the clean `https://hangarbay.app/api/v1/auth/sso/callback`. Verify the portal edit actually landed before the value is entered (plan Deviation D-3, resolved).
 2. **`RENDER_API_KEY` location:** the MAIN checkout's gitignored root `.env` (`/Users/sam/Code/hangar-bay/.env`, 1Password Environments export). Worktrees never have it (pitfall ENV-8). The Phase 0 spike is therefore **agent-runnable now** via the curl+API patterns with per-Bash-call sourcing; the Render MCP additionally needs the export at Claude Code launch.
-3. **Merge-authority delegation (Phase 3 only, consumed):** Sam delegated the Phase 3 merge to a codex 5.6-Sol high gate + green CI. That delegation was for PR #60 and is DONE — it does not automatically extend to the release PR or future PRs; default merge authority reverts to `docs/git-strategy.md` §Merge authority unless Sam says otherwise.
+3. **Prod EVE client id/secret ALSO exist locally** at `/Users/sam/Code/hangar-bay/.env.prod` (Sam, 2026-07-19; main checkout only, like the root `.env` — ENV-8 applies). They are for **Sam's own use at the 2b blueprint flow** (dashboard entry, I-5) — an agent NEVER reads, sources, prints, or copies that file; nothing agent-side needs those values. The tracked `.gitignore` now carries `.env.prod` (this PR), so Sam's local-dev-only ignore commit is superseded and can be dropped at the next `reset --hard origin/dev` realign.
+4. **Merge-authority delegation (Phase 3 only, consumed):** Sam delegated the Phase 3 merge to a codex 5.6-Sol high gate + green CI. That delegation was for PR #60 and is DONE — it does not automatically extend to the release PR or future PRs; default merge authority reverts to `docs/git-strategy.md` §Merge authority unless Sam says otherwise.
 
 ## Operational guardrails learned this session (persisted, listed for orientation)
 
@@ -108,7 +109,10 @@ YOUR MISSION, in order:
    client hides surrounding text): the 2b checklist (plan Phase 2b; secrets
    generated BEFORE the blueprint flow; verify the EVE portal :443 removal
    landed; hostname check; DNS; RENDER_API_SERVICE_ID/RENDER_STATIC_SERVICE_ID
-   Actions secrets; GH secret RENDER_API_KEY + variable PROD_ORIGIN).
+   Actions secrets; GH secret RENDER_API_KEY + variable PROD_ORIGIN). The prod
+   EVE client id/secret live at /Users/sam/Code/hangar-bay/.env.prod for SAM'S
+   dashboard entry at the blueprint flow — you never read, source, or print
+   that file; no agent step needs its values (I-5).
 5. After 2b: Phase 4 Steps 1-2 and 4 (workflow_dispatch deploy of the released
    SHA, /api/v1/ready verification, rollback drill). Step 3 (Sam's live SSO
    login on the prod origin) is the M4 exit criterion — record his results in
