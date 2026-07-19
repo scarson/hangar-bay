@@ -70,9 +70,9 @@ notes and commit messages.
 |---|---|---|---|
 | 1 — get_contracts | ✅ Merged | `69b0112`, `3d4e61e`, `1ca0aa0`, `7ae0576`, `63e5ddb`, `bca290b` → merge `e84aa8a` | PR #54, merged 2026-07-18; complexity 20 → 7; suite 358 → 362 |
 | 2 — _process_contracts | ✅ Merged | `455f586`, `6bd9f63`, `8962daf`, `656a383`, `bca8d00` → merge `c271f19` | PR #57, merged 2026-07-18; complexity 18 → 7; suite 362 → 365 |
-| 3 — run_aggregation | 🚧 PR open (v2) | `433eb9a`, `467f6f3` | branch `claude/c901-run-aggregation-v2` off `e80103a`; **redone against a rewritten base — see Deviations**; complexity 16 → 8 |
-| 4 — _get_esi_object + shared retry helper | 🚧 PR open | `4c4e158`, `402658a` | branch `claude/c901-esi-object`; complexity 16 → 9; introduces `_get_with_transient_retry` (8); `Review — data-integrity`, **Sam merges** |
-| 5 — get_esi_data_with_etag_caching | ⬜ Not started | — | blocked by Phase 4 (uses its helper); write its missing tests FIRST |
+| 3 — run_aggregation | ✅ Merged | `9cbafc8`, `433eb9a`, `467f6f3`, `516f8ed`, `939d561` → merge `727d84f` | PR #62, merged 2026-07-19; **redone against a base rewritten by PR #60 — see Deviations**; complexity 16 → 8; suite 416 → 423 |
+| 4 — _get_esi_object + shared retry helper | ✅ Merged | `4c4e158`, `402658a` → merge `e5d304d` | PR #59, merged 2026-07-19; complexity 16 → 9; introduced `_get_with_transient_retry` (8) |
+| 5 — get_esi_data_with_etag_caching | 🚧 PR #68 open | `e25883c`, `fc17fdf`, `7122d98` | branch `claude/c901-etag-caching`; complexity 24 → 9; **clears the last suppression**; `Review — data-integrity`, **Sam merges** |
 
 ### Deviations
 
@@ -796,7 +796,25 @@ async def _get_with_transient_retry(
 
 ## Phase 5 — `get_esi_data_with_etag_caching` (complexity 23 → ≤ 10)
 
-**Execution Status:** ⬜ NOT STARTED — MUST NOT start until Phase 4's PR is merged (uses `_get_with_transient_retry`).
+**Execution Status:** 🚧 PR OPEN — branch `claude/c901-etag-caching`. Commits `e25883c` (20-test
+characterization suite), `fc17fdf` (Task 5.2a str/bytes fix), `7122d98` (decomposition). Gates: red gate
+observed at **24** (not the plan's 23 — Task 5.2a's `isinstance` check added a decision point after the
+plan was written); after decomposition `pdm run lint` exit 0, `--select=C901` empty,
+`get_esi_data_with_etag_caching` 24 → 9 (`_cache_ttl_seconds` 5, `_last_page_reached` 3,
+`_read_etag_cached_page` 2, `_store_page_cache` 2); suite 435 passed.
+
+**Task 5.3 live sanity check — PASSED (2026-07-19).** Dev server run against real ESI on this branch:
+`"Public contract aggregation run finished successfully and changes committed."` appeared, **100
+contracts / 152 contract_items** landed in `hangar_bay_dev` (100 is the configured dev limit), **zero**
+`ERROR` lines in the log, and **134 `etag:*` keys** were written to Valkey — direct evidence that the
+extracted `_store_page_cache` and the conditional-GET path work against the live API, not just under
+mocks. Server stopped cleanly afterward.
+
+**Sequencing deviation:** Task 5.1's characterization suite was written while Phase 4's PR was still
+open, on a branch stacked on Phase 4 rather than off `dev`. This was safe because the suite targets
+`get_esi_data_with_etag_caching`, which Phase 4 left byte-identical by contract — so the tests were
+valid regardless of Phase 4's outcome. The branch was rebased onto `dev` after Phase 4 merged
+(`e5d304d`); the Phase 4 commits dropped out as already-applied and no conflict arose.
 
 **Files:**
 - Modify: `app/backend/src/fastapi_app/core/esi_client_class.py`
