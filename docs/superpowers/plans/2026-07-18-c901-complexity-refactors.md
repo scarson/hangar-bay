@@ -101,12 +101,37 @@ end-to-end through a `FakeLockRedis` and a real session factory, asserting the c
 in the Valkey record. The section was already characterized. This turned out to help: the counter
 mutations below went red at BOTH the new unit layer and those pre-existing end-to-end tests.
 
-**One semantic subtlety checked and dismissed during the redo.** The counters previously incremented
-in place, so an exception escaping mid-loop would leave the `forced_failure` handler with partial
-counts; with `_fetch_regions` returning a tuple it would see `0, 0`. Unreachable in practice — the
-loop's bare `except Exception` swallows everything the outer handler would also catch, and
-`BaseException` (e.g. `CancelledError`) escapes both paths identically. Worth knowing if that
-`except Exception` is ever narrowed.
+**One accepted micro-deviation in the redo — an earlier "unreachable" claim here was WRONG.** The
+counters previously incremented in place, so an exception escaping mid-loop left the `forced_failure`
+handler with partial counts; with `_fetch_regions` returning a tuple, the assignment never happens and
+the handler sees `0, 0`. This plan first asserted that difference was unreachable, reasoning that the
+loop's bare `except Exception` swallows everything the outer handler would catch. **A codex review
+falsified that**: an exception raised *inside* an `except` arm's own body — realistically, logging or
+filter machinery failing — escapes `_fetch_regions` and reaches the outer handler, so the freshness
+record would carry `0, 0` where the inline version carried partial counts.
+
+Accepted rather than fixed. It is reachable only when logging itself is broken, the recorded outcome is
+`failure` either way (only the region tallies differ), and every alternative that preserves partial
+counts across the call boundary (out-params, a mutable accumulator, a counter object) adds structural
+complexity to the exact function being decomposed for complexity. Recorded as a known micro-deviation
+from the zero-behavior-change contract. `CancelledError` and other `BaseException`s escape both
+versions identically and record no outcome in either. Worth revisiting if that `except Exception` is
+ever narrowed, or if a counter object is wanted for other reasons.
+
+**Phase 3 mutation evidence (persisted per TEST-12 — a review noted the discipline was claimed but the
+evidence was not written down anywhere durable).** Each mutation was applied to production source, run,
+observed red, then reverted; production source verified byte-identical afterward.
+
+| Mutation | Observed failure |
+|---|---|
+| generic `except` arm → `regions_ok += 1` | red at BOTH layers: unit `assert 2 == 1`, and pre-existing e2e freshness `assert 'success' == 'partial'` |
+| `ESINotModifiedError` arm → `regions_failed += 1` | red at both layers: `assert 'failure' == 'success'` |
+| stamp over the accumulated list instead of per page | `{920003: 10000043} != {920003: 10000002}` |
+| `_apply_dev_limit` returns input unchanged | `assert [920005, 920006, 920007] == [920005, 920006]` |
+| both `logger.*` calls → `pass` | both `caplog` assertions red against `''` — the log assertions are not decorative |
+| skip stamping the FIRST region only | **passed before the fixture fix (the vacuity), red after**: `{920003: -1} != {920003: 10000002}` |
+| `None` coerced to a default dev limit | `assert [920011, 920012] == [920011, 920012, 920013]` |
+| drop the `all(isinstance(x, int) ...)` guard clause | new guard test red; log shows the real consequence — `Failed to fetch contracts for region not-an-int` |
 
 **Phase 1, Task 1.1 — the plan's tiebreaker test as written was vacuous; its fixture was reshaped.**
 `test_joined_pagination_tiebreaks_equal_sort_keys_by_contract_id` was specified with a normative body
