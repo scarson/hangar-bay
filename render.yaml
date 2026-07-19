@@ -59,11 +59,12 @@ services:
     plan: free
     region: frankfurt
     maxmemoryPolicy: allkeys-lru      # accepted consequence: sessions evictable under pressure (spec §4)
-    ipAllowList: []                   # private-network access only
+    ipAllowList: []                   # documented block-all-external form (blueprint spec: "To block all external connections, set ipAllowList to an empty list") → private-network only
 
   - type: web
     name: hangar-bay-web
     runtime: static
+    branch: main                      # must match the API service; omitting it tracks the repo default branch (dev)
     rootDir: app/frontend/web
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
