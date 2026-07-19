@@ -74,6 +74,15 @@ class Settings(BaseSettings):
     DATABASE_URL_TESTS: Optional[PostgresDsn] = None   # conftest requires this
     CACHE_URL_TESTS: Optional[AnyUrl] = None
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url_driver(cls, value: Any) -> Any:
+        """Render/most managed platforms inject postgresql:// URLs; the async engine and
+        Alembic require the asyncpg driver scheme (design spec §4)."""
+        if isinstance(value, str) and value.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + value[len("postgresql://"):]
+        return value
+
     @field_validator("AGGREGATION_REGION_IDS", mode="before")
     @classmethod
     def parse_aggregation_region_ids(cls, value: Any) -> List[int]:

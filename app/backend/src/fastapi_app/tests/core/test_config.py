@@ -110,6 +110,26 @@ def test_region_ids_validator_direct_construction_forms(monkeypatch):
     assert s.AGGREGATION_REGION_IDS == [10000002]
 
 
+def test_database_url_plain_postgresql_scheme_is_normalized_to_asyncpg():
+    s = Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql://user:pw@host:5432/db",
+        CACHE_URL="redis://localhost:6379/0",
+        ESI_USER_AGENT="test-agent",
+    )
+    assert s.DATABASE_URL == "postgresql+asyncpg://user:pw@host:5432/db"
+
+
+def test_database_url_asyncpg_scheme_passes_through_unchanged():
+    s = Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql+asyncpg://user:pw@host:5432/db",
+        CACHE_URL="redis://localhost:6379/0",
+        ESI_USER_AGENT="test-agent",
+    )
+    assert s.DATABASE_URL == "postgresql+asyncpg://user:pw@host:5432/db"
+
+
 def test_get_settings_returns_the_singleton():
     assert get_settings() is settings
 
