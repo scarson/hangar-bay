@@ -740,6 +740,30 @@ async def test_run_aggregation_rejects_non_list_region_config(caplog):
     assert "CRITICAL_ERROR_AGG_SERVICE" in caplog.text
 
 
+async def test_run_aggregation_rejects_region_list_containing_a_non_int(caplog):
+    """The type guard has two clauses — `not isinstance(..., list)` AND
+    `not all(isinstance(x, int) ...)`. A LIST carrying a non-int element clears
+    the first clause and must be caught by the second: env parsing can yield
+    `["10000002"]` from a JSON string list, which would otherwise reach ESI as a
+    string region id. Asserts the exact level and full message, so dropping the
+    element check cannot be masked by some other ERROR record."""
+    caplog.set_level("ERROR")
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = [10000002, "not-an-int"]
+
+    with patch.object(service, "_concurrency_lock") as lock:
+        await service.run_aggregation()
+
+    lock.assert_not_called()  # bailed before ever touching the lock
+    assert [(r.levelname, r.getMessage()) for r in caplog.records] == [
+        (
+            "ERROR",
+            "CRITICAL_ERROR_AGG_SERVICE: AGGREGATION_REGION_IDS is not a list of int: "
+            "[10000002, 'not-an-int'] (type: <class 'list'>) Aborting aggregation.",
+        )
+    ]
+
+
 async def test_run_aggregation_skips_on_empty_region_list(caplog):
     """An empty list clears the type guard (all() is vacuously true) and trips
     the separate emptiness guard, which is a WARNING skip rather than an ERROR
@@ -806,6 +830,13 @@ async def test_fetch_regions_stamps_each_contract_with_its_own_region():
     service = _make_service()
     first = _ship_contract_dict(920003)
     second = _ship_contract_dict(920004)
+    # The shared fixture pre-stamps every contract with region 10000002, which is
+    # also the FIRST region fetched here — so a run that never stamped anything
+    # would still satisfy the first contract's assertion by accident. Overwrite
+    # both stamps with a value no region uses, making the assertion reachable
+    # only if the fetch loop actually writes the stamp.
+    first["_hb_region_id"] = -1
+    second["_hb_region_id"] = -1
     service.esi_client.get_public_contracts = AsyncMock(side_effect=[[first], [second]])
 
     contracts, regions_ok, regions_failed = await service._fetch_regions(
@@ -841,4 +872,20 @@ async def test_apply_dev_limit_passes_through_when_unset(caplog):
     limited = service._apply_dev_limit(batch)
 
     assert [c["contract_id"] for c in limited] == [920008, 920009, 920010]
+    assert "DEV_MODE" not in caplog.text
+
+
+async def test_apply_dev_limit_passes_through_when_none(caplog):
+    """AGGREGATION_DEV_CONTRACT_LIMIT is typed `int | None`, so None is a reachable
+    value distinct from 0. The guard is truthiness-first, so None short-circuits
+    before the `> 0` comparison that would raise on a None operand — the batch
+    passes through untruncated and unwarned, exactly as it does for 0."""
+    caplog.set_level("WARNING")
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = None
+    batch = [_ship_contract_dict(cid) for cid in (920011, 920012, 920013)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920011, 920012, 920013]
     assert "DEV_MODE" not in caplog.text
