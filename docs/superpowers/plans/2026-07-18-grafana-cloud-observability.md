@@ -68,7 +68,7 @@ notes and commit messages.
 | 2 — Alloy service + config | ✅ Shipped + verified | `39a1ced` | Alloy ready; remote_write pushing; Loki 8.9KB sent / 0 dropped; `up{job="fastapi"}=1` in cloud |
 | 3 — Dashboards as code | ✅ Shipped + verified | `15eaa3e`, `c884808` (DS regex) | provisioned idempotently; panels render live data |
 | 4 — Teardown + docs sweep | ✅ Shipped | `c884808` | prometheus/+grafana/ dirs deleted; no local containers/volumes existed |
-| 5 — Verification + PR | 🚧 In progress | — | — |
+| 5 — Verification + PR | 🚧 In progress | `9bb6c56` (codex fixes) | [PR #61](https://github.com/scarson/hangar-bay/pull/61) open → dev; codex gate FAIL→addressed; merge SHA recorded in session memory post-merge |
 
 ### Deviations
 
@@ -914,7 +914,7 @@ git commit -m "docs: point observability docs at Grafana Cloud, drop local stack
 
 ## Phase 5 — Verification + PR
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — [PR #61](https://github.com/scarson/hangar-bay/pull/61) open (2026-07-18). Fresh verification: 366 passed / lint clean / cloud queries green / secret grep clean. Codex review ran (gate FAIL: 1 P1 + 6 P2) — all addressed or dispositioned at `9bb6c56` (see PR body). Auto-merge on green CI per Sam's standing authorization.
 
 - [ ] **Step 1:** Invoke `/superpowers:verification-before-completion`. Evidence to gather: full backend pytest run (green, pristine), `pdm run lint`, Alloy `/-/ready`, cloud Explore screenshots (metrics + logs), dashboard URL rendering live data, `git check-ignore app/backend/docker/grafana-cloud.env`, and `git log --stat` confirming no secret file is committed (also grep the diff for `glsa_` and the token prefix).
 - [ ] **Step 2:** Adversarial review per repo policy (`/codex review` — use effort `high`, not `xhigh`: xhigh has previously timed out on repo-scale reviews in this project). Address findings via `superpowers:receiving-code-review`.
