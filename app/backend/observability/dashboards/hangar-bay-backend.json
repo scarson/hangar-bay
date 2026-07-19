@@ -10,8 +10,8 @@
   "refresh": "1m",
   "templating": {
     "list": [
-      {"name": "DS_PROM", "type": "datasource", "query": "prometheus", "label": "Prometheus", "current": {}},
-      {"name": "DS_LOKI", "type": "datasource", "query": "loki", "label": "Loki", "current": {}}
+      {"name": "DS_PROM", "type": "datasource", "query": "prometheus", "label": "Prometheus", "regex": "/-prom$/", "current": {}},
+      {"name": "DS_LOKI", "type": "datasource", "query": "loki", "label": "Loki", "regex": "/-logs$/", "current": {}}
     ]
   },
   "panels": [

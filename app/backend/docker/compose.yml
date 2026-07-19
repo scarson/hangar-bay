@@ -21,9 +21,9 @@
 #    - This isolates the database and cache from the public-facing and monitoring parts of the stack.
 #
 # 3. hb-monitoring-net:
-#    - Purpose: A private network for the observability stack.
-#    - Services: FastAPI App, Prometheus, Grafana.
-#    - This allows monitoring tools to scrape the backend without gaining access to the data tier.
+#    - Purpose: A private network for observability collection.
+#    - Services: FastAPI App, Alloy (ships metrics/logs to Grafana Cloud).
+#    - This lets the collector scrape the backend without gaining access to the data tier.
 #
 # The FastAPI application container is the only service connected to all three
 # networks, acting as a secure, controlled bridge between them.
@@ -31,6 +31,10 @@
 # --- USAGE ---
 # To run the entire stack, combine this file with the service-specific files:
 # docker compose -f compose.yml -f compose.dependencies.yml -f compose.observability.yml up -d --build
+#
+# The observability overlay requires ./grafana-cloud.env (copy
+# grafana-cloud.env.example and fill from 1Password / the Grafana Cloud
+# portal); compose fails fast with "env file ... not found" without it.
 
 networks:
   hb-public-net:

@@ -28,7 +28,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 |---|---------|---------------------|---------|-----------|
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, PROXY-1 | §1.C |
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
-| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6 | §3.C |
+| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, upstream status | ESI-1 | §4.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
@@ -190,6 +190,18 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### ENV-7: `pdm run format` is repo-wide `black .` on a non-black-formatted codebase
+
+**The Flaw:** The `format` pdm script runs `black .` across the whole backend, but the codebase was never black-formatted — the 2026-07-18 lint-debt cleanup (PR #47) used targeted autopep8 + hand fixes and explicitly REJECTED a full black run (60 files / 8.6k-line diff). Running `pdm run format` reformats ~64 files and re-exposes suppressed lint findings: black moves/reflows lines carrying `# noqa: C901` markers and introduces one-line `def` styling that trips E704, so `pdm run lint` goes red on files you never touched.
+
+**Why It Matters:** An agent following a "format then lint" step churns the entire tree in one command; the resulting diff buries the real change, breaks `git blame`, and the re-exposed C901/E704 findings look like pre-existing lint debt rather than a consequence of the command just run.
+
+**The Fix:** Never run `pdm run format` repo-wide. Format NEW files individually: `.venv/bin/black <file>` (verify with `.venv/bin/black --check <file>` + `.venv/bin/flake8 <file>`). Recovery if run by accident: `git restore app/backend/src` (untracked new files keep their formatting). Adopting black repo-wide remains a separate decision for Sam.
+
+**Where It Bit Us:** Grafana Cloud migration Phase 3 (2026-07-19) — the plan's original "run `pdm run format`" step churned 64 files; fully reverted before commit.
+
+---
+
 ### §3.C — Review Checklist
 
 - [ ] **Complex settings fields (e.g. `List[int]`) are supplied as JSON** — `AGGREGATION_REGION_IDS=[...]`; env is loaded from `app/backend/src/.env`; `ESI_USER_AGENT` is set; the single consolidated `core/config.py` Settings class is satisfied (ENV-1)
@@ -198,6 +210,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 - [ ] **`Settings.model_config` keeps `extra="ignore"`** — any new config field is also documented in `.env.example` (ENV-4)
 - [ ] **Backend venv/CI run Python 3.14** — the FastAPI 0.115 / Python-3.12 hold is resolved (ENV-5, superseded); keep the two CI `python-version` pins in sync and never mask interpreter warnings with a filter (migrate off the deprecated API instead)
 - [ ] **Deleting a debug print/function also drops any module-level import it orphaned** — flake8 ignores F401 here so it won't catch it, but F811 will trip on an unrelated function (ENV-6)
+- [ ] **No repo-wide `pdm run format`** — the codebase is not black-formatted; format new files individually with `.venv/bin/black <file>` (ENV-7)
 
 ---
 
@@ -255,6 +268,10 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
+## 2026-07-19 — ENV-7 added: repo-wide `pdm run format` trap
+
+- Added ENV-7 from the Grafana Cloud observability migration (`docs/superpowers/plans/2026-07-18-grafana-cloud-observability.md`): `pdm run format` = `black .` churns ~64 files on this non-black codebase and re-exposes noqa'd C901s plus E704. Cross-referenced from the migration plan's Deviations and session memory.
+
 ## 2026-07-18 — SQLA-2 added: partial-index ON CONFLICT needs index_where
 
 - Added SQLA-2 (`ON CONFLICT` against a partial unique index must restate the index predicate) from the M3 account-features work (Phase 10, Task 10.1). Pre-empted in the watchlist-matcher design (`docs/superpowers/specs/2026-07-17-m3-account-features-design.md` §4.4); pairs with testing-pitfalls.md TEST-11.
@@ -301,6 +318,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ENV-4 | pydantic-settings rejects unknown .env keys unless extra="ignore" | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-5 | FastAPI 0.115 / Python-3.12 hold (resolved 2026-07-13: FastAPI 0.139 + Python 3.14) | LOW | SUPERSEDED | Environment & Dev Loop |
 | ENV-6 | F811 cascade when removing debug prints/functions | LOW | VALIDATED | Environment & Dev Loop |
+| ENV-7 | `pdm run format` is repo-wide black on a non-black codebase | LOW | VALIDATED | Environment & Dev Loop |
 | ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
