@@ -5,12 +5,12 @@ import json
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.cache import init_cache
 from ..core.config import get_settings
-from ..core.dependencies import get_cache
 from ..db import get_db
 from ..services.background_aggregation import INGEST_LAST_RUN_KEY
 
@@ -19,45 +19,77 @@ router = APIRouter(tags=["Ops"])  # bare mount (PROXY-1)
 READINESS_CHECK_TIMEOUT_SECONDS = 2.0  # spec §8.1: short timeouts so /ready never hangs a deploy gate
 
 
-@router.get("/ready")
-async def ready(response: Response, db: AsyncSession = Depends(get_db), cache=Depends(get_cache)):
-    settings = get_settings()
-    checks: dict[str, object] = {
-        "commit": os.environ.get("RENDER_GIT_COMMIT", "unknown"),
-    }
-    healthy = True
+async def _probe_db(db: AsyncSession) -> bool:
     try:
         async with asyncio.timeout(READINESS_CHECK_TIMEOUT_SECONDS):
             await db.execute(text("SELECT 1"))
-        checks["db"] = "ok"
+        return True
     except Exception:            # includes TimeoutError — a hung probe is an unhealthy component
-        checks["db"] = "error"
-        healthy = False
-    freshness = None
+        # get_db commits on a normally-returning request; a failed/canceled probe left
+        # uncommitted would make that cleanup commit raise and turn the structured
+        # 503 into a 500 (PendingRollbackError). Roll back here, best-effort.
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        return False
+
+
+async def _probe_cache(request: Request) -> tuple[bool, object]:
+    """Ping the cache and fetch the freshness record; returns (ok, raw record or None).
+
+    The client comes straight off app.state, NOT the get_cache dependency — that
+    dependency raises when startup init failed, which would replace the structured
+    readiness body with a bare 503 and never re-probe. A missing client gets one
+    self-heal attempt per call so a transient Valkey outage at boot cannot brick
+    readiness until a manual restart.
+    """
     try:
         async with asyncio.timeout(READINESS_CHECK_TIMEOUT_SECONDS):
+            cache = getattr(request.app.state, "redis", None)
+            if cache is None:
+                await init_cache(request.app)
+                cache = getattr(request.app.state, "redis", None)
+            if cache is None:
+                raise ConnectionError("cache client unavailable")
             await cache.ping()
-            freshness = await cache.get(INGEST_LAST_RUN_KEY)
-        checks["cache"] = "ok"
+            return True, await cache.get(INGEST_LAST_RUN_KEY)
     except Exception:
-        checks["cache"] = "error"
-        healthy = False
-    age = None
-    outcome = None
-    if freshness:
-        try:
-            record = json.loads(freshness)
-            outcome = record.get("outcome")
-            last_success = record.get("last_success_at")
-            if last_success:
-                age = (datetime.now(timezone.utc) - datetime.fromisoformat(last_success)).total_seconds()
-        except (ValueError, TypeError):
-            pass
-    checks["last_ingest_age_seconds"] = age
-    checks["last_ingest_outcome"] = outcome
-    # Never-ingested or over 2x the cadence counts as stale; staleness NEVER fails
-    # readiness (observability-spec §2.5: ESI trouble is a freshness signal, not unreadiness).
-    checks["data_stale"] = age is None or age > 2 * settings.AGGREGATION_SCHEDULER_INTERVAL_SECONDS
-    if not healthy:
+        return False, None
+
+
+def _freshness_fields(freshness) -> tuple[object, object]:
+    """Parse (age_seconds, outcome) out of the raw freshness record; (None, None) when absent/corrupt."""
+    if not freshness:
+        return None, None
+    try:
+        record = json.loads(freshness)
+        outcome = record.get("outcome")
+        last_success = record.get("last_success_at")
+        age = None
+        if last_success:
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(last_success)).total_seconds()
+        return age, outcome
+    except (ValueError, TypeError):
+        return None, None
+
+
+@router.get("/ready")
+async def ready(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    settings = get_settings()
+    db_ok = await _probe_db(db)
+    cache_ok, freshness = await _probe_cache(request)
+    age, outcome = _freshness_fields(freshness)
+    checks: dict[str, object] = {
+        "commit": os.environ.get("RENDER_GIT_COMMIT", "unknown"),
+        "db": "ok" if db_ok else "error",
+        "cache": "ok" if cache_ok else "error",
+        "last_ingest_age_seconds": age,
+        "last_ingest_outcome": outcome,
+        # Never-ingested or over 2x the cadence counts as stale; staleness NEVER fails
+        # readiness (observability-spec §2.5: ESI trouble is a freshness signal, not unreadiness).
+        "data_stale": age is None or age > 2 * settings.AGGREGATION_SCHEDULER_INTERVAL_SECONDS,
+    }
+    if not (db_ok and cache_ok):
         response.status_code = 503
     return checks
