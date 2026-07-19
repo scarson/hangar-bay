@@ -57,14 +57,14 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** In progress (execution session claimed 2026-07-18T23:57Z).
+**Overall:** Phases 1 and 3 SHIPPED to dev (2026-07-19). Remaining before the milestone closes: the empirical Phase 0 spike (needs `RENDER_API_KEY`), the dev→main release PR, Sam's Phase 2 items, and Phase 4 (first deploy + live SSO — the exit criterion).
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Render verification spike | ⏸ BLOCKED on Render credential | — | session env lacks `RENDER_API_KEY` (MCP `unauthorized`, curl fallback impossible); docs-based verification substituted — see Deviations D-1 |
+| 0 — Render verification spike | ⏸ BLOCKED on Render credential | — | session env lacked `RENDER_API_KEY` (MCP `unauthorized`, curl fallback impossible); docs-based verification substituted — see Deviations D-1. **Must run before Phase 2b applies the blueprint** |
 | 1 — Collision-free implementation | ✅ SHIPPED | PR [#56](https://github.com/scarson/hangar-bay/pull/56), merge `6885b67` (2026-07-19) | Topology A per D-1; deviations D-4..D-8; 3-lens + codex adversarial reviews applied (`docs/audits/m4-phase1-review/`) |
 | 2 — Platform provisioning | ⬜ 2a partially done by Sam (billing connected, domain `hangarbay.app`, prod EVE app registered) | — | **Sam-gated**; 2b (blueprint+secrets) runs as Phase 4 Step 0; see Deviation D-3 (callback `:443` mismatch to resolve at 2b) |
-| 3 — Post-M3 backend/frontend work | 🚧 IN PROGRESS (claimed 2026-07-19T01:35Z, branch `claude/m4-phase3-prod-hardening`) | — | gate SATISFIED: M3 merged to dev 2026-07-18 (PR #46, merge `20ee513`) |
+| 3 — Post-M3 backend/frontend work | ✅ SHIPPED | PR [#60](https://github.com/scarson/hangar-bay/pull/60), merge `86a56c6` (2026-07-19) | Tasks 3.0–3.12 TDD; deviations D-9/D-10; 3-lens review + two default-model codex rounds + the delegated codex 5.6-Sol high merge gate (PASS) — `docs/audits/m4-phase3-review/summary.md`; rebased twice over concurrent dev merges (#57/#58, #59/#61) with full gates green after each |
 | 4 — First deploy + live SSO | ⬜ Not started | — | **Sam-gated exit criterion** |
 
 ### Deviations
@@ -792,7 +792,7 @@ git commit -m "ci: add OpenAPI drift gate (export + regenerate + fail on dirty d
 
 ## Phase 3 — Post-M3 backend/frontend work
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-19T01:35Z on branch `claude/m4-phase3-prod-hardening` (worktree `.claude/worktrees/m4-phase3-prod-hardening`), off dev @ `6885b67`. Tasks 3.0–3.12 ALL implemented (TDD red→green per task; full gates green: flake8, 398 pytest, tsc, 161 vitest, 92 e2e). Reviews applied: 3-lens batch review + codex cross-model round — 6 confirmed findings fixed, incl. codex P1 (/ready self-heal) and the watchlist-matcher per-run engine the plan couldn't have known about (M3 post-dates plan authoring); `docs/audits/m4-phase3-review/summary.md`. PR pending — **Review classification; Sam merges**.
+**Execution Status:** ✅ SHIPPED 2026-07-19 — PR [#60](https://github.com/scarson/hangar-bay/pull/60) merged to dev at `86a56c6`. Tasks 3.0–3.12 all implemented TDD red→green; final gates on the merged tree: flake8 clean, 414 pytest, tsc clean, 161 vitest, 92 e2e. Review chain: 3-lens batch review (verified findings fixed) + two default-model codex rounds (P1 readiness self-heal, P2 rollback→dedicated-connection probe, P2 watchlist-matcher engine reuse — all fixed) + the delegated codex 5.6-Sol high merge gate: PASS clean, its one finding (non-object freshness JSON) fixed and re-verified. Merge authority: delegated by Sam in-session 2026-07-19 to the Sol gate + green CI (supersedes the Sam-merges classification for this PR). Rebased twice over concurrent dev merges (#57/#58 `_process_contracts` refactor + tests; #59 ESI-retry helper; #61 Grafana Cloud migration) — both conflict sets were keep-both resolutions, full gates green after each. Full record: `docs/audits/m4-phase3-review/summary.md`.
 
 Branch: `claude/m4-phase3-prod-hardening` off fresh `origin/dev` AFTER the M3 merge. **Every task below cites file:line against pre-M3 dev** — M3 touches most of these files, so Task 3.0 re-anchors every citation first. TDD per Standing Order 4 applies to every task in this phase except 3.9's revision generation, 3.11, and 3.12 (docs/config).
 
