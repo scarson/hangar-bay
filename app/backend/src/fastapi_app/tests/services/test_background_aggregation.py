@@ -546,3 +546,158 @@ async def test_run_aggregation_reuses_app_session_factory_and_never_logs_databas
         msg = rec.getMessage()
         assert "Creating database engine" not in msg
         assert service.settings.DATABASE_URL[:16] not in msg
+
+
+# --- ingestion-freshness recording (M4 Task 3.3) ---
+# Key contract, pinned: JSON {"finished_at": iso, "outcome": "success|partial|failure",
+# "regions_ok": int, "regions_failed": int, "last_success_at": iso-or-null} at key
+# "hangar-bay:ingest:last_run", no TTL. regions_ok counts regions CHECKED OK — a fetch
+# success AND an ETag-304 both count; success/partial may be recorded only after the
+# shared transaction commits or completes as a valid no-op (the all-304 path);
+# any processing/commit/top-level failure forces outcome="failure".
+
+INGEST_KEY = "hangar-bay:ingest:last_run"
+
+
+def _freshness_service(regions):
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = list(regions)
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 0
+    service.settings.DATABASE_URL = "postgresql+asyncpg://u:p@localhost:5432/unused"
+    return service
+
+
+def _gauge_value():
+    from fastapi_app.core.metrics import last_ingest_success_timestamp
+    return last_ingest_success_timestamp._value.get()
+
+
+async def test_freshness_success_when_all_regions_fetch_ok(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """All regions fetch ok and the transaction commits → outcome success, gauge advances."""
+    import json as _json
+    from datetime import datetime as _dt
+
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(TEST_DATABASE_URL)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(bg_agg, "AsyncSessionLocal", maker, raising=False)
+
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(
+        return_value=[_ship_contract_dict(910001)]
+    )
+
+    store: dict = {}
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+    await engine.dispose()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "success"
+    assert record["regions_ok"] == 1
+    assert record["regions_failed"] == 0
+    _dt.fromisoformat(record["finished_at"])  # raises if not ISO-8601
+    assert record["last_success_at"] == record["finished_at"]
+    assert _gauge_value() > before
+
+
+async def test_freshness_success_when_all_regions_304(monkeypatch: pytest.MonkeyPatch):
+    """The all-304 steady state is a SUCCESS (checked-ok), never a failure."""
+    import json as _json
+
+    service = _freshness_service([10000002, 10000043])
+    from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=_NotModified("304"))
+
+    store: dict = {}
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "success"
+    assert record["regions_ok"] == 2
+    assert record["regions_failed"] == 0
+    assert record["last_success_at"] == record["finished_at"]
+    assert _gauge_value() > before
+
+
+async def test_freshness_partial_when_one_region_fails(monkeypatch: pytest.MonkeyPatch):
+    """One region checked ok, one fetch error → partial; timestamp still advances."""
+    import json as _json
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(
+        side_effect=[[], RuntimeError("ESI 500")]
+    )
+
+    store: dict = {}
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "partial"
+    assert record["regions_ok"] == 1
+    assert record["regions_failed"] == 1
+    assert record["last_success_at"] == record["finished_at"]
+    assert _gauge_value() > before
+
+
+async def test_freshness_failure_when_commit_raises(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """A commit failure forces outcome=failure regardless of fetch counters;
+    last_success_at preserves the PRIOR success and the gauge does not move."""
+    import json as _json
+
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(TEST_DATABASE_URL)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    def boom_factory():
+        session = maker()
+
+        async def boom():
+            raise RuntimeError("simulated commit failure")
+
+        session.commit = boom
+        return session
+
+    monkeypatch.setattr(bg_agg, "AsyncSessionLocal", boom_factory, raising=False)
+
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(
+        return_value=[_ship_contract_dict(910002)]
+    )
+
+    prior = "2026-07-18T00:00:00+00:00"
+    store: dict = {
+        INGEST_KEY: _json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 1,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+    await engine.dispose()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure"
+    assert record["regions_ok"] == 1
+    assert record["regions_failed"] == 0
+    assert record["last_success_at"] == prior
+    assert _gauge_value() == before

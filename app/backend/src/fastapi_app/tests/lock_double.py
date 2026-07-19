@@ -14,6 +14,9 @@ class FakeLockRedis:
         self.store[key] = value
         return True
 
+    async def get(self, key):
+        return self.store.get(key)
+
     async def eval(self, script, numkeys, *args):
         key, token = args[0], args[1]
         if self.store.get(key) == token:

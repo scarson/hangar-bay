@@ -4,7 +4,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager, AbstractAsyncContextManager
 from typing import Iterable, Iterator, List, Callable  # Added Callable
-from datetime import datetime
+from datetime import datetime, timezone
 
 import redis.asyncio as aioredis  # For on-demand client creation
 from fastapi import Depends
@@ -15,6 +15,7 @@ from ..core.dependencies import get_cache, get_esi_client, get_settings
 from ..core.config import Settings  # Settings type for hinting
 from ..core.esi_client_class import ESIClient  # ESIClient class for type hint
 from ..core.exceptions import ESINotModifiedError  # Restored ESINotModifiedError
+from ..core.metrics import last_ingest_success_timestamp
 
 from ..db import AsyncSessionLocal
 from ..models.contracts import Contract, ContractItem  # Models
@@ -27,6 +28,10 @@ logger = logging.getLogger(__name__)
 AGGREGATION_LOCK_KEY = "hangar-bay:aggregation:lock"
 # Lock timeout in seconds. Should be longer than a typical aggregation run.
 AGGREGATION_LOCK_TIMEOUT = 1800  # 30 minutes
+# Freshness record for the last aggregation run (design spec §8.2): JSON
+# {finished_at, outcome, regions_ok, regions_failed, last_success_at}, no TTL —
+# overwritten each run; lost on cache restart, which self-heals within one tick.
+INGEST_LAST_RUN_KEY = "hangar-bay:ingest:last_run"
 
 # Atomic compare-and-delete: only release the lock if THIS runner still holds it
 # (the stored value equals our token). Guards against the TTL expiring mid-run
@@ -170,7 +175,9 @@ class ContractAggregationService:
                 raise ConcurrencyLockError("Could not acquire aggregation lock.")
 
             logger.info("Concurrency lock acquired for contract aggregation.")
-            yield  # If this raises, the finally block below still runs
+            # The live client is yielded so run-outcome recording (freshness) can
+            # happen INSIDE the lock context, before release closes the client.
+            yield redis_client  # If this raises, the finally block below still runs
         finally:
             if lock_acquired:
                 logger.info("Releasing concurrency lock for contract aggregation.")
@@ -205,45 +212,64 @@ class ContractAggregationService:
             return
 
         try:
-            async with self._concurrency_lock():  # Handles concurrent job runs
-                # Use the ESIClient as a context manager to ensure its http_client is initialized.
-                async with self.esi_client:
-                    logger.info("Concurrency lock acquired. Starting public contract aggregation run.")
+            async with self._concurrency_lock() as redis_client:  # Handles concurrent job runs
+                regions_ok = 0
+                regions_failed = 0
+                try:
+                    # Use the ESIClient as a context manager to ensure its http_client is initialized.
+                    async with self.esi_client:
+                        logger.info("Concurrency lock acquired. Starting public contract aggregation run.")
 
-                    async with AsyncSessionLocal() as db_session:  # Obtain a new session for this run
-                        logger.info(f"Processing contracts for region IDs: {current_region_ids}")
-                        all_contracts_data: List[dict] = []
+                        async with AsyncSessionLocal() as db_session:  # Obtain a new session for this run
+                            logger.info(f"Processing contracts for region IDs: {current_region_ids}")
+                            all_contracts_data: List[dict] = []
 
-                        for region_id in current_region_ids:
-                            try:
-                                contracts_page = await self.esi_client.get_public_contracts(region_id)
-                                logger.info(f"Fetched {len(contracts_page)} contracts for region {region_id}.")
-                                # ESI contract payloads carry no region; stamp the
-                                # fetch region so it survives into the DB (the
-                                # region_ids filter reads start_location_region_id).
-                                for contract_data in contracts_page:
-                                    contract_data["_hb_region_id"] = region_id
-                                all_contracts_data.extend(contracts_page)
-                            except ESINotModifiedError:
-                                logger.info(f"Contracts for region {region_id} not modified.")
-                            except Exception as e:
-                                logger.error(f"Failed to fetch contracts for region {region_id}: {e}", exc_info=True)
+                            for region_id in current_region_ids:
+                                try:
+                                    contracts_page = await self.esi_client.get_public_contracts(region_id)
+                                    logger.info(f"Fetched {len(contracts_page)} contracts for region {region_id}.")
+                                    # ESI contract payloads carry no region; stamp the
+                                    # fetch region so it survives into the DB (the
+                                    # region_ids filter reads start_location_region_id).
+                                    for contract_data in contracts_page:
+                                        contract_data["_hb_region_id"] = region_id
+                                    all_contracts_data.extend(contracts_page)
+                                    regions_ok += 1
+                                except ESINotModifiedError:
+                                    # ESI answered healthily and our data is already
+                                    # current — a 304 region counts as CHECKED OK.
+                                    logger.info(f"Contracts for region {region_id} not modified.")
+                                    regions_ok += 1
+                                except Exception as e:
+                                    logger.error(f"Failed to fetch contracts for region {region_id}: {e}", exc_info=True)
+                                    regions_failed += 1
 
-                        if not all_contracts_data:
-                            logger.info("No new contracts found across all specified regions.")
-                            # No need to commit or process further if no data was fetched.
-                        else:
-                            # Apply development limit if configured
-                            if self.settings.AGGREGATION_DEV_CONTRACT_LIMIT and self.settings.AGGREGATION_DEV_CONTRACT_LIMIT > 0:
-                                limit = self.settings.AGGREGATION_DEV_CONTRACT_LIMIT
-                                if len(all_contracts_data) > limit:
-                                    logger.warning(f"DEV_MODE: Limiting contracts to process from {len(all_contracts_data)} to {limit}.")
-                                    all_contracts_data = all_contracts_data[:limit]
+                            if not all_contracts_data:
+                                logger.info("No new contracts found across all specified regions.")
+                                # No need to commit or process further if no data was fetched.
+                            else:
+                                # Apply development limit if configured
+                                if self.settings.AGGREGATION_DEV_CONTRACT_LIMIT and self.settings.AGGREGATION_DEV_CONTRACT_LIMIT > 0:
+                                    limit = self.settings.AGGREGATION_DEV_CONTRACT_LIMIT
+                                    if len(all_contracts_data) > limit:
+                                        logger.warning(f"DEV_MODE: Limiting contracts to process from {len(all_contracts_data)} to {limit}.")
+                                        all_contracts_data = all_contracts_data[:limit]
 
-                            await self._process_contracts(db_session, all_contracts_data)
+                                await self._process_contracts(db_session, all_contracts_data)
 
-                            await db_session.commit()
-                            logger.info("Public contract aggregation run finished successfully and changes committed.")
+                                await db_session.commit()
+                                logger.info("Public contract aggregation run finished successfully and changes committed.")
+
+                    # The shared transaction committed (or completed as a valid
+                    # no-op — the all-304 path); outcome derives from the counters.
+                    await self._record_run_outcome(redis_client, regions_ok, regions_failed)
+                except Exception:
+                    # Any processing/commit/top-level abort is a failed run no matter
+                    # what the fetch counters say; record while the lock is still held.
+                    await self._record_run_outcome(
+                        redis_client, regions_ok, regions_failed, forced_failure=True
+                    )
+                    raise
 
         except ConcurrencyLockError:
             # This is expected if another job is running, so we just log and return.
@@ -258,6 +284,40 @@ class ContractAggregationService:
             # No explicit rollback here as the session context manager handles it.
             # If the error was in _concurrency_lock, no db_session was active yet.
             return
+
+    async def _record_run_outcome(self, redis_client, ok: int, failed: int, *, forced_failure: bool = False) -> None:
+        """Write the freshness record (INGEST_LAST_RUN_KEY) and advance the success gauge.
+
+        last_success_at survives failure records unchanged so staleness is always
+        measured against the last real refresh. A failure of the outcome WRITE itself
+        is logged and swallowed — freshness recording must never turn a successful
+        ingest into a failed job.
+        """
+        try:
+            if forced_failure:
+                outcome = "failure"
+            else:
+                outcome = "success" if failed == 0 and ok > 0 else ("partial" if ok > 0 else "failure")
+            now = datetime.now(timezone.utc).isoformat()
+            prior_raw = await redis_client.get(INGEST_LAST_RUN_KEY)
+            prior_success = None
+            if prior_raw:
+                try:
+                    prior_success = json.loads(prior_raw).get("last_success_at")
+                except (ValueError, TypeError):
+                    prior_success = None
+            last_success_at = now if outcome in ("success", "partial") else prior_success
+            await redis_client.set(INGEST_LAST_RUN_KEY, json.dumps({
+                "finished_at": now,
+                "outcome": outcome,
+                "regions_ok": ok,
+                "regions_failed": failed,
+                "last_success_at": last_success_at,
+            }))
+            if outcome in ("success", "partial"):
+                last_ingest_success_timestamp.set_to_current_time()
+        except Exception:
+            logger.warning("failed to record ingest outcome", exc_info=True)
 
     async def _process_contracts(self, db_session: AsyncSession, contracts: List[dict]):
         """
