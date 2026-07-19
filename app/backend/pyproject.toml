@@ -21,6 +21,7 @@ dev = [
     "httpx>=0.28.1",
     "pytest-httpx>=0.32.0",
     "pytest-vcr>=1.0.2",
+    "flake8-bugbear>=25.11.29",
 ]
 [tool.pdm]
 distribution = false
@@ -38,3 +39,7 @@ lint = "flake8 ."
 format = "black ."
 dev = "uvicorn fastapi_app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir src"
 export-openapi = "python src/export_openapi.py"
+migrate = {shell = "cd src && python -m alembic upgrade head"}
+makemigration = {shell = "cd src && python -m alembic revision --autogenerate -m {args}"}
+migrate-check = {shell = "cd src && python -m alembic current"}
+provision-dashboards = "python observability/provision_dashboards.py"

@@ -12,7 +12,7 @@ Key points about this module:
 - `init_cache` stores the initialized Redis client on `app.state.redis` for easy access via dependencies.
 - Includes basic print statements for connection status; these should be replaced with proper logging in a production environment.
 """
-import logging # Added for proper logging
+import logging  # Added for proper logging
 from typing import Optional
 
 from redis.asyncio import Redis, from_url
@@ -22,6 +22,7 @@ from .config import get_settings
 
 # Get a logger instance for this module
 logger = logging.getLogger(__name__)
+
 
 class CacheManager:
     """
@@ -48,7 +49,7 @@ class CacheManager:
                 logger.info("Successfully connected to Redis.")
             except Exception as e:
                 logger.error(f"Error connecting to Redis: {e}", exc_info=True)
-                self.redis_client = None # Ensure client is None if connection failed
+                self.redis_client = None  # Ensure client is None if connection failed
 
     async def close(self):
         """Closes the Redis connection pool if it has been initialized."""
@@ -69,6 +70,7 @@ class CacheManager:
 # This instance will be initialized during app startup and its client
 # stored on app.state for easy access via dependency.
 cache_manager = CacheManager()
+
 
 async def init_cache(app: FastAPI):
     """FastAPI startup event handler to initialize the global cache_manager and store client on app.state."""

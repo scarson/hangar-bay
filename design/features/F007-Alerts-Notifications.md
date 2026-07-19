@@ -299,3 +299,12 @@
     *   "Create a React `NotificationPanel` component that displays a list of notifications, allowing users to click them (to navigate to `related_item_url`) and mark them as read."
     *   "Create a React `NotificationSettings` component to manage user preferences by calling the settings API endpoints."
     *   "Ensure all UI text is internationalized and dates/times are localized."
+
+## Implemented with deviations (M3, 2026-07-17)
+
+Implemented zero-scope per [the M3 design spec](../../docs/superpowers/specs/2026-07-17-m3-account-features-design.md). Recorded deviations (design §8):
+- **APScheduler, not Celery** — the matcher is an APScheduler interval job mirroring the aggregation job (§4.4).
+- **Bundle-price match semantics** — a watched ship inside a multi-item contract matches on the whole-contract price (per-item pricing does not exist in the data); the notification message names the contract price, not a per-ship price.
+- **De-dup is a partial unique index + `ON CONFLICT DO NOTHING`** — re-notification on further price drops / cooldown is deferred (Criterion 1.3 "may").
+- **Bell links to a `/notifications` page** (no dropdown panel); a single "Watchlist alerts" checkbox is the settings surface. Email/push/WebSockets and saved-search alerts (Story 2) remain deferred.
+- **Notification messages are pre-rendered English** — `message_key`/`message_params` i18n columns are not built (house-wide i18n deferral).

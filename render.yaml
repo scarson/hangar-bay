@@ -1,0 +1,99 @@
+# ABOUTME: Render blueprint for Hangar Bay production (design spec §4, topology A).
+# ABOUTME: Inert until applied in Phase 2; /ready and the pre-deploy migration assume Phase 3 code has merged.
+# YAML 1.1 parses a bare `off` as boolean false — these enum values MUST stay quoted
+# (Render's own spec example writes autoDeployTrigger: 'off').
+previews:
+  generation: "off"
+
+services:
+  - type: web
+    name: hangar-bay-api
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: "off"          # CD (deploy.yml) is the sole trigger
+    rootDir: app/backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /ready
+    preDeployCommand: sh -c "cd /app/src && python -m alembic upgrade head"
+    disk:                             # exists ONLY to pin max-1-instance + recreate deploys (spec §4/I-3)
+      name: scheduler-pin
+      mountPath: /var/scheduler-pin
+      sizeGB: 1
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DB_RECREATE_ON_STARTUP
+        value: "false"
+      - key: AGGREGATION_REGION_IDS
+        value: "[10000002]"           # JSON array string — ENV-1
+      - key: AGGREGATION_DEV_CONTRACT_LIMIT
+        value: "0"                    # disable the silent 100-contract dev cap (spec §2)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hangar-bay-db
+          property: connectionString
+      - key: CACHE_URL
+        fromService:
+          type: keyvalue
+          name: hangar-bay-cache
+          property: connectionString
+      - key: ESI_USER_AGENT
+        sync: false                   # names in git, values dashboard-held (I-5)
+      - key: ESI_CLIENT_ID
+        sync: false
+      - key: ESI_CLIENT_SECRET
+        sync: false
+      - key: TOKEN_CIPHER_KEYS
+        sync: false
+      - key: METRICS_TOKEN
+        sync: false
+      - key: ESI_SSO_CALLBACK_URL
+        sync: false                   # https://<domain>/api/v1/auth/sso/callback — char-for-char vs EVE portal
+      - key: FRONTEND_ORIGIN
+        sync: false                   # https://<domain>
+
+  - type: keyvalue
+    name: hangar-bay-cache
+    plan: free
+    region: frankfurt
+    maxmemoryPolicy: allkeys-lru      # accepted consequence: sessions evictable under pressure (spec §4)
+    ipAllowList: []                   # documented block-all-external form (blueprint spec: "To block all external connections, set ipAllowList to an empty list") → private-network only
+
+  - type: web
+    name: hangar-bay-web
+    runtime: static
+    branch: main                      # must match the API service; omitting it tracks the repo default branch (dev)
+    rootDir: app/frontend/web
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeployTrigger: "off"
+    routes:                           # ORDER MATTERS: prefix-strip rule before SPA fallback (PROXY-1)
+      - type: rewrite
+        source: /api/v1/*
+        # PLACEHOLDER HOSTNAME: Render suffixes service hostnames when a name is taken.
+        # At Phase 2b apply time, verify the API service's ACTUAL assigned hostname in the
+        # dashboard and correct this destination in the same change if it differs (spike P2b).
+        destination: https://hangar-bay-api.onrender.com/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+        # Kept: no Render doc records a default HSTS header on static sites
+        # (docs/audits/m4-recon/render-docs-verification-2026-07-18.md).
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+
+databases:
+  - name: hangar-bay-db
+    plan: basic-256mb
+    region: frankfurt
+    postgresMajorVersion: "17"

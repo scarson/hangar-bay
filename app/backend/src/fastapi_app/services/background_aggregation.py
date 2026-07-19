@@ -3,22 +3,24 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager, AbstractAsyncContextManager
-from typing import Iterable, Iterator, List, Callable # Added Callable
-from datetime import datetime
+from typing import Iterable, Iterator, List, Callable  # Added Callable
+from datetime import datetime, timezone
 
-import redis.asyncio as aioredis # For on-demand client creation
+import redis.asyncio as aioredis  # For on-demand client creation
 from fastapi import Depends
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.dependencies import get_cache, get_esi_client, get_settings
-from ..core.config import Settings # Settings type for hinting
-from ..core.esi_client_class import ESIClient # ESIClient class for type hint
-from ..core.exceptions import ESINotModifiedError # Restored ESINotModifiedError
+from ..core.config import Settings  # Settings type for hinting
+from ..core.esi_client_class import ESIClient  # ESIClient class for type hint
+from ..core.exceptions import ESINotModifiedError  # Restored ESINotModifiedError
+from ..core.metrics import last_ingest_success_timestamp
 
-from ..models.contracts import Contract, ContractItem # Models
+from ..db import AsyncSessionLocal
+from ..models.contracts import Contract, ContractItem  # Models
 # Removed incorrect import: from ..services.esi_client import ESIClient as ESIClientService
-from .db_upsert import bulk_upsert # Upsert utility
+from .db_upsert import bulk_upsert  # Upsert utility
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,10 @@ logger = logging.getLogger(__name__)
 AGGREGATION_LOCK_KEY = "hangar-bay:aggregation:lock"
 # Lock timeout in seconds. Should be longer than a typical aggregation run.
 AGGREGATION_LOCK_TIMEOUT = 1800  # 30 minutes
+# Freshness record for the last aggregation run (design spec §8.2): JSON
+# {finished_at, outcome, regions_ok, regions_failed, last_success_at}, no TTL —
+# overwritten each run; lost on cache restart, which self-heals within one tick.
+INGEST_LAST_RUN_KEY = "hangar-bay:ingest:last_run"
 
 # Atomic compare-and-delete: only release the lock if THIS runner still holds it
 # (the stored value equals our token). Guards against the TTL expiring mid-run
@@ -55,6 +61,73 @@ def _chunk_ids(ids: Iterable[int]) -> Iterator[list[int]]:
         yield id_list[start : start + UPDATE_ID_CHUNK_SIZE]
 
 
+def _parse_esi_datetime(date_string: str | None) -> datetime | None:
+    """Parse ESI's ISO 8601 date strings into datetime objects."""
+    if date_string is None:
+        return None
+    # ESI dates are like "2024-05-20T14:47:32Z". The 'Z' means UTC.
+    # fromisoformat handles this correctly if we replace 'Z' with '+00:00'.
+    return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+
+
+def _collect_resolvable_ids(contracts: List[dict]) -> list[int]:
+    """Collect the unique issuer/corporation/location IDs resolvable to names."""
+    issuer_ids = {c['issuer_id'] for c in contracts}
+    corporation_ids = {c['issuer_corporation_id'] for c in contracts}
+    start_location_ids = {c.get('start_location_id') for c in contracts if c.get('start_location_id')}
+    end_location_ids = {c.get('end_location_id') for c in contracts if c.get('end_location_id')}
+
+    all_ids_to_resolve = list(
+        issuer_ids.union(corporation_ids).union(start_location_ids).union(end_location_ids)
+    )
+
+    # Player-owned structures have IDs > 10^11 and are not resolvable
+    # by the public /universe/names/ endpoint. We filter them out.
+    original_id_count = len(all_ids_to_resolve)
+    all_ids_to_resolve = [
+        id_ for id_ in all_ids_to_resolve if id_ < 100_000_000_000
+    ]
+    filtered_count = len(all_ids_to_resolve)
+    if original_id_count > filtered_count:
+        logger.info(f"Filtered out {original_id_count - filtered_count} unresolvable structure IDs.")
+    return all_ids_to_resolve
+
+
+def _build_contract_rows(contracts: List[dict], id_to_name_map: dict) -> list[dict]:
+    """Transform ESI contract payloads into Contract upsert rows, enriched with names."""
+    return [
+        {
+            "contract_id": c["contract_id"],
+            "issuer_id": c["issuer_id"],
+            "issuer_corporation_id": c["issuer_corporation_id"],
+            "start_location_id": c.get("start_location_id"),
+            "start_location_region_id": c.get("_hb_region_id"),
+            "end_location_id": c.get("end_location_id"),
+            "type": c["type"],  # Direct mapping - field names now match
+            "status": c.get("status", "unknown"),
+            "title": c.get("title"),
+            "for_corporation": c.get("for_corporation", False),
+            "date_issued": _parse_esi_datetime(c["date_issued"]),
+            "date_expired": _parse_esi_datetime(c["date_expired"]),
+            "date_completed": _parse_esi_datetime(c.get("date_completed")),
+            "price": c.get("price"),
+            "collateral": c.get("collateral", 0.0),  # Default to 0.0 if null
+            "reward": c.get("reward"),
+            "volume": c.get("volume"),
+            # Denormalized data for search performance
+            "start_location_name": id_to_name_map.get(c.get("start_location_id")),
+            "issuer_name": id_to_name_map.get(c.get('issuer_id')),
+            "issuer_corporation_name": id_to_name_map.get(c.get('issuer_corporation_id')),
+            # is_ship_contract and item_processing_status are deliberately
+            # ABSENT: they are maintained by item enrichment, and the upsert
+            # copies every mapped column on conflict — including them here
+            # decayed ship flags to False whenever items were ETag-304'd and
+            # skipped re-enrichment. Column defaults cover fresh inserts.
+        }
+        for c in contracts
+    ]
+
+
 class ConcurrencyLockError(Exception):
     """Custom exception for when the aggregation lock cannot be acquired."""
     pass
@@ -71,12 +144,12 @@ class ContractAggregationService:
         # session_factory: Callable[..., AbstractAsyncContextManager[AsyncSession]], # Removed
         # cache: Redis, # Removed cache client from constructor
         esi_client: ESIClient,
-        settings: Settings, # Settings will now be injected
+        settings: Settings,  # Settings will now be injected
     ):
         # self.session_factory = session_factory # Removed
         # self.cache = cache # Removed cache client attribute
         self.esi_client = esi_client
-        self.settings = settings # Assign the injected settings
+        self.settings = settings  # Assign the injected settings
 
     @asynccontextmanager
     async def _concurrency_lock(self):
@@ -102,7 +175,9 @@ class ContractAggregationService:
                 raise ConcurrencyLockError("Could not acquire aggregation lock.")
 
             logger.info("Concurrency lock acquired for contract aggregation.")
-            yield # If this raises, the finally block below still runs
+            # The live client is yielded so run-outcome recording (freshness) can
+            # happen INSIDE the lock context, before release closes the client.
+            yield redis_client  # If this raises, the finally block below still runs
         finally:
             if lock_acquired:
                 logger.info("Releasing concurrency lock for contract aggregation.")
@@ -119,77 +194,116 @@ class ContractAggregationService:
                         "Leaving the current holder's lock intact.",
                         AGGREGATION_LOCK_TIMEOUT,
                     )
-            await redis_client.close() # Ensure redis client is closed
+            await redis_client.close()  # Ensure redis client is closed
+
+    def _usable_region_ids(self) -> List[int] | None:
+        """Validate the configured region list, or None when the run must be skipped.
+
+        A non-list (or non-int-element) config is a deployment error and aborts at
+        ERROR; an empty list is a benign no-op and skips at WARNING. Both bail out
+        before the concurrency lock so a misconfigured deployment cannot occupy the
+        lock slot.
+        """
+        current_region_ids = self.settings.AGGREGATION_REGION_IDS
+
+        if not isinstance(current_region_ids, list) or not all(isinstance(x, int) for x in current_region_ids):
+            logger.error(f"CRITICAL_ERROR_AGG_SERVICE: AGGREGATION_REGION_IDS is not a list of int: {current_region_ids!r} (type: {type(current_region_ids)}) Aborting aggregation.")
+            return None
+
+        if not current_region_ids:
+            logger.warning("AGGREGATION_REGION_IDS is empty. Skipping aggregation.")
+            return None
+
+        return current_region_ids
+
+    async def _fetch_regions(self, region_ids: List[int]) -> tuple[List[dict], int, int]:
+        """Fetch public contracts for each region, returning (contracts, ok, failed).
+
+        The counters feed the freshness record: a 304 counts as CHECKED OK (ESI
+        answered healthily and our data is already current), while a fetch error
+        isolates that one region without aborting the others.
+        """
+        all_contracts_data: List[dict] = []
+        regions_ok = 0
+        regions_failed = 0
+
+        for region_id in region_ids:
+            try:
+                contracts_page = await self.esi_client.get_public_contracts(region_id)
+                logger.info(f"Fetched {len(contracts_page)} contracts for region {region_id}.")
+                # ESI contract payloads carry no region; stamp the
+                # fetch region so it survives into the DB (the
+                # region_ids filter reads start_location_region_id).
+                for contract_data in contracts_page:
+                    contract_data["_hb_region_id"] = region_id
+                all_contracts_data.extend(contracts_page)
+                regions_ok += 1
+            except ESINotModifiedError:
+                # ESI answered healthily and our data is already
+                # current — a 304 region counts as CHECKED OK.
+                logger.info(f"Contracts for region {region_id} not modified.")
+                regions_ok += 1
+            except Exception as e:
+                logger.error(f"Failed to fetch contracts for region {region_id}: {e}", exc_info=True)
+                regions_failed += 1
+
+        return all_contracts_data, regions_ok, regions_failed
+
+    def _apply_dev_limit(self, contracts: List[dict]) -> List[dict]:
+        """Truncate the batch to AGGREGATION_DEV_CONTRACT_LIMIT when one is configured."""
+        if self.settings.AGGREGATION_DEV_CONTRACT_LIMIT and self.settings.AGGREGATION_DEV_CONTRACT_LIMIT > 0:
+            limit = self.settings.AGGREGATION_DEV_CONTRACT_LIMIT
+            if len(contracts) > limit:
+                logger.warning(f"DEV_MODE: Limiting contracts to process from {len(contracts)} to {limit}.")
+                return contracts[:limit]
+        return contracts
 
     async def run_aggregation(self):
         """
         Runs the full public contract aggregation and ingestion process.
         Uses a database session from the session factory.
         """
-        current_region_ids = self.settings.AGGREGATION_REGION_IDS
-
-        if not isinstance(current_region_ids, list) or not all(isinstance(x, int) for x in current_region_ids):
-            logger.error(f"CRITICAL_ERROR_AGG_SERVICE: AGGREGATION_REGION_IDS is not a list of int: {current_region_ids!r} (type: {type(current_region_ids)}) Aborting aggregation.")
+        current_region_ids = self._usable_region_ids()
+        if current_region_ids is None:
             return
 
-        if not current_region_ids:
-            logger.warning("AGGREGATION_REGION_IDS is empty. Skipping aggregation.")
-            return
-
-        engine = None  # Initialize engine to None for the finally block
         try:
-            async with self._concurrency_lock():  # Handles concurrent job runs
-                # Use the ESIClient as a context manager to ensure its http_client is initialized.
-                async with self.esi_client:
-                    logger.info("Concurrency lock acquired. Starting public contract aggregation run.")
-                    
-                    # Dynamically create engine and session factory
-                    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-                    from sqlalchemy.orm import sessionmaker
-                    
-                    logger.info(f"Creating database engine with URL: {self.settings.DATABASE_URL[:30]}...") # Log part of URL for privacy
-                    engine = create_async_engine(self.settings.DATABASE_URL)
-                    local_session_factory = sessionmaker(
-                        bind=engine,
-                        class_=AsyncSession,
-                        expire_on_commit=False
+            async with self._concurrency_lock() as redis_client:  # Handles concurrent job runs
+                regions_ok = 0
+                regions_failed = 0
+                try:
+                    # Use the ESIClient as a context manager to ensure its http_client is initialized.
+                    async with self.esi_client:
+                        logger.info("Concurrency lock acquired. Starting public contract aggregation run.")
+
+                        async with AsyncSessionLocal() as db_session:  # Obtain a new session for this run
+                            logger.info(f"Processing contracts for region IDs: {current_region_ids}")
+
+                            all_contracts_data, regions_ok, regions_failed = await self._fetch_regions(
+                                current_region_ids
+                            )
+
+                            if not all_contracts_data:
+                                logger.info("No new contracts found across all specified regions.")
+                                # No need to commit or process further if no data was fetched.
+                            else:
+                                all_contracts_data = self._apply_dev_limit(all_contracts_data)
+
+                                await self._process_contracts(db_session, all_contracts_data)
+
+                                await db_session.commit()
+                                logger.info("Public contract aggregation run finished successfully and changes committed.")
+
+                    # The shared transaction committed (or completed as a valid
+                    # no-op — the all-304 path); outcome derives from the counters.
+                    await self._record_run_outcome(redis_client, regions_ok, regions_failed)
+                except Exception:
+                    # Any processing/commit/top-level abort is a failed run no matter
+                    # what the fetch counters say; record while the lock is still held.
+                    await self._record_run_outcome(
+                        redis_client, regions_ok, regions_failed, forced_failure=True
                     )
-                    
-                    async with local_session_factory() as db_session: # Obtain a new session for this run
-                        logger.info(f"Processing contracts for region IDs: {current_region_ids}")
-                        all_contracts_data: List[dict] = []
-
-                        for region_id in current_region_ids:
-                            try:
-                                contracts_page = await self.esi_client.get_public_contracts(region_id)
-                                logger.info(f"Fetched {len(contracts_page)} contracts for region {region_id}.")
-                                # ESI contract payloads carry no region; stamp the
-                                # fetch region so it survives into the DB (the
-                                # region_ids filter reads start_location_region_id).
-                                for contract_data in contracts_page:
-                                    contract_data["_hb_region_id"] = region_id
-                                all_contracts_data.extend(contracts_page)
-                            except ESINotModifiedError:
-                                logger.info(f"Contracts for region {region_id} not modified.")
-                            except Exception as e:
-                                logger.error(f"Failed to fetch contracts for region {region_id}: {e}", exc_info=True)
-
-
-                        if not all_contracts_data:
-                            logger.info("No new contracts found across all specified regions.")
-                            # No need to commit or process further if no data was fetched.
-                        else:
-                            # Apply development limit if configured
-                            if self.settings.AGGREGATION_DEV_CONTRACT_LIMIT and self.settings.AGGREGATION_DEV_CONTRACT_LIMIT > 0:
-                                limit = self.settings.AGGREGATION_DEV_CONTRACT_LIMIT
-                                if len(all_contracts_data) > limit:
-                                    logger.warning(f"DEV_MODE: Limiting contracts to process from {len(all_contracts_data)} to {limit}.")
-                                    all_contracts_data = all_contracts_data[:limit]
-
-                            await self._process_contracts(db_session, all_contracts_data)
-
-                            await db_session.commit()
-                            logger.info("Public contract aggregation run finished successfully and changes committed.")
+                    raise
 
         except ConcurrencyLockError:
             # This is expected if another job is running, so we just log and return.
@@ -204,43 +318,51 @@ class ContractAggregationService:
             # No explicit rollback here as the session context manager handles it.
             # If the error was in _concurrency_lock, no db_session was active yet.
             return
-        finally:
-            if engine: # Check if engine was initialized
-                logger.info("Disposing of database engine.")
-                await engine.dispose()
-                logger.info("Database engine disposed.")
+
+    async def _record_run_outcome(self, redis_client, ok: int, failed: int, *, forced_failure: bool = False) -> None:
+        """Write the freshness record (INGEST_LAST_RUN_KEY) and advance the success gauge.
+
+        last_success_at survives failure records unchanged so staleness is always
+        measured against the last real refresh. A failure of the outcome WRITE itself
+        is logged and swallowed — freshness recording must never turn a successful
+        ingest into a failed job.
+        """
+        try:
+            if forced_failure:
+                outcome = "failure"
+            else:
+                outcome = "success" if failed == 0 and ok > 0 else ("partial" if ok > 0 else "failure")
+            now = datetime.now(timezone.utc).isoformat()
+            prior_raw = await redis_client.get(INGEST_LAST_RUN_KEY)
+            prior_success = None
+            if prior_raw:
+                try:
+                    prior_record = json.loads(prior_raw)
+                    # Valid-but-non-object JSON (null, [], "str") is corrupt: treat as
+                    # no-prior so this SET repairs the key instead of raising forever.
+                    if isinstance(prior_record, dict):
+                        prior_success = prior_record.get("last_success_at")
+                except (ValueError, TypeError):
+                    prior_success = None
+            last_success_at = now if outcome in ("success", "partial") else prior_success
+            await redis_client.set(INGEST_LAST_RUN_KEY, json.dumps({
+                "finished_at": now,
+                "outcome": outcome,
+                "regions_ok": ok,
+                "regions_failed": failed,
+                "last_success_at": last_success_at,
+            }))
+            if outcome in ("success", "partial"):
+                last_ingest_success_timestamp.set_to_current_time()
+        except Exception:
+            logger.warning("failed to record ingest outcome", exc_info=True)
 
     async def _process_contracts(self, db_session: AsyncSession, contracts: List[dict]):
         """
         Processes a list of contracts, fetches their items, and upserts them using the provided db_session.
         """
-        # Helper to parse ESI's ISO 8601 date strings into datetime objects.
-        def _parse_datetime(date_string: str | None) -> datetime | None:
-            if date_string is None:
-                return None
-            # ESI dates are like "2024-05-20T14:47:32Z". The 'Z' means UTC.
-            # fromisoformat handles this correctly if we replace 'Z' with '+00:00'.
-            return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
-
         # Step 1: Collect all unique IDs from the current batch of contracts.
-        issuer_ids = {c['issuer_id'] for c in contracts}
-        corporation_ids = {c['issuer_corporation_id'] for c in contracts}
-        start_location_ids = {c.get('start_location_id') for c in contracts if c.get('start_location_id')}
-        end_location_ids = {c.get('end_location_id') for c in contracts if c.get('end_location_id')}
-
-        all_ids_to_resolve = list(
-            issuer_ids.union(corporation_ids).union(start_location_ids).union(end_location_ids)
-        )
-
-        # Player-owned structures have IDs > 10^11 and are not resolvable
-        # by the public /universe/names/ endpoint. We filter them out.
-        original_id_count = len(all_ids_to_resolve)
-        all_ids_to_resolve = [
-            id_ for id_ in all_ids_to_resolve if id_ < 100_000_000_000
-        ]
-        filtered_count = len(all_ids_to_resolve)
-        if original_id_count > filtered_count:
-            logger.info(f"Filtered out {original_id_count - filtered_count} unresolvable structure IDs.")
+        all_ids_to_resolve = _collect_resolvable_ids(contracts)
 
         # Step 2: Resolve all IDs to names in a single batch operation.
         id_to_name_map = {}
@@ -250,37 +372,7 @@ class ContractAggregationService:
             logger.info(f"Successfully resolved {len(id_to_name_map)} names.")
 
         # Step 3: Transform contracts into the format for the database model, enriching with names.
-        contract_values = [
-            {
-                "contract_id": c["contract_id"],
-                "issuer_id": c["issuer_id"],
-                "issuer_corporation_id": c["issuer_corporation_id"],
-                "start_location_id": c.get("start_location_id"),
-                "start_location_region_id": c.get("_hb_region_id"),
-                "end_location_id": c.get("end_location_id"),
-                "type": c["type"],  # Direct mapping - field names now match
-                "status": c.get("status", "unknown"),
-                "title": c.get("title"),
-                "for_corporation": c.get("for_corporation", False),
-                "date_issued": _parse_datetime(c["date_issued"]),
-                "date_expired": _parse_datetime(c["date_expired"]),
-                "date_completed": _parse_datetime(c.get("date_completed")),
-                "price": c.get("price"),
-                "collateral": c.get("collateral", 0.0),  # Default to 0.0 if null
-                "reward": c.get("reward"),
-                "volume": c.get("volume"),
-                # Denormalized data for search performance
-                "start_location_name": id_to_name_map.get(c.get("start_location_id")),
-                "issuer_name": id_to_name_map.get(c.get('issuer_id')),
-                "issuer_corporation_name": id_to_name_map.get(c.get('issuer_corporation_id')),
-                # is_ship_contract and item_processing_status are deliberately
-                # ABSENT: they are maintained by item enrichment, and the upsert
-                # copies every mapped column on conflict — including them here
-                # decayed ship flags to False whenever items were ETag-304'd and
-                # skipped re-enrichment. Column defaults cover fresh inserts.
-            }
-            for c in contracts
-        ]
+        contract_values = _build_contract_rows(contracts, id_to_name_map)
 
         batch_size = 500  # Number of contracts to process in each batch
         total_contracts = len(contract_values)
@@ -294,6 +386,43 @@ class ContractAggregationService:
 
         logger.info(f"Finished upserting all {total_contracts} contracts.")
 
+        all_items, processed_contract_ids = await self._fetch_item_rows(contracts)
+
+        # Enrich items with static type data BEFORE upserting so a single
+        # write carries names/categories, and collect which contracts hold an
+        # included ship (fills the gap that left is_ship_contract permanently
+        # False — "will be updated later" never happened; found during the
+        # /impeccable design phase when the ships-only default matched nothing).
+        ship_contract_ids = await self._enrich_items_and_find_ships(all_items)
+
+        if all_items:
+            logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
+            BATCH_SIZE = 50  # Number of items to process in each batch
+            for i in range(0, len(all_items), BATCH_SIZE):
+                batch_items = all_items[i:i + BATCH_SIZE]
+                logger.info(f"Upserting batch of {len(batch_items)} contract items (items {i + 1}-{i + len(batch_items)} of {len(all_items)}).")
+                await bulk_upsert(db_session, ContractItem, batch_items)
+            logger.info(f"Finished upserting all {len(all_items)} contract items.")
+        else:
+            logger.info("No new contract items to process.")
+
+        for chunk in _chunk_ids(ship_contract_ids):
+            await db_session.execute(
+                update(Contract)
+                .where(Contract.contract_id.in_(chunk))
+                .values(is_ship_contract=True)
+            )
+        if ship_contract_ids:
+            logger.info(f"Flagged {len(ship_contract_ids)} contracts as ship contracts.")
+
+        await self._update_item_processing_status(db_session, processed_contract_ids, all_items)
+
+    async def _fetch_item_rows(self, contracts: List[dict]) -> tuple[list[dict], set[int]]:
+        """Fetch contract items from ESI, returning the item rows and the contract IDs reached.
+
+        A per-contract fetch failure is isolated: that contract is left out of the
+        processed set and the run continues.
+        """
         all_items: List[dict] = []
         processed_contract_ids: set[int] = set()
         for contract in contracts:
@@ -327,33 +456,15 @@ class ContractAggregationService:
             except Exception as e:
                 logger.error(f"Failed to fetch items for contract {contract['contract_id']}: {e}", exc_info=True)
 
-        # Enrich items with static type data BEFORE upserting so a single
-        # write carries names/categories, and collect which contracts hold an
-        # included ship (fills the gap that left is_ship_contract permanently
-        # False — "will be updated later" never happened; found during the
-        # /impeccable design phase when the ships-only default matched nothing).
-        ship_contract_ids = await self._enrich_items_and_find_ships(all_items)
+        return all_items, processed_contract_ids
 
-        if all_items:
-            logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
-            BATCH_SIZE = 50  # Number of items to process in each batch
-            for i in range(0, len(all_items), BATCH_SIZE):
-                batch_items = all_items[i:i + BATCH_SIZE]
-                logger.info(f"Upserting batch of {len(batch_items)} contract items (items {i+1}-{i+len(batch_items)} of {len(all_items)}).")
-                await bulk_upsert(db_session, ContractItem, batch_items)
-            logger.info(f"Finished upserting all {len(all_items)} contract items.")
-        else:
-            logger.info("No new contract items to process.")
-
-        for chunk in _chunk_ids(ship_contract_ids):
-            await db_session.execute(
-                update(Contract)
-                .where(Contract.contract_id.in_(chunk))
-                .values(is_ship_contract=True)
-            )
-        if ship_contract_ids:
-            logger.info(f"Flagged {len(ship_contract_ids)} contracts as ship contracts.")
-
+    async def _update_item_processing_status(
+        self,
+        db_session: AsyncSession,
+        processed_contract_ids: set[int],
+        all_items: list[dict],
+    ) -> None:
+        """Record per-contract item enrichment outcome on the Contract rows."""
         # item_processing_status must not imply enrichment SUCCESS: a contract
         # whose type/group resolution failed keeps NULL enrichment (the
         # graceful-degrade path), so a future consumer trusting 'COMPLETED' would
@@ -459,7 +570,7 @@ class ContractAggregationService:
 async def get_aggregation_service(
     # cache: Redis = Depends(get_cache), # Service no longer takes cache client directly
     esi_client: ESIClient = Depends(get_esi_client),
-    settings: Settings = Depends(get_settings), # Use the new get_settings dependency
+    settings: Settings = Depends(get_settings),  # Use the new get_settings dependency
 ) -> ContractAggregationService:
     """
     FastAPI dependency to get an instance of the ContractAggregationService.

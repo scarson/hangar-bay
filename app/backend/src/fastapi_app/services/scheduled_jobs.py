@@ -16,10 +16,21 @@ async def run_aggregation_job(aggregation_service: ContractAggregationService):
     This function now expects an already initialized ContractAggregationService instance.
     """
     logger.info("Executing scheduled job: run_aggregation_job with injected service")
-    
+
     try:
         await aggregation_service.run_aggregation()
     except Exception as e:
         logger.error(f"An error occurred during the scheduled aggregation job: {e}", exc_info=True)
     finally:
         logger.info("Finished scheduled job: run_aggregation_job")
+
+
+async def run_watchlist_matcher_job(matcher_service):
+    """Top-level, importable wrapper for the watchlist matcher (RedisJobStore pickles the reference)."""
+    logger.info("Executing scheduled job: run_watchlist_matcher_job")
+    try:
+        await matcher_service.run_matching()
+    except Exception as e:
+        logger.error(f"An error occurred during the scheduled watchlist matcher job: {e}", exc_info=True)
+    finally:
+        logger.info("Finished scheduled job: run_watchlist_matcher_job")

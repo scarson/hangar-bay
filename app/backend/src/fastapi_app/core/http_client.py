@@ -4,6 +4,7 @@ from .config import get_settings
 
 settings = get_settings()
 
+
 def init_http_client(app: FastAPI) -> None:
     """
     Initializes and attaches a shared httpx.AsyncClient to the application state.
@@ -16,7 +17,7 @@ def init_http_client(app: FastAPI) -> None:
     http_client = httpx.AsyncClient(
         base_url=settings.ESI_BASE_URL,
         headers=headers,
-        timeout=15.0, # Sensible default timeout
+        timeout=15.0,  # Sensible default timeout
     )
     app.state.http_client = http_client
 

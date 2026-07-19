@@ -27,9 +27,10 @@ This document serves three audiences. Start here, then go directly to the sectio
 | § | Section | You're working on... | Entries | Checklist |
 |---|---------|---------------------|---------|-----------|
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, PROXY-1 | §1.C |
-| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1 | §2.C |
-| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6 | §3.C |
+| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
+| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, upstream status | ESI-1 | §4.C |
+| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -101,9 +102,22 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### SQLA-2: `ON CONFLICT` against a partial unique index must restate the index predicate
+
+**The Flaw:** `INSERT … ON CONFLICT DO NOTHING` / `DO UPDATE` targeting a **partial** unique index (`CREATE UNIQUE INDEX … WHERE <predicate>`) will not infer the index from `index_elements` alone. Postgres raises `no unique or exclusion constraint matching the ON CONFLICT specification` at runtime — every insert fails, not just conflicting ones.
+
+**Why It Matters:** The failure is runtime-only (schema and query both look valid), so it surfaces on the first real insert, not at review or migration time. For a scheduled writer (the watchlist matcher) that means every run raises and zero notifications are ever created.
+
+**The Fix:** Restate the partial-index predicate in the conflict clause as a **literal identical to the index DDL**. SQLAlchemy: `insert(...).on_conflict_do_nothing(index_elements=["user_id", "contract_id", "watch_type_id"], index_where=text("type = 'watchlist_match'"))`. Use `text(...)`, not the ORM comparison `Notification.type == "watchlist_match"` — the latter compiles to a parameterized `type = $1`, which Postgres's partial-index implication check cannot match against the index's literal predicate, so inference can fail. Also populate **every** column in the index — Postgres treats NULLs as distinct in a unique index, so a NULL-bearing dedup column would never conflict and hollow out the guarantee.
+
+**Where It Bit Us:** Pre-empted in the M3 watchlist-matcher design (`docs/superpowers/specs/2026-07-17-m3-account-features-design.md` §4.4); the partial index `uq_notifications_watchlist_dedup` on `(user_id, contract_id, watch_type_id) WHERE type='watchlist_match'` requires the `index_where` restatement or the matcher's core insert raises on every run. See testing-pitfalls.md TEST-11.
+
+---
+
 ### §2.C — Review Checklist
 
 - [ ] **Pagination over a one-to-many join paginates distinct parent IDs, not duplicated joined rows** — grouped subquery with aggregate-based ordering; page entities re-loaded and restored to the ID order (SQLA-1)
+- [ ] **`ON CONFLICT` against a partial unique index restates the index predicate** — `index_where=` matches the index's `WHERE`, and every indexed column is non-NULL on insert (Postgres NULLs never conflict) (SQLA-2)
 
 ---
 
@@ -177,6 +191,30 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### ENV-7: `pdm run format` is repo-wide `black .` on a non-black-formatted codebase
+
+**The Flaw:** The `format` pdm script runs `black .` across the whole backend, but the codebase was never black-formatted — the 2026-07-18 lint-debt cleanup (PR #47) used targeted autopep8 + hand fixes and explicitly REJECTED a full black run (60 files / 8.6k-line diff). Running `pdm run format` reformats ~64 files and re-exposes suppressed lint findings: black moves/reflows lines carrying `# noqa: C901` markers and introduces one-line `def` styling that trips E704, so `pdm run lint` goes red on files you never touched.
+
+**Why It Matters:** An agent following a "format then lint" step churns the entire tree in one command; the resulting diff buries the real change, breaks `git blame`, and the re-exposed C901/E704 findings look like pre-existing lint debt rather than a consequence of the command just run.
+
+**The Fix:** Never run `pdm run format` repo-wide. Format NEW files individually: `.venv/bin/black <file>` (verify with `.venv/bin/black --check <file>` + `.venv/bin/flake8 <file>`). Recovery if run by accident: `git restore app/backend/src` (untracked new files keep their formatting). Adopting black repo-wide remains a separate decision for Sam.
+
+**Where It Bit Us:** Grafana Cloud migration Phase 3 (2026-07-18) — the plan's original "run `pdm run format`" step churned 64 files; fully reverted before commit.
+
+---
+
+### ENV-8: Gitignored credential files exist only in the main checkout — worktrees start without them
+
+**The Flaw:** The 1Password-Environments-exported root `.env` (and every other gitignored credential file) lives only in `/Users/sam/Code/hangar-bay` — `git worktree add` copies tracked files, so agent worktrees under `.claude/worktrees/` never contain it. Compounding it, `.mcp.json`'s `${RENDER_API_KEY}` expansion happens once, at Claude Code LAUNCH, from the launching process's environment — a session started without the export has a dead Render MCP for its whole lifetime.
+
+**Why It Matters:** The failure is silent and looks like an auth problem, not a file-location problem: the MCP answers `unauthorized`, `$RENDER_API_KEY` is empty in every Bash shell, and nothing points at the main checkout. It cost the M4 execution session its entire Phase 0 spike (2026-07-19).
+
+**The Fix:** For the MCP: launch Claude Code from a shell that exported the env first (e.g. `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` before `claude`). For curl/CLI use from ANY worktree: source the main checkout's file inside each Bash invocation that needs it (shell state does not persist across tool calls) — `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` — then reference `$RENDER_API_KEY`. NEVER cat/echo/print the file or the variable, never copy it into a worktree, never commit it.
+
+**Where It Bit Us:** M4 execution session (2026-07-18/19): the Phase 0 Render spike was blocked all session and substituted with a docs-based verification (plan Deviation D-1) because the session ran from a worktree with no launch-time export.
+
+---
+
 ### §3.C — Review Checklist
 
 - [ ] **Complex settings fields (e.g. `List[int]`) are supplied as JSON** — `AGGREGATION_REGION_IDS=[...]`; env is loaded from `app/backend/src/.env`; `ESI_USER_AGENT` is set; the single consolidated `core/config.py` Settings class is satisfied (ENV-1)
@@ -185,6 +223,8 @@ This document serves three audiences. Start here, then go directly to the sectio
 - [ ] **`Settings.model_config` keeps `extra="ignore"`** — any new config field is also documented in `.env.example` (ENV-4)
 - [ ] **Backend venv/CI run Python 3.14** — the FastAPI 0.115 / Python-3.12 hold is resolved (ENV-5, superseded); keep the two CI `python-version` pins in sync and never mask interpreter warnings with a filter (migrate off the deprecated API instead)
 - [ ] **Deleting a debug print/function also drops any module-level import it orphaned** — flake8 ignores F401 here so it won't catch it, but F811 will trip on an unrelated function (ENV-6)
+- [ ] **No repo-wide `pdm run format`** — the codebase is not black-formatted; format new files individually with `.venv/bin/black <file>` (ENV-7)
+- [ ] **Sessions needing platform credentials source the MAIN checkout's root `.env` per Bash call (worktrees lack it), and MCP servers with `${VAR}` config get the export at launch** — never print or copy the values (ENV-8)
 
 ---
 
@@ -218,6 +258,43 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+# Section 5: Deployment & Platform
+
+> **Reader context:** I'm wiring production configuration — platform-injected env vars, process topology, launch commands — for a managed host (Render or similar).
+
+---
+
+### DEPLOY-1: Managed platforms inject `postgresql://` URLs; the async stack needs `postgresql+asyncpg://`
+
+**The Flaw:** Render (and most managed platforms) injects `DATABASE_URL` with the plain `postgresql://` scheme, but `create_async_engine` — both the app engine (`db.py`) and Alembic's CLI path (`alembic/env.py`) — requires the driver-qualified `postgresql+asyncpg://` scheme.
+
+**Why It Matters:** The very first production boot (and the pre-deploy `alembic upgrade head`) dies on `sqlalchemy.exc.InvalidRequestError` before serving a request — a deploy that cannot come up at all, discovered only on the platform.
+
+**The Fix:** Normalize in `Settings` — a `mode="before"` field validator on `DATABASE_URL` rewrites `postgresql://` → `postgresql+asyncpg://` (`core/config.py`). Never hand-edit platform-injected URLs; blueprint references stay untouched (I-5).
+
+**Where It Bit Us:** M4 codex design review (pre-deploy, 2026-07-18) — caught before the first deploy; the spike-substitute docs verification confirmed Render's documented format is `postgresql://user:password@host:port/database`.
+
+---
+
+### DEPLOY-2: uvicorn stays `--workers 1` — the scheduler runs in-process
+
+**The Flaw:** The APScheduler ingestion job runs inside the FastAPI process. N uvicorn workers = N schedulers racing the Valkey ingestion lock every tick.
+
+**Why It Matters:** The fencing-tokened lock makes overlap a wasted-tick problem rather than data corruption, but N−1 workers burn every tick contending, logs fill with skip warnings, and the "single scheduler" operational invariant (I-3) silently becomes a lie that masks real double-scheduling bugs.
+
+**The Fix:** Every production launch command pins `--workers 1` (Dockerfile CMD, any future Procfile). Scale reads by splitting the scheduler out into its own process/service — never by adding workers.
+
+**Where It Bit Us:** Pre-empted in the M4 design (spec §2); the Dockerfile carries the constraint as an inline comment.
+
+---
+
+### §5.C — Review Checklist
+
+- [ ] **`DATABASE_URL` reaches the engine driver-qualified** — the Settings validator normalizes `postgresql://`; no code assumes the platform sends `+asyncpg` (DEPLOY-1)
+- [ ] **Every production launch command pins `--workers 1`** — scaling proposals split the scheduler out instead of raising the worker count (DEPLOY-2)
+
+---
+
 ## Orchestration
 
 Pitfalls that arise when a session dispatches parallel subagents and consolidates their output. The canonical rules live in `docs/git-strategy.md` → §Multi-agent coordination → Output persistence. This section is the discovery hook for plan writers who arrive here via the `writing-plans-enhanced` (or equivalent) mandated-read path — it does NOT restate the rules in full.
@@ -241,6 +318,23 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 ---
 
 # Appendix A: Historical Changelog
+
+## 2026-07-19 — ENV-8 added: worktrees lack gitignored credential files
+
+- Added ENV-8 (gitignored credential files exist only in the main checkout; `${VAR}` MCP expansion is launch-time-only) from the M4 execution session, where it silently blocked the Phase 0 Render spike for the whole session. Fix pattern: launch-time export for MCP, per-Bash-call sourcing of `/Users/sam/Code/hangar-bay/.env` for CLI use, never printing values.
+
+## 2026-07-19 — DEPLOY-1/DEPLOY-2 added: managed-platform URL scheme + single-worker topology
+
+- Added Section 5 (Deployment & Platform) with DEPLOY-1 (`postgresql://` → `postgresql+asyncpg://` normalization in Settings) and DEPLOY-2 (uvicorn `--workers 1`; in-process scheduler) from M4 Phase 3 (plan Task 3.12). DEPLOY-1's fix is implemented and tested (`core/config.py` validator, `test_config.py`); DEPLOY-2 is carried by the production Dockerfile CMD.
+
+## 2026-07-18 — ENV-7 added: repo-wide `pdm run format` trap
+
+- Added ENV-7 from the Grafana Cloud observability migration (`docs/superpowers/plans/2026-07-18-grafana-cloud-observability.md`): `pdm run format` = `black .` churns ~64 files on this non-black codebase and re-exposes noqa'd C901s plus E704. Cross-referenced from the migration plan's Deviations and session memory.
+
+## 2026-07-18 — SQLA-2 added: partial-index ON CONFLICT needs index_where
+
+- Added SQLA-2 (`ON CONFLICT` against a partial unique index must restate the index predicate) from the M3 account-features work (Phase 10, Task 10.1). Pre-empted in the watchlist-matcher design (`docs/superpowers/specs/2026-07-17-m3-account-features-design.md` §4.4); pairs with testing-pitfalls.md TEST-11.
+- Grepped the backend for other `on_conflict` sites: the only partial-index target is `services/watchlist_matcher.py` (already restates `index_where`); `services/auth_service.py` and `services/db_upsert.py` target full unique constraints / primary keys, so SQLA-2 does not apply to them.
 
 ## 2026-07-13 — ENV-5 superseded: FastAPI-current / Python-3.14 migration
 
@@ -276,13 +370,18 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | FASTAPI-2 | Declared-but-unimplemented filter params ship dead controls | MEDIUM | UNIMPLEMENTED | API & Request Binding |
 | PROXY-1 | Trailing-slash 307 escapes a prefix-rewriting proxy | MEDIUM | VALIDATED | API & Request Binding |
 | SQLA-1 | Paginating a joined query paginates joined rows | HIGH | VALIDATED | Data & Persistence |
+| SQLA-2 | ON CONFLICT vs a partial unique index needs index_where | HIGH | VALIDATED | Data & Persistence |
 | ENV-1 | pydantic-settings JSON-decodes complex env fields early | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-2 | Backend restart wipes and re-ingests all data | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-3 | --reload + ingestion + Valkey lock interact badly in dev | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-4 | pydantic-settings rejects unknown .env keys unless extra="ignore" | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-5 | FastAPI 0.115 / Python-3.12 hold (resolved 2026-07-13: FastAPI 0.139 + Python 3.14) | LOW | SUPERSEDED | Environment & Dev Loop |
 | ENV-6 | F811 cascade when removing debug prints/functions | LOW | VALIDATED | Environment & Dev Loop |
+| ENV-7 | `pdm run format` is repo-wide black on a non-black codebase | LOW | VALIDATED | Environment & Dev Loop |
+| ENV-8 | Gitignored credential files exist only in the main checkout | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
+| DEPLOY-1 | Managed platforms inject postgresql:// URLs; async stack needs +asyncpg | HIGH | VALIDATED | Deployment & Platform |
+| DEPLOY-2 | uvicorn stays --workers 1 (in-process scheduler) | MEDIUM | VALIDATED | Deployment & Platform |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
 Severity levels: `CRITICAL` (production data loss / security), `HIGH` (correctness bug under predictable conditions), `MEDIUM` (correctness bug under edge cases), `LOW` (cleanliness / clarity / dev-loop hazard).

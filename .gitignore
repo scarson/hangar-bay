@@ -109,6 +109,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.prod
 .venv
 env/
 venv/
@@ -143,6 +144,8 @@ cython_debug/
 # Hangar Bay specific
 app/backend/.venv/
 app/backend/.env
+app/backend/docker/grafana-cloud.env
+app/backend/docker/grafana-cloud-provisioning.env
 
 # PDM specific (within app/backend/)
 app/backend/.pdm-python
@@ -199,3 +202,9 @@ app/backend/pdm.toml
 
 # Git worktrees — see docs/git-strategy.md
 .claude/worktrees/
+
+# Beads issue-tracker local state (dolt server port, backups, machine config)
+.beads/
+
+# Machine-local skill symlinks into external skill packs
+.claude/skills/

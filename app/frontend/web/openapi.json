@@ -304,6 +304,86 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "NotificationSchema": {
+        "properties": {
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_read": {
+            "title": "Is Read",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "watch_type_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Watch Type Id"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "message",
+          "is_read",
+          "created_at"
+        ],
+        "title": "NotificationSchema",
+        "type": "object"
+      },
+      "NotificationSettingsSchema": {
+        "properties": {
+          "watchlist_alerts_enabled": {
+            "title": "Watchlist Alerts Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "watchlist_alerts_enabled"
+        ],
+        "title": "NotificationSettingsSchema",
+        "type": "object"
+      },
       "PaginatedResponse_ContractSchema_": {
         "properties": {
           "items": {
@@ -337,6 +417,199 @@
           "items"
         ],
         "title": "PaginatedResponse[ContractSchema]",
+        "type": "object"
+      },
+      "PaginatedResponse_NotificationSchema_": {
+        "properties": {
+          "items": {
+            "description": "List of items for the current page",
+            "items": {
+              "$ref": "#/components/schemas/NotificationSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "description": "Current page number",
+            "title": "Page",
+            "type": "integer"
+          },
+          "size": {
+            "description": "Number of items per page",
+            "title": "Size",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "size",
+          "items"
+        ],
+        "title": "PaginatedResponse[NotificationSchema]",
+        "type": "object"
+      },
+      "SavedSearchCreate": {
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "title": "Name",
+            "type": "string"
+          },
+          "search_parameters": {
+            "$ref": "#/components/schemas/SavedSearchParameters"
+          }
+        },
+        "required": [
+          "name",
+          "search_parameters"
+        ],
+        "title": "SavedSearchCreate",
+        "type": "object"
+      },
+      "SavedSearchParameters": {
+        "additionalProperties": false,
+        "description": "Server-side validation model for a saved search's stored filter blob. Mirrors the\nfrontend ContractSearch shape minus `page`; extra=\"forbid\" rejects the inert ME/TE params\n(FASTAPI-2), the wire-only `is_ship_contract`, `page`, and arbitrary junk (design \u00a74.5).",
+        "properties": {
+          "is_bpc": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Bpc"
+          },
+          "max_price": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Price"
+          },
+          "min_price": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Price"
+          },
+          "region_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "exclusiveMinimum": 0.0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region Ids"
+          },
+          "search": {
+            "anyOf": [
+              {
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search"
+          },
+          "ships_only": {
+            "default": true,
+            "title": "Ships Only",
+            "type": "boolean"
+          },
+          "size": {
+            "default": 50,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "sort_by": {
+            "$ref": "#/components/schemas/SortableContractFields",
+            "default": "date_issued"
+          },
+          "sort_direction": {
+            "$ref": "#/components/schemas/SortDirection",
+            "default": "desc"
+          }
+        },
+        "title": "SavedSearchParameters",
+        "type": "object"
+      },
+      "SavedSearchSchema": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "search_parameters": {
+            "$ref": "#/components/schemas/SavedSearchParameters"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "search_parameters",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SavedSearchSchema",
+        "type": "object"
+      },
+      "SavedSearchUpdate": {
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "SavedSearchUpdate",
         "type": "object"
       },
       "SortDirection": {
@@ -398,6 +671,153 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WatchlistItemCreate": {
+        "description": "Add-watchlist body: exactly one of type_id / type_name, plus optional max_price / notes.",
+        "properties": {
+          "max_price": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": 0.01,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISK; >= 0.01 when present.",
+            "title": "Max Price"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "type_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Id"
+          },
+          "type_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Name"
+          }
+        },
+        "title": "WatchlistItemCreate",
+        "type": "object"
+      },
+      "WatchlistItemSchema": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "max_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Price"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "type_id": {
+            "title": "Type Id",
+            "type": "integer"
+          },
+          "type_name": {
+            "title": "Type Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type_id",
+          "type_name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WatchlistItemSchema",
+        "type": "object"
+      },
+      "WatchlistItemUpdate": {
+        "description": "Partial update: omitted field preserves, explicit JSON null clears (via model_fields_set).",
+        "properties": {
+          "max_price": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000000.0,
+                "minimum": 0.01,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Price"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "title": "WatchlistItemUpdate",
         "type": "object"
       }
     }
@@ -576,26 +996,6 @@
         "summary": "Logout",
         "tags": [
           "Auth"
-        ]
-      }
-    },
-    "/cache-test": {
-      "get": {
-        "description": "Temporary endpoint to test cache connectivity and basic operations.",
-        "operationId": "cache_test_cache_test_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Cache Test",
-        "tags": [
-          "Development/Test"
         ]
       }
     },
@@ -1091,10 +1491,728 @@
         ]
       }
     },
-    "/metrics": {
+    "/me/notification-settings": {
       "get": {
-        "description": "Endpoint that serves Prometheus metrics.",
-        "operationId": "metrics_metrics_get",
+        "operationId": "get_notification_settings_me_notification_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsSchema"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          }
+        },
+        "summary": "Get Notification Settings",
+        "tags": [
+          "Notifications"
+        ]
+      },
+      "put": {
+        "operationId": "update_notification_settings_me_notification_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationSettingsSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsSchema"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Notification Settings",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/me/notifications/": {
+      "get": {
+        "operationId": "list_notifications_me_notifications__get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "is_read",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Read"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_NotificationSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Notifications",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/me/notifications/mark-all-read": {
+      "post": {
+        "operationId": "mark_all_read_me_notifications_mark_all_read_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          }
+        },
+        "summary": "Mark All Read",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/me/notifications/{notification_id}/mark-read": {
+      "post": {
+        "operationId": "mark_read_me_notifications__notification_id__mark_read_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "required": true,
+            "schema": {
+              "title": "Notification Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Read",
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/me/saved-searches/": {
+      "get": {
+        "operationId": "list_saved_searches_me_saved_searches__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SavedSearchSchema"
+                  },
+                  "title": "Response List Saved Searches Me Saved Searches  Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          }
+        },
+        "summary": "List Saved Searches",
+        "tags": [
+          "Saved Searches"
+        ]
+      },
+      "post": {
+        "operationId": "create_saved_search_me_saved_searches__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchSchema"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Per-user saved-search cap reached"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Duplicate saved-search name"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Saved Search",
+        "tags": [
+          "Saved Searches"
+        ]
+      }
+    },
+    "/me/saved-searches/{search_id}": {
+      "delete": {
+        "operationId": "delete_saved_search_me_saved_searches__search_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "search_id",
+            "required": true,
+            "schema": {
+              "title": "Search Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Saved search not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Saved Search",
+        "tags": [
+          "Saved Searches"
+        ]
+      },
+      "put": {
+        "operationId": "rename_saved_search_me_saved_searches__search_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "search_id",
+            "required": true,
+            "schema": {
+              "title": "Search Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchSchema"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Saved search not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Duplicate saved-search name"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Saved Search",
+        "tags": [
+          "Saved Searches"
+        ]
+      }
+    },
+    "/me/watchlist-items/": {
+      "get": {
+        "operationId": "list_watchlist_items_me_watchlist_items__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WatchlistItemSchema"
+                  },
+                  "title": "Response List Watchlist Items Me Watchlist Items  Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          }
+        },
+        "summary": "List Watchlist Items",
+        "tags": [
+          "Watchlist"
+        ]
+      },
+      "post": {
+        "operationId": "add_watchlist_item_me_watchlist_items__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchlistItemCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistItemSchema"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Cap reached / unknown name / not a published ship"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Already watching this type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "ESI unreachable"
+          }
+        },
+        "summary": "Add Watchlist Item",
+        "tags": [
+          "Watchlist"
+        ]
+      }
+    },
+    "/me/watchlist-items/{item_id}": {
+      "delete": {
+        "operationId": "delete_watchlist_item_me_watchlist_items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Watchlist Item",
+        "tags": [
+          "Watchlist"
+        ]
+      },
+      "put": {
+        "operationId": "update_watchlist_item_me_watchlist_items__item_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchlistItemUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchlistItemSchema"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Watchlist Item",
+        "tags": [
+          "Watchlist"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "ready_ready_get",
         "responses": {
           "200": {
             "content": {
@@ -1105,7 +2223,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Metrics"
+        "summary": "Ready",
+        "tags": [
+          "Ops"
+        ]
       }
     }
   }

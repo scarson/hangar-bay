@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # sets ENVIRONMENT=development, so copying it preserves the dev workflow.
     ENVIRONMENT: Literal["development", "production", "test"] = "production"
     LOG_LEVEL: str = "INFO"
+    # When set, JSON logs are ALSO written to this file (one JSON object per line),
+    # for shipping to Grafana Cloud Loki via the Alloy tailer (docker/alloy/config.alloy).
+    LOG_FILE: str = ""
     # Fail-closed opt-in for the destructive dev-only drop_all/create_all recreate
     # cycle at startup (see main.create_db_tables). Requires BOTH this flag true
     # AND ENVIRONMENT == "development"; with ENVIRONMENT secure-by-default to
@@ -49,6 +52,10 @@ class Settings(BaseSettings):
     SESSION_ABSOLUTE_TTL_SECONDS: int = 2_592_000  # 30 days (hard cap)
     TOKEN_CIPHER_KEYS: SecretStr = SecretStr("")   # comma-separated Fernet keys, first=primary
 
+    # Observability — when set, /metrics requires "Authorization: Bearer <token>";
+    # empty (dev default) leaves /metrics open (design spec §8.3).
+    METRICS_TOKEN: SecretStr = SecretStr("")
+
     # Aggregation
     AGGREGATION_SCHEDULER_INTERVAL_SECONDS: int = 3600
     AGGREGATION_REGION_IDS: List[int] = Field(default_factory=lambda: [10000002])
@@ -57,11 +64,28 @@ class Settings(BaseSettings):
         description="For dev, limit the number of contracts processed. Set to None or 0 to disable.",
     )
 
+    # --- M3 account features ---
+    # Per-user soft caps (best-effort count-checks, design §3.5).
+    MAX_SAVED_SEARCHES_PER_USER: int = 100
+    MAX_WATCHLIST_ITEMS_PER_USER: int = 200
+    WATCHLIST_MATCH_INTERVAL_SECONDS: int = 900        # 15 min
+    WATCHLIST_MATCH_LOCK_TTL_SECONDS: int = 900
+    NOTIFICATION_RETENTION_DAYS: int = 90              # prune window (matcher §4.4 step 5)
+
     # Database + cache
     DATABASE_URL: str = Field(..., description="SQLAlchemy database connection string.")
     CACHE_URL: str = Field(..., description="Redis/Valkey cache connection string.")
     DATABASE_URL_TESTS: Optional[PostgresDsn] = None   # conftest requires this
     CACHE_URL_TESTS: Optional[AnyUrl] = None
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url_driver(cls, value: Any) -> Any:
+        """Render/most managed platforms inject postgresql:// URLs; the async engine and
+        Alembic require the asyncpg driver scheme (design spec §4)."""
+        if isinstance(value, str) and value.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + value[len("postgresql://"):]
+        return value
 
     @field_validator("AGGREGATION_REGION_IDS", mode="before")
     @classmethod

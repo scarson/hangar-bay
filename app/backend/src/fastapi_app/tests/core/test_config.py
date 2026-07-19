@@ -110,6 +110,26 @@ def test_region_ids_validator_direct_construction_forms(monkeypatch):
     assert s.AGGREGATION_REGION_IDS == [10000002]
 
 
+def test_database_url_plain_postgresql_scheme_is_normalized_to_asyncpg():
+    s = Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql://user:pw@host:5432/db",
+        CACHE_URL="redis://localhost:6379/0",
+        ESI_USER_AGENT="test-agent",
+    )
+    assert s.DATABASE_URL == "postgresql+asyncpg://user:pw@host:5432/db"
+
+
+def test_database_url_asyncpg_scheme_passes_through_unchanged():
+    s = Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql+asyncpg://user:pw@host:5432/db",
+        CACHE_URL="redis://localhost:6379/0",
+        ESI_USER_AGENT="test-agent",
+    )
+    assert s.DATABASE_URL == "postgresql+asyncpg://user:pw@host:5432/db"
+
+
 def test_get_settings_returns_the_singleton():
     assert get_settings() is settings
 
@@ -119,3 +139,12 @@ def test_single_base_registry_shared_by_models():
     from fastapi_app.models.contracts import Contract
     assert Contract.__table__.metadata is Base.metadata
     assert "contracts" in Base.metadata.tables
+
+
+def test_engine_pool_production_settings():
+    from fastapi_app.db import async_engine
+    # _pre_ping/_max_overflow are private pool attrs — version-coupled to SQLAlchemy 2.x;
+    # if a bump breaks these, fix the ATTRIBUTE ACCESS, never the config being asserted.
+    assert async_engine.pool._pre_ping is True
+    assert async_engine.pool.size() == 5
+    assert async_engine.pool._max_overflow == 5

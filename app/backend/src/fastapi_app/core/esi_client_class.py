@@ -80,7 +80,7 @@ class ESIClient:
         if self._managed_redis_client:
             await self._managed_redis_client.close()
 
-    async def get_esi_data_with_etag_caching(
+    async def get_esi_data_with_etag_caching(  # noqa: C901
         self, path: str, all_pages: bool = False, ignore_404: bool = False
     ) -> List[Dict[str, Any]]:
         """
@@ -131,7 +131,7 @@ class ESIClient:
             if response.status_code == 204:
                 logger.debug(f"Received 204 for {paginated_path}, treating as end of pages.")
                 break
-            
+
             page_data = []
             if response.status_code == 304:
                 logger.debug(f"ETag cache hit for {paginated_path}. Serving data from cache.")
@@ -167,10 +167,10 @@ class ESIClient:
 
             if not all_pages:
                 break
-            
+
             if not page_data:
                 break
-            
+
             total_pages_header = response.headers.get("X-Pages")
             if total_pages_header and page >= int(total_pages_header):
                 break
@@ -189,6 +189,46 @@ class ESIClient:
         path = f"/v1/contracts/public/items/{contract_id}/"
         return await self.get_esi_data_with_etag_caching(path)
 
+    async def _get_with_transient_retry(
+        self, path: str, headers: Optional[Dict[str, str]] = None
+    ) -> httpx.Response:
+        """GET with bounded retry on transient failures (5xx + network errors).
+
+        4xx responses return normally — callers decide what non-5xx statuses mean.
+        Exhausted retries surface as ESIRequestFailedError (status carried when the
+        failure was HTTP, absent for pure network errors).
+        """
+        max_retries = 3
+        backoff_factor = 0.5  # seconds
+        response = None
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                response = await self.http_client.get(path, headers=headers)
+                if response.status_code < 500:
+                    last_exception = None
+                    break
+                last_exception = httpx.HTTPStatusError(
+                    f"Server error '{response.status_code}'", request=response.request, response=response
+                )
+                logger.warning(
+                    f"ESI request to {path} failed with status {response.status_code}. "
+                    f"Attempt {attempt + 1}/{max_retries}."
+                )
+            except (httpx.ReadTimeout, httpx.ConnectError) as e:
+                last_exception = e
+                logger.warning(f"Network error for {path} on attempt {attempt + 1}/{max_retries}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(backoff_factor * (2 ** attempt))
+
+        if last_exception is not None:
+            if isinstance(last_exception, httpx.HTTPStatusError):
+                raise ESIRequestFailedError(
+                    status_code=last_exception.response.status_code, message=str(last_exception)
+                )
+            raise ESIRequestFailedError(message=f"Network error for {path}: {last_exception}")
+        return response
+
     async def _get_esi_object(self, path: str, cache_seconds: int = 86_400) -> dict[str, Any]:
         """GET a single-OBJECT ESI endpoint with a plain Valkey TTL cache.
 
@@ -206,42 +246,19 @@ class ESIClient:
         except Exception as e:
             logger.warning(f"Object cache read failed for {path}: {e}")
 
-        # Bounded retry/backoff mirroring get_esi_data_with_etag_caching: retry
-        # only transient failures (5xx + network errors) so a blip on
+        # Transient failures (5xx + network) are retried so a blip on
         # /universe/types|groups doesn't silently un-enrich a run's ship contracts.
         # 4xx (e.g. 404) still falls straight through to raise_for_status below.
-        max_retries = 3
-        backoff_factor = 0.5  # seconds
-        response = None
-        last_exception = None
-        for attempt in range(max_retries):
-            try:
-                response = await self.http_client.get(path)
-                if response.status_code < 500:
-                    last_exception = None
-                    break
-                last_exception = httpx.HTTPStatusError(
-                    f"Server error '{response.status_code}'", request=response.request, response=response
-                )
-                logger.warning(
-                    f"ESI object request to {path} failed with status {response.status_code}. "
-                    f"Attempt {attempt + 1}/{max_retries}."
-                )
-            except (httpx.ReadTimeout, httpx.ConnectError) as e:
-                last_exception = e
-                logger.warning(f"Network error for {path} on attempt {attempt + 1}/{max_retries}: {e}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(backoff_factor * (2 ** attempt))
-
-        if last_exception is not None:
-            if isinstance(last_exception, httpx.HTTPStatusError):
-                raise ESIRequestFailedError(
-                    status_code=last_exception.response.status_code, message=str(last_exception)
-                )
-            raise ESIRequestFailedError(message=f"Network error for {path}: {last_exception}")
+        response = await self._get_with_transient_retry(path)
 
         response.raise_for_status()
-        data = response.json()
+        # A malformed 2xx body (e.g. an upstream HTML error page) must not escape as a raw
+        # ValueError/500 — decoding failures normalize to ESIRequestFailedError (status 0),
+        # which the caller maps to a retryable 502 alongside network/5xx outages (design §4.5).
+        try:
+            data = response.json()
+        except ValueError:
+            raise ESIRequestFailedError(message=f"Non-JSON body from {path}")
         if not isinstance(data, dict):
             raise ESIRequestFailedError(
                 message=f"Expected JSON object from {path}, got {type(data).__name__}"
@@ -265,7 +282,6 @@ class ESIClient:
         if not ids:
             return {}
 
-
         resolved_names = {}
         unique_ids = sorted(list(set(ids)))
         chunk_size = 1000
@@ -285,3 +301,33 @@ class ESIClient:
                 continue
 
         return resolved_names
+
+    async def resolve_names(self, names: list[str]) -> dict[str, Any]:
+        """Resolve exact EVE names to ids via POST /v1/universe/ids/ (version-pinned per ESI-1).
+
+        Returns the parsed response body — a dict of category → [{id, name}, ...] (e.g.
+        `inventory_types`); an unmatched name yields a 200 with that category absent. Unlike
+        the enrichment fetches this is not cached: watchlist adds are rare and the caller wants
+        an authoritative resolution. Non-2xx statuses and network errors surface as
+        ESIRequestFailedError so the caller can map 4xx→400 / 5xx→502 (design §4.5).
+        """
+        try:
+            response = await self.http_client.post("/v1/universe/ids/", json=names)
+        except httpx.RequestError as e:
+            # RequestError covers ReadTimeout / ConnectError / ConnectTimeout / etc. — any transport
+            # failure surfaces as ESIRequestFailedError so the caller maps it to 502, never a raw 500.
+            raise ESIRequestFailedError(message=f"Network error resolving names: {e}")
+        if not (200 <= response.status_code < 300):
+            raise ESIRequestFailedError(
+                status_code=response.status_code,
+                message=f"universe/ids resolution failed: HTTP {response.status_code}",
+            )
+        try:
+            data = response.json()
+        except ValueError:
+            raise ESIRequestFailedError(message="Non-JSON body from /v1/universe/ids/")
+        if not isinstance(data, dict):
+            raise ESIRequestFailedError(
+                message=f"Expected JSON object from /v1/universe/ids/, got {type(data).__name__}"
+            )
+        return data

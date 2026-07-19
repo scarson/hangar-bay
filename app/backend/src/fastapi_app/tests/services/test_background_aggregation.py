@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import fastapi_app.services.background_aggregation as bg_agg
 from fastapi_app.models.contracts import Contract, ContractItem
 from fastapi_app.services.background_aggregation import ContractAggregationService
+from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
 
 pytestmark = pytest.mark.asyncio
 
@@ -272,29 +273,6 @@ async def test_id_list_updates_batch_across_the_chunk_boundary(
     assert all(r.item_processing_status == "COMPLETED" for r in rows)
 
 
-class _FakeLockRedis:
-    """Minimal in-memory async Redis for the lock's set / eval(CAD) / close path."""
-
-    def __init__(self, store: dict):
-        self.store = store
-
-    async def set(self, key, value, nx=False, ex=None):
-        if nx and key in self.store:
-            return None
-        self.store[key] = value
-        return True
-
-    async def eval(self, script, numkeys, *args):
-        key, token = args[0], args[1]
-        if self.store.get(key) == token:
-            del self.store[key]
-            return 1
-        return 0
-
-    async def close(self):
-        pass
-
-
 async def test_lock_release_deletes_only_its_own_token():
     """Happy path: the holder acquires, then compare-and-deletes its own token."""
     store: dict = {}
@@ -361,3 +339,553 @@ async def test_process_contracts_persists_bpc_flag_and_is_bpc_filter_matches(
     assert response.status_code == 200
     matched_ids = [c["contract_id"] for c in response.json()["items"]]
     assert 900201 in matched_ids
+
+
+async def test_item_fetch_failure_for_one_contract_does_not_abort_batch(db_session: AsyncSession):
+    """One contract's item fetch raising must not prevent the other contract's
+    items from landing, and the failed contract must never be marked processed."""
+    service = _make_service()
+
+    async def items_side_effect(contract_id):
+        if contract_id == 910001:
+            raise RuntimeError("simulated ESI items failure")
+        return [{"record_id": 21, "type_id": 587, "quantity": 1, "is_included": True}]
+
+    service.esi_client.get_contract_items = AsyncMock(side_effect=items_side_effect)
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 64}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    contracts = [
+        dict(_ship_contract_dict(910001)),
+        dict(_ship_contract_dict(910002)),
+    ]
+
+    await service._process_contracts(db_session, contracts)
+
+    item_rows = (
+        await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 910002)
+        )
+    ).scalars().all()
+    assert len(item_rows) == 1  # the healthy contract's items landed
+
+    failed_row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910001)
+        )
+    ).scalar_one()
+    healthy_row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910002)
+        )
+    ).scalar_one()
+    # The model default is 'PENDING_ITEMS' (models/contracts.py) — a contract
+    # whose item fetch failed keeps the default, it is NEVER marked COMPLETED
+    # or ENRICHMENT_INCOMPLETE (both require membership in processed ids).
+    assert failed_row.item_processing_status == "PENDING_ITEMS"
+    assert healthy_row.item_processing_status == "COMPLETED"
+
+
+async def test_structure_ids_are_excluded_from_name_resolution(db_session: AsyncSession, caplog):
+    """The resolvable-ID cut is `id < 100_000_000_000` (10^11): player-structure
+    IDs at or above 10^11 are unresolvable via /universe/names/ and are filtered
+    out of the resolve batch (name column stays NULL). Pin BOTH sides of the
+    boundary so an off-by-one in the extracted helper cannot slip through."""
+    caplog.set_level("INFO")  # the filter log is INFO; default capture level misses it
+    service = _make_service()
+
+    # Name whatever IDs actually reach the resolver. A static map would make the
+    # NULL assertion below pass for the wrong reason (id simply absent from the
+    # map); naming everything passed means a NULL name proves the id was FILTERED.
+    async def name_everything_passed(ids):
+        return {id_: f"Structure {id_}" for id_ in ids}
+
+    service.esi_client.resolve_ids_to_names = AsyncMock(side_effect=name_everything_passed)
+
+    contract = dict(_ship_contract_dict(910003))
+    contract["start_location_id"] = 100_000_000_000      # first excluded id
+    contract["end_location_id"] = 99_999_999_999         # last resolvable id
+    contract["type"] = "courier"  # skip the item-fetch loop entirely
+
+    await service._process_contracts(db_session, [contract])
+
+    resolved_ids = service.esi_client.resolve_ids_to_names.await_args.args[0]
+    assert 99_999_999_999 in resolved_ids
+    assert 100_000_000_000 not in resolved_ids
+    assert "Filtered out 1 unresolvable structure IDs." in caplog.text
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910003)
+        )
+    ).scalar_one()
+    # Excluded from the resolve batch, so it can never acquire a name. Widening the
+    # cut to `<=` would name it "Structure 100000000000" and fail this assertion.
+    assert row.start_location_name is None
+
+
+async def test_resolved_location_names_land_on_persisted_contract_rows(db_session: AsyncSession):
+    """Resolved names reach all three denormalized columns on the persisted row.
+
+    `_build_contract_rows` takes `id_to_name_map` as an explicit parameter, so the
+    resolve step and the row build are wired together at the call site. Nothing else
+    in the suite asserts a POPULATED name, which leaves that wiring free to break
+    silently — an empty map would still produce rows, just nameless ones. This pins
+    all three lookups (start location, issuer, issuer corporation) through the full
+    build-and-upsert path.
+    """
+    service = _make_service()
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            1001: "Test Issuer",
+            2002: "Test Issuer Corp",
+        }
+    )
+    contract = dict(_ship_contract_dict(910004))
+    contract["start_location_id"] = 60003760
+    contract["issuer_id"] = 1001
+    contract["issuer_corporation_id"] = 2002
+    contract["type"] = "courier"  # skip the item-fetch loop entirely
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910004)
+        )
+    ).scalar_one()
+    assert row.start_location_name == "Jita IV - Moon 4 - Caldari Navy Assembly Plant"
+    assert row.issuer_name == "Test Issuer"
+    assert row.issuer_corporation_name == "Test Issuer Corp"
+
+
+async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
+    """A contract whose item fetch failed is retried by the NEXT run, with no sweep.
+
+    `_fetch_item_rows` gates only on contract type, never on item_processing_status,
+    so every run re-fetches items for every item_exchange/auction contract in the
+    batch. A contract left at PENDING_ITEMS by a transient ESI failure therefore
+    recovers on the following run without any retry machinery. Adding a status gate
+    as an "optimization" would strand those contracts permanently — this test is what
+    catches that.
+    """
+    service = _make_service()
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 64}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    contract = dict(_ship_contract_dict(910005))
+
+    # Run 1: the item fetch fails, so the contract is left at the model default.
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=RuntimeError("simulated ESI items failure")
+    )
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910005)
+        )
+    ).scalar_one()
+    assert row.item_processing_status == "PENDING_ITEMS"
+
+    # Run 2: ESI recovers. The same contract is re-fetched with no intervention.
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 31, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    await service._process_contracts(db_session, [contract])
+
+    await db_session.refresh(row)
+    assert row.item_processing_status == "COMPLETED"
+    item_rows = (
+        await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 910005)
+        )
+    ).scalars().all()
+    assert len(item_rows) == 1
+async def test_run_aggregation_reuses_app_session_factory_and_never_logs_database_url(
+    caplog, monkeypatch: pytest.MonkeyPatch
+):
+    """Secret-hygiene + single-engine contract (M4 spec §2/§6): run_aggregation must
+    source its session from fastapi_app.db.AsyncSessionLocal (no per-run engine) and
+    no log line may carry any fragment of DATABASE_URL (a real managed-PG URL prefix
+    can include username and password)."""
+    import fastapi_app.db as app_db
+
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = [10000002]
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 0
+    service.settings.DATABASE_URL = (
+        "postgresql+asyncpg://secret_user:secret_pw@db.internal:5432/hb"
+    )
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[])
+
+    entered = {"count": 0}
+    real_factory = app_db.AsyncSessionLocal
+
+    def recording_factory():
+        entered["count"] += 1
+        return real_factory()
+
+    monkeypatch.setattr(bg_agg, "AsyncSessionLocal", recording_factory, raising=False)
+
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        with caplog.at_level("INFO"):
+            await service.run_aggregation()
+
+    assert entered["count"] == 1, (
+        "run_aggregation must obtain its session from fastapi_app.db.AsyncSessionLocal"
+    )
+    for rec in caplog.records:
+        msg = rec.getMessage()
+        assert "Creating database engine" not in msg
+        assert service.settings.DATABASE_URL[:16] not in msg
+
+
+# --- ingestion-freshness recording (M4 Task 3.3) ---
+# Key contract, pinned: JSON {"finished_at": iso, "outcome": "success|partial|failure",
+# "regions_ok": int, "regions_failed": int, "last_success_at": iso-or-null} at key
+# "hangar-bay:ingest:last_run", no TTL. regions_ok counts regions CHECKED OK — a fetch
+# success AND an ETag-304 both count; success/partial may be recorded only after the
+# shared transaction commits or completes as a valid no-op (the all-304 path);
+# any processing/commit/top-level failure forces outcome="failure".
+
+INGEST_KEY = "hangar-bay:ingest:last_run"
+
+
+def _freshness_service(regions):
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = list(regions)
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 0
+    service.settings.DATABASE_URL = "postgresql+asyncpg://u:p@localhost:5432/unused"
+    return service
+
+
+def _gauge_value():
+    from fastapi_app.core.metrics import last_ingest_success_timestamp
+    return last_ingest_success_timestamp._value.get()
+
+
+async def test_freshness_success_when_all_regions_fetch_ok(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """All regions fetch ok and the transaction commits → outcome success, gauge advances."""
+    import json as _json
+    from datetime import datetime as _dt
+
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(TEST_DATABASE_URL)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(bg_agg, "AsyncSessionLocal", maker, raising=False)
+
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(
+        return_value=[_ship_contract_dict(910001)]
+    )
+
+    store: dict = {}
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+    await engine.dispose()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "success"
+    assert record["regions_ok"] == 1
+    assert record["regions_failed"] == 0
+    _dt.fromisoformat(record["finished_at"])  # raises if not ISO-8601
+    assert record["last_success_at"] == record["finished_at"]
+    assert _gauge_value() > before
+
+
+async def test_freshness_success_when_all_regions_304(monkeypatch: pytest.MonkeyPatch):
+    """The all-304 steady state is a SUCCESS (checked-ok), never a failure."""
+    import json as _json
+
+    service = _freshness_service([10000002, 10000043])
+    from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=_NotModified("304"))
+
+    store: dict = {}
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "success"
+    assert record["regions_ok"] == 2
+    assert record["regions_failed"] == 0
+    assert record["last_success_at"] == record["finished_at"]
+    assert _gauge_value() > before
+
+
+async def test_freshness_partial_when_one_region_fails(monkeypatch: pytest.MonkeyPatch):
+    """One region checked ok, one fetch error → partial; timestamp still advances."""
+    import json as _json
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(
+        side_effect=[[], RuntimeError("ESI 500")]
+    )
+
+    store: dict = {}
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "partial"
+    assert record["regions_ok"] == 1
+    assert record["regions_failed"] == 1
+    assert record["last_success_at"] == record["finished_at"]
+    assert _gauge_value() > before
+
+
+async def test_freshness_failure_when_commit_raises(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """A commit failure forces outcome=failure regardless of fetch counters;
+    last_success_at preserves the PRIOR success and the gauge does not move."""
+    import json as _json
+
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(TEST_DATABASE_URL)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    def boom_factory():
+        session = maker()
+
+        async def boom():
+            raise RuntimeError("simulated commit failure")
+
+        session.commit = boom
+        return session
+
+    monkeypatch.setattr(bg_agg, "AsyncSessionLocal", boom_factory, raising=False)
+
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(
+        return_value=[_ship_contract_dict(910002)]
+    )
+
+    prior = "2026-07-18T00:00:00+00:00"
+    store: dict = {
+        INGEST_KEY: _json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 1,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+    await engine.dispose()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure"
+    assert record["regions_ok"] == 1
+    assert record["regions_failed"] == 0
+    assert record["last_success_at"] == prior
+    assert _gauge_value() == before
+
+
+async def test_freshness_recorder_overwrites_a_non_object_prior_record(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A corrupt (valid JSON, non-object) prior record must be treated as no-prior and
+    OVERWRITTEN — an uncaught AttributeError would skip the SET forever, leaving every
+    future run unable to repair the key."""
+    import json as _json
+
+    service = _freshness_service([10000002])
+    from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=_NotModified("304"))
+
+    store: dict = {INGEST_KEY: "[]"}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert isinstance(record, dict)
+    assert record["outcome"] == "success"
+    assert record["last_success_at"] == record["finished_at"]
+
+
+async def test_run_aggregation_rejects_non_list_region_config(caplog):
+    """A region config that is not a list of int aborts the run before the
+    concurrency lock is ever created, so a misconfigured deployment cannot
+    occupy the lock slot or open a database engine it will never use."""
+    caplog.set_level("ERROR")  # the type guard logs at ERROR
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = "10000002"  # str, not list[int]
+
+    with patch.object(service, "_concurrency_lock") as lock:
+        await service.run_aggregation()
+
+    lock.assert_not_called()  # bailed before ever touching the lock
+    assert "CRITICAL_ERROR_AGG_SERVICE" in caplog.text
+
+
+async def test_run_aggregation_rejects_region_list_containing_a_non_int(caplog):
+    """The type guard has two clauses — `not isinstance(..., list)` AND
+    `not all(isinstance(x, int) ...)`. A LIST carrying a non-int element clears
+    the first clause and must be caught by the second: env parsing can yield
+    `["10000002"]` from a JSON string list, which would otherwise reach ESI as a
+    string region id. Asserts the exact level and full message, so dropping the
+    element check cannot be masked by some other ERROR record."""
+    caplog.set_level("ERROR")
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = [10000002, "not-an-int"]
+
+    with patch.object(service, "_concurrency_lock") as lock:
+        await service.run_aggregation()
+
+    lock.assert_not_called()  # bailed before ever touching the lock
+    assert [(r.levelname, r.getMessage()) for r in caplog.records] == [
+        (
+            "ERROR",
+            "CRITICAL_ERROR_AGG_SERVICE: AGGREGATION_REGION_IDS is not a list of int: "
+            "[10000002, 'not-an-int'] (type: <class 'list'>) Aborting aggregation.",
+        )
+    ]
+
+
+async def test_run_aggregation_skips_on_empty_region_list(caplog):
+    """An empty list clears the type guard (all() is vacuously true) and trips
+    the separate emptiness guard, which is a WARNING skip rather than an ERROR
+    abort — and still returns ahead of the lock."""
+    caplog.set_level("WARNING")  # the emptiness guard logs at WARNING
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = []
+
+    with patch.object(service, "_concurrency_lock") as lock:
+        await service.run_aggregation()
+
+    lock.assert_not_called()
+    assert "AGGREGATION_REGION_IDS is empty" in caplog.text
+
+
+# --- Per-region fetch loop -------------------------------------------------
+# regions_ok/regions_failed are load-bearing: they are the sole input to the
+# freshness record's outcome, so a miscount silently changes what readiness
+# reports. These exercise the loop directly; the end-to-end consequences of the
+# same counters are covered by the freshness tests above.
+
+
+async def test_fetch_regions_isolates_one_regions_failure(caplog):
+    """A fetch error in one region must not lose the other region's contracts,
+    and must land in regions_failed rather than regions_ok."""
+    caplog.set_level("ERROR")  # the per-region failure logs at ERROR
+    service = _make_service()
+    service.esi_client.get_public_contracts = AsyncMock(
+        side_effect=[RuntimeError("ESI 500"), [_ship_contract_dict(920001)]]
+    )
+
+    contracts, regions_ok, regions_failed = await service._fetch_regions(
+        [10000002, 10000043]
+    )
+
+    assert [c["contract_id"] for c in contracts] == [920001]
+    assert regions_ok == 1
+    assert regions_failed == 1
+    assert "Failed to fetch contracts for region 10000002" in caplog.text
+
+
+async def test_fetch_regions_counts_a_304_region_as_ok():
+    """A 304 means ESI answered healthily and our data is current — it is a
+    CHECKED-OK region, not a failure, so an all-304 run still reports success."""
+    from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
+
+    service = _make_service()
+    service.esi_client.get_public_contracts = AsyncMock(
+        side_effect=[_NotModified("304"), [_ship_contract_dict(920002)]]
+    )
+
+    contracts, regions_ok, regions_failed = await service._fetch_regions(
+        [10000002, 10000043]
+    )
+
+    assert [c["contract_id"] for c in contracts] == [920002]
+    assert regions_ok == 2
+    assert regions_failed == 0
+
+
+async def test_fetch_regions_stamps_each_contract_with_its_own_region():
+    """Two successful regions: each contract must carry the region it was
+    fetched FROM. A global stamp would give both contracts the same id."""
+    service = _make_service()
+    first = _ship_contract_dict(920003)
+    second = _ship_contract_dict(920004)
+    # The shared fixture pre-stamps every contract with region 10000002, which is
+    # also the FIRST region fetched here — so a run that never stamped anything
+    # would still satisfy the first contract's assertion by accident. Overwrite
+    # both stamps with a value no region uses, making the assertion reachable
+    # only if the fetch loop actually writes the stamp.
+    first["_hb_region_id"] = -1
+    second["_hb_region_id"] = -1
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=[[first], [second]])
+
+    contracts, regions_ok, regions_failed = await service._fetch_regions(
+        [10000002, 10000043]
+    )
+
+    stamped = {c["contract_id"]: c["_hb_region_id"] for c in contracts}
+    assert stamped == {920003: 10000002, 920004: 10000043}
+    assert regions_ok == 2
+    assert regions_failed == 0
+
+
+async def test_apply_dev_limit_truncates_and_warns(caplog):
+    """With a limit configured, an over-limit batch is truncated to the limit."""
+    caplog.set_level("WARNING")  # the DEV_MODE truncation logs at WARNING
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 2
+    batch = [_ship_contract_dict(cid) for cid in (920005, 920006, 920007)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920005, 920006]
+    assert "DEV_MODE: Limiting contracts to process from 3 to 2." in caplog.text
+
+
+async def test_apply_dev_limit_passes_through_when_unset(caplog):
+    """Limit 0 (the production setting) must not truncate or warn."""
+    caplog.set_level("WARNING")
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 0
+    batch = [_ship_contract_dict(cid) for cid in (920008, 920009, 920010)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920008, 920009, 920010]
+    assert "DEV_MODE" not in caplog.text
+
+
+async def test_apply_dev_limit_passes_through_when_none(caplog):
+    """AGGREGATION_DEV_CONTRACT_LIMIT is typed `int | None`, so None is a reachable
+    value distinct from 0. The guard is truthiness-first, so None short-circuits
+    before the `> 0` comparison that would raise on a None operand — the batch
+    passes through untruncated and unwarned, exactly as it does for 0."""
+    caplog.set_level("WARNING")
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = None
+    batch = [_ship_contract_dict(cid) for cid in (920011, 920012, 920013)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920011, 920012, 920013]
+    assert "DEV_MODE" not in caplog.text

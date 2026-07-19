@@ -1,14 +1,17 @@
 # ABOUTME: User upsert (create + owner-hash transfer), token encryption, invalid-grant nulling.
 # ABOUTME: Refresh-on-demand: rotation persistence, outages keep the vault, wrong-key/empty-vault re-auth.
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from fastapi_app.core import token_cipher as tc
 from fastapi_app.core.config import settings
+from fastapi_app.db import Base
 from fastapi_app.models import User
 from fastapi_app.services import auth_service
 from fastapi_app.services.sso import VerifiedIdentity
@@ -181,3 +184,70 @@ async def test_refresh_response_without_refresh_token_keeps_stored_one(db_sessio
         await auth_service.refresh_user_tokens(db_session, client, user)
     assert tc.decrypt_token(user.esi_access_token) == "AT2"
     assert tc.decrypt_token(user.esi_refresh_token) == "RT"   # unchanged, still decryptable
+
+
+@pytest.mark.asyncio
+async def test_concurrent_first_login_both_succeed_single_row():
+    # Two genuinely concurrent first logins for the SAME character_id, on independent connections.
+    # Blocking is enforced by Postgres's unique-index lock on session A's uncommitted insert — NOT
+    # by sleep timing — so the ordering is deterministic. Against the current select-then-insert,
+    # session B raises IntegrityError once A commits (RED); against ON CONFLICT DO UPDATE, B lands
+    # on A's row (GREEN). This test does NOT take the db_session fixture: both sessions must commit
+    # independently, so it manages its own two engines against DATABASE_URL_TESTS.
+    url = str(settings.DATABASE_URL_TESTS)
+    engine_a = create_async_engine(url)
+    engine_b = create_async_engine(url)
+    session_a = None
+    task_b = None
+    try:
+        async with engine_a.begin() as conn:   # commit the schema so BOTH connections see the table
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+        maker_a = async_sessionmaker(engine_a, expire_on_commit=False)
+        maker_b = async_sessionmaker(engine_b, expire_on_commit=False)
+
+        ident_a = VerifiedIdentity(character_id=91000001, character_name="First", owner_hash="OWN1")
+        ident_b = VerifiedIdentity(character_id=91000001, character_name="Second", owner_hash="OWN2")
+
+        session_a = maker_a()
+        user_a = await auth_service.upsert_user(
+            session_a, ident_a, {"access_token": "AT1", "expires_in": 1200}
+        )   # A's insert is flushed but NOT committed — its unique-index entry now blocks B.
+
+        b_out: dict = {}
+
+        async def _upsert_in_session_b():
+            async with maker_b() as session_b:
+                b_out["user"] = await auth_service.upsert_user(
+                    session_b, ident_b, {"access_token": "AT2", "expires_in": 1200}
+                )
+                await session_b.commit()
+
+        task_b = asyncio.create_task(_upsert_in_session_b())
+        await asyncio.sleep(0.1)     # let B reach its insert and BLOCK on A's lock (a lock wait, not a race)
+        assert not task_b.done()     # B is parked on the lock — neither finished nor errored yet
+
+        await session_a.commit()     # release the lock; B now resolves against A's committed row
+        await task_b                  # RED: current select-then-insert raises IntegrityError here. GREEN: B succeeds.
+
+        async with maker_a() as verify:
+            rows = (
+                await verify.execute(select(User).where(User.character_id == 91000001))
+            ).scalars().all()
+        assert len(rows) == 1                       # exactly one users row — no duplicate
+        assert user_a.character_id == 91000001
+        assert b_out["user"].character_id == 91000001
+        assert rows[0].owner_hash == "OWN2"         # B was the last writer — updated A's row in place
+    finally:
+        if task_b is not None:       # never orphan the background task (keeps output pristine on failure)
+            task_b.cancel()
+            try:
+                await task_b
+            except BaseException:
+                pass
+        if session_a is not None:    # roll A's tx back BEFORE the DDL drop so it can't deadlock on A's lock
+            await session_a.close()
+        async with engine_a.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine_a.dispose()
+        await engine_b.dispose()

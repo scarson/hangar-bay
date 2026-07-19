@@ -12,6 +12,9 @@ async_engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.ENVIRONMENT == "development",  # Log SQL queries in development
     future=True,  # Use SQLAlchemy 2.0 style
+    pool_pre_ping=True,   # managed-PG restarts/pooler idle-kills must not surface as request 500s
+    pool_size=5,          # Render Basic's connection budget is small; scheduler + API share it
+    max_overflow=5,
 )
 
 AsyncSessionLocal = async_sessionmaker(

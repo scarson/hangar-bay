@@ -1,7 +1,7 @@
 """
 Centralized configuration for the application's structured logging.
 
-This module provides the setup_logging function and request ID middleware 
+This module provides the setup_logging function and request ID middleware
 for consistent, structured logging across the application using structlog.
 
 The setup_logging function defined here will be imported and called in main.py during app startup.
@@ -12,6 +12,7 @@ import logging
 import sys
 import uuid
 from contextvars import ContextVar
+from pathlib import Path
 from typing import Any, Dict
 
 import structlog
@@ -33,24 +34,24 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         # Generate a unique request ID
         request_id = str(uuid.uuid4())
-        
+
         # Set the request ID in the context variable
         request_id_contextvar.set(request_id)
-        
+
         # Bind the request ID to structlog context
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id)
-        
+
         # Process the request
         response = await call_next(request)
-        
+
         return response
 
 
 def setup_logging(settings: Settings) -> None:
     """
     Configure structured logging for the application.
-    
+
     Args:
         settings: Application settings containing LOG_LEVEL configuration
     """
@@ -79,20 +80,31 @@ def setup_logging(settings: Settings) -> None:
 
     # Configure root logger to use structlog
     root_logger = logging.getLogger()
-    
-    # Clear any existing handlers
+
+    # Close and clear any existing handlers so reconfiguration does not leak
+    # file descriptors (FileHandler holds an open file until closed).
+    for existing_handler in root_logger.handlers[:]:
+        existing_handler.close()
     root_logger.handlers.clear()
-    
+
     # Add new handler
     handler = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
-    
+
+    # Optional file sink for log shipping (Alloy tails this file into Loki).
+    if settings.LOG_FILE:
+        log_path = Path(settings.LOG_FILE)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_path, encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
+
     # Set log level from settings
     log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
     root_logger.setLevel(log_level)
-    
+
     # Prevent duplicate log messages
     root_logger.propagate = False
 
@@ -100,10 +112,10 @@ def setup_logging(settings: Settings) -> None:
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """
     Get a structured logger instance.
-    
+
     Args:
         name: Name of the logger (typically __name__)
-        
+
     Returns:
         Configured structlog logger instance
     """
@@ -120,7 +132,7 @@ def log_key_event(
 ) -> None:
     """
     Log a key business event with standardized schema.
-    
+
     Args:
         logger: The structlog logger instance
         event: Short, descriptive name for the event
@@ -135,10 +147,10 @@ def log_key_event(
         "duration_ms": duration_ms,
         **kwargs
     }
-    
+
     if error_message:
         log_data["error_message"] = error_message
-    
+
     if success:
         logger.info("Key event completed", **log_data)
     else:
