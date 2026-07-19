@@ -14,6 +14,7 @@ be decomposed without drift.
 """
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -31,6 +32,21 @@ TYPE_PAYLOAD = {"type_id": 587, "name": "Tristan", "group_id": 25, "market_group
 ETAG_PATH = "/v1/test/"
 ETAG_KEY_PAGE_1 = "etag:/v1/test/?page=1"
 DATA_KEY_PAGE_1 = "data:/v1/test/?page=1"
+
+ESI_LOGGER = "fastapi_app.core.esi_client_class"
+
+
+def _debug_messages(caplog) -> list[str]:
+    """The ESI client's DEBUG records, filtered by level rather than substring.
+
+    Matching on `caplog.text` alone would let a record emitted at any other level
+    satisfy an assertion about a debug log.
+    """
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == ESI_LOGGER and record.levelno == logging.DEBUG
+    ]
 
 
 def _ok_response(json_data, content: bytes = b"{}") -> MagicMock:
@@ -215,17 +231,40 @@ async def test_etag_single_page_200_returns_data_and_stores_etag_and_body():
     client.redis_client.set.assert_any_await(DATA_KEY_PAGE_1, body, ex=600)
 
 
-async def test_etag_304_serves_cached_body():
+async def test_200_without_etag_header_is_not_cached():
+    """A page with data but no ETag is returned and neither key is written.
+
+    Caching a body with no validator would strand it: a later conditional request
+    has no etag to send, so the entry could never be revalidated — only served
+    stale or evicted.
+    """
+    response = _etag_response(
+        json_data=[{"contract_id": 1}], content=b'[{"contract_id": 1}]', headers={}
+    )
+    client = _etag_client(AsyncMock(return_value=response))
+
+    data = await client.get_esi_data_with_etag_caching(ETAG_PATH)
+
+    assert data == [{"contract_id": 1}]
+    client.redis_client.set.assert_not_awaited()
+
+
+async def test_etag_304_serves_cached_body(caplog):
     get_mock = AsyncMock(return_value=_etag_response(status_code=304, headers={}))
     client = _etag_client(
         get_mock,
         cache={ETAG_KEY_PAGE_1: b"etag-v1", DATA_KEY_PAGE_1: b'[{"contract_id": 42}]'},
     )
 
-    data = await client.get_esi_data_with_etag_caching(ETAG_PATH)
+    with caplog.at_level(logging.DEBUG, logger=ESI_LOGGER):
+        data = await client.get_esi_data_with_etag_caching(ETAG_PATH)
 
     assert data == [{"contract_id": 42}]
     assert get_mock.await_count == 1
+    assert (
+        "ETag cache hit for /v1/test/?page=1. Serving data from cache."
+        in _debug_messages(caplog)
+    )
 
 
 async def test_etag_304_with_missing_cache_returns_empty():
@@ -359,7 +398,7 @@ async def test_pagination_stops_on_empty_page():
     assert get_mock.await_count == 2
 
 
-async def test_404_with_ignore_404_ends_pagination_quietly():
+async def test_404_with_ignore_404_ends_pagination_quietly(caplog):
     page_1 = _etag_response(
         json_data=[{"contract_id": 1}],
         content=b'[{"contract_id": 1}]',
@@ -369,16 +408,21 @@ async def test_404_with_ignore_404_ends_pagination_quietly():
     get_mock = AsyncMock(side_effect=[page_1, page_2])
     client = _etag_client(get_mock)
 
-    data = await client.get_esi_data_with_etag_caching(
-        ETAG_PATH, all_pages=True, ignore_404=True
-    )
+    with caplog.at_level(logging.DEBUG, logger=ESI_LOGGER):
+        data = await client.get_esi_data_with_etag_caching(
+            ETAG_PATH, all_pages=True, ignore_404=True
+        )
 
     assert data == [{"contract_id": 1}]
     assert get_mock.await_count == 2
     page_2.raise_for_status.assert_not_called()
+    assert (
+        "Received 404 for /v1/test/?page=2, treating as end of pages."
+        in _debug_messages(caplog)
+    )
 
 
-async def test_204_ends_pagination():
+async def test_204_ends_pagination(caplog):
     """204 is terminal regardless of ignore_404."""
     page_1 = _etag_response(
         json_data=[{"contract_id": 1}],
@@ -389,11 +433,16 @@ async def test_204_ends_pagination():
     get_mock = AsyncMock(side_effect=[page_1, page_2])
     client = _etag_client(get_mock)
 
-    data = await client.get_esi_data_with_etag_caching(ETAG_PATH, all_pages=True)
+    with caplog.at_level(logging.DEBUG, logger=ESI_LOGGER):
+        data = await client.get_esi_data_with_etag_caching(ETAG_PATH, all_pages=True)
 
     assert data == [{"contract_id": 1}]
     assert get_mock.await_count == 2
     page_2.raise_for_status.assert_not_called()
+    assert (
+        "Received 204 for /v1/test/?page=2, treating as end of pages."
+        in _debug_messages(caplog)
+    )
 
 
 async def test_single_page_mode_ignores_x_pages():
@@ -412,15 +461,23 @@ async def test_single_page_mode_ignores_x_pages():
 
 
 async def test_retry_exhaustion_raises_esi_request_failed():
+    """Three attempts separated by two exponential backoff waits.
+
+    The delays are asserted from the patched sleep rather than from elapsed time:
+    a wall-clock assertion would both slow the suite and flake under load.
+    """
     get_mock = AsyncMock(return_value=_server_error_response(503))
     client = _etag_client(get_mock)
 
-    with patch("asyncio.sleep", new=AsyncMock()):
+    sleep_mock = AsyncMock()
+    with patch("asyncio.sleep", new=sleep_mock):
         with pytest.raises(ESIRequestFailedError) as excinfo:
             await client.get_esi_data_with_etag_caching(ETAG_PATH)
 
     assert excinfo.value.status_code == 503
     assert get_mock.await_count == 3
+    # Two waits, not three: the final attempt is not followed by a backoff.
+    assert [call.args[0] for call in sleep_mock.await_args_list] == [0.5, 1.0]
 
 
 async def test_200_with_empty_body_treated_as_empty_page():
@@ -468,8 +525,9 @@ async def test_empty_page_breaks_before_x_pages_is_parsed():
 
 
 async def test_404_without_ignore_propagates_http_status_error():
-    """Unlike _get_esi_object, this path does not normalize a 4xx into
-    ESIRequestFailedError — raise_for_status escapes verbatim."""
+    """With ignore_404 off, a 404 reaches raise_for_status and its
+    httpx.HTTPStatusError propagates unchanged — the status is not translated
+    into an ESI-level error, and nothing is cached for the failed page."""
     response = _etag_response(status_code=404, headers={})
     response.raise_for_status.side_effect = httpx.HTTPStatusError(
         "Client error '404 Not Found'", request=response.request, response=response
@@ -479,7 +537,9 @@ async def test_404_without_ignore_propagates_http_status_error():
     with pytest.raises(httpx.HTTPStatusError) as excinfo:
         await client.get_esi_data_with_etag_caching(ETAG_PATH)
 
-    assert not isinstance(excinfo.value, ESIRequestFailedError)
+    response.raise_for_status.assert_called_once()
+    assert excinfo.value.response.status_code == 404
+    client.redis_client.set.assert_not_awaited()
 
 
 async def test_redis_read_failure_propagates_on_etag_path():
@@ -507,15 +567,17 @@ async def test_malformed_cached_json_propagates():
 
 
 async def test_malformed_200_json_propagates():
+    """A decode failure escapes raw here, where _get_esi_object normalizes it to
+    ESIRequestFailedError. The undecodable body must not reach the cache."""
     body = "<html>bad gateway</html>"
     response = _etag_response(content=body.encode(), headers={"ETag": "etag-v1"})
     response.json.side_effect = json.JSONDecodeError("Expecting value", body, 0)
     client = _etag_client(AsyncMock(return_value=response))
 
-    with pytest.raises(json.JSONDecodeError) as excinfo:
+    with pytest.raises(json.JSONDecodeError):
         await client.get_esi_data_with_etag_caching(ETAG_PATH)
 
-    assert not isinstance(excinfo.value, ESIRequestFailedError)
+    client.redis_client.set.assert_not_awaited()
 
 
 async def test_etag_path_tolerates_str_valued_redis_client():
