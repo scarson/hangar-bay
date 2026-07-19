@@ -723,3 +723,33 @@ async def test_freshness_recorder_overwrites_a_non_object_prior_record(
     assert isinstance(record, dict)
     assert record["outcome"] == "success"
     assert record["last_success_at"] == record["finished_at"]
+
+
+async def test_run_aggregation_rejects_non_list_region_config(caplog):
+    """A region config that is not a list of int aborts the run before the
+    concurrency lock is ever created, so a misconfigured deployment cannot
+    occupy the lock slot or open a database engine it will never use."""
+    caplog.set_level("ERROR")  # the type guard logs at ERROR
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = "10000002"  # str, not list[int]
+
+    with patch.object(service, "_concurrency_lock") as lock:
+        await service.run_aggregation()
+
+    lock.assert_not_called()  # bailed before ever touching the lock
+    assert "CRITICAL_ERROR_AGG_SERVICE" in caplog.text
+
+
+async def test_run_aggregation_skips_on_empty_region_list(caplog):
+    """An empty list clears the type guard (all() is vacuously true) and trips
+    the separate emptiness guard, which is a WARNING skip rather than an ERROR
+    abort — and still returns ahead of the lock."""
+    caplog.set_level("WARNING")  # the emptiness guard logs at WARNING
+    service = _make_service()
+    service.settings.AGGREGATION_REGION_IDS = []
+
+    with patch.object(service, "_concurrency_lock") as lock:
+        await service.run_aggregation()
+
+    lock.assert_not_called()
+    assert "AGGREGATION_REGION_IDS is empty" in caplog.text
