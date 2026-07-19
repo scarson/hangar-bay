@@ -460,3 +460,51 @@ async def test_resolved_location_names_land_on_persisted_contract_rows(db_sessio
     assert row.start_location_name == "Jita IV - Moon 4 - Caldari Navy Assembly Plant"
     assert row.issuer_name == "Test Issuer"
     assert row.issuer_corporation_name == "Test Issuer Corp"
+
+
+async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
+    """A contract whose item fetch failed is retried by the NEXT run, with no sweep.
+
+    `_fetch_item_rows` gates only on contract type, never on item_processing_status,
+    so every run re-fetches items for every item_exchange/auction contract in the
+    batch. A contract left at PENDING_ITEMS by a transient ESI failure therefore
+    recovers on the following run without any retry machinery. Adding a status gate
+    as an "optimization" would strand those contracts permanently — this test is what
+    catches that.
+    """
+    service = _make_service()
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 64}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    contract = dict(_ship_contract_dict(910005))
+
+    # Run 1: the item fetch fails, so the contract is left at the model default.
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=RuntimeError("simulated ESI items failure")
+    )
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910005)
+        )
+    ).scalar_one()
+    assert row.item_processing_status == "PENDING_ITEMS"
+
+    # Run 2: ESI recovers. The same contract is re-fetched with no intervention.
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 31, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    await service._process_contracts(db_session, [contract])
+
+    await db_session.refresh(row)
+    assert row.item_processing_status == "COMPLETED"
+    item_rows = (
+        await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 910005)
+        )
+    ).scalars().all()
+    assert len(item_rows) == 1
