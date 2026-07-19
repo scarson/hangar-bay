@@ -98,7 +98,7 @@ The application currently exposes a single static liveness stub — `GET /health
 ## 3. Tools and Technologies (Proposed - Emphasizing OpenTelemetry Compatibility)
 
 *   **Logging Management:**
-    *   *(Placeholder: e.g., ELK Stack, Grafana Loki, OpenTelemetry Collector with backends like Jaeger/Elasticsearch. Prioritize solutions with strong OpenTelemetry OTLP ingest capabilities.)*
+    *   **Chosen (2026-07-18):** Grafana Cloud Loki. The backend's structlog JSON output is duplicated to a file (`LOG_FILE` setting) that a Grafana Alloy container tails and pushes to the managed Loki instance (see `app/backend/docker/compose.observability.yml`).
 
         *   **AI Actionable Checklist (Logging Tooling):**
             *   [ ] When AI sets up logging, ensure logs are configured to be exportable/collectable by the chosen system.
@@ -106,7 +106,7 @@ The application currently exposes a single static liveness stub — `GET /health
 *   **Metrics Collection & Visualization:**
     *   **Backend:** Prometheus client libraries for FastAPI. Consider OpenTelemetry SDKs for metrics as well, which can export to Prometheus.
     *   **System:** Prometheus Node Exporter or similar.
-    *   **Storage & Visualization:** Prometheus (time-series database) & Grafana (dashboards).
+    *   **Storage & Visualization:** Grafana Cloud (managed Prometheus/Mimir + Grafana, org `scarson`), fed by a local Grafana Alloy collector scraping `/metrics`. Dashboards are committed JSON (`app/backend/observability/dashboards/`) provisioned via `pdm run provision-dashboards`. (Replaced the self-hosted Prometheus+Grafana compose stack, 2026-07-18.)
 
         *   **AI Actionable Checklist (Metrics Tooling):**
             *   [ ] AI should ensure FastAPI app exposes a `/metrics` endpoint for Prometheus scraping.

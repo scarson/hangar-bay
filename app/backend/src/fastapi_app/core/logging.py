@@ -12,6 +12,7 @@ import logging
 import sys
 import uuid
 from contextvars import ContextVar
+from pathlib import Path
 from typing import Any, Dict
 
 import structlog
@@ -80,7 +81,10 @@ def setup_logging(settings: Settings) -> None:
     # Configure root logger to use structlog
     root_logger = logging.getLogger()
 
-    # Clear any existing handlers
+    # Close and clear any existing handlers so reconfiguration does not leak
+    # file descriptors (FileHandler holds an open file until closed).
+    for existing_handler in root_logger.handlers[:]:
+        existing_handler.close()
     root_logger.handlers.clear()
 
     # Add new handler
@@ -88,6 +92,14 @@ def setup_logging(settings: Settings) -> None:
     formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
+
+    # Optional file sink for log shipping (Alloy tails this file into Loki).
+    if settings.LOG_FILE:
+        log_path = Path(settings.LOG_FILE)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_path, encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
 
     # Set log level from settings
     log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)

@@ -421,7 +421,7 @@ hangar-bay/
           schemas/                    # Pydantic v2 request/response models
           services/                   # business logic (ESI client, aggregation)
           tests/                      # pytest suite
-      docker/                         # compose.yml + dependency/observability stacks
+      docker/                         # compose.yml + dependency stack + Alloy (ships to Grafana Cloud)
     frontend/
       web/                            # React 19 SPA (Vite)
         src/

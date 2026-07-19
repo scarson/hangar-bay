@@ -42,3 +42,4 @@ export-openapi = "python src/export_openapi.py"
 migrate = {shell = "cd src && python -m alembic upgrade head"}
 makemigration = {shell = "cd src && python -m alembic revision --autogenerate -m {args}"}
 migrate-check = {shell = "cd src && python -m alembic current"}
+provision-dashboards = "python observability/provision_dashboards.py"
