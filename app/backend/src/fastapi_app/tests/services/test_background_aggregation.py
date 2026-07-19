@@ -753,3 +753,92 @@ async def test_run_aggregation_skips_on_empty_region_list(caplog):
 
     lock.assert_not_called()
     assert "AGGREGATION_REGION_IDS is empty" in caplog.text
+
+
+# --- Per-region fetch loop -------------------------------------------------
+# regions_ok/regions_failed are load-bearing: they are the sole input to the
+# freshness record's outcome, so a miscount silently changes what readiness
+# reports. These exercise the loop directly; the end-to-end consequences of the
+# same counters are covered by the freshness tests above.
+
+
+async def test_fetch_regions_isolates_one_regions_failure(caplog):
+    """A fetch error in one region must not lose the other region's contracts,
+    and must land in regions_failed rather than regions_ok."""
+    caplog.set_level("ERROR")  # the per-region failure logs at ERROR
+    service = _make_service()
+    service.esi_client.get_public_contracts = AsyncMock(
+        side_effect=[RuntimeError("ESI 500"), [_ship_contract_dict(920001)]]
+    )
+
+    contracts, regions_ok, regions_failed = await service._fetch_regions(
+        [10000002, 10000043]
+    )
+
+    assert [c["contract_id"] for c in contracts] == [920001]
+    assert regions_ok == 1
+    assert regions_failed == 1
+    assert "Failed to fetch contracts for region 10000002" in caplog.text
+
+
+async def test_fetch_regions_counts_a_304_region_as_ok():
+    """A 304 means ESI answered healthily and our data is current — it is a
+    CHECKED-OK region, not a failure, so an all-304 run still reports success."""
+    from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
+
+    service = _make_service()
+    service.esi_client.get_public_contracts = AsyncMock(
+        side_effect=[_NotModified("304"), [_ship_contract_dict(920002)]]
+    )
+
+    contracts, regions_ok, regions_failed = await service._fetch_regions(
+        [10000002, 10000043]
+    )
+
+    assert [c["contract_id"] for c in contracts] == [920002]
+    assert regions_ok == 2
+    assert regions_failed == 0
+
+
+async def test_fetch_regions_stamps_each_contract_with_its_own_region():
+    """Two successful regions: each contract must carry the region it was
+    fetched FROM. A global stamp would give both contracts the same id."""
+    service = _make_service()
+    first = _ship_contract_dict(920003)
+    second = _ship_contract_dict(920004)
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=[[first], [second]])
+
+    contracts, regions_ok, regions_failed = await service._fetch_regions(
+        [10000002, 10000043]
+    )
+
+    stamped = {c["contract_id"]: c["_hb_region_id"] for c in contracts}
+    assert stamped == {920003: 10000002, 920004: 10000043}
+    assert regions_ok == 2
+    assert regions_failed == 0
+
+
+async def test_apply_dev_limit_truncates_and_warns(caplog):
+    """With a limit configured, an over-limit batch is truncated to the limit."""
+    caplog.set_level("WARNING")  # the DEV_MODE truncation logs at WARNING
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 2
+    batch = [_ship_contract_dict(cid) for cid in (920005, 920006, 920007)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920005, 920006]
+    assert "DEV_MODE: Limiting contracts to process from 3 to 2." in caplog.text
+
+
+async def test_apply_dev_limit_passes_through_when_unset(caplog):
+    """Limit 0 (the production setting) must not truncate or warn."""
+    caplog.set_level("WARNING")
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 0
+    batch = [_ship_contract_dict(cid) for cid in (920008, 920009, 920010)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920008, 920009, 920010]
+    assert "DEV_MODE" not in caplog.text
