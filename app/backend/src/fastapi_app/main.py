@@ -25,6 +25,7 @@ from .services.background_aggregation import ContractAggregationService  # For m
 from .services.watchlist_matcher import WatchlistMatcherService
 from .api import contracts as contracts_router
 from .api import auth as auth_router
+from .api import ops as ops_router
 from .api import saved_searches as saved_searches_router
 from .api import watchlist as watchlist_router
 from .api import notifications as notifications_router
@@ -232,5 +233,6 @@ app.include_router(saved_searches_router.router)   # /me/saved-searches/* (bare,
 app.include_router(watchlist_router.router)   # /me/watchlist-items (bare, PROXY-1)
 app.include_router(notifications_router.router)           # /me/notifications (bare, PROXY-1)
 app.include_router(notifications_router.settings_router)  # /me/notification-settings (bare)
+app.include_router(ops_router.router)                     # /ready (bare; Render health-check gate)
 
 # Further application setup, routers, middleware, etc., will go here
