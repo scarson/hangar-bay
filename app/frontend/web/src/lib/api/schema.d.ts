@@ -72,26 +72,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/cache-test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Cache Test
-         * @description Temporary endpoint to test cache connectivity and basic operations.
-         */
-        get: operations["cache_test_cache_test_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/contracts/": {
         parameters: {
             query?: never;
@@ -310,18 +290,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/metrics": {
+    "/ready": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * Metrics
-         * @description Endpoint that serves Prometheus metrics.
-         */
-        get: operations["metrics_metrics_get"];
+        /** Ready */
+        get: operations["ready_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -776,26 +753,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    cache_test_cache_test_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
             };
         };
     };
@@ -1525,7 +1482,7 @@ export interface operations {
             };
         };
     };
-    metrics_metrics_get: {
+    ready_ready_get: {
         parameters: {
             query?: never;
             header?: never;
