@@ -396,9 +396,18 @@ async def test_structure_ids_are_excluded_from_name_resolution(db_session: Async
     boundary so an off-by-one in the extracted helper cannot slip through."""
     caplog.set_level("INFO")  # the filter log is INFO; default capture level misses it
     service = _make_service()
+
+    # Name whatever IDs actually reach the resolver. A static map would make the
+    # NULL assertion below pass for the wrong reason (id simply absent from the
+    # map); naming everything passed means a NULL name proves the id was FILTERED.
+    async def name_everything_passed(ids):
+        return {id_: f"Structure {id_}" for id_ in ids}
+
+    service.esi_client.resolve_ids_to_names = AsyncMock(side_effect=name_everything_passed)
+
     contract = dict(_ship_contract_dict(910003))
-    contract["start_location_id"] = 99_999_999_999       # last resolvable id
-    contract["end_location_id"] = 100_000_000_000        # first excluded id
+    contract["start_location_id"] = 100_000_000_000      # first excluded id
+    contract["end_location_id"] = 99_999_999_999         # last resolvable id
     contract["type"] = "courier"  # skip the item-fetch loop entirely
 
     await service._process_contracts(db_session, [contract])
@@ -412,7 +421,9 @@ async def test_structure_ids_are_excluded_from_name_resolution(db_session: Async
             select(Contract).where(Contract.contract_id == 910003)
         )
     ).scalar_one()
-    assert row.start_location_name is None  # 99999999999 resolves to nothing in the stub map
+    # Excluded from the resolve batch, so it can never acquire a name. Widening the
+    # cut to `<=` would name it "Structure 100000000000" and fail this assertion.
+    assert row.start_location_name is None
 
 
 async def test_resolved_location_names_land_on_persisted_contract_rows(db_session: AsyncSession):
