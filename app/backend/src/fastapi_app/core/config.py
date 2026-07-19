@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # sets ENVIRONMENT=development, so copying it preserves the dev workflow.
     ENVIRONMENT: Literal["development", "production", "test"] = "production"
     LOG_LEVEL: str = "INFO"
+    # When set, JSON logs are ALSO written to this file (one JSON object per line),
+    # for shipping to Grafana Cloud Loki via the Alloy tailer (docker/alloy/config.alloy).
+    LOG_FILE: str = ""
     # Fail-closed opt-in for the destructive dev-only drop_all/create_all recreate
     # cycle at startup (see main.create_db_tables). Requires BOTH this flag true
     # AND ENVIRONMENT == "development"; with ENVIRONMENT secure-by-default to
