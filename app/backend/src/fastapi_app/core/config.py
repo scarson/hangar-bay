@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     SESSION_ABSOLUTE_TTL_SECONDS: int = 2_592_000  # 30 days (hard cap)
     TOKEN_CIPHER_KEYS: SecretStr = SecretStr("")   # comma-separated Fernet keys, first=primary
 
+    # Observability — when set, /metrics requires "Authorization: Bearer <token>";
+    # empty (dev default) leaves /metrics open (design spec §8.3).
+    METRICS_TOKEN: SecretStr = SecretStr("")
+
     # Aggregation
     AGGREGATION_SCHEDULER_INTERVAL_SECONDS: int = 3600
     AGGREGATION_REGION_IDS: List[int] = Field(default_factory=lambda: [10000002])

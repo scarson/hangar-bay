@@ -7,16 +7,15 @@ from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from typing import Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, APIRouter
-from redis.asyncio import Redis  # For type hinting Redis client
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from .core.config import settings
 from .core.cache import init_cache, close_cache
 from .core.http_client import init_http_client, close_http_client
 from .core.scheduler import add_aggregation_job, add_watchlist_matcher_job, create_scheduler
-from .core.dependencies import get_cache
 from .core.logging import setup_logging, RequestIDMiddleware
 from .core.token_cipher import is_token_cipher_configured
 from .db import AsyncSessionLocal, async_engine, Base
@@ -148,7 +147,16 @@ instrumentator = Instrumentator(
     inprogress_labels=True,
 )
 instrumentator.instrument(app)
-instrumentator.expose(app, endpoint="/metrics")
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics(request: Request):
+    """Prometheus exposition, bearer-gated when METRICS_TOKEN is set (spec §8.3);
+    an empty token (dev default) leaves the endpoint open."""
+    token = settings.METRICS_TOKEN.get_secret_value()
+    if token and request.headers.get("authorization") != f"Bearer {token}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/")
@@ -200,27 +208,6 @@ def warn_if_sso_unconfigured() -> None:
             "EVE SSO is not configured (ESI_CLIENT_ID/TOKEN_CIPHER_KEYS empty); "
             "/auth/sso/login and /auth/sso/callback return 503."
         )
-
-
-# CASCADE-PROD-CHECK: Remove or disable this endpoint for production.
-@app.get("/cache-test", tags=["Development/Test"])
-async def cache_test(rd: Optional[Redis] = Depends(get_cache)):
-    """Temporary endpoint to test cache connectivity and basic operations."""
-    if not rd:
-        return {"status": "error", "message": "Redis client not available"}
-    try:
-        test_key = "temp_cache_test_key"
-        test_value = "Hello Hangar Bay Cache! - Temporary Test"
-        await rd.set(test_key, test_value, ex=60)  # Set with a 60-second expiry
-        retrieved_value = await rd.get(test_key)
-        if retrieved_value == test_value:
-            return {"status": "ok", "key_set": test_key, "value_retrieved": retrieved_value}
-        else:
-            return {"status": "error", "message": "Value mismatch after set/get", "expected": test_value, "got": retrieved_value}
-    except Exception as e:
-        # Log the exception for more details during development
-        logging.error(f"Cache test endpoint error: {e}", exc_info=True)
-        return {"status": "error", "message": str(e)}
 
 
 # Include API routers

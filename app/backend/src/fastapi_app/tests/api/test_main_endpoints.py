@@ -43,3 +43,34 @@ async def test_health_check(client: AsyncClient):
     # Assert
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+# --- /metrics gate + /cache-test removal (M4 Tasks 3.5/3.6) ---
+
+from pydantic import SecretStr  # noqa: E402
+
+from fastapi_app.core.config import settings as _settings  # noqa: E402
+
+
+async def test_metrics_open_when_no_token_configured(client: AsyncClient):
+    assert (await client.get("/metrics")).status_code == 200
+
+
+async def test_metrics_401_without_bearer_when_token_set(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(_settings, "METRICS_TOKEN", SecretStr("test-metrics-token"))
+    assert (await client.get("/metrics")).status_code == 401
+
+
+async def test_metrics_200_with_correct_bearer(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(_settings, "METRICS_TOKEN", SecretStr("test-metrics-token"))
+    r = await client.get("/metrics", headers={"Authorization": "Bearer test-metrics-token"})
+    assert r.status_code == 200
+    assert b"hangar_bay" in r.content
+
+
+async def test_cache_test_endpoint_is_gone(client: AsyncClient):
+    assert (await client.get("/cache-test")).status_code == 404
