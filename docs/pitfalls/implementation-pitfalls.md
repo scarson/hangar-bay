@@ -28,7 +28,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 |---|---------|---------------------|---------|-----------|
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, PROXY-1 | §1.C |
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
-| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7 | §3.C |
+| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, upstream status | ESI-1 | §4.C |
 | 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
@@ -203,6 +203,18 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### ENV-8: Gitignored credential files exist only in the main checkout — worktrees start without them
+
+**The Flaw:** The 1Password-Environments-exported root `.env` (and every other gitignored credential file) lives only in `/Users/sam/Code/hangar-bay` — `git worktree add` copies tracked files, so agent worktrees under `.claude/worktrees/` never contain it. Compounding it, `.mcp.json`'s `${RENDER_API_KEY}` expansion happens once, at Claude Code LAUNCH, from the launching process's environment — a session started without the export has a dead Render MCP for its whole lifetime.
+
+**Why It Matters:** The failure is silent and looks like an auth problem, not a file-location problem: the MCP answers `unauthorized`, `$RENDER_API_KEY` is empty in every Bash shell, and nothing points at the main checkout. It cost the M4 execution session its entire Phase 0 spike (2026-07-19).
+
+**The Fix:** For the MCP: launch Claude Code from a shell that exported the env first (e.g. `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` before `claude`). For curl/CLI use from ANY worktree: source the main checkout's file inside each Bash invocation that needs it (shell state does not persist across tool calls) — `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` — then reference `$RENDER_API_KEY`. NEVER cat/echo/print the file or the variable, never copy it into a worktree, never commit it.
+
+**Where It Bit Us:** M4 execution session (2026-07-18/19): the Phase 0 Render spike was blocked all session and substituted with a docs-based verification (plan Deviation D-1) because the session ran from a worktree with no launch-time export.
+
+---
+
 ### §3.C — Review Checklist
 
 - [ ] **Complex settings fields (e.g. `List[int]`) are supplied as JSON** — `AGGREGATION_REGION_IDS=[...]`; env is loaded from `app/backend/src/.env`; `ESI_USER_AGENT` is set; the single consolidated `core/config.py` Settings class is satisfied (ENV-1)
@@ -212,6 +224,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 - [ ] **Backend venv/CI run Python 3.14** — the FastAPI 0.115 / Python-3.12 hold is resolved (ENV-5, superseded); keep the two CI `python-version` pins in sync and never mask interpreter warnings with a filter (migrate off the deprecated API instead)
 - [ ] **Deleting a debug print/function also drops any module-level import it orphaned** — flake8 ignores F401 here so it won't catch it, but F811 will trip on an unrelated function (ENV-6)
 - [ ] **No repo-wide `pdm run format`** — the codebase is not black-formatted; format new files individually with `.venv/bin/black <file>` (ENV-7)
+- [ ] **Sessions needing platform credentials source the MAIN checkout's root `.env` per Bash call (worktrees lack it), and MCP servers with `${VAR}` config get the export at launch** — never print or copy the values (ENV-8)
 
 ---
 
@@ -306,6 +319,10 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
+## 2026-07-19 — ENV-8 added: worktrees lack gitignored credential files
+
+- Added ENV-8 (gitignored credential files exist only in the main checkout; `${VAR}` MCP expansion is launch-time-only) from the M4 execution session, where it silently blocked the Phase 0 Render spike for the whole session. Fix pattern: launch-time export for MCP, per-Bash-call sourcing of `/Users/sam/Code/hangar-bay/.env` for CLI use, never printing values.
+
 ## 2026-07-19 — DEPLOY-1/DEPLOY-2 added: managed-platform URL scheme + single-worker topology
 
 - Added Section 5 (Deployment & Platform) with DEPLOY-1 (`postgresql://` → `postgresql+asyncpg://` normalization in Settings) and DEPLOY-2 (uvicorn `--workers 1`; in-process scheduler) from M4 Phase 3 (plan Task 3.12). DEPLOY-1's fix is implemented and tested (`core/config.py` validator, `test_config.py`); DEPLOY-2 is carried by the production Dockerfile CMD.
@@ -361,6 +378,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ENV-5 | FastAPI 0.115 / Python-3.12 hold (resolved 2026-07-13: FastAPI 0.139 + Python 3.14) | LOW | SUPERSEDED | Environment & Dev Loop |
 | ENV-6 | F811 cascade when removing debug prints/functions | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-7 | `pdm run format` is repo-wide black on a non-black codebase | LOW | VALIDATED | Environment & Dev Loop |
+| ENV-8 | Gitignored credential files exist only in the main checkout | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
 | DEPLOY-1 | Managed platforms inject postgresql:// URLs; async stack needs +asyncpg | HIGH | VALIDATED | Deployment & Platform |
 | DEPLOY-2 | uvicorn stays --workers 1 (in-process scheduler) | MEDIUM | VALIDATED | Deployment & Platform |
