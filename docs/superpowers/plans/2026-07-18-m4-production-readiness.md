@@ -62,9 +62,9 @@ notes and commit messages.
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 0 — Render verification spike | ⏸ BLOCKED on Render credential | — | session env lacks `RENDER_API_KEY` (MCP `unauthorized`, curl fallback impossible); docs-based verification substituted — see Deviations D-1 |
-| 1 — Collision-free implementation | 🚧 IN PROGRESS (claimed 2026-07-18T23:57Z, branch `claude/m4-phase1-deploy-scaffolding`) | — | proceeding on Topology A (plan default) per Deviation D-1 |
+| 1 — Collision-free implementation | ✅ SHIPPED | PR [#56](https://github.com/scarson/hangar-bay/pull/56), merge `6885b67` (2026-07-19) | Topology A per D-1; deviations D-4..D-8; 3-lens + codex adversarial reviews applied (`docs/audits/m4-phase1-review/`) |
 | 2 — Platform provisioning | ⬜ 2a partially done by Sam (billing connected, domain `hangarbay.app`, prod EVE app registered) | — | **Sam-gated**; 2b (blueprint+secrets) runs as Phase 4 Step 0; see Deviation D-3 (callback `:443` mismatch to resolve at 2b) |
-| 3 — Post-M3 backend/frontend work | ⬜ Not started | — | gate SATISFIED: M3 merged to dev 2026-07-18 (PR #46, merge `20ee513`) |
+| 3 — Post-M3 backend/frontend work | 🚧 IN PROGRESS (claimed 2026-07-19T01:35Z, branch `claude/m4-phase3-prod-hardening`) | — | gate SATISFIED: M3 merged to dev 2026-07-18 (PR #46, merge `20ee513`) |
 | 4 — First deploy + live SSO | ⬜ Not started | — | **Sam-gated exit criterion** |
 
 ### Deviations
@@ -77,6 +77,7 @@ notes and commit messages.
 - **D-6 (Task 1.2: static site pinned to `branch: main`).** The plan's inline render.yaml omits `branch:` on `hangar-bay-web`; the repo's GitHub default branch is `dev`, so at blueprint apply the static site would build integration-branch frontend code while the API builds `main` — frontend/backend out of lockstep. Found by the Phase-1 adversarial review (finding config-1); `branch: main` added to match the API service and the release-branch model.
 - **D-7 (Task 1.3 vs Standing Order 2 reconciliation).** Task 1.3 Step 4 mandates creating `app/backend/src/fastapi_app/tests/test_migrations.py`, which Standing Order 2's "exactly"-scoped Phase-1 allowlist omits (it blocklists `fastapi_app/**`). The collision purpose of that rule is moot (M3 merged to dev 2026-07-18 before Phase 1 started, and the test file is net-new — nothing to collide with), so the file ships in Phase 1 per Task 1.3's explicit instruction. This is a plan-authoring inconsistency, not an execution deviation (review findings PF-2/PO-2).
 - **D-8 (Task 1.3: `versions/` kept present via `.gitkeep`).** Deleting all revision files left `alembic/versions/` empty and therefore absent from git — on a fresh checkout `alembic revision --autogenerate` (Task 3.9's `pdm run makemigration`) dies with FileNotFoundError because alembic does not create the missing directory (`upgrade head`/`current` no-op cleanly either way). A `.gitkeep` now keeps the directory present (review finding PO-1).
+- **D-9 (Task 3.0 re-anchor results, 2026-07-19).** All Phase 3 anchors re-verified against dev @ `6885b67`. Drifted: the destructive-startup gate is `create_db_tables` at `main.py:165-187` (cited as `main.py:140`); `warn_if_sso_unconfigured` is at `main.py:190-201` with its lifespan call at line 47; `/cache-test` at `main.py:204-222`; `instrumentator.instrument`/`.expose` at `main.py:149-150`. Holding as cited: `background_aggregation.py:150-151` (URL-prefix log + per-run engine), the `ESINotModifiedError` branch at `:172`, `_concurrency_lock` at `:81-122`, `db.py:11-16` engine (no pool tuning), `get_cache` at `core/dependencies.py:11`, `get_db` at `db.py:30`, `require_sso_configured` in `api/auth.py` (~line 35), `playwright.config.ts` live-smoke project + unconditional `webServer` + hardcoded `baseURL`. `models/__init__.py` exports user/contracts/account modules (Task 3.9's env.py import line: `user, contracts, account`).
 
 ### Discoveries
 
@@ -213,7 +214,7 @@ git commit -m "docs(m4): record Render spike results (edge, URL scheme, headers,
 
 ## Phase 1 — Collision-free implementation
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-18T23:57Z on branch `claude/m4-phase1-deploy-scaffolding` (worktree `.claude/worktrees/m4-phase1-deploy-scaffolding`). Proceeding on Topology A per Deviation D-1; Task 1.2's blueprint-spec field validation and Task 1.4's deploy-API shapes are verified against Render documentation (docs-based, see D-1) rather than the live spike. Tasks 1.1–1.5 implemented and verified (image builds + prod-shaped boot smoke; blank-DB migrate + 363-test suite green; actionlint clean; OpenAPI drift chain clean). Adversarial review (3 lenses, 12 findings, 7 confirmed) applied — `docs/audits/m4-phase1-review/summary.md`; deviations D-4..D-8. PR pending.
+**Execution Status:** ✅ SHIPPED 2026-07-19 — PR [#56](https://github.com/scarson/hangar-bay/pull/56) merged to dev at `6885b67` (branch commits `9c99bcc`..`6e4954c`). Tasks 1.1–1.5 verified (image builds + prod-shaped boot smoke; blank-DB migrate + 363-test suite green; actionlint clean; OpenAPI drift chain clean). Two review rounds applied pre-merge: 3-lens adversarial review (7 confirmed findings) and codex cross-model review (P1 stale-deploy fallback binding + P2 poll-budget timeout, both fixed) — `docs/audits/m4-phase1-review/summary.md`. Deviations D-4..D-8.
 
 Branch: `claude/m4-phase1-deploy-scaffolding` off fresh `origin/dev`. All tasks here are TDD-exempt config/scaffolding EXCEPT nothing — but every task has verification commands. One PR at the end (Routine; single-PR decision is binding — Task 1.6).
 
@@ -788,7 +789,7 @@ git commit -m "ci: add OpenAPI drift gate (export + regenerate + fail on dirty d
 
 ## Phase 3 — Post-M3 backend/frontend work
 
-**Execution Status:** ⏸ DEFERRED pending the M3 account-features merge to dev. See `docs/superpowers/plans/2026-07-17-m3-account-features.md` — its own Execution Status will show the merge; the M3 PR opens as "Review — database schema + per-user data authorization" and Sam merges it. Verify by reading that plan's banner (or `git log origin/dev`), not by grepping for strings.
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-19T01:35Z on branch `claude/m4-phase3-prod-hardening` (worktree `.claude/worktrees/m4-phase3-prod-hardening`), off dev @ `6885b67` (Phases 1 and M3 both merged; the M3 gate was satisfied by PR #46, merge `20ee513`, 2026-07-18).
 
 Branch: `claude/m4-phase3-prod-hardening` off fresh `origin/dev` AFTER the M3 merge. **Every task below cites file:line against pre-M3 dev** — M3 touches most of these files, so Task 3.0 re-anchors every citation first. TDD per Standing Order 4 applies to every task in this phase except 3.9's revision generation, 3.11, and 3.12 (docs/config).
 
