@@ -38,12 +38,29 @@ export default defineConfig({
       testMatch: /live-smoke/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
+    // Prod-targeting smoke lane (CD's post-deploy gate): env-driven origin, real
+    // certs enforced, and — critically — no local dev server (see webServer below).
+    ...(process.env.E2E_PROD_BASE_URL
+      ? [{
+          name: 'live-smoke-prod',
+          testMatch: /live-smoke/,
+          use: {
+            ...devices['Desktop Chrome'],
+            viewport: { width: 1280, height: 800 },
+            baseURL: process.env.E2E_PROD_BASE_URL,
+            ignoreHTTPSErrors: false,   // production must present a valid cert
+          },
+        }]
+      : []),
   ],
-  webServer: {
-    command: 'npm run dev',
-    url: 'https://localhost:5173',
-    ignoreHTTPSErrors: true,
-    reuseExistingServer: true,
-    timeout: 30_000,
-  },
+  // The prod lane must NEVER boot a local dev server — it targets a deployed origin.
+  webServer: process.env.E2E_PROD_BASE_URL
+    ? undefined
+    : {
+        command: 'npm run dev',
+        url: 'https://localhost:5173',
+        ignoreHTTPSErrors: true,
+        reuseExistingServer: true,
+        timeout: 30_000,
+      },
 })
