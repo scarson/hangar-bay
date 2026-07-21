@@ -25,17 +25,17 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
-      testIgnore: /live-smoke/,
+      testIgnore: /e2e\/live-smoke/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
     {
       name: 'mobile',
-      testIgnore: /live-smoke/,
+      testIgnore: /e2e\/live-smoke/,
       use: { ...devices['Pixel 7'] },
     },
     {
       name: 'live-smoke',
-      testMatch: /live-smoke/,
+      testMatch: /e2e\/live-smoke/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
     // Prod-targeting smoke lane (CD's post-deploy gate): env-driven origin, real
@@ -43,7 +43,7 @@ export default defineConfig({
     ...(process.env.E2E_PROD_BASE_URL
       ? [{
           name: 'live-smoke-prod',
-          testMatch: /live-smoke/,
+          testMatch: /e2e\/live-smoke/,
           use: {
             ...devices['Desktop Chrome'],
             viewport: { width: 1280, height: 800 },
