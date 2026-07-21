@@ -16,7 +16,10 @@ services:
     rootDir: app/backend
     dockerfilePath: ./Dockerfile
     healthCheckPath: /ready
-    preDeployCommand: sh -c "cd /app/src && python -m alembic upgrade head"
+    # No quotes, no shell operators, no -c flag: Render's pre-deploy executor mis-tokenizes
+    # all three (observed live 2026-07-21: a quoted sh -c string exec'd as one word, exit 127;
+    # alembic's own -c silently ate the trailing subcommand). ALEMBIC_CONFIG carries the ini path.
+    preDeployCommand: python -m alembic upgrade head
     disk:                             # exists ONLY to pin max-1-instance + recreate deploys (spec §4/I-3)
       name: scheduler-pin
       mountPath: /var/scheduler-pin
@@ -30,6 +33,8 @@ services:
         value: "[10000002]"           # JSON array string — ENV-1
       - key: AGGREGATION_DEV_CONTRACT_LIMIT
         value: "0"                    # disable the silent 100-contract dev cap (spec §2)
+      - key: ALEMBIC_CONFIG
+        value: /app/src/alembic.ini   # read by the preDeployCommand (alembic's -c is unusable there — see its comment)
       - key: DATABASE_URL
         fromDatabase:
           name: hangar-bay-db
