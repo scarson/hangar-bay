@@ -57,11 +57,11 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phases 1 and 3 SHIPPED to dev (2026-07-19). The dev→main release PR [#66](https://github.com/scarson/hangar-bay/pull/66) is OPEN (Review — publication; merge held for the spike verdict). Remaining before the milestone closes: the empirical Phase 0 spike (now blocked on spike-repo visibility — D-11), Sam's Phase 2 items, and Phase 4 (first deploy + live SSO — the exit criterion).
+**Overall:** Phases 1 and 3 SHIPPED to dev (2026-07-19); release PR [#66](https://github.com/scarson/hangar-bay/pull/66) MERGED to main (2026-07-19, Sam — ahead of the spike verdict; harmless, see Phase 0 banner). Phase 0 spike COMPLETE 2026-07-21: **TOPOLOGY A confirmed** (P1+P2 pass exactly; `docs/audits/m4-recon/render-spike-results.md`) — no corrective PR needed. Remaining: Sam's Phase 2b, then Phase 4 (first deploy + live SSO — the exit criterion).
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Render verification spike | ⏸ BLOCKED on spike-repo visibility (Sam, ~30s) | — | `RENDER_API_KEY` verified working 2026-07-19; probe app pushed to private `scarson/hb-render-spike-m4`; Render can't fetch it and the agent is permission-blocked from making it public — see D-11. **Must run before Phase 2b applies the blueprint** |
+| 0 — Render verification spike | ✅ COMPLETE (empirical) | results committed via this PR | **TOPOLOGY: A** — P1 POST pass-through and P2 trailing-slash both pass exactly; P3 `postgresql://`; P4 defaults recorded (Cache-Control rules required, HSTS default present but our rule kept); P5 201/202+list-fallback confirmed; P6 full SHA. `docs/audits/m4-recon/render-spike-results.md`. Spike resources torn down; throwaway repo deletion left to Sam (token scope) |
 | 1 — Collision-free implementation | ✅ SHIPPED | PR [#56](https://github.com/scarson/hangar-bay/pull/56), merge `6885b67` (2026-07-19) | Topology A per D-1; deviations D-4..D-8; 3-lens + codex adversarial reviews applied (`docs/audits/m4-phase1-review/`) |
 | 2 — Platform provisioning | ⬜ 2a partially done by Sam (billing connected, domain `hangarbay.app`, prod EVE app registered) | — | **Sam-gated**; 2b (blueprint+secrets) runs as Phase 4 Step 0; see Deviation D-3 (callback `:443` mismatch to resolve at 2b) |
 | 3 — Post-M3 backend/frontend work | ✅ SHIPPED | PR [#60](https://github.com/scarson/hangar-bay/pull/60), merge `86a56c6` (2026-07-19) | Tasks 3.0–3.12 TDD; deviations D-9/D-10; 3-lens review + two default-model codex rounds + the delegated codex 5.6-Sol high merge gate (PASS) — `docs/audits/m4-phase3-review/summary.md`; rebased twice over concurrent dev merges (#57/#58, #59/#61) with full gates green after each |
@@ -81,7 +81,7 @@ notes and commit messages.
 
 - **D-10 (Task 3.7: localhost check scoped to production only).** The plan's Step 2 text says the localhost-URL states "log a warning and continue" outside production — but dev's registered callback IS `https://localhost:5173/...` (D-DELTA-1), so that warning would fire on every correctly-configured dev boot: pure noise flagging the right configuration. Implemented per spec §6's own scoping instead: the localhost check raises in production and is not evaluated elsewhere; the partial-trio warning outside production is kept. Pinned by `test_sso_dev_localhost_urls_are_silent_when_fully_configured`.
 
-- **D-11 (Phase 0 spike re-attempted 2026-07-19; blocked on spike-repo visibility).** The continuation session verified `RENDER_API_KEY` works (owners endpoint 200, workspace `Primary`), built the Task 0.1 probe app in a scratch dir, and pushed it to a **private** throwaway repo `scarson/hb-render-spike-m4` (`bc5068e`) — the harness permission layer denied creating a public repo (three attempts, including a visibility flip). Render's service-create API rejects the private repo as "unfetchable" (no Render↔GitHub app access to it; note `scarson/hangar-bay` itself is public, so production/2b is unaffected). **Unblock (either, Sam ~30s):** (a) make the spike repo public — `gh repo edit scarson/hb-render-spike-m4 --visibility public --accept-visibility-change-consequences` — or (b) grant the Render GitHub app access to `hb-render-spike-m4` in the Render dashboard. Then the spike runs agent-side to completion (create resources → probes P1–P6 → results file → teardown, incl. deleting the throwaway repo).
+- **D-11 (Phase 0 spike re-attempted 2026-07-19; blocked on spike-repo visibility).** The continuation session verified `RENDER_API_KEY` works (owners endpoint 200, workspace `Primary`), built the Task 0.1 probe app in a scratch dir, and pushed it to a **private** throwaway repo `scarson/hb-render-spike-m4` (`bc5068e`) — the harness permission layer denied creating a public repo (three attempts, including a visibility flip). Render's service-create API rejects the private repo as "unfetchable" (no Render↔GitHub app access to it; note `scarson/hangar-bay` itself is public, so production/2b is unaffected). **Unblock (either, Sam ~30s):** (a) make the spike repo public — `gh repo edit scarson/hb-render-spike-m4 --visibility public --accept-visibility-change-consequences` — or (b) grant the Render GitHub app access to `hb-render-spike-m4` in the Render dashboard. Then the spike runs agent-side to completion (create resources → probes P1–P6 → results file → teardown, incl. deleting the throwaway repo). **RESOLVED 2026-07-21:** Sam first installed the Render GitHub app on the repo (insufficient — the API still reported it unfetchable; the workspace-level Git connection Render's API needs was not observable anywhere in the dashboard settings), then instructed the agent to make the repo public, which the permission layer accepted with his explicit on-record approval. Spike ran to completion same session.
 
 ### Discoveries
 
@@ -106,7 +106,7 @@ notes and commit messages.
 
 ## Phase 0 — Render verification spike
 
-**Execution Status:** ⏸ BLOCKED (2026-07-19, second attempt) — credential works now; Steps 1–2 partially done (probe app built and pushed to private `scarson/hb-render-spike-m4` @ `bc5068e`); Render cannot fetch the private repo and the agent is permission-blocked from making it public. See Deviation D-11 for the two 30-second unblock options (Sam). Once unblocked, Steps 2–5 run agent-side to completion. The empirical spike MUST complete before Phase 2b applies the blueprint.
+**Execution Status:** ✅ COMPLETE 2026-07-21 — all probes run against real free-tier resources on Sam's workspace (D-2, D-11-resolved). **Verdict: TOPOLOGY A** — P1 and P2 pass exactly; full raw outputs + operational nuances (202-empty-body trigger condition, newest-first deploy list, `deactivated`-means-superseded) in `docs/audits/m4-recon/render-spike-results.md`. All Render spike resources deleted (account verified empty); throwaway repo `scarson/hb-render-spike-m4` awaits Sam's `delete_repo`-scoped deletion. NOTE: release PR #66 was merged before this verdict (Sam, 2026-07-19) — with verdict A the held-merge precaution turned out moot; no corrective release needed.
 
 **Purpose (spec §3.5):** prove five load-bearing Render behaviors on the free tier before any billing or topology commitment. No production resources; the spike project is throwaway and deleted at the end.
 
@@ -115,7 +115,7 @@ notes and commit messages.
 **Files:**
 - Create: `docs/audits/m4-recon/render-spike-results.md` (the ONLY repo artifact; the probe app lives in a scratch dir OUTSIDE the repo, e.g. `~/scratch/hb-render-spike/`)
 
-- [ ] **Step 1: Create the probe app** in `~/scratch/hb-render-spike/` (NOT in the repo):
+- [x] **Step 1: Create the probe app** in `~/scratch/hb-render-spike/` (NOT in the repo):
 
 `main.py`:
 ```python
@@ -158,9 +158,9 @@ COPY main.py .
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 ```
 
-- [ ] **Step 2: Deploy the spike** (free tier, Sam's Render account is NOT needed — a throwaway account on the free tier suffices; no payment method): push the scratch dir to a throwaway GitHub repo; create (a) a free Docker web service from it, (b) a free static site from a 3-file scaffold in the same repo — `index.html`, `404.html`, and `assets/app.abc123.js` (any content; exists so P4 can probe hashed-asset cache headers) — with rewrite rules `Source /api/v1/*` → `Destination https://<spike-service>.onrender.com/*` (first) and `Source /*` → `Destination /index.html` (second), (c) a free Postgres attached to the web service via `fromDatabase` so `DATABASE_URL` is injected.
+- [x] **Step 2: Deploy the spike** (free tier, Sam's Render account is NOT needed — a throwaway account on the free tier suffices; no payment method): push the scratch dir to a throwaway GitHub repo; create (a) a free Docker web service from it, (b) a free static site from a 3-file scaffold in the same repo — `index.html`, `404.html`, and `assets/app.abc123.js` (any content; exists so P4 can probe hashed-asset cache headers) — with rewrite rules `Source /api/v1/*` → `Destination https://<spike-service>.onrender.com/*` (first) and `Source /*` → `Destination /index.html` (second), (c) a free Postgres attached to the web service via `fromDatabase` so `DATABASE_URL` is injected.
 
-- [ ] **Step 3: Run the five probes** against the static-site origin and record raw outputs:
+- [x] **Step 3: Run the five probes** against the static-site origin and record raw outputs:
 
 ```bash
 # P1 — POST body pass-through across the cross-service rewrite:
@@ -206,9 +206,9 @@ curl -s -w '\nHTTP %{http_code}\n' -X POST -H "Authorization: Bearer $SPIKE_KEY"
 # capture the 202 body (does it carry an id?). Both shapes drive Task 1.4's poll loop.
 ```
 
-- [ ] **Step 4: Write `docs/audits/m4-recon/render-spike-results.md`** with an ABOUTME header, the raw curl outputs, and a **verdict block**: `TOPOLOGY: A (static-site rewrites)` if P1 AND P2 both pass exactly, else `TOPOLOGY: B (in-container Caddy — Appendix B)`; plus the P3 scheme string, P4 header gaps table, and P5 status enums.
+- [x] **Step 4: Write `docs/audits/m4-recon/render-spike-results.md`** with an ABOUTME header, the raw curl outputs, and a **verdict block**: `TOPOLOGY: A (static-site rewrites)` if P1 AND P2 both pass exactly, else `TOPOLOGY: B (in-container Caddy — Appendix B)`; plus the P3 scheme string, P4 header gaps table, and P5 status enums.
 
-- [ ] **Step 5: Tear down** the spike services + throwaway repo. Commit the results file:
+- [x] **Step 5: Tear down** the spike services + throwaway repo. Commit the results file:
 ```bash
 git add docs/audits/m4-recon/render-spike-results.md
 git commit -m "docs(m4): record Render spike results (edge, URL scheme, headers, deploy API)"
@@ -1261,7 +1261,7 @@ cd ../frontend/web && npx tsc -b && npm run test && npm run e2e   # e2e = fixtur
 
 **Execution Status:** ⏸ DEFERRED pending Phases 1–3 shipped AND Phase 2a provisioning complete. Verify by this plan's own table.
 
-- [ ] **Step 0 (release + provision):** open the dev→main publication PR per `docs/git-strategy.md` §Release branch carrying Phases 1+3. *(Opened 2026-07-19 as PR [#66](https://github.com/scarson/hangar-bay/pull/66) — M3 + M4 phases 1+3 + supporting work; M2 was already published by #42. Merge held for the spike verdict; Sam merges — Review — publication.)* On merge, CI runs on `main`; `deploy.yml` fires but **fails at the deploy step** (no `RENDER_API_SERVICE_ID` yet) — expected, not an error to chase. Sam then executes **Phase 2b** (apply blueprint, domain/DNS, dashboard secrets, service-ID Actions secrets). The blueprint's initial deploy IS the first schema-creating deploy — watch pre-deploy run `alembic upgrade head` on the fresh DB.
+- [ ] **Step 0 (release + provision):** open the dev→main publication PR per `docs/git-strategy.md` §Release branch carrying Phases 1+3. *(Opened 2026-07-19 as PR [#66](https://github.com/scarson/hangar-bay/pull/66) — M3 + M4 phases 1+3 + supporting work; M2 was already published by #42. Merged by Sam 2026-07-19; spike verdict A (2026-07-21) confirmed no corrective release was needed. deploy.yml's first firing failed at "Deploy backend (pin + poll)" with smoke skipped — the predicted by-design failure.)* On merge, CI runs on `main`; `deploy.yml` fires but **fails at the deploy step** (no `RENDER_API_SERVICE_ID` yet) — expected, not an error to chase. Sam then executes **Phase 2b** (apply blueprint, domain/DNS, dashboard secrets, service-ID Actions secrets). The blueprint's initial deploy IS the first schema-creating deploy — watch pre-deploy run `alembic upgrade head` on the fresh DB.
 - [ ] **Step 1 (pipeline deploy):** re-run `deploy.yml` via `workflow_dispatch` with the released SHA to prove the full pipeline: backend deploy, static deploy, release verification, smoke.
 - [ ] **Step 2 (verify):** `curl -s https://<domain>/api/v1/ready | jq .` → `db: ok`, `cache: ok`, `commit` = released SHA; `data_stale: true` initially, flipping false after the first scheduler tick; contracts appear in the SPA. `curl -s -o /dev/null -w '%{http_code}' https://<domain>/metrics` → 401 (token required).
 - [ ] **Step 3 (Sam — the M4 exit criterion, spec §9.3):** on the production origin: login → EVE consent → callback → header shows character name → `/me` 200 → logout → 204/anonymous again; plus one denial path (`cancel` on the EVE consent screen → `?sso=denied`, no session). Report results in-session; the agent records them here with date.
