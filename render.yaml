@@ -101,4 +101,4 @@ databases:
   - name: hangar-bay-db
     plan: basic-256mb
     region: ohio
-    postgresMajorVersion: "17"
+    postgresMajorVersion: "18"

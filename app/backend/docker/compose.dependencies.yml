@@ -27,7 +27,7 @@
 
 services:
   postgres_db:
-    image: postgres:16-alpine # Using a specific version is recommended
+    image: postgres:18-alpine # Using a specific version is recommended
     container_name: hangar_bay_postgres
     ports:
       - "5432:5432" # Expose PostgreSQL on the host's port 5432
