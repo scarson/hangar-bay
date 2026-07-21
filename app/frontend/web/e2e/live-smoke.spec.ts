@@ -73,6 +73,10 @@ test('pagination crosses a real page boundary when the dataset has one', async (
   await page.goto('/contracts?ships_only=false')
   await expect(page.getByRole('heading', { level: 1, name: 'All Contracts' })).toBeVisible()
 
+  // An empty dataset renders no pager at all (fresh deploy before the first
+  // ingest commits), so probe the announced total before touching the button.
+  test.skip((await announcedTotal(page)) === 0, 'live dataset is empty right now')
+
   const next = page.getByRole('button', { name: 'Next →' })
   test.skip(await next.isDisabled(), 'live dataset fits on one page right now')
 
