@@ -10,7 +10,7 @@ services:
     name: hangar-bay-api
     runtime: docker
     plan: starter
-    region: frankfurt
+    region: ohio
     branch: main
     autoDeployTrigger: "off"          # CD (deploy.yml) is the sole trigger
     rootDir: app/backend
@@ -62,7 +62,7 @@ services:
   - type: keyvalue
     name: hangar-bay-cache
     plan: free
-    region: frankfurt
+    region: ohio
     maxmemoryPolicy: allkeys-lru      # accepted consequence: sessions evictable under pressure (spec §4)
     ipAllowList: []                   # documented block-all-external form (blueprint spec: "To block all external connections, set ipAllowList to an empty list") → private-network only
 
@@ -100,5 +100,5 @@ services:
 databases:
   - name: hangar-bay-db
     plan: basic-256mb
-    region: frankfurt
+    region: ohio
     postgresMajorVersion: "17"
