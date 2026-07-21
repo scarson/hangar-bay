@@ -80,7 +80,7 @@ class ESIClient:
         if self._managed_redis_client:
             await self._managed_redis_client.close()
 
-    async def get_esi_data_with_etag_caching(  # noqa: C901
+    async def get_esi_data_with_etag_caching(
         self, path: str, all_pages: bool = False, ignore_404: bool = False
     ) -> List[Dict[str, Any]]:
         """
@@ -89,8 +89,6 @@ class ESIClient:
         """
         full_data = []
         page = 1
-        max_retries = 3
-        backoff_factor = 0.5  # seconds
 
         while True:
             paginated_path = f"{path}?page={page}"
@@ -98,32 +96,11 @@ class ESIClient:
             data_key = f"data:{paginated_path}"
 
             cached_etag = await self.redis_client.get(etag_key)
-            headers = {"If-None-Match": cached_etag.decode() if cached_etag else ""}
+            if isinstance(cached_etag, bytes):
+                cached_etag = cached_etag.decode()
+            headers = {"If-None-Match": cached_etag or ""}
 
-            response = None
-            last_exception = None
-
-            for attempt in range(max_retries):
-                try:
-                    response = await self.http_client.get(paginated_path, headers=headers)
-                    if response.status_code < 500:
-                        last_exception = None
-                        break
-                    last_exception = httpx.HTTPStatusError(
-                        f"Server error '{response.status_code}'", request=response.request, response=response
-                    )
-                    logger.warning(f"ESI request to {paginated_path} failed with status {response.status_code}. Attempt {attempt + 1}/{max_retries}.")
-                except (httpx.ReadTimeout, httpx.ConnectError) as e:
-                    last_exception = e
-                    logger.warning(f"Network error for {paginated_path} on attempt {attempt + 1}/{max_retries}: {e}")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(backoff_factor * (2 ** attempt))
-
-            if last_exception:
-                if isinstance(last_exception, httpx.HTTPStatusError):
-                    raise ESIRequestFailedError(status_code=last_exception.response.status_code, message=str(last_exception))
-                else:
-                    raise ESIRequestFailedError(message=f"Network error for {paginated_path}: {last_exception}")
+            response = await self._get_with_transient_retry(paginated_path, headers=headers)
 
             if response.status_code == 404 and ignore_404:
                 logger.debug(f"Received 404 for {paginated_path}, treating as end of pages.")
@@ -132,13 +109,10 @@ class ESIClient:
                 logger.debug(f"Received 204 for {paginated_path}, treating as end of pages.")
                 break
 
-            page_data = []
             if response.status_code == 304:
                 logger.debug(f"ETag cache hit for {paginated_path}. Serving data from cache.")
-                cached_data = await self.redis_client.get(data_key)
-                if cached_data:
-                    page_data = json.loads(cached_data)
-                    full_data.extend(page_data)
+                page_data = await self._read_etag_cached_page(data_key)
+                full_data.extend(page_data)
             else:
                 response.raise_for_status()
                 # ESI can return 200 OK with an empty body, which is not valid JSON.
@@ -150,34 +124,73 @@ class ESIClient:
 
                 if page_data:
                     full_data.extend(page_data)
-                    new_etag = response.headers.get("ETag")
-                    if new_etag:
-                        expires_header = response.headers.get("Expires")
-                        cache_duration_seconds = 600
-                        if expires_header:
-                            try:
-                                expire_time = parsedate_to_datetime(expires_header).replace(tzinfo=timezone.utc)
-                                current_time = datetime.now(timezone.utc)
-                                if expire_time > current_time:
-                                    cache_duration_seconds = int((expire_time - current_time).total_seconds())
-                            except Exception:
-                                pass
-                        await self.redis_client.set(etag_key, new_etag, ex=cache_duration_seconds)
-                        await self.redis_client.set(data_key, response.content, ex=cache_duration_seconds)
+                    await self._store_page_cache(etag_key, data_key, response)
 
-            if not all_pages:
-                break
-
-            if not page_data:
-                break
-
-            total_pages_header = response.headers.get("X-Pages")
-            if total_pages_header and page >= int(total_pages_header):
+            if self._last_page_reached(response, page, page_data, all_pages):
                 break
 
             page += 1
 
         return full_data
+
+    async def _read_etag_cached_page(self, data_key: str) -> list:
+        """Read a page body previously stored alongside its ETag.
+
+        An absent entry yields an empty page: a 304 whose cached body was evicted
+        does not fall back to a live fetch.
+        """
+        cached_data = await self.redis_client.get(data_key)
+        if not cached_data:
+            return []
+        return json.loads(cached_data)
+
+    def _cache_ttl_seconds(self, response: httpx.Response) -> int:
+        """Seconds to cache a page for, derived from its Expires header.
+
+        An absent, already-elapsed, or unparseable Expires yields 600.
+        """
+        expires_header = response.headers.get("Expires")
+        cache_duration_seconds = 600
+        if expires_header:
+            try:
+                expire_time = parsedate_to_datetime(expires_header).replace(tzinfo=timezone.utc)
+                current_time = datetime.now(timezone.utc)
+                if expire_time > current_time:
+                    cache_duration_seconds = int((expire_time - current_time).total_seconds())
+            except Exception:
+                pass
+        return cache_duration_seconds
+
+    async def _store_page_cache(
+        self, etag_key: str, data_key: str, response: httpx.Response
+    ) -> None:
+        """Store a page's ETag and raw body under a shared TTL.
+
+        A response carrying no ETag is not cached at all — without a validator the
+        stored body could never be revalidated by a later conditional request.
+        """
+        new_etag = response.headers.get("ETag")
+        if not new_etag:
+            return
+        cache_duration_seconds = self._cache_ttl_seconds(response)
+        await self.redis_client.set(etag_key, new_etag, ex=cache_duration_seconds)
+        await self.redis_client.set(data_key, response.content, ex=cache_duration_seconds)
+
+    def _last_page_reached(
+        self, response: httpx.Response, page: int, page_data: list, all_pages: bool
+    ) -> bool:
+        """Whether the pagination walk ends after this page.
+
+        Order is load-bearing: single-page mode and an empty page each terminate
+        before X-Pages is read, so an unparseable header on those responses never
+        reaches int() and stays inert.
+        """
+        if not all_pages:
+            return True
+        if not page_data:
+            return True
+        total_pages_header = response.headers.get("X-Pages")
+        return bool(total_pages_header and page >= int(total_pages_header))
 
     async def get_public_contracts(self, region_id: int) -> list[dict[str, Any]]:
         """Fetches all public contracts for a specific region, handling pagination."""
