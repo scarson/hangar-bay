@@ -6,7 +6,7 @@ RUN pip install --no-cache-dir pdm
 COPY pyproject.toml pdm.lock ./
 RUN pdm export --prod -o requirements.txt --without-hashes
 
-# The locked asyncpg/httptools/uvloop versions publish no CPython 3.14 wheels, so they
+# The locked httptools/uvloop versions publish no CPython 3.14 wheels, so they
 # compile from source — this stage carries the compiler; the runtime stage stays slim.
 FROM python:3.14-slim AS build
 WORKDIR /app
