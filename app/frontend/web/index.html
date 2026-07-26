@@ -6,6 +6,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0d1211" />
     <title>Hangar Bay — EVE ship contracts</title>
+    <meta name="description" content="Browse, filter and share EVE Online public ship contracts. Sort by price, hull or time left, and send a filtered view straight to your corp." />
+
+    <!-- Link-preview metadata. Crawlers (Discord, Slack, iMessage) never run the SPA's
+         JavaScript, so this static head is all they see.
+         og:url is deliberately absent: this document is served for EVERY route, so a fixed
+         canonical would point shared deep links at the wrong page; without it crawlers fall
+         back to the URL they actually requested.
+         og:image lives in public/, never /assets/ — Vite content-hashes /assets/ per build and
+         render.yaml serves it immutable for a year, so a hashed URL would break every embed
+         already posted, since crawlers cache embeds by URL at post time. -->
+    <meta property="og:title" content="Hangar Bay — EVE ship contracts" />
+    <meta property="og:description" content="Browse, filter and share EVE Online public ship contracts. Sort by price, hull or time left, and send a filtered view straight to your corp." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Hangar Bay" />
+    <meta property="og:image" content="https://hangarbay.app/og-card.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Hangar Bay — a bracketed selection cell mark on a dark ground" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <div id="root"></div>
