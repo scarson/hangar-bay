@@ -14,8 +14,10 @@
          canonical would point shared deep links at the wrong page; without it crawlers fall
          back to the URL they actually requested.
          og:image lives in public/, never /assets/ — Vite content-hashes /assets/ per build and
-         render.yaml serves it immutable for a year, so a hashed URL would break every embed
-         already posted, since crawlers cache embeds by URL at post time. -->
+         render.yaml serves it immutable for a year, so a hashed URL would 404 for anything
+         that revalidates it: re-shares, and platforms that refetch rather than proxy. (Discord
+         itself proxies through media.discordapp.net, so embeds already posted there largely
+         survive.) A stable path avoids the question entirely. -->
     <meta property="og:title" content="Hangar Bay — EVE ship contracts" />
     <meta property="og:description" content="Browse, filter and share EVE Online public ship contracts. Sort by price, hull or time left, and send a filtered view straight to your corp." />
     <meta property="og:type" content="website" />

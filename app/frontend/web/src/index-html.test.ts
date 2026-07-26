@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest'
 // node:fs instead would drag @types/node into a frontend tsconfig that deliberately lacks it.
 import html from '../index.html?raw'
 
+/** Everything Vite will copy verbatim into dist/. Resolved at build time, so a deleted or
+ *  renamed file changes this list rather than failing silently at runtime. */
+const publicFiles = Object.keys(import.meta.glob('../public/*', { eager: true }))
+
 /** Attribute order inside the tag varies with formatting; match on the pair, not the literal string. */
 function metaContent(property: string): string | undefined {
   const pattern = new RegExp(
@@ -48,6 +52,35 @@ describe('document shell link-preview metadata', () => {
   it('serves og:image as a raster format crawlers actually render', () => {
     // Discord does not render SVG embeds; the existing favicon.svg is not a usable og:image.
     expect(metaContent('og:image')).toMatch(/\.(png|jpe?g|webp)$/i)
+  })
+
+  it('actually ships the file og:image points at', () => {
+    // Without this, deleting or renaming the card leaves every assertion above green while
+    // every embed silently loses its image — and the 404 surfaces nowhere in the app, since
+    // Render's SPA rewrite does not cover extensioned paths: /og-card.png just 404s.
+    // Deriving the expected path from the tag means renaming EITHER side fails.
+    const url = new URL(metaContent('og:image')!)
+    expect(publicFiles).toContain(`../public${url.pathname}`)
+  })
+
+  it('pins the declared image dimensions to the card that is actually shipped', () => {
+    // These two numbers are what crawlers lay the embed out from before fetching the image.
+    // They are only meaningful if they match the real file; regenerating the card at another
+    // size without updating them yields a mis-sized embed that no other test would catch.
+    expect(metaContent('og:image:width')).toBe('1200')
+    expect(metaContent('og:image:height')).toBe('630')
+  })
+
+  it('declares the exact values crawlers key off, not merely non-empty ones', () => {
+    expect(metaContent('og:type')).toBe('website')
+    expect(metaContent('og:site_name')).toBe('Hangar Bay')
+    expect(metaContent('twitter:card')).toBe('summary_large_image')
+  })
+
+  it('carries a plain meta description for crawlers that ignore Open Graph', () => {
+    const description = metaContent('description')
+    expect(description).toBeTruthy()
+    expect(description).toBe(metaContent('og:description'))
   })
 
   it('gives og:image an absolute URL', () => {
