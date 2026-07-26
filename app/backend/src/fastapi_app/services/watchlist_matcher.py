@@ -24,6 +24,11 @@ slog = get_logger(__name__)
 
 # Own lock key — never the aggregation lock (reusing it would mutually serialize the two jobs).
 WATCHLIST_MATCH_LOCK_KEY = "hangar-bay:watchlist-match:lock"
+# Margin added to the match interval to form the lock TTL (see _lock_ttl_seconds):
+# the TTL must strictly exceed the interval so a run that outlasts its own interval
+# still holds the lock when the overlapping tick fires, and the margin keeps it held
+# through that tick's acquisition attempt.
+WATCHLIST_MATCH_LOCK_TTL_MARGIN_SECONDS = 300
 
 # asyncpg caps a statement at 32767 bind params; ~7 params/row keeps 1000 comfortably safe.
 NOTIFICATION_INSERT_CHUNK = 1000
@@ -60,15 +65,27 @@ class WatchlistMatcherService:
     def _now(self) -> datetime:
         return self.now_fn() if self.now_fn is not None else datetime.now(timezone.utc)
 
+    def _lock_ttl_seconds(self) -> int:
+        """Mutual-exclusion window for one matcher run: the match interval plus a
+        margin. A TTL equal to the interval expires exactly as the next tick fires,
+        so a run slower than one interval leaves the lock free and the next tick
+        legally starts a concurrent matcher — deriving from the interval keeps the
+        window ahead of any run the schedule can overlap."""
+        return (
+            self.settings.WATCHLIST_MATCH_INTERVAL_SECONDS
+            + WATCHLIST_MATCH_LOCK_TTL_MARGIN_SECONDS
+        )
+
     @asynccontextmanager
     async def _concurrency_lock(self):
         redis_client = aioredis.from_url(str(self.settings.CACHE_URL))
+        lock_ttl = self._lock_ttl_seconds()
         lock_token = uuid.uuid4().hex
         lock_acquired = False
         try:
             lock_acquired = await redis_client.set(
                 WATCHLIST_MATCH_LOCK_KEY, lock_token,
-                nx=True, ex=self.settings.WATCHLIST_MATCH_LOCK_TTL_SECONDS,
+                nx=True, ex=lock_ttl,
             )
             if not lock_acquired:
                 raise ConcurrencyLockError("Could not acquire watchlist-match lock.")
@@ -82,7 +99,7 @@ class WatchlistMatcherService:
                     logger.warning(
                         "Watchlist-match lock token mismatch on release: the %ss TTL likely "
                         "expired mid-run and was reacquired by another runner. Leaving it intact.",
-                        self.settings.WATCHLIST_MATCH_LOCK_TTL_SECONDS,
+                        lock_ttl,
                     )
             await redis_client.close()
 
