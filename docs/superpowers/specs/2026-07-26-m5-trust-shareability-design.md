@@ -37,7 +37,9 @@ The first draft measured this across all 51,365 contracts (~6,200 expired, ~12%)
 
 The watchlist matcher already gets this right for its own query, filtering both `date_expired > now()` and `date_completed IS NULL` (`watchlist_matcher.py`) — precedent worth citing, though `date_completed` alone cannot catch sold public contracts either.
 
-**2. Link previews are impossible today, and the latency objection was aimed at the wrong term** (`link-preview-latency-spike.md`). `index.html` carries no `og:*` tags, and Render static sites cannot run server code or match routes on User-Agent. Routing a path to the backend costs ~161 ms — but document delivery is ~48 ms of a ~1265 ms warm time-to-content, dominated by ~720 ms of client bootstrap that no routing choice affects.
+**2. Link previews are impossible today, and the latency objection was aimed at the wrong term — though by a narrower margin than first reported** (`link-preview-latency-spike.md`). `index.html` carries no `og:*` tags, and Render static sites cannot run server code or match routes on User-Agent.
+
+Routing a path to the backend costs ~161 ms. Document delivery is ~35–48 ms of a clean warm time-to-content of ~630–710 ms, with the largest single term being a 253–840 ms client bootstrap gap that no routing choice affects. **An earlier draft quoted a 1265 ms baseline and a 720 ms gap; those were the worst of four samples, presented as typical.** The conclusion — document delivery is the smallest term — survives, but the ~200 ms penalty is ~30% of a clean baseline rather than the ~16% first claimed.
 
 **Dismissed after investigation:** `search` and ship filtering work correctly (`is_ship_contract=true` → 622; `search` covers `Contract.title` OR `ContractItem.type_name` via the items join). An apparent "`ship_name` is always null" finding was an artifact of probing for a response field that does not exist.
 
@@ -113,7 +115,7 @@ Recorded here so the follow-on design starts from what this review established r
 
 **Also unverified:** whether Render's route globs accept the suffix form `/contracts*` at all. Every existing rule is segment-style (`/api/v1/*`).
 
-**Data inlining is cut from M5 entirely.** Dehydrating TanStack Query state into a non-SSR SPA is a real piece of engineering, and the ~200 ms it would repay is small against a 1265 ms baseline.
+**Data inlining is cut from M5 entirely**, but the follow-on should treat it as coupled to per-URL tags rather than optional. Against the corrected clean baseline (~650 ms), shipping tags alone costs ~30%, and inlining is what repays it by removing the client's ~330 ms API call. Dehydrating TanStack Query state into a non-SSR SPA is real engineering — which is precisely why it belongs in the same design pass as the routing work, not as a "fast-follow" that can quietly never arrive.
 
 **Preview content, when it is built:** hull name and price as title, with **absolute expiry in the description** — Discord caches embeds at post time, so a relative "expires in 3h" or an `EXPIRED` prefix is frozen at the moment of posting and misleads later readers. Image from `https://images.evetech.net/types/{type_id}/render?size=512`, verified 200 `image/jpeg` for real hulls, falling back to `icon` (verified 200 for a type whose `render` 400s) and then to the Stage 0 image. The fallback chain must be resolved from stored data, not a per-request probe of an external CDN. All interpolated values HTML-escaped — contract titles are player-authored free text, and this is an injection concern with an explicit hostile-input test.
 
@@ -146,7 +148,9 @@ Every item is written test-first, and characterization tests are mutation-verifi
 
 ## Reasoning worth preserving
 
-**The original latency objection was aimed at the wrong term.** "Routing pages through the backend costs 200 ms, and this product says fast is a feature" was right in isolation and wrong in proportion — document delivery is ~48 ms of ~1265 ms. Measuring changed the decision.
+**The original latency objection was aimed at the wrong term — and then the correction was overstated in the other direction.** "Routing pages through the backend costs 200 ms, and this product says fast is a feature" was right in isolation and wrong in proportion; measuring changed the decision. But the first measurement was a single warm sample that happened to be the slowest of four, and quoting its 1265 ms baseline made the penalty look like 16% when a clean baseline puts it near 30%.
+
+The lesson is not "measure" — that was done. It is **take more than one sample before a number becomes load-bearing**, especially in an automated browser where contention is invisible in the result. One sample is an anecdote wearing a decimal point. The same mistake in a different guise appears below in the population error.
 
 **Measuring the wrong population nearly shipped a wrong headline.** The first draft's "12% of contracts are expired" was true of the whole dataset and irrelevant to users, who see a ships-only default of 622. Corrected, the number fell to ~8.5% and the finding got *sharper* — 53 dead contracts against a 50-row page means the entire first page of the most natural sort is dead. Always measure the view the user actually gets.
 

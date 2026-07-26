@@ -39,28 +39,33 @@ Cold load (empty cache):
 | First data request issued | **3003 ms** |
 | First Contentful Paint | **3592 ms** |
 
-Warm load (assets HTTP-cached — the returning-user case):
+Warm load (assets HTTP-cached — the returning-user case). **Four samples, because the first one turned out to be the worst and was initially quoted as typical:**
 
-| Phase | Window |
-|---|---|
-| Document + all cached JS/CSS | 48 → **130 ms** |
-| Client bootstrap before any data request | 130 → **850 ms** (~720 ms) |
-| Contract API call | 851 → **1265 ms** (~414 ms) |
+| Sample | Assets done | First API request | Bootstrap gap | Time-to-content |
+|---|---|---|---|---|
+| 1 | 130 ms | 850 ms | 720 ms | 1265 ms |
+| 2 | ~44 ms | 887 ms | ~840 ms | 1091 ms |
+| 3 | 66 ms | 364 ms | **298 ms** | **711 ms** |
+| 4 | 46 ms | 299 ms | **253 ms** | **628 ms** |
 
-Measured on a 10-core / 16 GB machine, so the bootstrap gap is not weak-hardware noise — but it *was* measured in an automated browser, and absolute values on a real user's Chrome may differ. The **relative** comparison between routing approaches is unaffected, since client bootstrap is constant across them.
+**Honest range: a 253–840 ms bootstrap gap and 628–1265 ms time-to-content.** Samples 3 and 4 ran clean; samples 1 and 2 show contention. Sample 2 is instructive — two *cache-hit* modules (`format-*.js`, `useWatchlist-*.js`, both `transferSize === 0`) reported 825 ms durations, which reads as main-thread blocking or cache-read stalling rather than real work.
+
+**What the gap is, and is not.** It is not asset downloading: every JS/CSS file was a cache hit in every sample. It is the interval after the bundles are in hand and before `useQuery` issues its request — main-bundle execution, React mount, TanStack Router resolving the route, the route component rendering. The breakdown *within* that window was not instrumented (no `longtask` entries were captured), so no attribution between JS execution, framework init, and application logic is claimed here.
+
+Measured on a 10-core / 16 GB machine in an automated browser. A real user's Chrome may show less contention; the clean samples are probably closer to reality than the slow ones.
 
 ## What this means for the routing decision
 
-1. **Document delivery is the smallest component of time-to-content**, not the largest. Warm time-to-content is ~1265 ms, of which the document is ~48 ms. Optimizing document delivery to protect "fast is a feature" was aiming at the wrong term.
+1. **Document delivery is the smallest component of time-to-content**, not the largest. Against a clean warm baseline of ~630–710 ms, the document is ~35–48 ms. Optimizing document delivery to protect "fast is a feature" was aiming at the wrong term. This conclusion survives the corrected numbers — but by a smaller margin than the first draft claimed.
 
-2. **Routing contract pages through the backend costs ~200 ms of document delivery** (edge HIT → origin BYPASS) — real, but recoverable, see next point.
+2. **Routing contract pages through the backend costs ~200 ms of document delivery** (edge HIT → origin BYPASS). Against the originally-quoted 1265 ms baseline that is ~16%; against the clean ~650 ms baseline it is **closer to ~30%**. The first framing understated it, because it compared against the slowest observed sample.
 
 3. **Inlining contract data into the server-rendered shell removes the client's separate API call (~414 ms).** Net effect is roughly **300 ms faster than today**, not slower. This inverts the original objection. The backend already holds the data in-process for the OG tags, so inlining costs one query it was already making — unlike a Cloudflare Worker, which would need a second network fetch to get it.
 
-4. **Consequence for scoping, and it is a hard one:** OG tags and data inlining must ship *together*. Routing contract pages to the backend for tags alone, without inlining, ships a measurable ~200 ms regression. Either both, or neither.
+4. **Consequence for scoping.** Shipping tags without inlining costs entry loads ~200 ms — about 30% of a clean baseline. That is a real regression rather than a rounding error, though not obviously a blocking one; whether to couple the stages is a judgement call, and the corrected numbers make coupling more defensible than the first draft concluded.
 
 5. **Two larger performance findings fall out of this spike and are out of scope here**, recorded so they are not lost:
-   - **~720 ms of client bootstrap before the first data request** dominates warm time-to-content. This is the single largest lever on page speed and has nothing to do with link previews.
+   - **The bootstrap gap (253–840 ms) is the largest single term in warm time-to-content**, larger than the API call in the clean samples and far larger than document delivery. It has nothing to do with link previews and is the biggest available lever on page speed.
    - **Every SPA API call pays the ~161 ms origin penalty**, site-wide, on every page.
 
 ## Open question this spike could not resolve
