@@ -68,8 +68,7 @@ class Settings(BaseSettings):
     # Per-user soft caps (best-effort count-checks, design §3.5).
     MAX_SAVED_SEARCHES_PER_USER: int = 100
     MAX_WATCHLIST_ITEMS_PER_USER: int = 200
-    WATCHLIST_MATCH_INTERVAL_SECONDS: int = 900        # 15 min
-    WATCHLIST_MATCH_LOCK_TTL_SECONDS: int = 900
+    WATCHLIST_MATCH_INTERVAL_SECONDS: int = 900        # 15 min; also derives the matcher lock TTL
     NOTIFICATION_RETENTION_DAYS: int = 90              # prune window (matcher §4.4 step 5)
 
     # Database + cache

@@ -127,7 +127,11 @@ export function FilterRail({
             onChange={(event) => setRegionQuery(event.target.value)}
           />
         </label>
-        <div className="max-h-52 overflow-y-auto rounded-sm border border-line bg-surface px-1.5 py-1">
+        {/* Desktop: size the region list to the viewport (30rem = rail content above
+            the list + margin/Clear-button reserve below), floored at the mobile cap
+            so short windows never shrink it. Mobile keeps the fixed cap — the rail
+            is a toggled panel there and 100vh-relative sizing would overflow it. */}
+        <div className="max-h-52 overflow-y-auto rounded-sm border border-line bg-surface px-1.5 py-1 lg:max-h-[max(13rem,calc(100vh-30rem))]">
           {visibleRegions.length === 0 ? (
             <p className="px-1 py-2 text-xs text-ink-faint">No region matches “{regionQuery}”</p>
           ) : (

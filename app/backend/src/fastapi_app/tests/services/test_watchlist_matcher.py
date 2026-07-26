@@ -24,7 +24,9 @@ NOW = datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)
 def _settings():
     s = MagicMock()
     s.NOTIFICATION_RETENTION_DAYS = 90
-    s.WATCHLIST_MATCH_LOCK_TTL_SECONDS = 900
+    # A real int, not the MagicMock default: the lock TTL derives from this, and a
+    # Mock would make any TTL comparison pass vacuously (TEST-12).
+    s.WATCHLIST_MATCH_INTERVAL_SECONDS = 900
     s.DATABASE_URL = "postgresql+asyncpg://unused/unused"
     s.CACHE_URL = "redis://unused"
     return s
@@ -282,6 +284,37 @@ async def test_concurrency_lock_raises_when_held():
                 pass
 
 
+async def test_lock_ttl_exceeds_the_match_interval():
+    """The lock TTL is the mutual-exclusion window: a TTL equal to the tick
+    interval expires exactly as the next tick fires, so any run slower than one
+    interval leaves the lock free and the next tick starts a concurrent matcher
+    (the aggregation lock's shape in the 2026-07-23 production incident). The
+    TTL must strictly exceed the interval so the overlapping tick always skips.
+    The interval is pinned to a real int here because settings is a MagicMock —
+    an unset attribute compares truthy and the assertion would pass vacuously."""
+    store: dict = {}
+    fake = FakeLockRedis(store)
+    with patch.object(wm.aioredis, "from_url", return_value=fake):
+        svc = _service()
+        svc.settings.WATCHLIST_MATCH_INTERVAL_SECONDS = 900
+        async with svc._concurrency_lock():
+            pass
+    assert fake.set_ttls[wm.WATCHLIST_MATCH_LOCK_KEY] > 900
+
+
+async def test_lock_ttl_follows_a_reconfigured_interval():
+    """The window must track the configured interval — a constant merely raised
+    above today's interval silently re-opens the gap when the interval grows."""
+    store: dict = {}
+    fake = FakeLockRedis(store)
+    with patch.object(wm.aioredis, "from_url", return_value=fake):
+        svc = _service()
+        svc.settings.WATCHLIST_MATCH_INTERVAL_SECONDS = 3600
+        async with svc._concurrency_lock():
+            pass
+    assert fake.set_ttls[wm.WATCHLIST_MATCH_LOCK_KEY] > 3600
+
+
 @pytest.mark.asyncio
 async def test_run_matching_reuses_app_session_factory(monkeypatch: pytest.MonkeyPatch):
     """Pool-policy coverage (M4 spec §5): the matcher must source its session from
@@ -291,7 +324,7 @@ async def test_run_matching_reuses_app_session_factory(monkeypatch: pytest.Monke
 
     service = wm.WatchlistMatcherService(settings=MagicMock())
     service.settings.CACHE_URL = "redis://unused/0"
-    service.settings.WATCHLIST_MATCH_LOCK_TTL_SECONDS = 900
+    service.settings.WATCHLIST_MATCH_INTERVAL_SECONDS = 900
     service.settings.NOTIFICATION_RETENTION_DAYS = 90
 
     entered = {"count": 0}

@@ -349,3 +349,51 @@ async def test_filter_by_is_ship_contract(client: AsyncClient, db_session: Async
     non_ship = (await client.get("/contracts/?is_ship_contract=false")).json()
     assert non_ship["total"] == 1
     assert non_ship["items"][0]["contract_id"] == 402
+
+
+
+async def test_detail_still_serves_an_expired_contract(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The LIST endpoint hides expired contracts; the DETAIL endpoint must not.
+
+    Deliberately NOT in test_contracts.py: that module carries a file-level
+    pytest.mark.vcr, and vcrpy intercepts ahead of ASGITransport — so this test
+    replayed a cassette and passed even with the expiry predicate deleted. It has to
+    live somewhere that actually reaches the app.
+
+    A link pasted into chat routinely outlives the contract it points at, and 404-ing
+    yesterday's link reads as a broken site rather than an expired deal. This pins the
+    asymmetry deliberately, so a later change that "consistently" filters both does not
+    slip through as a tidy-up.
+    """
+    from datetime import timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        Contract(
+            contract_id=942001,
+            title="Long Dead Listing",
+            price=1_000_000,
+            collateral=0,
+            status="outstanding",
+            type="item_exchange",
+            issuer_id=942,
+            issuer_corporation_id=942,
+            start_location_id=60003760,
+            start_location_system_id=30000142,
+            start_location_region_id=99999903,
+            for_corporation=False,
+            date_issued=now - timedelta(days=20),
+            date_expired=now - timedelta(days=2),
+        )
+    )
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999903")
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 0          # absent from the list
+
+    detail = await client.get("/contracts/942001")
+    assert detail.status_code == 200            # but still reachable by direct link
+    assert detail.json()["contract_id"] == 942001
