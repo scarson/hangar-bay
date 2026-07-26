@@ -94,8 +94,16 @@ def _collect_resolvable_ids(contracts: List[dict]) -> list[int]:
     return all_ids_to_resolve
 
 
-def _build_contract_rows(contracts: List[dict], id_to_name_map: dict) -> list[dict]:
-    """Transform ESI contract payloads into Contract upsert rows, enriched with names."""
+def _build_contract_rows(
+    contracts: List[dict], id_to_name_map: dict, seen_at: datetime | None = None
+) -> list[dict]:
+    """Transform ESI contract payloads into Contract upsert rows, enriched with names.
+
+    Every row carries the SAME seen_at for the whole run: a contract is judged present
+    by matching the newest stamp in its region, which only works if one run writes one
+    value. The upsert copies mapped columns on conflict, so re-sighting restamps.
+    """
+    seen_at = seen_at or datetime.now(timezone.utc)
     return [
         {
             "contract_id": c["contract_id"],
@@ -113,6 +121,7 @@ def _build_contract_rows(contracts: List[dict], id_to_name_map: dict) -> list[di
             "date_completed": _parse_esi_datetime(c.get("date_completed")),
             "price": c.get("price"),
             "collateral": c.get("collateral", 0.0),  # Default to 0.0 if null
+            "last_seen_at": seen_at,
             "reward": c.get("reward"),
             "volume": c.get("volume"),
             # Denormalized data for search performance
