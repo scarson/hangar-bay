@@ -57,7 +57,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Production is LIVE at `https://hangarbay.app` (ohio, Postgres 18) with CD proven end-to-end: releases #66 (2026-07-19) and #74 (2026-07-21) published; 2b executed via API (D-12/D-13); Phase 4 Steps 0-2 and 4 complete with evidence (pipeline proof, verification sweep, rollback drill); the Jul 23-26 scheduler incident diagnosed and fixed (D-15, PRs #76/#77). **The single remaining M4 item is Phase 4 Step 3: Sam's live SSO login on the production origin** (blocked on EVE character creation — free, needs the game client).
+**Overall:** Production is LIVE at `https://hangarbay.app` (ohio, Postgres 18) with CD proven end-to-end: releases #66 (2026-07-19) and #74 (2026-07-21) published; 2b executed via API (D-12/D-13); Phase 4 Steps 0-2 and 4 complete with evidence (pipeline proof, verification sweep, rollback drill); the Jul 23-26 scheduler incident diagnosed and fixed (D-15, PRs #76/#77). **The single remaining M4 item is Phase 4 Step 3: Sam's live SSO login on the production origin** (blocked on EVE character creation — free, needs the game client). Release [#79](https://github.com/scarson/hangar-bay/pull/79) (2026-07-26) deployed the D-15 fixes; its pipeline run 30215356899 was the FIRST fully-green CD run (deploy + smoke) — the deploy pipeline is proven end to end. The region-filter viewport-sizing fix (PR [#80](https://github.com/scarson/hangar-bay/pull/80)) is on dev awaiting the next publication PR.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
