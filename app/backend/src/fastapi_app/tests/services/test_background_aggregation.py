@@ -283,6 +283,35 @@ async def test_lock_release_deletes_only_its_own_token():
         assert bg_agg.AGGREGATION_LOCK_KEY not in store  # released after
 
 
+async def test_lock_ttl_exceeds_the_scheduler_interval():
+    """The lock TTL is the mutual-exclusion window: if it is shorter than a real
+    run, it expires mid-run and the next scheduler tick legally starts a second
+    concurrent run (production 2026-07-23: a ~70-minute run overran a fixed
+    1800s TTL). The TTL must strictly exceed the tick interval so the one
+    overlapping tick always finds the lock held and skips."""
+    store: dict = {}
+    fake = _FakeLockRedis(store)
+    with patch.object(bg_agg.aioredis, "from_url", return_value=fake):
+        service = _make_service()
+        service.settings.AGGREGATION_SCHEDULER_INTERVAL_SECONDS = 3600
+        async with service._concurrency_lock():
+            pass
+    assert fake.set_ttls[bg_agg.AGGREGATION_LOCK_KEY] > 3600
+
+
+async def test_lock_ttl_follows_a_reconfigured_interval():
+    """The window must track the configured interval — a constant merely raised
+    above today's interval silently re-opens the gap when the interval grows."""
+    store: dict = {}
+    fake = _FakeLockRedis(store)
+    with patch.object(bg_agg.aioredis, "from_url", return_value=fake):
+        service = _make_service()
+        service.settings.AGGREGATION_SCHEDULER_INTERVAL_SECONDS = 7200
+        async with service._concurrency_lock():
+            pass
+    assert fake.set_ttls[bg_agg.AGGREGATION_LOCK_KEY] > 7200
+
+
 async def test_lock_release_does_not_delete_a_reacquired_lock(caplog):
     """If the TTL expires mid-run and a second runner reacquires the key, the
     first runner's finally must NOT delete the second runner's lock (fencing

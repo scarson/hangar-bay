@@ -26,7 +26,7 @@ async def run_aggregation_job(aggregation_service: ContractAggregationService):
 
 
 async def run_watchlist_matcher_job(matcher_service):
-    """Top-level, importable wrapper for the watchlist matcher (RedisJobStore pickles the reference)."""
+    """Scheduler job entrypoint for the watchlist matcher; never propagates exceptions."""
     logger.info("Executing scheduled job: run_watchlist_matcher_job")
     try:
         await matcher_service.run_matching()

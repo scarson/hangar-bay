@@ -73,15 +73,23 @@ test('pagination crosses a real page boundary when the dataset has one', async (
   await page.goto('/contracts?ships_only=false')
   await expect(page.getByRole('heading', { level: 1, name: 'All Contracts' })).toBeVisible()
 
+  // An empty dataset renders no pager at all (fresh deploy before the first
+  // ingest commits), so probe the announced total before touching the button.
+  test.skip((await announcedTotal(page)) === 0, 'live dataset is empty right now')
+
   const next = page.getByRole('button', { name: 'Next →' })
   test.skip(await next.isDisabled(), 'live dataset fits on one page right now')
 
   const pageOneHrefs = new Set(
     await rowLinks(page).evaluateAll((links) => links.map((a) => a.getAttribute('href'))),
   )
+  const pageOneFirstHref = await rowLinks(page).first().getAttribute('href')
   await next.click()
   await expect(page).toHaveURL(/page=2/)
-  await expect(rowLinks(page).first()).toBeVisible()
+  // The list query keeps page 1's rows rendered as placeholderData until the
+  // page-2 fetch resolves (useContracts keepPreviousData), so first-row
+  // visibility alone samples stale rows — wait for the row set to change.
+  await expect(rowLinks(page).first()).not.toHaveAttribute('href', pageOneFirstHref ?? '')
   const pageTwoHrefs = await rowLinks(page).evaluateAll((links) => links.map((a) => a.getAttribute('href')))
 
   // Distinct parent entities across the boundary (SQLA-1 regression guard):

@@ -24,8 +24,11 @@ logger = logging.getLogger(__name__)
 
 # Lock key for Redis to ensure only one aggregation job runs at a time.
 AGGREGATION_LOCK_KEY = "hangar-bay:aggregation:lock"
-# Lock timeout in seconds. Should be longer than a typical aggregation run.
-AGGREGATION_LOCK_TIMEOUT = 1800  # 30 minutes
+# Margin added to the scheduler interval to form the lock TTL (see _lock_ttl_seconds):
+# the TTL must strictly exceed the interval so a run that outlasts its own interval
+# still holds the lock when the overlapping tick fires, and the margin keeps it held
+# through that tick's acquisition attempt.
+AGGREGATION_LOCK_TTL_MARGIN_SECONDS = 300
 # Freshness record for the last aggregation run (design spec §8.2): JSON
 # {finished_at, outcome, regions_ok, regions_failed, last_success_at}, no TTL —
 # overwritten each run; lost on cache restart, which self-heals within one tick.
@@ -149,6 +152,16 @@ class ContractAggregationService:
         self.esi_client = esi_client
         self.settings = settings  # Assign the injected settings
 
+    def _lock_ttl_seconds(self) -> int:
+        """Mutual-exclusion window for one aggregation run: the scheduler interval
+        plus a margin. A fixed TTL shorter than a real run expires mid-run, at which
+        point the next tick can legally start a concurrent run — deriving from the
+        interval keeps the window ahead of any run the schedule can overlap."""
+        return (
+            self.settings.AGGREGATION_SCHEDULER_INTERVAL_SECONDS
+            + AGGREGATION_LOCK_TTL_MARGIN_SECONDS
+        )
+
     @asynccontextmanager
     async def _concurrency_lock(self):
         """
@@ -156,13 +169,14 @@ class ContractAggregationService:
         Creates its own Redis client on-demand.
         """
         redis_client = aioredis.from_url(str(self.settings.CACHE_URL))
+        lock_ttl = self._lock_ttl_seconds()
         # Unique fencing token: the lock value identifies THIS runner so release
         # can verify ownership (see _RELEASE_LOCK_LUA) instead of blindly deleting.
         lock_token = uuid.uuid4().hex
         lock_acquired = False
         try:
             lock_acquired = await redis_client.set(
-                AGGREGATION_LOCK_KEY, lock_token, nx=True, ex=AGGREGATION_LOCK_TIMEOUT
+                AGGREGATION_LOCK_KEY, lock_token, nx=True, ex=lock_ttl
             )
             if not lock_acquired:
                 logger.warning("Contract aggregation job is already running. Skipping this run.")
@@ -190,7 +204,7 @@ class ContractAggregationService:
                         "Aggregation lock token mismatch on release: the %ss lock TTL "
                         "likely expired mid-run and was reacquired by another runner. "
                         "Leaving the current holder's lock intact.",
-                        AGGREGATION_LOCK_TIMEOUT,
+                        lock_ttl,
                     )
             await redis_client.close()  # Ensure redis client is closed
 

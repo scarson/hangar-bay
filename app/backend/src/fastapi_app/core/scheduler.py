@@ -1,9 +1,7 @@
 import logging
 from datetime import datetime, timedelta  # Added for next_run_time
 
-from urllib.parse import urlparse
-
-from apscheduler.jobstores.redis import RedisJobStore
+from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
@@ -17,15 +15,12 @@ logger = logging.getLogger(__name__)
 
 def create_scheduler(app: FastAPI, settings: Settings) -> AsyncIOScheduler:
     """Creates and configures the APScheduler instance."""
-    redis_url = urlparse(settings.CACHE_URL)
-    jobstores = {
-        "default": RedisJobStore(
-            host=redis_url.hostname,
-            port=redis_url.port,
-            db=int(redis_url.path.lstrip("/") or 0),
-            password=redis_url.password,
-        )
-    }
+    # In-memory jobstore, deliberately: the lifespan re-registers every job on
+    # boot (replace_existing=True), so persisting job records buys nothing —
+    # and a cache-backed store colocates them with a Valkey instance running
+    # allkeys-lru, where memory pressure silently evicts the jobs and the
+    # scheduler ticks nothing, with zero errors (DEPLOY-3).
+    jobstores = {"default": MemoryJobStore()}
     scheduler = AsyncIOScheduler(jobstores=jobstores)
     app.state.scheduler = scheduler
     return scheduler

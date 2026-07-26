@@ -41,10 +41,10 @@ async def _probe_cache(request: Request) -> tuple[bool, object]:
     The client comes straight off app.state, NOT the get_cache dependency — that
     dependency raises when startup init failed, which would replace the structured
     readiness body with a bare 503 and never re-probe. A missing client gets one
-    reinit attempt per call. Reachability note: a Valkey outage that persists through
-    startup crashes the process at scheduler.start() (RedisJobStore) before /ready ever
-    serves — platform restarts recover that case; this reinit covers the narrower blip
-    where init_cache's single ping failed but Valkey returned afterwards.
+    reinit attempt per call. Reachability note: startup tolerates a Valkey outage —
+    init_cache logs CRITICAL and leaves the client unset, and the scheduler's jobstore
+    is in-memory (DEPLOY-3) so scheduler.start() never touches the cache; this per-call
+    reinit is what recovers the cache client once Valkey returns.
     """
     try:
         async with asyncio.timeout(READINESS_CHECK_TIMEOUT_SECONDS):
