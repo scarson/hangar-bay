@@ -54,8 +54,9 @@ def _apply_contract_filters(query, filters: ContractFilters):
     # dead contract lands ahead of every live one, filling the first page with rows nobody
     # can act on. Applied HERE, not at a call site, so the predicate reaches the count query
     # and both fetch paths alike; on only one of them, `total` disagrees with the pages
-    # (SQLA-1's failure shape). func.now() keeps the comparison on the database clock, so
-    # no application-side timezone conversion sits between the predicate and its index.
+    # (SQLA-1's failure shape). func.now() evaluates on the database clock, so the cutoff
+    # cannot drift with application/container clock skew — it is NOT about index usability,
+    # since a bound timezone-aware parameter would be equally indexable.
     # The detail endpoint deliberately does NOT filter this way: a shared link outlives the
     # contract it points at, and 404-ing yesterday's link reads as a broken site.
     query = query.filter(Contract.date_expired > func.now())

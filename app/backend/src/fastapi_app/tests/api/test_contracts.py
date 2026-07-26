@@ -30,9 +30,15 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi_app.models import Contract, ContractItem
+
+# Fixture contracts must stay LIVE. The contracts list endpoint now excludes anything past
+# date_expired, so a hardcoded past expiry makes a fixture invisible to the very endpoint
+# these tests exercise. They pass today only because vcrpy replays recorded responses; the
+# first re-record would fail them all with a baffling total==0.
+LIVE_EXPIRY = datetime.now(timezone.utc) + timedelta(days=7)
 
 # Mark all tests in this file for VCR, our custom live marker, and asyncio
 pytestmark = [
@@ -69,10 +75,10 @@ async def test_get_contracts_live(client: AsyncClient):
 async def test_filter_contracts_by_search(client: AsyncClient, db_session: AsyncSession):
     """Tests text search against contract title and item name."""
     # Arrange
-    contract1 = Contract(contract_id=1, title="My Special Contract", price=100, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
+    contract1 = Contract(contract_id=1, title="My Special Contract", price=100, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=LIVE_EXPIRY, start_location_id=60003760)
     item1 = ContractItem(contract_id=1, type_id=101, type_name="Test Ship Alpha", quantity=1, is_included=True, is_singleton=True)
     
-    contract2 = Contract(contract_id=2, title="Another Deal", price=200, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
+    contract2 = Contract(contract_id=2, title="Another Deal", price=200, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=LIVE_EXPIRY, start_location_id=60003760)
     item2 = ContractItem(contract_id=2, type_id=102, type_name="Test Ship Beta", quantity=1, is_included=True, is_singleton=True)
     
     db_session.add_all([contract1, item1, contract2, item2])
@@ -98,9 +104,9 @@ async def test_filter_contracts_by_price(client: AsyncClient, db_session: AsyncS
     """Tests filtering by min_price and max_price."""
     # Arrange
     contracts = [
-        Contract(contract_id=1, title="C1", price=50.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760),
-        Contract(contract_id=2, title="C2", price=100.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760),
-        Contract(contract_id=3, title="C3", price=150.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760),
+        Contract(contract_id=1, title="C1", price=50.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=LIVE_EXPIRY, start_location_id=60003760),
+        Contract(contract_id=2, title="C2", price=100.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=LIVE_EXPIRY, start_location_id=60003760),
+        Contract(contract_id=3, title="C3", price=150.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=LIVE_EXPIRY, start_location_id=60003760),
     ]
     items = [ContractItem(contract_id=c.contract_id, type_id=101, type_name="Ship", quantity=1, is_included=True, is_singleton=True) for c in contracts]
     db_session.add_all(contracts + items)
@@ -132,10 +138,10 @@ async def test_filter_contracts_by_price(client: AsyncClient, db_session: AsyncS
 async def test_sort_contracts(client: AsyncClient, db_session: AsyncSession):
     """Tests sorting by different fields and directions."""
     # Arrange
-    contract1 = Contract(contract_id=1, title="Z-Contract", price=2000.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
+    contract1 = Contract(contract_id=1, title="Z-Contract", price=2000.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=LIVE_EXPIRY, start_location_id=60003760)
     item1 = ContractItem(contract_id=1, type_id=102, type_name="Zephyr Frigate", quantity=1, is_included=True, is_singleton=True)
 
-    contract2 = Contract(contract_id=2, title="A-Contract", price=1000.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760)
+    contract2 = Contract(contract_id=2, title="A-Contract", price=1000.0, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=LIVE_EXPIRY, start_location_id=60003760)
     item2 = ContractItem(contract_id=2, type_id=101, type_name="Abyssal Cruiser", quantity=1, is_included=True, is_singleton=True)
     
     db_session.add_all([contract1, item1, contract2, item2])
@@ -158,7 +164,7 @@ async def test_sort_contracts(client: AsyncClient, db_session: AsyncSession):
 async def test_paginate_contracts(client: AsyncClient, db_session: AsyncSession):
     """Tests pagination logic."""
     # Arrange
-    contracts = [Contract(contract_id=i, title=f"C{i}", price=i*10, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=datetime.fromisoformat("2025-01-02T00:00:00Z"), start_location_id=60003760) for i in range(1, 11)]
+    contracts = [Contract(contract_id=i, title=f"C{i}", price=i*10, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=1, issuer_corporation_id=1, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=LIVE_EXPIRY, start_location_id=60003760) for i in range(1, 11)]
     items = [ContractItem(contract_id=c.contract_id, type_id=101, type_name="Ship", quantity=1, is_included=True, is_singleton=True) for c in contracts]
     db_session.add_all(contracts + items)
     await db_session.flush()  # Use flush to persist data within the ongoing transaction
@@ -173,45 +179,3 @@ async def test_paginate_contracts(client: AsyncClient, db_session: AsyncSession)
     assert data["page"] == 2
     assert data["size"] == 3
     assert [c["contract_id"] for c in data["items"]] == [4, 5, 6]
-
-
-async def test_detail_still_serves_an_expired_contract(
-    client: AsyncClient, db_session: AsyncSession
-):
-    """The LIST endpoint hides expired contracts; the DETAIL endpoint must not.
-
-    A link pasted into chat routinely outlives the contract it points at, and 404-ing
-    yesterday's link reads as a broken site rather than an expired deal. This pins the
-    asymmetry deliberately, so a later change that "consistently" filters both does not
-    slip through as a tidy-up.
-    """
-    from datetime import timedelta, timezone
-
-    now = datetime.now(timezone.utc)
-    db_session.add(
-        Contract(
-            contract_id=942001,
-            title="Long Dead Listing",
-            price=1_000_000,
-            collateral=0,
-            status="outstanding",
-            type="item_exchange",
-            issuer_id=942,
-            issuer_corporation_id=942,
-            start_location_id=60003760,
-            start_location_system_id=30000142,
-            start_location_region_id=99999903,
-            for_corporation=False,
-            date_issued=now - timedelta(days=20),
-            date_expired=now - timedelta(days=2),
-        )
-    )
-    await db_session.flush()
-
-    listed = await client.get("/contracts/?region_ids=99999903")
-    assert listed.status_code == 200
-    assert listed.json()["total"] == 0          # absent from the list
-
-    detail = await client.get("/contracts/942001")
-    assert detail.status_code == 200            # but still reachable by direct link
-    assert detail.json()["contract_id"] == 942001

@@ -23,6 +23,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    # Fail fast rather than queue behind a long transaction. This runs as Render's
+    # pre-deploy command while the OUTGOING instance is still serving, and that instance's
+    # in-process ingestion holds an open transaction on `contracts` across its upsert phase.
+    # CREATE INDEX needs a SHARE lock, so without a timeout a deploy that overlaps an
+    # aggregation run waits indefinitely and stalls the release. A bounded wait turns that
+    # into a visible, retryable deploy failure instead. Scoped to this transaction.
+    # (The build itself is trivial at ~50k rows; lock acquisition is the only real risk.)
+    op.execute("SET lock_timeout = '30s'")
     op.create_index('ix_contracts_date_expired', 'contracts', ['date_expired'], unique=False)
 
 
