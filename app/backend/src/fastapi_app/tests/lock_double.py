@@ -7,11 +7,15 @@ class FakeLockRedis:
 
     def __init__(self, store: dict):
         self.store = store
+        # Records the ex= (TTL seconds) each successful set carried, keyed like store —
+        # lets tests assert on the mutual-exclusion window, not just key presence.
+        self.set_ttls: dict = {}
 
     async def set(self, key, value, nx=False, ex=None):
         if nx and key in self.store:
             return None
         self.store[key] = value
+        self.set_ttls[key] = ex
         return True
 
     async def get(self, key):
