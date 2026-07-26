@@ -49,6 +49,17 @@ def _needs_item_join(filters: ContractFilters) -> bool:
 
 def _apply_contract_filters(query, filters: ContractFilters):
     """Apply the contract-level filters, narrowing the results."""
+    # 0. Liveness. A contract past date_expired cannot be accepted in game, so listing
+    # it wastes a result slot — and because "Time left" sorts ascending by default, every
+    # dead contract lands ahead of every live one, filling the first page with rows nobody
+    # can act on. Applied HERE, not at a call site, so the predicate reaches the count query
+    # and both fetch paths alike; on only one of them, `total` disagrees with the pages
+    # (SQLA-1's failure shape). func.now() keeps the comparison on the database clock, so
+    # no application-side timezone conversion sits between the predicate and its index.
+    # The detail endpoint deliberately does NOT filter this way: a shared link outlives the
+    # contract it points at, and 404-ing yesterday's link reads as a broken site.
+    query = query.filter(Contract.date_expired > func.now())
+
     # 1. Text search (on contract title or item name)
     if filters.search:
         search_term = f"%{filters.search}%"

@@ -1,0 +1,55 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - test
+      user-agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: http://test/contracts/?region_ids=99999903
+  response:
+    body:
+      string: '{"total":0,"page":1,"size":50,"items":[]}'
+    headers:
+      content-length:
+      - '41'
+      content-type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - test
+      user-agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: http://test/contracts/942001
+  response:
+    body:
+      string: '{"contract_id":942001,"issuer_id":942,"issuer_corporation_id":942,"start_location_id":60003760,"end_location_id":null,"type":"item_exchange","status":"outstanding","title":"Long
+        Dead Listing","for_corporation":false,"date_issued":"2026-07-06T22:44:55.663275Z","date_expired":"2026-07-24T22:44:55.663275Z","date_completed":null,"price":1000000.0,"reward":null,"volume":null,"start_location_name":null,"issuer_name":null,"issuer_corporation_name":null,"is_ship_contract":false,"items":[]}'
+    headers:
+      content-length:
+      - '486'
+      content-type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+version: 1
