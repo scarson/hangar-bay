@@ -49,8 +49,8 @@ def _render_message(type_name: str, contract_type: str, price, location: Optiona
 
 
 class WatchlistMatcherService:
-    """Picklable (no live clients at rest) so RedisJobStore can persist the job — mirrors
-    ContractAggregationService. `now_fn` stays None in production (a lambda would not pickle);
+    """Holds no live clients at rest — Redis/DB connections are created per run — mirroring
+    ContractAggregationService. `now_fn` stays None in production;
     tests inject a fixed clock for the retention boundary."""
 
     def __init__(self, settings: Settings, now_fn: Optional[Callable[[], datetime]] = None):

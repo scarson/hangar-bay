@@ -26,7 +26,8 @@ def test_add_watchlist_matcher_job_registers_expected_id():
 
 def test_matcher_service_is_picklable():
     import pickle
-    # RedisJobStore pickles the job func + args; the SERVICE itself must round-trip (a MagicMock
+    # The service must hold only inert, picklable state at rest — a pickle round-trip is the
+    # cheap detector for a live client or closure sneaking into the constructor (a MagicMock
     # settings or a lambda now_fn would break this — use the real settings singleton).
     from fastapi_app.core.config import settings as real_settings
     svc = WatchlistMatcherService(settings=real_settings, now_fn=None)

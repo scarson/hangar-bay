@@ -30,7 +30,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, upstream status | ESI-1 | §4.C |
-| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2 | §5.C |
+| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -288,10 +288,23 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### DEPLOY-3: Durable coordination state must not live in an evicting cache (`allkeys-lru`)
+
+**The Flaw:** APScheduler's job records lived in a `RedisJobStore` pointed at the production Valkey instance — the same instance configured `maxmemoryPolicy: allkeys-lru` (render.yaml; free tier ~25 MB) that absorbs the ESI ETag cache. State the system needs to KEEP was colocated with a cache explicitly licensed to delete any key under memory pressure.
+
+**Why It Matters:** Eviction of jobstore keys is a *silent, total* scheduler outage: missing keys mean "no due jobs", so nothing fires and nothing errors. On 2026-07-23 an uncapped aggregation run ETag-cached 155k+ contract items, drove the instance into LRU eviction, and the jobstore keys were evicted with the rest — last scheduler tick `01:34:45Z Jul 23`, zero jobs fired for 3.6 days, zero error lines, stale data served while `/ready` correctly reported `data_stale`. Restarts revive it only because the lifespan re-registers jobs at boot.
+
+**The Fix:** The scheduler uses an in-memory jobstore (`core/scheduler.py`; pinned by `tests/core/test_scheduler.py`): every job is re-registered on boot with `replace_existing=True`, so cache-backed persistence bought nothing while exposing scheduler state to eviction. The general rule: state whose loss is silent and must outlive cache pressure (job stores, durable queues, registries) never goes into an `allkeys-lru` instance — keep it in-process or in the database. Cross-run locks are the tolerable exception: they self-expire by design, and eviction merely widens a concurrency window the TTL already bounds — provided the TTL actually covers a real run (the aggregation lock TTL derives from the scheduler interval in `services/background_aggregation.py` for exactly that reason).
+
+**Where It Bit Us:** Production Render deployment, diagnosed 2026-07-26 from live logs: last tick logged `01:34:45Z` Jul 23, then 3.6 days of silence with the app serving stale data. The same logs surfaced the companion lock finding — a ~70-minute run overran the then-fixed 1800s lock TTL ("Aggregation lock token mismatch on release: the 1800s lock TTL likely expired mid-run…"), meaning the mutual-exclusion window was shorter than real run durations.
+
+---
+
 ### §5.C — Review Checklist
 
 - [ ] **`DATABASE_URL` reaches the engine driver-qualified** — the Settings validator normalizes `postgresql://`; no code assumes the platform sends `+asyncpg` (DEPLOY-1)
 - [ ] **Every production launch command pins `--workers 1`** — scaling proposals split the scheduler out instead of raising the worker count (DEPLOY-2)
+- [ ] **Nothing the app must retain lives in the evicting Valkey** — job stores and other silent-loss durable state stay out of `allkeys-lru` instances; cross-run lock TTLs cover a real run, not an unrelated constant (DEPLOY-3)
 
 ---
 
@@ -318,6 +331,10 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 ---
 
 # Appendix A: Historical Changelog
+
+## 2026-07-26 — DEPLOY-3 added: jobstore keys evicted by the allkeys-lru Valkey
+
+- Added DEPLOY-3 (durable coordination state must not share an `allkeys-lru` cache) from the Jul 23–26 production incident: LRU eviction deleted the `RedisJobStore` keys and the scheduler went silent for 3.6 days with zero errors. Fix shipped in the same PR: in-memory jobstore (`core/scheduler.py`) + aggregation lock TTL derived from the scheduler interval (`services/background_aggregation.py`), both TDD-pinned.
 
 ## 2026-07-19 — ENV-8 added: worktrees lack gitignored credential files
 
@@ -382,6 +399,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
 | DEPLOY-1 | Managed platforms inject postgresql:// URLs; async stack needs +asyncpg | HIGH | VALIDATED | Deployment & Platform |
 | DEPLOY-2 | uvicorn stays --workers 1 (in-process scheduler) | MEDIUM | VALIDATED | Deployment & Platform |
+| DEPLOY-3 | Durable coordination state must not live in an evicting cache | HIGH | VALIDATED | Deployment & Platform |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
 Severity levels: `CRITICAL` (production data loss / security), `HIGH` (correctness bug under predictable conditions), `MEDIUM` (correctness bug under edge cases), `LOW` (cleanliness / clarity / dev-loop hazard).
