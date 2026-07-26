@@ -76,6 +76,9 @@ class Contract(Base):
         # Indexes for sorting and filtering performance
         Index('ix_contracts_price', 'price'),
         Index('ix_contracts_date_issued', 'date_issued'),
+        # Every list query filters date_expired > now(), so this one is on the hot path
+        # for all of them, not just for sorting by "Time left".
+        Index('ix_contracts_date_expired', 'date_expired'),
         Index('ix_contracts_collateral', 'collateral'),
         Index('ix_contracts_volume', 'volume'),
     )

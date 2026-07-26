@@ -378,3 +378,104 @@ async def test_joined_pagination_tiebreaks_equal_sort_keys_by_contract_id(
     page2_ids = {c.contract_id for c in page2.items}
     assert page1_ids | page2_ids == {930001, 930002}
     assert page1_ids & page2_ids == set()
+
+
+# --- Expiry filtering -------------------------------------------------------
+#
+# A contract past date_expired cannot be accepted in game, so listing it wastes a
+# slot in a result set and, worse, sorting by "Time left" ascending puts every dead
+# contract ahead of every live one. These use a dedicated region id so no other
+# fixture's rows leak in, and expiry offsets are whole days so app/DB clock skew
+# cannot flip an assertion.
+
+EXPIRY_REGION_ID = 99999902
+
+
+def _expiry_contract(contract_id: int, *, expired: bool, items: list[ContractItem] | None = None) -> Contract:
+    now = datetime.now(timezone.utc)
+    return Contract(
+        contract_id=contract_id,
+        title=f"Expiry Case {contract_id}",
+        price=1_000_000,
+        collateral=0,
+        status="outstanding",
+        type="item_exchange",
+        issuer_id=941,
+        issuer_corporation_id=941,
+        start_location_id=60003760,
+        start_location_system_id=30000142,
+        start_location_region_id=EXPIRY_REGION_ID,
+        for_corporation=False,
+        date_issued=now - timedelta(days=20),
+        date_expired=now - timedelta(days=2) if expired else now + timedelta(days=5),
+        items=items or [],
+    )
+
+
+async def test_expired_contracts_are_excluded_from_the_list(db_session: AsyncSession):
+    """The simple (unjoined) path drops contracts whose date_expired has passed."""
+    db_session.add_all([
+        _expiry_contract(941001, expired=False),
+        _expiry_contract(941002, expired=True),
+        _expiry_contract(941003, expired=False),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(db_session, ContractFilters(region_ids=[EXPIRY_REGION_ID]))
+
+    # Sorted, not positional: these fixtures' date_issued values come from separate
+    # datetime.now() calls microseconds apart, so their order under the default
+    # date_issued-desc sort is not deterministic (TEST-3). Exclusion is what this pins.
+    assert sorted(item.contract_id for item in result.items) == [941001, 941003]
+    # total comes from a separate count query; if the predicate reaches only the fetch
+    # path the pages shrink while total keeps counting the dead rows (SQLA-1's shape).
+    assert result.total == 2
+
+
+async def test_expired_exclusion_also_applies_on_the_item_joined_path(db_session: AsyncSession):
+    """`search` forces an outer join to ContractItem, which is a different query plan
+    and a different fetch function — the predicate must hold there too."""
+    def item(record_id: int) -> ContractItem:
+        return ContractItem(
+            record_id=record_id, type_id=587, type_name="Rifter", quantity=1,
+            is_included=True, is_singleton=False, is_blueprint_copy=False,
+        )
+
+    db_session.add_all([
+        _expiry_contract(941011, expired=False, items=[item(9411)]),
+        _expiry_contract(941012, expired=True, items=[item(9412)]),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session,
+        ContractFilters(region_ids=[EXPIRY_REGION_ID], search="Rifter"),
+    )
+
+    assert [item_.contract_id for item_ in result.items] == [941011]
+    assert result.total == 1
+
+
+async def test_expired_exclusion_holds_across_page_boundaries(db_session: AsyncSession):
+    """TEST-4: a filter that leaks on later pages is invisible to a single-page test.
+    Five live and four dead contracts, paged two at a time — the union of pages must be
+    exactly the live set, with no duplicates and no dead rows anywhere."""
+    live_ids = [941101, 941103, 941105, 941107, 941109]
+    dead_ids = [941102, 941104, 941106, 941108]
+    db_session.add_all(
+        [_expiry_contract(cid, expired=False) for cid in live_ids]
+        + [_expiry_contract(cid, expired=True) for cid in dead_ids]
+    )
+    await db_session.flush()
+
+    seen: list[int] = []
+    for page in (1, 2, 3):
+        result = await get_contracts(
+            db_session,
+            ContractFilters(region_ids=[EXPIRY_REGION_ID], page=page, size=2),
+        )
+        assert result.total == len(live_ids)
+        seen.extend(item.contract_id for item in result.items)
+
+    assert sorted(seen) == live_ids           # every live contract, exactly once
+    assert not set(seen) & set(dead_ids)      # and no dead one on any page

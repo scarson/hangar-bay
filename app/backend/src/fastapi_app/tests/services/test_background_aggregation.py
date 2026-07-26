@@ -89,8 +89,14 @@ async def test_process_contracts_without_region_stamp_stores_null(
 
 
 def _ship_contract_dict(cid: int) -> dict:
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
+    # date_expired must stay in the FUTURE. The contracts list endpoint excludes expired
+    # contracts, so a fixture pinned to a past date is invisible to any test that queries
+    # over HTTP rather than reading rows directly — which is exactly how this helper's
+    # original hardcoded 2026-07-08 expiry broke the is_bpc filter test the moment that
+    # exclusion landed. Relative to now, so it cannot rot back into the past.
+    live_expiry = datetime.now(timezone.utc) + timedelta(days=7)
     return {
         "contract_id": cid,
         "issuer_id": 1,
@@ -99,7 +105,7 @@ def _ship_contract_dict(cid: int) -> dict:
         "type": "item_exchange",
         "price": 1_000_000.0,
         "date_issued": "2026-07-01T00:00:00Z",
-        "date_expired": "2026-07-08T00:00:00Z",
+        "date_expired": live_expiry.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "_hb_region_id": 10000002,
     }
 
