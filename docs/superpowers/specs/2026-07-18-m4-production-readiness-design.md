@@ -175,11 +175,10 @@ Four resources, one `render.yaml` blueprint (IaC committed to the repo), one reg
 | `METRICS_TOKEN` (new, §8.3) | fresh random token, dashboard-entered secret | unset ⇒ `/metrics` open (dev); prod MUST set it |
 | `MAX_SAVED_SEARCHES_PER_USER` | `100` (default) | M3 per-user cap; hobby scale needs no override |
 | `MAX_WATCHLIST_ITEMS_PER_USER` | `200` (default) | M3 per-user cap; hobby scale needs no override |
-| `WATCHLIST_MATCH_INTERVAL_SECONDS` | `900` (default) | M3 matcher cadence; 15 min balances notification latency vs the hourly ingest cadence |
-| `WATCHLIST_MATCH_LOCK_TTL_SECONDS` | `900` (default) | M3 matcher Valkey lock TTL; must stay ≥ a worst-case matcher run |
+| `WATCHLIST_MATCH_INTERVAL_SECONDS` | `900` (default) | M3 matcher cadence; 15 min balances notification latency vs the hourly ingest cadence. The matcher's Valkey lock TTL derives from it (interval + a fixed margin), so no separate TTL var exists |
 | `NOTIFICATION_RETENTION_DAYS` | `90` (default) | M3 notification prune window |
 
-*(The five rows above are M3's Settings additions, enumerated from the merged `core/config.py` per plan Task 3.0 Step 3 — every prod value is the code default, deliberately chosen, none dashboard-held.)*
+*(The four rows above are M3's Settings additions, enumerated from the merged `core/config.py` per plan Task 3.0 Step 3 — every prod value is the code default, deliberately chosen, none dashboard-held.)*
 
 **Provisioning paths (I-5):** secret values (`ESI_CLIENT_SECRET`, `TOKEN_CIPHER_KEYS`, `METRICS_TOKEN`) enter via the Render dashboard or blueprint `sync: false` declarations (names in git, values dashboard-held); connection strings via blueprint references; the CD credential lives only in GitHub Actions secrets. **Forbidden forms, named:** any `render`/`curl` CLI invocation with a secret in argv; secrets in `render.yaml` literals; secrets in chat or committed `.env` files; **secrets (or their prefixes) in log lines** — the existing `DATABASE_URL[:30]` log at `background_aggregation.py:150` is removed as a Phase-3 prerequisite. `.env.example` gains a commented production section documenting this inventory (**Phase 3, not Phase 1** — M3 edits `.env.example` repeatedly; touching it pre-merge would collide).
 
