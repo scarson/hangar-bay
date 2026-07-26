@@ -3,154 +3,157 @@
 ABOUTME: Design for the first M5 milestone — make Hangar Bay's data honest about itself and make its links worth pasting into Discord, ahead of a private trial with a friendly EVE corporation.
 ABOUTME: Chosen direction from `2026-07-26-m5-direction-options.md`; evidence in `docs/audits/m5-recon/`; awaiting Sam's approval before an implementation plan is written.
 
-**Status:** DRAFT — awaiting Sam's review. Written 2026-07-26 while Sam was away, per his instruction to drive the brainstorm as far as reasonable. Design sections were not individually approved, which the normal brainstorming flow would require; treat the whole document as one approval gate.
+**Status:** DRAFT — awaiting Sam's review. Written 2026-07-26 while Sam was away, per his instruction to drive the brainstorm as far as reasonable. Design sections were not individually approved, which the normal brainstorming flow requires; treat the whole document as one approval gate.
+
+**Revision note:** this is the second draft. A blind adversarial review (`docs/audits/m5-recon/spec-review-fable.md`) found a blocker that would have broken the JSON API in production, and a substantive gap — sold contracts — that the first draft missed entirely. Both are fixed here, and the headline recommendation changed as a result.
 
 **Goal:** A trial user from a Discord-native corporation opens the site, believes the numbers, finds live contracts rather than dead ones, and pastes links that unfurl into something worth clicking.
 
-**Non-goal:** Market appraisal, multi-region coverage, and alert delivery channels are separate directions (see the options record). Nothing here tries to differentiate Hangar Bay from existing marketplace sites — that is the appraisal direction's job.
+**Non-goal:** Market appraisal, multi-region coverage, and alert delivery channels are separate directions (see the options record).
+
+---
+
+## Recommendation up front
+
+**Ship the small, high-certainty things now; give per-URL link previews their own design pass.**
+
+In M5: site-wide static OG tags, dead-contract filtering (expired *and* sold), the freshness surface, and retiring the `status` field. All are small, independently valuable, and carry no architectural risk.
+
+**Defer per-URL previews** to a follow-on with its own design. This defers the headline Discord feature, which is a real cost and Sam may well overrule it — but the routing work grew a route collision, a deploy-outage regression, and a shell-fetch dependency once reviewed, and the milestone's whole purpose was to be small and trial-ready. Static tags already move every link from "unfurls as nothing" to "unfurls as something," which captures most of the trial value at roughly an hour of work.
 
 ---
 
 ## What we found
 
-Two production measurements drove this design. Full method and numbers in `docs/audits/m5-recon/`.
+Method and numbers in `docs/audits/m5-recon/`.
 
-**1. ~12% of served contracts have already expired** (`expired-contracts-finding.md`). Nothing prunes contracts, and the list query never filters on expiry — `date_expired` appears in `contract_service.py` only as a *sortable* field. Measured live: ~6,200 of 51,365 contracts already expired, the oldest five days stale. The UI does label rows `Expired` (via `format.ts`'s `timeRemaining()`), so this is a relevance problem rather than a deceptive one — but `ContractsPage.tsx`'s `DEFAULT_DIRECTION` maps `date_expired: 'asc'`, so **clicking "Time left" — the obvious "what's expiring soonest?" move — returns a page of nothing but dead contracts** (verified: 20 of 20).
+**1. Dead contracts are shown as live, in two distinct ways.**
 
-**2. Link previews are impossible today, and the latency objection to fixing them was aimed at the wrong term** (`link-preview-latency-spike.md`). `index.html` carries no `og:*` tags at all, and Render static sites cannot run server code or match routes on User-Agent, so a crawler/human split cannot happen at Render's edge. Routing a path to the backend costs ~161 ms — but document delivery is ~48 ms of a ~1265 ms warm time-to-content. The dominant cost is ~720 ms of client bootstrap before the first data request, which no routing choice affects.
+*Expired* (`expired-contracts-finding.md`): nothing prunes contracts and the list query never filters on expiry — `date_expired` appears in `contract_service.py` only as a *sortable* field.
 
-A third item was investigated and **dismissed**: `search` and ship filtering work correctly. `is_ship_contract=true` returns 622 contracts, item `category: 'ship'` is populated, and `search` filters across `Contract.title` OR `ContractItem.type_name` via the items join. An apparent "`ship_name` is always null" finding was an artifact of probing for a response field that does not exist — the frontend derives the hull label from ship-category items by design.
+The first draft measured this across all 51,365 contracts (~6,200 expired, ~12%). **That was the wrong population.** The frontend defaults to ships-only (`filters.ts`), which is 622 contracts. Re-measured in the view users actually get: **~53 of 622 expired, ~8.5%**. The headline is sharper, not weaker — the list page size is 50, so **sorting by "Time left" ascending fills the entire first page with dead contracts**, and `ContractsPage.tsx`'s `DEFAULT_DIRECTION` maps `date_expired: 'asc'`, making that the one-click default for anyone asking "what's expiring soonest?"
 
----
+*Sold or delisted* — **the larger half, and it does not show up in any expiry measurement.** A contract that is accepted disappears from ESI's public list, but nothing tracks absence: `Contract` has **no `last_seen_at` or `updated_at` column** (verified against `models/contracts.py`), the public route never populates `date_completed`, and ingestion never deletes. A ship sold five minutes after ingestion keeps showing as available for the remainder of its contract duration — up to two weeks. An expiry filter removes none of these.
 
-## Workstream A — Link previews
+The watchlist matcher already gets this right for its own query, filtering both `date_expired > now()` and `date_completed IS NULL` (`watchlist_matcher.py`) — precedent worth citing, though `date_completed` alone cannot catch sold public contracts either.
 
-### Routing decision
+**2. Link previews are impossible today, and the latency objection was aimed at the wrong term** (`link-preview-latency-spike.md`). `index.html` carries no `og:*` tags, and Render static sites cannot run server code or match routes on User-Agent. Routing a path to the backend costs ~161 ms — but document delivery is ~48 ms of a ~1265 ms warm time-to-content, dominated by ~720 ms of client bootstrap that no routing choice affects.
 
-**Chosen: the backend owns `/contracts*`.** A Render rewrite sends `/contracts*` to FastAPI, which returns the SPA shell with per-URL `og:*` tags injected. Because `/` redirects to `/contracts` (`routes/index.tsx`), this single prefix covers both contract detail and filtered search with no extra blast radius.
-
-**Route ordering is load-bearing.** `render.yaml`'s existing comment on the `routes:` block already warns `ORDER MATTERS: prefix-strip rule before SPA fallback (PROXY-1)`. The new `/contracts*` rule must sit **after** `/api/v1/*` and **before** the `/*` SPA fallback. Placed after the fallback it never matches; placed before `/api/v1/*` it is harmless today but invites a future `/contracts`-prefixed API path to be swallowed. The backend serves these routes at bare paths, per PROXY-1 — the handler must not assume an `/api/v1` prefix.
-
-Rejected alternatives:
-
-- **A dedicated share-link prefix** (`/s/c/:id` produced by a Share button) is disqualified by observed behavior, not by implementation quality: the trial corporation copies URLs from the address bar, so most shared links would carry no preview.
-- **A Cloudflare-proxied subdomain running a User-Agent-splitting Worker** was seriously considered and rejected on three grounds. It serves different HTML per User-Agent, which is a `Vary: User-Agent` cache hazard forcing `no-store` and deleting its own performance rationale; its central benefit (humans keep CDN latency) is unverified, since the measured ~161 ms is Render proxy overhead plus the ohio leg in unknown proportion and a rewrite to a Cloudflare destination has never been measured; and it re-creates the stacked-CDN topology that the DNS-only apex decision (M4 Deviation D-12) exists to avoid. It also carries a loop hazard: a Worker fetching the apex for the shell re-enters the very rewrite that invoked it.
-
-The decisive argument for the backend is that it adds **no new platform**. The handler lives in the existing FastAPI service, is tested with pytest under the repo's TDD discipline, ships through existing CD, and is observed through existing Grafana. It is also cache-correct by construction — the same HTML goes to every User-Agent.
-
-**The shell-staleness concern that originally argued against this approach does not survive inspection.** `render.yaml`'s `Cache-Control: no-cache` rule is scoped to the literal path `/index.html` and does not match `/contracts/123`, so deep-link shells already ride the default `s-maxage=300` — verified live (`cf-cache-status: HIT`, `age: 243`). A stale shell window already exists today. Fetching the shell with `If-None-Match` revalidation makes that window *smaller* than the status quo.
-
-### Staging
-
-Each stage ships independently and is separately valuable.
-
-**Stage 0 — site-wide static tags.** Add `og:title`, `og:description`, `og:image`, `og:site_name`, `twitter:card` to `index.html`. No routing changes, no backend work. Today every Hangar Bay link unfurls as nothing; after this, every link unfurls as *something*. This is the highest value-per-hour item in the milestone and should ship first, on its own.
-
-**Stage 1 — per-URL tags for contract pages.** The rewrite plus a FastAPI handler that fetches the built shell (ETag-revalidated), injects per-URL tags, and returns it.
-
-**Stage 2 — data inlining.** The handler additionally inlines the contract payload (dehydrated TanStack Query state) so the client skips its own API call. Measured as a fast-follow; skippable if the trial date arrives first.
-
-**Stage 3 — filtered-search summaries.** Deferrable indefinitely.
-
-Stage 1 costs entry loads ~200 ms of document latency and Stage 2 repays roughly 414 ms. Shipping Stage 1 alone is a **purchase, not a regression** — ~200 ms against a 1265 ms baseline — and coupling the stages would enlarge the blast radius for no safety gain. The caveat worth holding: that cost lands precisely on the Discord-link visitor this milestone exists to serve, so Stage 2 should not drift indefinitely.
-
-### Preview content
-
-**Contract detail.** Title is the hull name with price — `Armageddon Navy Issue — 450,000,000 ISK`. Description carries location, time remaining, contract type, and item count. Image is the EVE render CDN, verified live: `https://images.evetech.net/types/{type_id}/render?size=512` returns 200 `image/jpeg` (~25–43 KB) for real hulls (checked against Armageddon Navy Issue, Nightmare, Ark). The hull's `type_id` comes from the contract's included item with `category == 'ship'`, matching how the frontend already derives its label.
-
-Fallback chain, because `render` is **not** available for every type — verified 400 for a non-ship type: `render` → `icon` (200 `image/png`, confirmed for the same type that 400'd) → the site-wide Stage 0 image.
-
-**Expired contracts.** The title must lead with expiry — `EXPIRED — Armageddon Navy Issue`. This is load-bearing rather than cosmetic: a Discord link routinely gets clicked hours after posting, so previews will frequently describe contracts that have since died. A preview that presents a dead contract as available is the exact trust failure this milestone exists to prevent.
-
-**Filtered search (Stage 3).** A summary of filters and result count — `14 battleships under 200M ISK in The Forge`. Region and type IDs resolve to names; the count reuses the existing filter path.
-
-**Escaping.** Contract titles are player-authored free text (a real one in production: `1976.48GJ, est. 473m`). Every interpolated value is HTML-escaped before injection. This is a correctness *and* injection concern and gets an explicit test with hostile input.
-
-**Failure behavior.** A lookup failure or unknown contract returns the Stage 0 generic tags with a 200, never an error page and never a partial tag set. Crawlers get something valid; humans get the SPA, which renders its existing not-found state.
+**Dismissed after investigation:** `search` and ship filtering work correctly (`is_ship_contract=true` → 622; `search` covers `Contract.title` OR `ContractItem.type_name` via the items join). An apparent "`ship_name` is always null" finding was an artifact of probing for a response field that does not exist.
 
 ---
 
-## Workstream B — Expiry honesty
+## Workstream A — Dead-contract filtering
 
-**Exclude expired contracts from list results by default.** Add a `Contract.date_expired > now()` predicate to the list query. This corrects `total` as a side effect, so the displayed count stops overstating what is available.
+Two mechanisms, because the two failure modes are different.
 
-**Keep serving expired contracts on the detail page, clearly marked.** Do not 404 them. Shared links outlive contracts, and a 404 for a link posted this morning reads as a broken site rather than an expired deal. The page states expiry prominently; the preview says `EXPIRED`.
+**A1 — Expiry filter (small).** Add `Contract.date_expired > now()` to the list query. It belongs in `_apply_contract_filters`, so it reaches both `_count_distinct_contracts` and both fetch paths — a predicate applied to only one of them makes `total` disagree with the pages, which is the SQLA-1 failure this codebase has already paid for once. Use the database clock (`func.now()`), not a Python-side timestamp, so the predicate and any index agree and no timezone conversion sits between them.
 
-**Deliberately not doing:** deleting expired rows. Filtering fixes correctness without losing history, and deletion interacts with saved searches and notifications that reference those contracts. Unbounded table growth is real (51k rows in roughly a week, on `basic-256mb`) but is a retention-policy decision of its own — there is precedent in `NOTIFICATION_RETENTION_DAYS`.
+Needs an index on `date_expired` and therefore an Alembic migration; the migration is the schema-change step class the repo already has conventions for.
 
-**Open question for Sam:** should an "include expired" toggle exist? There is precedent — the ships-only default has an explicit toggle (F002 Criterion 1.1). The YAGNI answer is no toggle until someone asks. Recommendation: ship without it, and let the trial decide.
+**A2 — Delisted detection (medium — this is the real work).** Add `last_seen_at` to `Contract`, stamped on every upsert. Filter the list to contracts seen in the most recent *complete* ingest run.
+
+The correctness hinge is "complete." Aggregation already counts `regions_ok`/`regions_failed` and derives an outcome of success / partial / failure. Only a **success** may advance the watermark — a partial run must not, or every contract in the failed region is wrongly judged delisted and vanishes from the site. This is the sharp edge of A2 and deserves its own test.
+
+Non-destructive by choice: mark, do not delete. Deletion loses history and interacts with saved searches and notifications that reference those contracts.
+
+**Detail pages keep serving dead contracts, clearly marked.** Never 404 them. Shared links outlive contracts, and a 404 for a link posted this morning reads as a broken site rather than an expired deal.
+
+**Open question for Sam:** should an "include dead contracts" toggle exist? Precedent exists (ships-only has one, F002 Criterion 1.1). Recommendation: ship without it; let the trial ask.
 
 ---
 
-## Workstream C — Data freshness surface
+## Workstream B — Data freshness surface
 
-This is the user-facing staleness indicator parked in the M4 design, and the Jul 23–26 incident is its justification: production served 3.6-day-old data with no signal any user could see, while `/ready` correctly reported `data_stale`.
+The user-facing staleness indicator parked in the M4 design. Its justification is the Jul 23–26 incident: production served 3.6-day-old data with no signal any user could see, while `/ready` correctly reported `data_stale`.
 
-**Mechanism:** add `data_as_of` (ISO 8601 timestamp of the last successful ingest) to the contracts list response envelope, which is currently `{total, page, size, items}`. The value comes from the same Valkey freshness record `/ready` reads (`INGEST_LAST_RUN_KEY`), cached in-process with a **30-second TTL** so the hot path does not take a cache round-trip per request. Thirty seconds is far below the hourly ingest cadence, so the displayed age is never misleading, while a burst of list requests costs at most one Valkey read. If the freshness record is absent — the key is evictable, and `allkeys-lru` may drop it (DEPLOY-3) — `data_as_of` is `null` and the UI shows no freshness line rather than inventing one.
+**Mechanism:** add `data_as_of` (ISO 8601, last successful ingest) **and** `data_stale` (boolean) to the contracts list envelope. Both, not just the timestamp — the frontend cannot compute staleness itself, because the threshold derives from `AGGREGATION_SCHEDULER_INTERVAL_SECONDS`, a server-side setting the SPA has no access to. The server owns the judgement; the client owns the presentation.
 
-Putting freshness *in the data envelope* rather than behind a separate endpoint means the timestamp always travels with the numbers it describes, and costs no extra request.
+Values come from the same Valkey record `/ready` reads (`INGEST_LAST_RUN_KEY`), cached in-process with a 30-second TTL so the hot path takes at most one cache read per 30 s. Thirty seconds is far below the hourly cadence, so the displayed age is never misleading.
 
-**Display:** extend the existing count line in `Pagination.tsx` (today `Page 1 of 514 · 51,365 contracts`) with `· updated 12 min ago`. When the data is stale — reusing `/ready`'s existing threshold of more than twice `AGGREGATION_SCHEDULER_INTERVAL_SECONDS` — the indicator escalates to an explicit warning naming the age.
+**Valkey-down behavior is specified, not left to chance:** the freshness read is wrapped so that an unreachable or uninitialized cache yields `data_as_of: null` and `data_stale: true`, never an exception. The list endpoint is the product's core read path and must not acquire a hard dependency on an evictable cache — the key is explicitly evictable under `allkeys-lru` (DEPLOY-3). A null renders as no freshness line rather than an invented one.
 
-**Accessibility:** the stale state must not be signalled by color alone (PRODUCT.md, and `accessibility-spec.md`'s color-blind-safe rule). The escalated state changes the *text*, not just the hue.
+**Envelope caution:** `PaginatedResponse` is generic and also serves notifications. The new fields must not become required on every paginated payload — add them to the contracts response specifically, or as optional fields defaulting to null.
+
+**Display:** extend the existing count line in `Pagination.tsx` (`Page 1 of 13 · 622 contracts`) with `· updated 12 min ago`. The stale state escalates to explicit wording naming the age. Per `accessibility-spec.md`, staleness is never signalled by color alone — the escalated state changes the *text*.
+
+---
+
+## Workstream C — Site-wide link previews (Stage 0)
+
+Add `og:title`, `og:description`, `og:image`, `og:site_name`, and `twitter:card` to `index.html`. No routing changes, no backend work, roughly an hour. Today every link unfurls as nothing; after this, every link unfurls as the product.
+
+**The image must live in `public/`, not `/assets/`.** Vite content-hashes `/assets/*` filenames on every build, and `render.yaml` serves them `immutable` for a year. Discord caches embeds by URL at post time, so a hashed image URL breaks every previously-posted embed on the next frontend deploy. A stable `public/` path does not change.
 
 ---
 
 ## Workstream D — Retire the `status` field
 
-`Contract.status` is always the literal `"unknown"` — ESI's public contracts route returns no status, and `background_aggregation.py:108` defaults it. Verified across a 100-contract production sample. The frontend never reads it.
+`Contract.status` is always the literal `"unknown"` (ESI's public route returns no status; `background_aggregation.py:108` defaults it). Verified across a 100-contract production sample; the frontend never reads it.
 
-Remove it from the API response and regenerate the typed client (`pdm run export-openapi` → `npm run generate:api`). The DB column and the `ix_contracts_type_status` index are left alone; dropping them is a migration with no benefit at this size, and the column becomes meaningful if character/corp contracts are ever ingested.
+Remove it from the API response and regenerate the typed client (`pdm run export-openapi` → `npm run generate:api`). Keep the DB column and its index — dropping them is a migration with no benefit at this size, and the column becomes meaningful if character/corp contracts are ever ingested.
+
+**`e2e/fixtures/contracts.ts` declares `status`** and must be updated in the same change, or the fixture lane drifts from the wire shape it exists to pin.
 
 ---
 
-## First implementation task: settle the edge-cache question
+## Deferred: per-URL link previews
 
-**Can backend-rendered HTML be edge-cached by Render's CDN?** If a response carrying `s-maxage=60` is honored on a rewrite destination, repeat views of a contract return to ~50 ms and crawlers are served from cache — which erases the Stage 1 latency cost entirely. If not, Stage 1 still ships; nothing blocks.
+Recorded here so the follow-on design starts from what this review established rather than rediscovering it.
 
-Narrowed, but not settled, without deploying: **the backend sets no `Cache-Control` header anywhere** (grep across `fastapi_app/` finds none), yet every response through the rewrite carries `cache-control: max-age=0` — `/ready`, `/contracts/`, `/openapi.json`, and `/docs` alike, all `cf-cache-status: BYPASS`. That header therefore originates at the edge, not the application.
+**The routing approach that survives scrutiny is the backend rendering the shell**, not a Cloudflare Worker. The Worker option serves different HTML per User-Agent, which is a `Vary: User-Agent` cache hazard forcing `no-store` and deleting its own performance rationale; its central benefit is unverified, since a rewrite to a Cloudflare destination has never been measured; it re-creates the stacked-CDN topology the DNS-only apex decision (M4 D-12) exists to avoid; and a Worker fetching the apex for the shell re-enters the rewrite that invoked it.
 
-Which means today's `BYPASS` is uninformative: the origin sends nothing to honor, so the edge defaulting to `max-age=0` is exactly what one would expect either way. The open question is specifically **whether an explicit origin `s-maxage` is passed through or overwritten** by that edge default. Only a deployed response carrying its own cache header can distinguish those.
+**Three constraints the follow-on must satisfy — all found by review, none obvious:**
 
-The probe: an endpoint returning `Cache-Control: public, s-maxage=60` plus a request timestamp in the body; request it repeatedly and watch whether `cf-cache-status` ever reports `HIT` and whether the timestamp freezes. Roughly fifteen minutes.
+1. **The backend already owns `/contracts` at a bare path.** `api/contracts.py` mounts `APIRouter(prefix="/contracts")` with `@router.get("/{contract_id}")`, and the `/api/v1/*` rewrite strips the prefix, so SPA API calls arrive at exactly `/contracts/123` — verified live (`200 application/json` on the origin). A naive `/contracts*` document rewrite lands the HTML handler on the JSON endpoint: either crawlers get JSON or the SPA's detail page breaks. The document handler needs a **distinct backend prefix** with the rewrite supplying it as the destination path, plus a regression test asserting the JSON API still returns JSON.
 
-This cannot be answered from outside and needs a deployed response header plus repeated requests watching `cf-cache-status` — roughly fifteen minutes. It goes **first**, because a positive result simplifies everything after it.
+2. **Backend deploys are recreate deploys.** `render.yaml` pins a disk to keep the scheduler single-instance, which forces recreate rather than rolling deploys. Routing documents through the backend therefore makes **every backend deploy a brief site-wide document outage**, since `/` redirects to `/contracts`. That is a routine operational cost, not the tail risk the first draft described.
+
+3. **Scope it to `/contracts/*` detail pages only.** Routing the list page — the effective homepage — through the backend buys nothing until search summaries exist, and doubles the blast radius.
+
+**Also unverified:** whether Render's route globs accept the suffix form `/contracts*` at all. Every existing rule is segment-style (`/api/v1/*`).
+
+**Data inlining is cut from M5 entirely.** Dehydrating TanStack Query state into a non-SSR SPA is a real piece of engineering, and the ~200 ms it would repay is small against a 1265 ms baseline.
+
+**Preview content, when it is built:** hull name and price as title, with **absolute expiry in the description** — Discord caches embeds at post time, so a relative "expires in 3h" or an `EXPIRED` prefix is frozen at the moment of posting and misleads later readers. Image from `https://images.evetech.net/types/{type_id}/render?size=512`, verified 200 `image/jpeg` for real hulls, falling back to `icon` (verified 200 for a type whose `render` 400s) and then to the Stage 0 image. The fallback chain must be resolved from stored data, not a per-request probe of an external CDN. All interpolated values HTML-escaped — contract titles are player-authored free text, and this is an injection concern with an explicit hostile-input test.
+
+**Settle the edge-cache question first.** The backend sets no `Cache-Control` anywhere, yet every response through the rewrite carries `cache-control: max-age=0` with `cf-cache-status: BYPASS` — so that header comes from the edge, and today's `BYPASS` is uninformative rather than evidence either way. The open question is whether an explicit origin `s-maxage` is passed through or overwritten. Probe: an endpoint returning `Cache-Control: public, s-maxage=60` plus a timestamp; request repeatedly; watch for `HIT` and a frozen timestamp.
 
 ---
 
 ## Testing
 
-Per the repo's TDD mandate, every item below is written test-first, and characterization tests are mutation-verified (TEST-12) — a preview test that passes with the tag-injection deleted is not evidence.
+Every item is written test-first, and characterization tests are mutation-verified (TEST-12) — a filter test that passes with the predicate deleted is not evidence.
 
-- **Expiry filtering:** a fixture set spanning the expiry boundary asserting expired contracts are absent from list results and that `total` reflects the filtered count. Must cross a page boundary (TEST-4).
-- **Detail page serves expired:** an expired contract returns 200 with its expiry state, not 404.
-- **Tag injection:** HTTP-level tests asserting real `og:*` tags in the response body for a live contract, an expired contract, and an unknown ID (generic fallback, 200).
-- **Escaping:** a contract title containing `<`, `>`, `"`, and `&` must not break out of the meta tag. Hostile input, asserted explicitly.
-- **Image fallback:** a type with no render falls back to icon, then to the site-wide image.
-- **Freshness:** `data_as_of` present and correct; the stale threshold flips at more than twice the scheduler interval; the stale state is distinguishable without color.
+- **Expiry filter:** fixtures spanning the expiry boundary; expired contracts absent from results; `total` reflects the filtered count. Must cross a page boundary (TEST-4) and must exercise **both** the joined and simple fetch paths, since the predicate's placement determines whether count and pages agree (SQLA-1).
+- **Delisted detection:** a contract absent from a later complete run is filtered; and — the one that matters — **a contract absent from a *partial* run is NOT filtered**, so a failed region cannot erase the site.
+- **Detail page:** expired and delisted contracts return 200 with their state, not 404.
+- **Freshness:** `data_as_of` and `data_stale` present and correct; the threshold flips at more than twice the scheduler interval; **Valkey unreachable yields nulls and a 200, never a 500**; the stale state is distinguishable without color.
+- **Status removal:** the field is gone from the schema, the regenerated client compiles, and the e2e fixture matches the new wire shape.
 - **Frontend:** stub at the fetch seam (TEST-5); every fixture-lane spec intercepts `GET /me` (TEST-9).
-- **Not mocked:** the shell fetch is exercised against a real static response in at least one test, since a mocked shell would test the mock (the repo's rule against testing mocked behavior).
 
 ---
 
 ## Risks
 
-**Deploy skew.** Between a frontend deploy and the backend's next shell revalidation, the injected shell may reference asset URLs that no longer exist, producing a broken page. Mitigated by per-request `If-None-Match` revalidation, which makes the window smaller than today's `s-maxage=300` baseline. Worth a pitfalls entry once the behavior is observed in practice.
+**A2's watermark is the one that can take the site down.** If a partial run advances it, every contract in a failed region is judged delisted at once. The mitigation is a test, not care.
 
-**Availability coupling.** With `/contracts*` routed to the backend, a backend outage takes down contract *documents*, where today the CDN would serve a shell that then fails to fetch data. The degradation is from "shell plus error state" to "no page." Mitigated for lookup failures by falling back to generic tags; a hard process-down is accepted for a trial-scale product, and noted here so the choice is deliberate.
+**Migrations.** A1 and A2 both add schema. Two migrations on a live database with a pre-deploy `alembic upgrade head` — the M4 machinery handles this, but it is the step class where DEPLOY-1's URL-scheme trap lives.
 
-**Scope creep.** This milestone is meant to be small. Stage 3 and the retention policy are explicitly deferred, and the appraisal and coverage directions are out of scope entirely.
+**Scope.** A2 is the item most likely to grow. If it does, A1 alone still ships a real improvement and A2 can follow.
 
 ---
 
 ## Reasoning worth preserving
 
-**The original latency objection was aimed at the wrong term.** The instinct — "routing pages through the backend costs 200 ms, and this product's principles say fast is a feature" — was correct in isolation and wrong in proportion. Measuring first showed document delivery is ~48 ms of ~1265 ms, and that ~720 ms of client bootstrap dwarfs everything the routing decision touches. The spike changed the decision.
+**The original latency objection was aimed at the wrong term.** "Routing pages through the backend costs 200 ms, and this product says fast is a feature" was right in isolation and wrong in proportion — document delivery is ~48 ms of ~1265 ms. Measuring changed the decision.
 
-**"OG tags and data inlining must ship together" was overstated and is rejected.** The claim was that Stage 1 alone ships a regression. An independent review argued that ~200 ms against a 1265 ms baseline is a purchase rather than a regression, and that coupling the stages enlarges blast radius for no safety gain. That is correct and is adopted, with the caveat recorded above that the cost lands on the target user.
+**Measuring the wrong population nearly shipped a wrong headline.** The first draft's "12% of contracts are expired" was true of the whole dataset and irrelevant to users, who see a ships-only default of 622. Corrected, the number fell to ~8.5% and the finding got *sharper* — 53 dead contracts against a 50-row page means the entire first page of the most natural sort is dead. Always measure the view the user actually gets.
 
-**The Cloudflare Worker option was more attractive than it deserved.** It appeared to give a clean crawler/human split at low cost. The `Vary: User-Agent` cache hazard, the unmeasured assumption that a Cloudflare-destination rewrite is cheaper than a Render-origin one, and the apex-refetch loop hazard only surfaced under adversarial review. The lesson generalizes: an option whose benefit rests on an unmeasured latency assumption should not beat one whose benefit rests on a measured fact.
+**The biggest gap was invisible from the outside.** Expiry is measurable through the public API; sold-but-still-listed is not, because the record looks identical to a live one. It surfaced only from reading the model and noticing no `last_seen_at` existed. Absence of a column is not something an API probe can find.
 
-**The biggest win was the cheapest and was nearly missed.** Static site-wide OG tags cost about an hour and change every link on the site from unfurling as nothing to unfurling as something. It surfaced only when the routing analysis was reviewed by someone not invested in the routing question. Staging exists in this design because of it.
+**The route collision would have reached production.** The first draft said "the backend serves these routes at bare paths, per PROXY-1" — correctly citing the pitfall while walking into it, because the backend already serves JSON at that exact bare path. Citing a pitfall is not the same as checking it.
 
-**Still uncertain:** whether the trial corporation shares contract links or search links (assumed contracts, cheaply revisable); whether Render's edge caches rewrite responses (first task); and whether an "include expired" toggle is wanted (deliberately left to the trial).
+**The cheapest win was nearly missed.** Static site-wide OG tags cost about an hour and change every link on the site. They surfaced only under review by someone uninvested in the routing question, which had absorbed all the attention.
+
+**Still uncertain:** whether the trial corporation shares contract links or search links (assumed contracts); whether Render's edge honors origin `s-maxage` on rewrites; whether an "include dead" toggle is wanted; and whether deferring per-URL previews is the right call, which is Sam's to make.

@@ -7,13 +7,30 @@ ABOUTME: Discovered 2026-07-26 while scoping the trust & shareability milestone;
 
 Nothing removes a contract once it leaves ESI's public list or passes its expiry, and the browse query never filters on expiry. `services/background_aggregation.py` has no prune or delete path for contracts, and `services/contract_service.py` references `date_expired` only as a **sortable field** — there is no `WHERE date_expired > now()` anywhere in the list path.
 
-Measured against production on 2026-07-26:
+Measured against production on 2026-07-26, in **two populations** — the distinction matters, and the first pass of this finding got it wrong:
 
-- **51,365** contracts served in total
-- **~6,200 already expired and still browsable — ~12% of the dataset**
-- Oldest expiry still served: **2026-07-21T09:16:09Z** (five days stale)
+| Population | Total | Expired | Share |
+|---|---|---|---|
+| All contracts | 51,365 | ~6,200 | ~12.1% |
+| **Ships-only — the default view users actually get** | **622** | **~53** | **~8.5%** |
 
-Method: binary search over pages of `/api/v1/contracts/?sort_by=date_expired&sort_direction=asc&size=100`, comparing each page's first `date_expired` against now. Crossover near page 63 of 514.
+The frontend defaults to ships-only (`filters.ts`, F002 Criterion 1.1), so the all-contracts figure describes a view a trial user never sees by default. **The corrected number is smaller but the finding is sharper:** the list page size is 50, and all 53 expired contracts sort ahead of every live one — so the entire first page of "expiring soonest" is dead, with some left over.
+
+Oldest expiry still served: **2026-07-21T09:16:09Z** (five days stale).
+
+Method: binary search over pages of `/api/v1/contracts/?sort_by=date_expired&sort_direction=asc&size=100`, comparing each page's first `date_expired` against now; run separately with and without `is_ship_contract=true`.
+
+## The larger half: sold contracts, which no expiry measurement can see
+
+Expiry is only the *visible* portion of the problem. A contract that is **accepted** disappears from ESI's public list, but nothing here tracks absence:
+
+- `Contract` has **no `last_seen_at` and no `updated_at` column** (verified in `models/contracts.py`).
+- The public contracts route never populates `date_completed`.
+- Ingestion upserts what it sees and never deletes.
+
+So a ship sold five minutes after ingestion keeps displaying as available for the rest of its contract duration — up to two weeks — carrying a future `date_expired` that passes any expiry filter. This is invisible to an API probe, because a sold contract's record is byte-identical to a live one; it surfaced only by reading the model and noticing the column that was not there.
+
+Detecting it requires stamping `last_seen_at` on upsert and filtering to contracts seen in the most recent **complete** run — where "complete" must mean a fully successful run, since a partial run that advanced the watermark would wrongly erase every contract in a failed region.
 
 ## Why it matters, stated accurately
 
@@ -35,7 +52,7 @@ The frontend never reads it (a grep for `.status` in the SPA finds only HTTP err
 
 ## Recommended direction (for the trust & shareability design)
 
-1. **Exclude expired contracts from list results by default** — a `date_expired > now()` predicate in the list query. This also corrects `total`.
+1. **Exclude expired contracts from list results by default** — a `date_expired > now()` predicate in the list query. This also corrects `total`. Note this is the *smaller* half: it does nothing about sold contracts, which need `last_seen_at` (see above).
 2. **Keep serving expired contracts on the detail page, clearly marked** — do not 404 them. This is load-bearing for link previews: a link pasted into Discord will routinely be clicked *after* the contract expires, and the preview and page must say so honestly rather than 404 or, worse, present it as available.
 3. **Stop exposing `status`** in the API response, since it carries no information. Removing the field is an OpenAPI change requiring a client regeneration; both sides are ours.
 
