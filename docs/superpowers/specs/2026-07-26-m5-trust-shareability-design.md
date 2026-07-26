@@ -108,7 +108,11 @@ Remove it from the API response and regenerate the typed client (`pdm run export
 
 **Can backend-rendered HTML be edge-cached by Render's CDN?** If a response carrying `s-maxage=60` is honored on a rewrite destination, repeat views of a contract return to ~50 ms and crawlers are served from cache — which erases the Stage 1 latency cost entirely. If not, Stage 1 still ships; nothing blocks.
 
-The API currently returns `cache-control: max-age=0` and shows `cf-cache-status: BYPASS`. That it reports `BYPASS` rather than `DYNAMIC` is weak evidence the edge is evaluating origin cache headers at all rather than refusing outright.
+Narrowed, but not settled, without deploying: **the backend sets no `Cache-Control` header anywhere** (grep across `fastapi_app/` finds none), yet every response through the rewrite carries `cache-control: max-age=0` — `/ready`, `/contracts/`, `/openapi.json`, and `/docs` alike, all `cf-cache-status: BYPASS`. That header therefore originates at the edge, not the application.
+
+Which means today's `BYPASS` is uninformative: the origin sends nothing to honor, so the edge defaulting to `max-age=0` is exactly what one would expect either way. The open question is specifically **whether an explicit origin `s-maxage` is passed through or overwritten** by that edge default. Only a deployed response carrying its own cache header can distinguish those.
+
+The probe: an endpoint returning `Cache-Control: public, s-maxage=60` plus a request timestamp in the body; request it repeatedly and watch whether `cf-cache-status` ever reports `HIT` and whether the timestamp freezes. Roughly fifteen minutes.
 
 This cannot be answered from outside and needs a deployed response header plus repeated requests watching `cf-cache-status` — roughly fifteen minutes. It goes **first**, because a positive result simplifies everything after it.
 
