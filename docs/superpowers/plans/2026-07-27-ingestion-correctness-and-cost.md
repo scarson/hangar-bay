@@ -825,7 +825,7 @@ If round 3 still finds issues, keep going until clean.
 - [x] `flake8` clean on every touched file
 - [x] Both migrations verified up → down → up on a scratch database
 - [x] Every new test mutation-verified, with the failure output recorded in the PR
-- [ ] After deploy: a run completes in **under ~5 minutes**, and — the real proof of
+- [x] After deploy: a run completes in **under ~5 minutes**, and — the real proof of
       mechanism — **item fetches per run are in the hundreds (churn-sized), not ~46,000**.
       Not "seconds": steady state still performs the 34-page discovery sweep, name
       resolution, a ~46k-row upsert and ~100–250 sequential churn fetches. The fetch-count
@@ -839,7 +839,9 @@ If round 3 still finds issues, keep going until clean.
       counts at deploy time and the per-run zero-item warning are the evidence that
       separates the two. Read the new "Fetched items for N contracts (M skipped)" log line
       for the direct number.
-- [ ] `/ready`'s freshness advances within one cycle
+- [x] `/ready`'s freshness advances within one cycle
+
+**Post-deploy acceptance result (2026-07-27 09:27Z):** first run on new code completed in **2m29s**; `Fetched items for 408 contracts (33020 skipped as already enriched).`; no zero-item warning; `/ready` success and not stale. Details in `docs/superpowers/handoffs/2026-07-27-plan-b-handoff.md` §Headline.
 
 ## Out of scope (deliberately)
 
