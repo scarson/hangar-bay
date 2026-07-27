@@ -587,7 +587,9 @@ async def test_successful_enrichment_stamps_the_current_version(db_session: Asyn
     assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
 
 
-async def test_already_enriched_contracts_are_not_refetched(db_session: AsyncSession):
+async def test_already_enriched_contracts_are_not_refetched(
+    db_session: AsyncSession, caplog
+):
     """The whole point: public contracts are immutable, so a contract enriched at the
     current version never needs fetching again."""
     service = _make_service()
@@ -604,9 +606,17 @@ async def test_already_enriched_contracts_are_not_refetched(db_session: AsyncSes
     await service._process_contracts(db_session, [_ship_contract_dict(930201)])
     first_call_count = service.esi_client.get_contract_items.await_count
 
-    await service._process_contracts(db_session, [_ship_contract_dict(930201)])
+    with caplog.at_level("INFO"):
+        await service._process_contracts(db_session, [_ship_contract_dict(930201)])
 
     assert service.esi_client.get_contract_items.await_count == first_call_count
+    # The run must REPORT the skip it performed, not the skip it intended: the fetched
+    # count is what a disabled skip cannot fake.
+    assert any(
+        "Fetched items for 0 contracts (1 skipped as already enriched)."
+        in rec.getMessage()
+        for rec in caplog.records
+    ), f"expected the fetched-vs-skipped line; got {[r.getMessage() for r in caplog.records]}"
 
 
 async def test_bumping_the_enrichment_version_requeues_a_contract(

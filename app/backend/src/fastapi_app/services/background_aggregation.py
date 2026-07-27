@@ -412,30 +412,17 @@ class ContractAggregationService:
 
         logger.info(f"Finished upserting all {total_contracts} contracts.")
 
-        # Public contracts are immutable, so a contract already enriched at the current
-        # version never needs re-fetching. This is what turns a corpus-sized run into a
-        # churn-sized one. Reads back the status column that enrichment writes; a
-        # contract at any other status (PENDING_ITEMS from a failed fetch,
-        # ENRICHMENT_INCOMPLETE from degraded type resolution) is still re-fetched, so
-        # transient failures keep recovering on the next run.
-        candidate_ids = [c["contract_id"] for c in contracts]
-        already_enriched: set[int] = set()
-        for chunk in _chunk_ids(candidate_ids):
-            rows = await db_session.execute(
-                select(Contract.contract_id).where(
-                    Contract.contract_id.in_(chunk),
-                    Contract.item_processing_status == "COMPLETED",
-                    Contract.enrichment_version == ENRICHMENT_VERSION,
-                )
-            )
-            already_enriched.update(row[0] for row in rows)
-        if already_enriched:
-            logger.info(
-                f"Skipping item fetch for {len(already_enriched)} already-enriched contracts."
-            )
+        already_enriched = await self._select_already_enriched(db_session, contracts)
 
         all_items, processed_contract_ids = await self._fetch_item_rows(
             contracts, already_enriched
+        )
+        # Counts the EFFECT, not the intent: a skip that silently stopped working still
+        # reports what it meant to skip, so the fetched count is what the log has to
+        # carry for the run to be verifiable from its output alone.
+        logger.info(
+            f"Fetched items for {len(processed_contract_ids)} contracts "
+            f"({len(already_enriched)} skipped as already enriched)."
         )
 
         # Enrich items with static type data BEFORE upserting so a single
@@ -467,8 +454,32 @@ class ContractAggregationService:
 
         await self._update_item_processing_status(db_session, processed_contract_ids, all_items)
 
+    async def _select_already_enriched(
+        self, db_session: AsyncSession, contracts: List[dict]
+    ) -> set[int]:
+        """Return the contract IDs already enriched at the current ENRICHMENT_VERSION.
+
+        Public contracts are immutable, so a contract already enriched at the current
+        version never needs re-fetching. This is what turns a corpus-sized run into a
+        churn-sized one. Reads back the status column that enrichment writes; a
+        contract at any other status (PENDING_ITEMS from a failed fetch,
+        ENRICHMENT_INCOMPLETE from degraded type resolution) is still re-fetched, so
+        transient failures keep recovering on the next run.
+        """
+        already_enriched: set[int] = set()
+        for chunk in _chunk_ids(c["contract_id"] for c in contracts):
+            rows = await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_(chunk),
+                    Contract.item_processing_status == "COMPLETED",
+                    Contract.enrichment_version == ENRICHMENT_VERSION,
+                )
+            )
+            already_enriched.update(rows.scalars())
+        return already_enriched
+
     async def _fetch_item_rows(
-        self, contracts: List[dict], already_enriched: set[int] | None = None
+        self, contracts: List[dict], already_enriched: set[int]
     ) -> tuple[list[dict], set[int]]:
         """Fetch contract items from ESI, returning the item rows and the contract IDs reached.
 
@@ -482,7 +493,7 @@ class ContractAggregationService:
         for contract in contracts:
             if contract["type"] not in ["item_exchange", "auction"]:
                 continue
-            if already_enriched and contract["contract_id"] in already_enriched:
+            if contract["contract_id"] in already_enriched:
                 continue
 
             try:
