@@ -57,7 +57,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** 🚧 In progress — claimed 2026-07-27T02:58Z on branch `claude/m5-plan-a-ingestion` (subagent-driven execution). All six tasks implemented and review-clean; branch rebased onto post-#93 dev (SHAs in this table are post-rebase); final verification + PR in progress.
+**Overall:** 🚧 In progress — claimed 2026-07-27T02:58Z on branch `claude/m5-plan-a-ingestion` (subagent-driven execution). All six tasks implemented and review-clean; branch rebased onto post-#93 dev (SHAs in this table are post-rebase); final verification passed (483 green pristine, backend flake8 clean, combined migration cycle verified on a seeded scratch DB). PR: [#94](https://github.com/scarson/hangar-bay/pull/94) — Merge classification: Review (schema migration and data integrity); awaiting codex adversarial review + CI + Sam's merge.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
