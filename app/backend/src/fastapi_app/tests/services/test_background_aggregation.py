@@ -10,6 +10,7 @@ general shape of this trap: the gap only shows up when the real pipeline,
 not a hand-built fixture, writes the row.
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import fastapi_app.services.background_aggregation as bg_agg
 from fastapi_app.models.contracts import Contract, ContractItem
 from fastapi_app.services.background_aggregation import ContractAggregationService
+from fastapi_app.tests.core.test_esi_client import _etag_client, _etag_response
 from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
 
 pytestmark = pytest.mark.asyncio
@@ -436,7 +438,17 @@ async def test_contract_returning_no_items_is_not_marked_completed(
         side_effect=lambda cid: (
             []
             if cid == 930001
-            else [{"record_id": cid, "type_id": 587, "quantity": 1, "is_included": True}]
+            # record_id is deliberately NOT the contract_id: the bookkeeping keys on
+            # contract_id, and an item-keyed confusion would pass unnoticed if the two
+            # were equal here.
+            else [
+                {
+                    "record_id": cid + 500_000,
+                    "type_id": 587,
+                    "quantity": 1,
+                    "is_included": True,
+                }
+            ]
         )
     )
     service.esi_client.get_universe_type = AsyncMock(
@@ -473,6 +485,68 @@ async def test_contract_returning_no_items_is_not_marked_completed(
         for rec in caplog.records
         if rec.levelname == "WARNING"
     ), f"expected the zero-item warning; got {[r.getMessage() for r in caplog.records]}"
+
+
+async def test_multipage_item_fetch_persists_every_row_and_completes(db_session: AsyncSession):
+    """Drives _process_contracts through a REAL ESIClient over a mocked transport,
+    so the pagination walk and the enrichment bookkeeping are exercised together —
+    a fixture-satisfied seam between them cannot hide truncation."""
+    items_path = "/v1/contracts/public/items/940001/"
+    pages = {
+        f"{items_path}?page=1": [
+            {"record_id": 990001, "type_id": 587, "quantity": 1, "is_included": True}
+        ],
+        f"{items_path}?page=2": [
+            {"record_id": 990002, "type_id": 587, "quantity": 1, "is_included": True}
+        ],
+    }
+
+    def serve_page(path, headers=None):
+        # An unexpected path raises KeyError rather than serving a default: a walk
+        # that runs past page 2 must fail loudly, not quietly repeat a page.
+        body = pages[path]
+        return _etag_response(
+            200,
+            json_data=body,
+            content=json.dumps(body).encode(),
+            headers={"X-Pages": "2"},
+        )
+
+    client = _etag_client(AsyncMock(side_effect=serve_page))
+    # Location-name resolution is a POST sitting above this seam; serve it over the
+    # same transport so the real method runs and logs no resolution failure.
+    client.http_client.post = AsyncMock(
+        return_value=_etag_response(
+            200,
+            json_data=[
+                {"id": 60003760, "name": "Jita IV - Moon 4 - Caldari Navy Assembly Plant"}
+            ],
+        )
+    )
+    client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 64}
+    )
+    client.get_universe_group = AsyncMock(return_value={"name": "Frigate", "category_id": 6})
+
+    service = ContractAggregationService(esi_client=client, settings=MagicMock())
+
+    await service._process_contracts(db_session, [_ship_contract_dict(940001)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 940001))
+    ).scalar_one()
+    assert row.item_processing_status == "COMPLETED"
+
+    # Both pages must have landed: a truncated walk yields {990001} while the status
+    # still reads COMPLETED, which is exactly the failure this seam can hide.
+    record_ids = set(
+        (
+            await db_session.execute(
+                select(ContractItem.record_id).where(ContractItem.contract_id == 940001)
+            )
+        ).scalars()
+    )
+    assert record_ids == {990001, 990002}
 
 
 async def test_structure_ids_are_excluded_from_name_resolution(db_session: AsyncSession, caplog):
