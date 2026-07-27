@@ -245,6 +245,7 @@ async def test_reingestion_with_unmodified_items_keeps_ship_flag(
     ).scalar_one()
     assert contract.is_ship_contract is True, "ship flag must survive 304'd re-ingestion"
     assert contract.item_processing_status == "COMPLETED"
+    assert contract.enrichment_version == bg_agg.ENRICHMENT_VERSION
 
 
 async def test_id_list_updates_batch_across_the_chunk_boundary(

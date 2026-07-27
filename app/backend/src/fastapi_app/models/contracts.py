@@ -66,6 +66,8 @@ class Contract(Base):
     # Stamped on successful enrichment. Bumping ENRICHMENT_VERSION re-queues the corpus
     # through the normal budgeted path — the deliberate replacement for the refetch
     # loop's accidental self-healing, which this repo has relied on twice.
+    # Only meaningful while item_processing_status = 'COMPLETED': an ENRICHMENT_INCOMPLETE
+    # row keeps whatever version it last stamped, which says nothing about its items.
     enrichment_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     items_last_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     contract_esi_etag: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -93,9 +95,6 @@ class Contract(Base):
         Index('ix_contracts_region_last_seen', 'start_location_region_id', 'last_seen_at'),
         Index('ix_contracts_collateral', 'collateral'),
         Index('ix_contracts_volume', 'volume'),
-        # Serves the enrichment queue lookup: the rows still owed item enrichment are
-        # exactly those not (COMPLETED at the current enrichment_version).
-        Index('ix_contracts_enrichment_queue', 'item_processing_status', 'enrichment_version'),
     )
 
     def __repr__(self):

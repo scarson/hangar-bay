@@ -38,11 +38,8 @@ def upgrade() -> None:
     # bumped before this migration runs, update both together or the backfill stamps
     # a version that no longer matches and re-queues the whole corpus.
     op.execute("UPDATE contracts SET enrichment_version = 1 WHERE item_processing_status = 'COMPLETED'")
-    op.create_index("ix_contracts_enrichment_queue", "contracts",
-                    ["item_processing_status", "enrichment_version"], unique=False)
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_index("ix_contracts_enrichment_queue", table_name="contracts")
     op.drop_column("contracts", "enrichment_version")
