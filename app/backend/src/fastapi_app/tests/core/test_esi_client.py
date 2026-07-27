@@ -480,6 +480,34 @@ async def test_retry_exhaustion_raises_esi_request_failed():
     assert [call.args[0] for call in sleep_mock.await_args_list] == [0.5, 1.0]
 
 
+async def test_rate_limit_status_is_retried_and_honours_retry_after(monkeypatch):
+    """420 and 429 mean 'come back later', not 'this contract failed'. Treating them as
+    ordinary 4xx burns error budget and, under concurrency, turns one tripped limit into
+    a sustained firehose that still records a successful run.
+
+    Uses this module's _etag_response/_etag_client doubles — there is no httpx_mock here.
+    """
+    slept: list[float] = []
+
+    async def fake_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr("fastapi_app.core.esi_client_class.asyncio.sleep", fake_sleep)
+    limited = _etag_response(status_code=429, headers={"Retry-After": "7"})
+    ok = _etag_response(
+        json_data=[{"record_id": 1, "type_id": 587}],
+        content=b'[{"record_id": 1, "type_id": 587}]',
+        headers={"ETag": "etag-ok", "X-Pages": "1"},
+    )
+    get_mock = AsyncMock(side_effect=[limited, ok])
+    client = _etag_client(get_mock)
+
+    items = await client.get_contract_items(777)
+
+    assert [i["record_id"] for i in items] == [1]
+    assert 7 in slept, "Retry-After must drive the wait, not the fixed backoff schedule"
+
+
 async def test_200_with_empty_body_treated_as_empty_page():
     """ESI answers 200 with an empty body; the content guard keeps that off json()."""
     response = _etag_response(

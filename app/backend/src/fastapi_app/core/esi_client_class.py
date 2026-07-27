@@ -13,6 +13,10 @@ from .config import Settings
 
 logger = logging.getLogger(__name__)
 
+# ESI's error-limit (420) and per-group token-bucket (429) responses mean "come back
+# later", not "this request failed" — see _get_with_transient_retry.
+RATE_LIMIT_STATUSES = frozenset({420, 429})
+
 
 class ESIClient:
     """
@@ -207,6 +211,29 @@ class ESIClient:
         path = f"/v1/contracts/public/items/{contract_id}/"
         return await self.get_esi_data_with_etag_caching(path, all_pages=True)
 
+    async def _sleep_before_rate_limit_retry(
+        self, path: str, response: httpx.Response, attempt: int, max_retries: int, backoff_factor: float
+    ) -> httpx.HTTPStatusError:
+        """Log a 420/429 response and sleep before the next attempt (skipped on the last).
+
+        Retry-After drives the wait when present and parseable; otherwise falls back to
+        the same exponential backoff schedule as a 5xx. Returns the exception to record
+        as last_exception — the caller always `continue`s after this.
+        """
+        retry_after = response.headers.get("Retry-After")
+        logger.warning(
+            f"ESI rate limited {path} with {response.status_code}; "
+            f"Retry-After={retry_after!r}. Attempt {attempt + 1}/{max_retries}."
+        )
+        if attempt < max_retries - 1:
+            try:
+                await asyncio.sleep(float(retry_after))
+            except (TypeError, ValueError):
+                await asyncio.sleep(backoff_factor * (2 ** attempt))
+        return httpx.HTTPStatusError(
+            f"Rate limited '{response.status_code}'", request=response.request, response=response,
+        )
+
     async def _get_with_transient_retry(
         self, path: str, headers: Optional[Dict[str, str]] = None
     ) -> httpx.Response:
@@ -223,6 +250,14 @@ class ESIClient:
         for attempt in range(max_retries):
             try:
                 response = await self.http_client.get(path, headers=headers)
+                # 420 (ESI error limit) and 429 (token bucket) mean "come back later", not
+                # "this request failed". Treating them as ordinary 4xx burns error budget and
+                # records the run as successful over missing data.
+                if response.status_code in RATE_LIMIT_STATUSES:
+                    last_exception = await self._sleep_before_rate_limit_retry(
+                        path, response, attempt, max_retries, backoff_factor
+                    )
+                    continue
                 if response.status_code < 500:
                     last_exception = None
                     break
