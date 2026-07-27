@@ -606,6 +606,9 @@ async def test_already_enriched_contracts_are_not_refetched(
     await service._process_contracts(db_session, [_ship_contract_dict(930201)])
     first_call_count = service.esi_client.get_contract_items.await_count
 
+    # at_level only sets the capture level; records from run 1 are still in the
+    # buffer, so clear it — the assertion below must only be satisfiable by run 2.
+    caplog.clear()
     with caplog.at_level("INFO"):
         await service._process_contracts(db_session, [_ship_contract_dict(930201)])
 

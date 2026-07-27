@@ -575,7 +575,7 @@ to the current version so adopting this does not itself trigger a 46k backfill."
 - Modify: `app/backend/src/fastapi_app/services/background_aggregation.py` (`_process_contracts`, `_fetch_item_rows`)
 - Test: `app/backend/src/fastapi_app/tests/services/test_background_aggregation.py`
 
-- [ ] **Step 1: Write the failing tests** (two — skip, and version-bump re-queue)
+- [x] **Step 1: Write the failing tests** (two — skip, and version-bump re-queue)
 
 ```python
 async def test_already_enriched_contracts_are_not_refetched(db_session: AsyncSession):
@@ -625,9 +625,9 @@ async def test_bumping_the_enrichment_version_requeues_a_contract(
     assert service.esi_client.get_contract_items.await_count == before + 1
 ```
 
-- [ ] **Step 2: Run both and watch them fail** — the first fails because the fetch happens twice.
+- [x] **Step 2: Run both and watch them fail** — the first fails because the fetch happens twice.
 
-- [ ] **Step 3: Implement the skip**
+- [x] **Step 3: Implement the skip**
 
 First add the missing import — `background_aggregation.py` imports `update` but **not** `select`:
 
@@ -677,12 +677,12 @@ Update the call site in `_process_contracts` to pass `already_enriched`.
 
 **Do NOT** add concurrency here. That is a later phase and needs the governor first.
 
-- [ ] **Step 4: Verify green, run the full suite, mutation-verify both tests**
+- [x] **Step 4: Verify green, run the full suite, mutation-verify both tests**
 
 Mutation A: delete the `continue` — the skip test reddens.
 Mutation B: compare against a hardcoded `1` instead of `ENRICHMENT_VERSION` — the version-bump test reddens.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A app/backend
