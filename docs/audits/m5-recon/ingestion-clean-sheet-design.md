@@ -1,320 +1,202 @@
-# ESI Ingestion — Clean-Sheet Design
+# ESI Ingestion & Alerting — Clean-Sheet Design
 
-ABOUTME: A from-first-principles redesign of contract ingestion, written after ESI's 2025 rate-limit changes invalidated the assumptions the current pipeline was built on.
-ABOUTME: Proposal for review — not implemented. Supersedes the incremental "add concurrency" plan, which optimized the wrong axis.
+ABOUTME: From-first-principles redesign of contract ingestion and alert delivery, driven by the requirement that an alert user isn't late to a deal.
+ABOUTME: Proposal — not implemented. Rewritten at round 3 of an alternating adversarial review; supersedes the "add concurrency" plan and the patched drafts before it.
 
-## Why start over rather than patch
-
-Three separate investigations in one session each moved the target: the 77-minute run turned out to be ~46,000 sequential per-contract fetches; the fix for that turned out to be *not fetching* rather than fetching faster; and ESI's per-group token buckets (rolled out Oct–Dec 2025, keyed for public routes by source IP) changed what "faster" is even allowed to mean. A design patched across three reversals is not a design anyone would have chosen deliberately.
-
-## The requirement this is judged against
+## The requirement
 
 > A user who sets up alerts in Hangar Bay isn't late to landing a great deal when one appears.
 
-EVE contracts are first-come-first-served, so this is a race, not a comfort target. Decomposed
-end to end, with measured numbers:
+EVE contracts are first-come-first-served, so this is a race.
 
-| Stage | Today | Floor |
-|---|---|---|
-| EVE issue → ESI publishes | 0–30 min | **CCP's cache. Unavoidable.** |
-| ESI → our discovery | up to 125 min | seconds |
-| Discovery → enrichment sets the ship flag | up to 77 min | ~12 s (≈115 new contracts/cycle) |
-| Enrichment → watchlist matcher runs | up to 15 min | seconds |
-| Matcher → **the user actually learns** | **unbounded — in-app only** | seconds |
+**The promise is narrow, and should be stated plainly: the user is never late *because of us*.** It does not promise the user wins. Every serious ESI-based tool can play the same scheduling game described below, so this buys **parity with other tools, not advantage over them** — and against semi-automated snipers watching extreme Jita mispricings, or a player sitting in the in-game contract window, we lose regardless. ESI is 0–30 minutes behind reality by design and no client-side choice changes that.
 
-**We currently add ~140 minutes on top of ESI's 30. This design adds under one.**
+What we control is the ~140 minutes we currently add on top.
 
-Three consequences, and the third is the one that matters most:
+## A discipline this document is under
 
-1. **We can never beat a player watching the in-game contract window.** ESI is 0–30 minutes
-   behind reality by design. The achievable goal is to be even with every other ESI consumer,
-   and first among them.
-2. **The race between ESI consumers is decided by poll phase.** ESI's cache is server-side and
-   shared, so every tool sees a new contract at the same instant — when the cache regenerates.
-   A fixed 30-minute poll that is 25 minutes out of phase loses by 25 minutes to an otherwise
-   identical competitor.
-3. **The binding constraint is delivery, not computation.** Notifications are in-app only —
-   there is no webhook, email, or push anywhere in the backend. A perfect pipeline notifying a
-   browser tab nobody is watching does not win deals. See "The other half" below.
+Three review rounds found the same failure repeatedly: **asserting end-to-end properties from whichever component was in focus, backed by single-point measurements promoted into constants.** Concurrency-first; "speed dissolves the lock/cache/staleness problems"; "discovery cadence is what users feel"; one `Expires` sample becoming "the floor"; one 384-contract sample becoming "latent"; one churn sample becoming a rate.
 
-## The observation the whole design turns on
+Three rules apply throughout:
+
+1. Every **"by construction"** claim names the mechanism enforcing it *and* the test pinning it.
+2. Every **measurement carries its sample scope** where it is used, not only where it was taken.
+3. Every **latency claim walks the whole chain**, including systems that aren't ours — CCP's lazily-regenerated cache, Discord, and the user's spaceship.
+
+## The observation the design turns on
 
 **Public contracts are immutable; the public contract *list* is not.**
 
-A contract's items are fixed at issuance — editing means a new `contract_id`, and auction bids live on a different endpoint. So a contract's items need fetching **exactly once, ever**. What changes over time is only which contracts *exist*.
+Items are fixed at issuance — editing produces a new `contract_id`, and auction bids live on a separate endpoint. So items need fetching **exactly once, ever**. What changes is only which contracts exist.
 
-The current pipeline conflates these into one loop, and every consequence below follows from that:
+The current pipeline conflates these, and every problem below follows:
 
 | | Discovery (which contracts exist) | Enrichment (what's inside one) |
 |---|---|---|
 | Mutability | changes constantly | immutable once fetched |
-| Cost | 34 paginated requests per region (measured `X-Pages`) | 1 request per *new* contract |
-| Steady-state volume | constant | proportional to churn, not to corpus |
-| Caching | ETag validators are the right tool | validators are pointless — read-once |
-| Failure meaning | region unavailable | one contract unknown |
+| Cost | fixed per region (34 pages for The Forge, 2–3 for other hubs — one sample, 2026-07-27) | 1 request per *new* contract |
+| Steady-state volume | constant | proportional to churn |
+| Caching | validators are the right tool | validators are pointless — read-once |
 | Freshness meaning | **this is what "current" means** | backlog depth, not currency |
 
-Conflating them forces the fast, cheap, mutable half to run at the speed of the slow, expensive, immutable half — and makes the corpus size, rather than the churn rate, set the cost of every cycle.
+Conflating them makes corpus size, rather than churn rate, set the cost of every cycle.
 
-## The design
+## Design
 
-### Stage 1 — Discovery (every cycle, seconds)
+### Stage 1 — Discovery
 
-Fetch each region's paginated public contract list. Upsert contract rows and stamp `last_seen_at` (the mechanism already in PR #91). Presence and absence both come from here: a contract missing from a complete region sweep is delisted.
+Fetch each region's paginated public contract list; upsert rows; stamp `last_seen_at` (PR #91's mechanism). Presence *and absence* both come from here, and **absence requires a complete sweep** — a contract is only known gone once every page of its region has been read, so pages can never be skipped to save requests.
 
-ETag validators genuinely belong here — a list page either changed or it didn't. But **a 304 whose cached body is missing must re-request without `If-None-Match`**, never return an empty page. The Forge is 34 pages (measured); correctness costs one extra request in the rare miss.
+**Scheduling comes from `Expires`, not a fixed interval.** ESI's cache is server-side and shared, so every consumer sees a new generation at the same instant; the race between tools is decided by poll phase. Measured across five trade hubs (2026-07-27): TTL uniformly **1800 s**, but **expiry phase differs per region** — four hubs regenerated within a 95-second window, Amarr 28 minutes later. So scheduling is per region.
 
-Note that **absence requires a complete sweep**: a contract is only known to be gone once every
-page of its region has been read. Pages cannot be skipped to save requests, which is why
-discovery cost is fixed per region rather than proportional to change.
+Regeneration appears **lazy** — triggered by the first request after expiry rather than a clock. Two consequences:
+- Poll at `Expires + ε`, never before. Polling early re-reads the stale body; there is nothing to be early to.
+- We plausibly become the trigger, which is as good as this race gets.
 
-Freshness and staleness are measured **from this stage**, because this stage is what determines
-whether the listing is current. Today they are measured from a run that also drags 46,000 item
-fetches behind it, which is why the staleness threshold keeps tripping.
+**Nothing about the TTL is hard-coded.** We measured 1800 s; the swagger documents up to 3600 s. The design survives that discrepancy precisely because it reads the header. Skew is corrected via `Expires − Date` rather than local time, and the computed delay is floored and capped.
 
-**Scheduling comes from the `Expires` header, not from a fixed interval.** ESI states exactly
-when the next version of a list becomes available (measured: `Expires` − `Last-Modified` =
-1800 s; `X-Pages: 34` for The Forge). Polling at that moment — plus a small jitter, and per
-region, since regions expire independently — puts us within seconds of the earliest instant the
-data can exist. A fixed interval is strictly worse at every cadence: faster only collects 304s,
-slower loses the race by however far it drifts out of phase. A missing or unparseable header
-falls back to a configured default.
+**Generation shear is the hazard this scheduling creates**, and it is why the watermark can hurt. A 34-page sweep starting at `Expires + ε` can straddle a lazy regeneration and mix generations; page boundaries shift; a live contract can be skipped. PR #91's watermark would then read that contract as delisted and hide it for a full cycle — **a user-visible false delisting.**
 
-### Stage 2 — Enrichment (budgeted, resumable, incremental)
+Enforcement, with pinning tests:
+- Every page's `Last-Modified` must equal page 1's; a mismatch aborts and restarts the sweep.
+- **The watermark is stamped only from a consistent, complete sweep.** An inconsistent sweep may still upsert contract data; it may not conclude anything about absence.
+- Test: a fixture serving a mid-sweep `Last-Modified` change must not advance the watermark.
+- Opposite edge: a poll returning the *previous* generation triggers a short bounded re-poll rather than accepting it — otherwise the scheduler silently concedes the race it exists to win, one cycle at a time.
 
-The work queue is a **query, not a data structure**: contracts whose items have never been successfully fetched. `item_processing_status` already models exactly this and is currently written but never read back.
+### Stage 2 — Enrichment
 
-- **Fetch once, ever.** A successfully enriched contract is never re-fetched. Steady state drops from the corpus (~46,000) to the churn (new contracts since the last cycle).
-- **Do not ETag-cache item pages.** A validator on immutable read-once data buys nothing and costs cache pressure in a 25 MB instance that cannot hold it. This deletes the silent-empty-page failure entirely rather than fixing it.
-- **Budgeted per cycle** — wall-clock first, plus caps on requests and error budget. This is
-  what makes run duration *bounded by construction*, and it only holds under an explicit
-  invariant: **every governor sleep is `min(governor_deadline, cycle_deadline)`.** Without that
-  clipping, a single long `Retry-After` un-bounds the run and the lock-TTL guarantee collapses.
-- **Retry scheduling, not just retry counting.** Volume-descending order plus retryable failures
-  would otherwise park the same heavy failing contracts at the queue head every cycle and starve
-  everything behind them. Each queued contract carries a `next_attempt_at`, and
-  never-attempted contracts sort ahead of retries.
-- **Resumable.** The queue lives in the database, so an interrupted, rate-limited, or redeployed run loses no work; the next cycle resumes.
-- **Ordered by contract volume, descending.** Under a budget, ordering decides what you get first — and hulls are the product's headline. This is where volume belongs: as a **priority**, never as the filter that was rejected for foreclosing non-ship item data.
+The queue is a **query, not a data structure**: contracts whose items have never been successfully fetched. `item_processing_status` already models this and is written but never read back.
 
-### Two lanes, chained rather than independently scheduled
+- **Fetch once, ever.** Steady state drops from the corpus (~46,000) to churn — measured **~230 new contracts/hour** against a 45,441 corpus (300-contract sample spanning 78.4 minutes of `date_issued`; single sample, and **churn is diurnal**, so treat it as an order of magnitude rather than a rate — the budget below absorbs the variance).
+- **Do not ETag-cache item pages.** A validator on immutable read-once data buys nothing and costs pressure in a 25 MB instance that cannot hold it. This deletes the silent-empty-page failure rather than fixing it.
+- **Budgeted per cycle** — wall-clock first, plus request and error-budget caps. Enforced by clipping every governor sleep to `min(governor_deadline, cycle_deadline)`. Pinned by a test asserting a long `Retry-After` cannot extend a cycle past its deadline.
+- **Retry scheduling, not counting.** `next_attempt_at` per row; never-attempted contracts sort ahead of retries, so failing heavy contracts cannot park at the queue head.
+- **Rows are claimed**, not merely selected, so the two lanes cannot double-fetch the same contract.
+- **Resumable.** The queue is a DB query, so interruption, rate-limiting or redeploy loses no work.
+- **Ordered by volume descending** — under a budget, ordering decides what arrives first, and hulls are the headline. Volume as *priority*, never the filter rejected earlier for foreclosing non-ship item data.
 
-Three stages on three independent schedules stack their worst cases (125 + 77 + 15 minutes).
-Chaining them on the *delta* collapses that to the work itself:
+### Stage 3 — Matching
 
-**Fast lane — the deal-alert path.** Discovery completes → enrich only the contracts it just
-discovered → match only those contracts → deliver. Small budget, highest governor priority,
-runs on every discovery tick. At ~230 new contracts/hour that is ~115 per 30-minute cycle,
-about 12 seconds of enrichment. This lane exists to satisfy the user story and nothing else.
+Matching runs **chained after every enrichment batch, in either lane** — not only the fast lane. A contract that falls to backfill must not thereby exit the alert path.
 
-**Backfill lane — everything that is not time-critical.** Cold start, newly added regions,
-`enrichment_version` bumps, and retries of previously failed contracts. Budgeted, lowest
-priority, and it yields to the fast lane through the governor's priority classes so a
-multi-cycle backfill can never delay an alert.
+A periodic full pass remains, because watchlist *entries* change independently of contracts: a user adding a watch item must eventually match against contracts already in the corpus. Its interval is a stated setting, not an accident.
 
-The two lanes share one queue (the same DB query, differently ordered and bounded) and one
-governor. Splitting them by *priority* rather than by *process* keeps the deployment single-
-service, while leaving the eventual scheduler split a deployment decision rather than a rewrite.
+### Stage 4 — Delivery
 
-### What fetch-once destroys, and how to give it back
+**Delivery is not in the chain.** The chain performs a **first attempt only, under a ~10 s budget**; everything else runs on a separate tick. In order of severity:
 
-The refetch-everything loop is an accidental **self-healing mechanism**, and this codebase has
-already cashed that cheque twice: `is_ship_contract` never being set, and `is_blueprint_copy`
-never being mapped, were both repaired by the next full sweep after the fix landed. Fetch-once
-removes that safety net, so the *next* enrichment bug becomes a hand-written production
-migration instead of a no-op.
+1. An inline retrying HTTP call to a third party un-bounds the chain's duration — the same 65-minute-lock/77-minute-run defect this design exists to eliminate, re-derived one layer up.
+2. It couples discovery freshness to Discord's availability: an outage would hold the lock past the next `Expires` tick.
+3. "Retry with backoff" is *unimplementable* in a chained-only model, because nothing runs between discovery ticks.
 
-The cheap replacement is an **`enrichment_version` stamp** on each contract. Bumping a
-constant re-queues the corpus through exactly the same budgeted, governed machinery — a
-deliberate, observable, rate-limited backfill rather than an accident that happened to work.
-This is what makes fetch-once safe to adopt rather than merely fast.
+**The notifications table is already the delivery queue** — it needs `delivered_at` and `attempts`, not a new queue.
 
-### Stage 3 — Derived flags
+**Delivery is at-least-once, explicitly.** The SQLA-2 partial index dedups notification *creation*, not delivery; a crash between POST and commit re-sends. That is the accepted semantic, and a duplicate alert is the acceptable failure.
 
-`is_ship_contract` is computed when enrichment lands, from items — unchanged in substance, but now it happens once per contract rather than being recomputed against refetched data every cycle.
+### Delivery security — a user-supplied URL is an SSRF primitive
 
-### A state the split creates, which must be decided rather than discovered
+The backend POSTs to a URL the user supplies, from inside Render's private network. Encryption at rest was the wrong frame; confidentiality is the lesser problem.
 
-Today contracts, items and derived flags commit in one transaction, so a contract is never
-visible without its items. Splitting the stages makes **"listed, zero items, enrichment
-pending"** a real, persistent, user-visible state — and indistinguishable from the 3.1% bug
-unless it is modelled deliberately.
+Non-negotiable:
+- **Strict host allowlist** — Discord's webhook surface only. Not a blocklist, not a scheme check.
+- **Redirects refused**, never followed.
+- **~5 s timeout**, and no response body interpreted beyond status.
+- Stored encrypted via the existing `TOKEN_CIPHER_KEYS` mechanism, never logged.
 
-Decision: **un-enriched contracts are excluded from filtered list views.** `is_ship_contract`
-is genuinely *unknown* until items land, and answering "not a ship" is a lie that puts hulls in
-the wrong bucket. They remain reachable by direct link, consistent with the expired-contract
-treatment already shipped.
+Also required: a **per-webhook rate limiter separate from the ESI governor** (Discord's limits are Discord's), **embed batching** (10 per message) with a digest cap so a backfill cannot flood a channel, a **test message on save** so a wrong paste fails immediately and visibly, and a **re-enable path** for auto-disabled hooks.
 
-### The rate-limit governor
+Alerts carry an embed we build directly — hull, price, location, time remaining, link — so delivery does not depend on crawler unfurling and is unaffected by per-URL previews being deferred.
 
-A **single shared limiter** in front of every ESI call, because both ESI limits are keyed by source IP and we have exactly one egress IP. Per-request backoff cannot help: twenty workers each backing off independently still collectively exceed one bucket.
+## The rate-limit governor
 
-It must:
-- Track `X-Esi-Error-Limit-Remain` / `-Reset` and the token-bucket headers, and slow the *whole* pipeline as headroom shrinks rather than reacting after a breach.
-- Treat 420 and 429 as first-class, honoring `Retry-After`. The current client's `< 500 == success` predicate makes both invisible — they skip retry and degrade into per-contract "failures."
-- Price 4xx correctly (5 tokens under the new scheme), so an error storm throttles itself.
-- **Fail the run as degraded, not successful,** when it pauses on a limit. Today a limit breach
-  would record a successful run over missing data.
-- **Reserve headroom for discovery.** Both stages share one bucket because both share one egress
-  IP, so an enrichment backfill can otherwise starve the very stage that freshness is measured
-  from. The governor needs priority classes: discovery draws first.
+A **single shared limiter** in front of every ESI call, because both ESI limits are keyed by source IP and we have one egress IP. Per-request backoff cannot help: twenty workers each backing off independently still collectively exceed one bucket.
 
-### Failure taxonomy
+- Tracks `X-Esi-Error-Limit-Remain` / `-Reset` and any token-bucket headers, slowing the whole pipeline as headroom shrinks rather than reacting after a breach.
+- Treats 420 and 429 as first-class with `Retry-After`. Today's `< 500 == success` predicate makes both invisible — they skip retry and degrade into per-contract "failures."
+- **Fails open on absent headers.** No `X-Ratelimit-*` appeared on a live public-contracts response (2026-07-27), so that rollout has not reached this group; the governor must not stall when expected headers are missing.
+- **Reserves budget, not merely draw order, for discovery.** Priority cannot conjure back budget a backfill has already burned, so the reservation binds the error and token budgets themselves.
+- **Records a degraded run, not a successful one,** when it pauses on a limit.
 
-The current code has one bucket ("fetch failed"). Three behaviors are needed:
+## Failure taxonomy
 
-- **Transient** (5xx, timeout, 420/429): stays queued, bounded retries with backoff. Not an error about the contract.
-- **Gone** (403/404): the contract was almost certainly accepted or withdrawn between the list
-  fetch and the item fetch — expected in volume, since the list is served from a cache up to
-  30 minutes old. **Drop it from the queue and write nothing.** An earlier draft made 403 a
-  delisting signal; that is wrong. It would bet existence-authority on an undocumented
-  "Forbidden" to buy at most one cycle of latency over what the discovery watermark already
-  provides. **Stage 1 remains the sole authority on existence.** A contract still listed on the
-  next sweep that 403s repeatedly is dead-lettered with a metric.
-- **Poisoned** (repeated failures beyond a threshold): dead-lettered so it stops consuming error budget every cycle, and stays visible in metrics.
+- **Transient** (5xx, timeout, 420/429): stays queued, bounded retries with backoff.
+- **Gone** (403/404): the contract was accepted or withdrawn between list and item fetch — expected in volume, since the list is up to 30 minutes stale. **Drop from the queue, write nothing.** Discovery remains the sole authority on existence; making 403 a delisting signal would bet existence on an undocumented "Forbidden" to buy at most one cycle over what the watermark already gives.
+- **Poisoned** (repeated failures past a threshold): dead-lettered with a metric, so it stops consuming error budget every cycle.
 
-And the invariant that makes fetch-once safe at all. **Enrichment succeeds only when the
-result is non-empty AND every page was fetched.** Two ways that is violated today:
+**The invariant that makes fetch-once safe: enrichment succeeds only when the result is non-empty AND every page was fetched.** Violated two ways today:
+- An `item_exchange`/`auction` contract with zero items is impossible; an empty result is an error, never `COMPLETED`. Currently recorded as success — **3.1% of a 384-contract sample** (2026-07-27).
+- `get_contract_items` passes the default `all_pages=False` while `get_public_contracts` passes `True`, truncating any contract past 1,000 items. **Latent in that same sample** (max 422 items, p99 16, none at 1,000) — but fetch-once makes truncation permanent, so it is fixed before, not after.
 
-- **An `item_exchange`/`auction` contract with zero items is impossible.** An empty result is
-  an error, never `COMPLETED`. Currently recorded as success — measured at 3.1% of sampled
-  production contracts.
-- **`get_contract_items` requests only page 1.** It calls the ETag helper with the default
-  `all_pages=False`, while its sibling `get_public_contracts` correctly passes `all_pages=True`
-  — so any contract with >1,000 items is silently truncated. Latent rather than active today
-  (sampled max 422 items, p99 16, none at 1,000), but fetch-once would make that truncation
-  permanent and unrepairable. Fix before, not after.
+## What fetch-once destroys, and how to give it back
 
-### Latency: what is actually achievable
+The refetch-everything loop is accidental **self-healing**, and this repo has cashed that cheque twice: `is_ship_contract` never being set, and `is_blueprint_copy` never being mapped, were both repaired by the next full sweep. Fetch-once makes the *next* enrichment bug a hand-written production migration instead of a no-op.
 
-**Measured against live ESI, not assumed.** A region's public contract list returns
-`Expires` − `Last-Modified` = **1800 s**; the swagger documents up to 3600 s. `X-Pages` is
-**34** for The Forge at 1,000/page.
+An **`enrichment_version` stamp** replaces it: bumping a constant re-queues the corpus through the same budgeted, governed machinery — a deliberate, observable backfill rather than an accident that worked.
 
-So **discovery cannot beat ~30 minutes** — CCP's cache is the floor, and polling faster only
-buys 304s. "New contracts within minutes" is not reachable for discovery at any cadence.
-
-What *is* reachable, and what users actually feel, is the second half. A contract only enters
-the default view once enrichment sets `is_ship_contract`, and today that is welded to a
-77-minute run. Chained to discovery, that gap becomes the work itself — roughly 12 seconds for
-a cycle's worth of new contracts, sequentially, with no concurrency at all.
-
-An independent enrichment tick would add nothing for *new* contracts, since new work only
-exists when discovery has just run. A short periodic tick is useful only for the backfill lane,
-which always has work while a backlog exists.
-
-| | today | this design |
-|---|---|---|
-| Newest contract in the database | **129 min old** (measured) | ~30–40 min |
-| Discovery → visible in the ships view | up to 77 min | ~12 s (chained) |
-| Floor set by | our pipeline | CCP's 30-min cache |
-
-The honest headline: 129 minutes → ~30–40, with the remainder being CCP's, not ours.
-
-### Job topology, and what happens to `run_aggregation`
-
-Today's single `run_aggregation` job becomes **two scheduled jobs and one chain**:
+## Job topology
 
 | Job | Trigger | Budget | Lock TTL |
 |---|---|---|---|
-| **Discovery** (per region) | `Expires` of that region's last response, + jitter | seconds | minutes |
-| **Backfill enrichment** | short periodic tick, only while a backlog exists | small, wall-clock bounded | budget + margin |
-| *Fast-lane enrichment → match → deliver* | **chained**, not scheduled: runs inline at the end of each discovery sweep | small, wall-clock bounded | inherits discovery's |
+| **Discovery** (per region) | that region's `Expires + ε`, skew-corrected | seconds | its budget + margin |
+| **Fast lane**: enrich-new → match | chained inline after a consistent sweep | small, wall-clock bounded | **sum of stage budgets + margin** |
+| **Backfill enrichment → match** | short periodic tick while a backlog exists | small, wall-clock bounded | its budget + margin |
+| **Delivery retries** | periodic tick | small | its budget + margin |
+| **Full watchlist pass** | stated interval | small | its budget + margin |
 
-The **watchlist matcher stops being an independent 15-minute interval job** for new contracts.
-It runs chained, against only the contracts just enriched — which is what removes its worst-case
-15 minutes from the alert path. It retains a periodic full pass, because watchlist *entries*
-change independently of contracts and a user adding a watch item must eventually match against
-contracts already in the corpus.
+No lock inherits another's TTL. `run_aggregation` splits along the seam it already contains: `_fetch_regions` → discovery, `_fetch_item_rows` → enrichment, `_process_contracts` divided between them.
 
-`run_aggregation` is not deleted so much as split along the seam it already contains:
-`_fetch_regions` becomes discovery, `_fetch_item_rows` becomes enrichment, and
-`_process_contracts` is divided between them.
+## The latency chain, end to end
 
-### Locking and cadence
+| Hop | Today | This design | Whose |
+|---|---|---|---|
+| EVE issue → ESI generation | 0–30 min | 0–30 min | **CCP's** |
+| ESI → our discovery | up to 125 min | seconds (poll at `Expires + ε`) | ours |
+| Discovery → ship flag set | up to 77 min | ~12 s, sequential | ours |
+| Ship flag → matched | up to 15 min | seconds (chained) | ours |
+| Matched → delivered to Discord | **never** | seconds (first attempt inline) | ours + Discord's |
+| Delivered → user acts | unbounded | unbounded | **the user's** |
 
-Each job carries a lock whose TTL derives from that job's own bounded budget. This replaces the current arrangement, where a 65-minute lock TTL guards a 77-minute run and is saved only by tick alignment. Bounded duration is a structural fix; a lock heartbeat would be a patch on an unbounded run.
-
-Discovery cadence is **not** a free lever: it is pinned to CCP's 30-minute cache, and polling
-faster only collects 304s while forcing a full `last_seen_at` sweep over ~45k rows on a
-256 MB Postgres each time. The lever that users feel is enrichment *latency after* discovery,
-which the chained fast lane makes near-zero.
-
-### Observability
-
-None exists today; the 77-minute decomposition is inference. Minimum: per-stage duration and counts, error-budget headroom, and — the key operational metric — **enrichment queue depth**. A growing queue is the single number that says "falling behind," and nothing currently reports it.
-
-## The other half: alert delivery
-
-The pipeline work above makes an alert *correct and timely*. It does not make it *arrive*.
-Notifications terminate in an in-app list today, for an audience `PRODUCT.md` describes as
-alt-tabbed out of the game. Against the stated user story, that is the single largest source of
-latency — and it is unbounded, because it depends on when someone next opens a tab.
-
-**Discord webhooks**, for a corporation that already lives there. Design decisions worth fixing
-now:
-
-- **Per-user webhook URL, pasted by the user.** This covers the corp-channel case too (paste a
-  channel's webhook) without modelling corporations, which we do not otherwise need.
-- **The URL is a credential.** Anyone holding it can post to that channel, so it is encrypted at
-  rest with the existing `TOKEN_CIPHER_KEYS` mechanism already used for ESI tokens — not stored
-  in plaintext, and never logged.
-- **Delivery is chained to matching, not separately scheduled.** Re-introducing an independent
-  delivery tick would re-introduce the latency the fast lane just removed.
-- **Delivery failure is isolated.** A dead or rate-limited webhook must never fail the matcher
-  or block other users' notifications; failures retry with backoff and then disable the hook
-  with a visible reason rather than retrying forever.
-- **Build the embed directly.** Discord webhooks accept rich embeds, so the alert carries hull,
-  price, location, time remaining and a link without depending on crawler unfurling. That also
-  makes it immune to the per-URL preview work being deferred.
-- **Dedup already exists.** The partial unique index on notifications (SQLA-2) prevents
-  re-alerting the same user about the same contract; delivery inherits it.
-
-This is a distinct workstream from the ingestion pipeline, and it is deliberately named here
-because the user story is not satisfied by either half alone.
+Ours falls from ~140 minutes to under one. The first and last rows are not ours and do not move.
 
 ## What this buys
 
 | Problem | How it dissolves |
 |---|---|
 | 77-minute runs | Steady state becomes churn-sized, not corpus-sized |
-| Lock TTL < run duration | Runs are bounded by budget, by construction |
+| Lock TTL < run duration | Every job's TTL derives from its own bounded budget |
 | Staleness threshold tripping | Freshness measured from the cheap stage |
-| Cache oversubscription | Item pages stop being cached at all |
+| Cache oversubscription | Item pages stop being cached |
 | Silent empty pages | Deleted, not fixed — no validator, and empty ≠ success |
-| Unattributed 403s | Classified as *gone*: dropped from the queue, never treated as existence authority |
-| Coverage expansion | Discovery scales with regions; enrichment with churn |
-| **Alert latency** | **~140 min of our own latency → under 1 min; the rest is CCP's** |
+| Unattributed 403s | Classified *gone*; never an existence authority |
+| Alerts nobody sees | Delivery to where the corp actually is |
+| Coverage expansion | Discovery fixed per region; enrichment scales with churn |
 
-The last row is the strategic point: the current design makes each new region cost another full corpus sweep every cycle. This one makes a new region a one-time backfill plus its share of churn — which is the difference between coverage being affordable and not.
+## Migration
 
-## Migration from the current state
+Each step is independently deployable; recreate deploys prevent dual-writer overlap.
 
-1. **Land the success invariant and the repair in the same release.** Repairing first leaves a
-   window in which the old pipeline re-mints zero-item `COMPLETED` rows between deploys. The
-   repair predicate covers zero-item `COMPLETED` contracts *and* item counts that are an exact
-   multiple of 1,000 (the truncation signature — currently expected to match nothing, which is
-   itself worth confirming). Log the distribution of what it finds: 3.1% is measured, but the
-   304-with-evicted-body *mechanism* behind it is still inferred, and the repair is the one
-   cheap opportunity to confirm it.
-2. Add `enrichment_version`, so the self-healing property is replaced before it is removed.
-3. Enable skip-known. This alone collapses the steady-state workload.
-4. Add the governor before any concurrency.
-5. Add bounded concurrency, scoped to cold start and backfill.
+1. **Success invariant + repair, in one release.** Repair-first leaves a window where the old pipeline re-mints zero-item `COMPLETED` rows. Predicate: zero-item `COMPLETED` contracts, plus item counts at exact multiples of 1,000. Log the distribution — 3.1% is measured, but the 304-with-evicted-body *mechanism* is still inferred, and this is the cheap chance to confirm it.
+2. **`enrichment_version`** — replace self-healing before removing it.
+3. **Skip-known.** Collapses the steady-state workload; the single largest win.
+4. **Governor**, before any concurrency.
+5. **Discovery/enrichment split**, with sweep-consistency checks and per-job locks. `/ready`'s freshness source rewires to discovery here.
+6. **`Expires` scheduling**, replacing the fixed interval.
+7. **Delivery**: schema, SSRF-safe sender, retry tick, then chaining.
+8. **Bounded concurrency**, scoped to backfill.
+
+Steps 1–3 deliver most of the latency win and are independent of the rest.
 
 ## Deliberately not proposed
 
-- **A separate worker process.** The DB-backed queue makes splitting enrichment into its own service a deployment decision rather than a redesign, so it costs nothing to defer — and on Render it costs money to adopt.
-- **Bulk item fetching.** ESI exposes no batch endpoint for contract items; per-contract is forced.
-- **Dropping non-ship enrichment.** Rejected earlier and still rejected: it regresses the shipped `is_ship_contract=false` view, which carries item data today.
+- **A separate worker process.** A DB-backed queue makes that a deployment decision, not a redesign — and on Render it costs money.
+- **Bulk item fetching.** ESI exposes no batch endpoint; per-contract is forced.
+- **Dropping non-ship enrichment.** Regresses the shipped `is_ship_contract=false` view.
+- **Preemption between lanes.** Draining in-flight requests costs ~1–2 s at these scales; budget reservation suffices.
 
 ## Open questions
 
-- ~~Churn rate is unmeasured~~ — **measured: ~230 new contracts/hour** (300 contracts spanning
-  78.4 min of `date_issued`), against a 45,441 corpus. A ~197× ratio, which is what the
-  steady-state argument rests on. Cross-check: 230/hr over a 45k corpus implies ~8 days average
-  contract lifetime, consistent with EVE's common 3-day/1-week/2-week durations.
-- **Delivery-side latency is unmeasured.** Discord webhook round-trip and its rate limits are
-  not characterised, and they sit on the critical path of the user story.
-- **Token-bucket parameters** for public contract routes are not established here — the governor's shape is right regardless, but its tuning needs the real numbers.
-- **Backfill duration** for a cold start (or a newly added region) under a correct governor is unknown, and it sets how long coverage expansion takes to become useful.
+- **Delivery-side latency and Discord's rate limits** are uncharacterised and sit on the critical path.
+- **Token-bucket parameters** for public contract routes are unestablished; the governor's shape is right regardless, but tuning needs real numbers.
+- **Backfill duration** for a cold start or a new region, under a correct governor, is unknown — and it sets how long coverage takes to become useful.
+- **Churn is diurnal** and measured once; the budget absorbs variance, but a sustained-peak measurement would firm up sizing.
+- **A backlog lever on the human hop:** ESI's authenticated `POST /ui/openwindow/contract/` (`esi-ui.open_window` scope) can open a contract directly in the user's game client from an alert. That attacks the one hop this design otherwise concedes entirely.
