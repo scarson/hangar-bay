@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.background_aggregation as bg_agg
@@ -207,6 +207,10 @@ async def test_process_contracts_type_resolution_failure_degrades_gracefully(
     # Enrichment failed for this contract's item, so its status must NOT claim
     # COMPLETED — a future consumer trusting COMPLETED would skip re-enriching it.
     assert contract.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    # ...and it must NOT carry the current enrichment stamp either. The stamp means
+    # "enriched at this version"; stamping a degraded row would make the skip predicate
+    # withhold it the moment anything repaired its status, stranding it unenriched.
+    assert contract.enrichment_version == 0
     item = (
         await db_session.execute(
             select(ContractItem).where(ContractItem.record_id == 31)
@@ -622,6 +626,49 @@ async def test_already_enriched_contracts_are_not_refetched(
     ), f"expected the fetched-vs-skipped line; got {[r.getMessage() for r in caplog.records]}"
 
 
+async def test_a_demoted_contract_is_refetched_despite_a_current_stamp(
+    db_session: AsyncSession,
+):
+    """The skip predicate needs BOTH arms: status AND version.
+
+    Demoting item_processing_status is the repair lever — it is exactly what the
+    zero-item repair migration pulls to put damaged rows back in the fetch set. That
+    lever only works if the skip actually reads the status: a version-only predicate
+    would keep skipping a demoted row forever, because a repair demotes the status
+    without touching the stamp.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 83, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930203)])
+    before = service.esi_client.get_contract_items.await_count
+
+    # The repair: status demoted, stamp deliberately LEFT at the current version.
+    await db_session.execute(
+        update(Contract)
+        .where(Contract.contract_id == 930203)
+        .values(item_processing_status="PENDING_ITEMS")
+    )
+    db_session.expire_all()
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930203)])
+
+    assert service.esi_client.get_contract_items.await_count == before + 1
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930203))
+    ).scalar_one()
+    assert row.item_processing_status == "COMPLETED"
+    assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
+
+
 async def test_bumping_the_enrichment_version_requeues_a_contract(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ):
@@ -653,6 +700,48 @@ async def test_bumping_the_enrichment_version_requeues_a_contract(
         await db_session.execute(select(Contract).where(Contract.contract_id == 930202))
     ).scalar_one()
     assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
+
+
+async def test_skip_select_reads_across_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, caplog
+):
+    """The already-enriched SELECT chunks its id list for the same reason the UPDATEs
+    do (asyncpg's 32767 bind-param cap; a corpus-scale IN() rolls the run back), and
+    a read that stops after the first chunk silently re-fetches the rest — cheaper to
+    miss than a crash, so it needs its own boundary crossing. With the chunk size
+    forced to 2 and THREE enriched contracts, all three must be skipped."""
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 2)
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: [
+            {"record_id": cid + 500_000, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    cids = [930204, 930205, 930206]
+    batch = [_ship_contract_dict(c) for c in cids]
+    await service._process_contracts(db_session, batch)
+    after_first_run = service.esi_client.get_contract_items.await_count
+    assert after_first_run == 3
+
+    with caplog.at_level("INFO"):
+        await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+
+    assert service.esi_client.get_contract_items.await_count == after_first_run
+    # The count is the boundary evidence: a read that stopped after the first chunk
+    # reports 2 skipped, not 3, while still looking like the skip works.
+    assert any(
+        "Fetched items for 0 contracts (3 skipped as already enriched)."
+        in rec.getMessage()
+        for rec in caplog.records
+    ), f"expected all three skipped; got {[r.getMessage() for r in caplog.records]}"
 
 
 async def test_structure_ids_are_excluded_from_name_resolution(db_session: AsyncSession, caplog):
