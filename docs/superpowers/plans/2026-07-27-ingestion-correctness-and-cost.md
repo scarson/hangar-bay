@@ -61,8 +61,8 @@ notes and commit messages.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 1 — Make "enriched" mean it | 🚧 In progress | — | Tasks 1–3; MUST ship as one release |
-| 2 — Skip what we already have | ⬜ Not started | — | Tasks 4–5 |
+| 1 — Make "enriched" mean it | ✅ Implemented on branch, review clean | d7db161, e70fa48, 39a8cf4 (T1) · 88670e4, da5b580, 8b29950 (T2) · d068fa2, ae68ca9, b0e47d4, b663872 (T3) | 2026-07-27; 3-round batch review clean; PR pending with Phases 2–3 |
+| 2 — Skip what we already have | 🚧 In progress | — | Tasks 4–5 |
 | 3 — Rate-limit honesty | ⬜ Not started | — | Task 6; independent |
 
 ### Discoveries
@@ -117,7 +117,7 @@ Do NOT use `env VAR=x` with a shell variable holding the pairs — zsh does not 
 
 ## Phase 1 — Make "enriched" mean it
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-27T02:58Z, branch `claude/m5-plan-a-ingestion`
+**Execution Status:** ✅ IMPLEMENTED on `claude/m5-plan-a-ingestion` 2026-07-27; per-task spec+quality reviews plus a 3-round batch review (holistic / adversarial-tests / fresh-eyes), all findings fixed, final round clean. Ships in the single Plan A PR (pending).
 
 Tasks 1–3 **MUST reach production in a single release.**
 
@@ -437,7 +437,7 @@ If round 3 still finds issues, keep going until clean.
 
 ## Phase 2 — Skip what we already have
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-27, branch `claude/m5-plan-a-ingestion`
 
 ### Task 4: Add `enrichment_version`
 
