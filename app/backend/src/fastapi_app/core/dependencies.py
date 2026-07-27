@@ -45,6 +45,12 @@ async def get_esi_client(
     FastAPI dependency to get an instance of the ESIClient, configured with
     shared, application-level HTTP and Redis clients.
     """
+    # User requests fail fast to the same 502 rather than holding the connection
+    # through ESI's cool-down; background ingestion (main.py's ESIClient) keeps
+    # the default 60s patience.
     return ESIClient(
-        settings=settings, http_client=http_client, redis_client=redis_client
+        settings=settings,
+        http_client=http_client,
+        redis_client=redis_client,
+        rate_limit_wait_budget=1.0,
     )

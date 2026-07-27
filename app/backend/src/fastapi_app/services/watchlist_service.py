@@ -38,9 +38,11 @@ def _map_esi_failure(status_code: int, invalid_msg: str) -> HTTPException:
 async def _fetch_type_or_400_502(esi_client: ESIClient, type_id: int) -> dict[str, Any]:
     try:
         return await esi_client.get_universe_type(type_id)
-    except ESIRequestFailedError as e:                 # 5xx / network / malformed body after retries
+    # 420/429 are retried internally and never reach raise_for_status below; they surface
+    # here as ESIRequestFailedError once retries exhaust or the wait budget is exceeded.
+    except ESIRequestFailedError as e:                 # 5xx / network / malformed body / 420 / 429
         raise _map_esi_failure(e.status_code, "unknown or invalid type")
-    except httpx.HTTPStatusError as e:                 # 4xx (404, 420, 429) — see source note #1
+    except httpx.HTTPStatusError as e:                 # plain 4xx (e.g. 404) via raise_for_status
         raise _map_esi_failure(e.response.status_code, "unknown or invalid type")
     except httpx.RequestError:                         # transport failure the client retry didn't catch
         raise HTTPException(status_code=502, detail=_UPSTREAM_UNAVAILABLE)
