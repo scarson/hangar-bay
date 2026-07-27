@@ -617,21 +617,27 @@ async def test_get_contract_items_fetches_every_page():
     page_1 = _etag_response(
         json_data=[{"record_id": 1, "type_id": 587}],
         content=b'[{"record_id": 1, "type_id": 587}]',
-        headers={"ETag": "etag-p1", "X-Pages": "2"},
+        headers={"ETag": "etag-p1", "X-Pages": "3"},
     )
     page_2 = _etag_response(
         json_data=[{"record_id": 2, "type_id": 588}],
         content=b'[{"record_id": 2, "type_id": 588}]',
-        headers={"ETag": "etag-p2", "X-Pages": "2"},
+        headers={"ETag": "etag-p2", "X-Pages": "3"},
     )
-    get_mock = AsyncMock(side_effect=[page_1, page_2])
+    page_3 = _etag_response(
+        json_data=[{"record_id": 3, "type_id": 589}],
+        content=b'[{"record_id": 3, "type_id": 589}]',
+        headers={"ETag": "etag-p3", "X-Pages": "3"},
+    )
+    get_mock = AsyncMock(side_effect=[page_1, page_2, page_3])
     client = _etag_client(get_mock)
 
     items = await client.get_contract_items(999)
 
-    assert [i["record_id"] for i in items] == [1, 2]
-    assert get_mock.await_count == 2
+    assert [i["record_id"] for i in items] == [1, 2, 3]
+    assert get_mock.await_count == 3
     assert [call.args[0] for call in get_mock.await_args_list] == [
         "/v1/contracts/public/items/999/?page=1",
         "/v1/contracts/public/items/999/?page=2",
+        "/v1/contracts/public/items/999/?page=3",
     ]
