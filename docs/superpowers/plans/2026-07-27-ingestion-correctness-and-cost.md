@@ -301,14 +301,14 @@ of a production sample. They now stay PENDING_ITEMS."
 **Files:**
 - Create: `app/backend/src/alembic/versions/<rev>_requeue_falsely_completed_contracts.py`
 
-- [ ] **Step 1: Generate the revision id and find the current head**
+- [x] **Step 1: Generate the revision id and find the current head**
 
 ```bash
 cd app/backend && ls src/alembic/versions/
 ```
 Use the latest revision as `down_revision`. At time of writing that is `c7e2a9b41d36` (contracts.last_seen_at) — **verify**, since PR #91 may have merged since.
 
-- [ ] **Step 2: Write the migration**
+- [x] **Step 2: Write the migration**
 
 ```python
 """requeue falsely-completed contracts
@@ -377,7 +377,7 @@ def downgrade() -> None:
     pass
 ```
 
-- [ ] **Step 3: Verify the migration on a scratch database**
+- [x] **Step 3: Verify the migration on a scratch database**
 
 ```bash
 cd app/backend
@@ -415,7 +415,7 @@ docker exec hangar_bay_postgres psql -U hangar_bay_user -d hb_mig_repair -tAc \
 Expected: `1|PENDING_ITEMS`, `2|PENDING_ITEMS`, `3|COMPLETED`. If row 3 flipped, the
 predicate is over-broad and would re-enrich the entire corpus.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add app/backend/src/alembic/versions/
