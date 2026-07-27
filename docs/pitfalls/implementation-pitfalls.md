@@ -30,7 +30,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, upstream status | ESI-1 | §4.C |
-| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3 | §5.C |
+| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -209,7 +209,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 **Why It Matters:** The failure is silent and looks like an auth problem, not a file-location problem: the MCP answers `unauthorized`, `$RENDER_API_KEY` is empty in every Bash shell, and nothing points at the main checkout. It cost the M4 execution session its entire Phase 0 spike (2026-07-19).
 
-**The Fix:** For the MCP: launch Claude Code from a shell that exported the env first (e.g. `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` before `claude`). For curl/CLI use from ANY worktree: source the main checkout's file inside each Bash invocation that needs it (shell state does not persist across tool calls) — `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` — then reference `$RENDER_API_KEY`. NEVER cat/echo/print the file or the variable, never copy it into a worktree, never commit it.
+**The Fix:** For the MCP: launch Claude Code from a shell that exported the env first (e.g. `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` before `claude`). For curl/CLI use from ANY worktree: source the main checkout's file inside each Bash invocation that needs it (shell state does not persist across tool calls) — `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` — then reference `$RENDER_API_KEY`. NEVER cat/echo/print the file or the variable, never copy it into a worktree, never commit it. **The 1Password-managed file can also transiently EMPTY mid-session and later repopulate** (observed 2026-07-27: a var that sourced fine minutes earlier came back length 0, then recovered): before concluding a key is gone, inspect names and value lengths only — `awk -F= '/^[A-Z]/ {print $1, length(substr($0, index($0,"=")+1))}' .env` — and retry after a minute.
 
 **Where It Bit Us:** M4 execution session (2026-07-18/19): the Phase 0 Render spike was blocked all session and substituted with a docs-based verification (plan Deviation D-1) because the session ran from a worktree with no launch-time export.
 
@@ -300,11 +300,24 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### DEPLOY-4: Pre-deploy migrations collide with in-flight ingestion; redeploy via the CD workflow, not a new commit
+
+**The Flaw:** Migrations run as Render's pre-deploy command while the outgoing instance may hold a long ingestion transaction on `contracts`. A deploy triggered mid-run fails `pre_deploy_failed` ~38s after `pre_deploy_started` — the migration's `SET lock_timeout = '30s'` firing plus overhead — and the deploy aborts with the old code still serving.
+
+**Why It Matters:** The failure looks alarming (a failed production deploy with `nonZeroExit: 1`) but is the *designed* outcome; the wrong responses are re-merging, reverting, or debugging the migration. The right response is pure timing. Conversely, a deploy that must not wait for a human needs a redeploy path that doesn't mint a new commit.
+
+**The Fix:** Time deploys into the post-run idle window: poll `/ready` and treat a fresh `last_ingest_age_seconds` (< ~10 min) as the window opening. To redeploy the SAME commit (retry or rollback), use the CD workflow's dispatch input — `gh workflow run deploy.yml --ref main -f sha=<full-sha>` — production deploys are triggered by `.github/workflows/deploy.yml` calling the Render API, not by Render autoDeploy. The ~38s failure signature distinguishes lock collision from a real migration bug (which fails in seconds or with a stack trace in the pre-deploy logs). Note the ingestion run can also lose: a deadlock may pick the run as victim, which is acceptable — it retries next tick.
+
+**Where It Bit Us:** Release PR #95 (2026-07-27): merged mid-run, `pre_deploy_failed` at 08:05:39Z (38s signature); the identical migrations applied cleanly on the idle-window redeploy at 08:26Z — confirming the mechanism empirically.
+
+---
+
 ### §5.C — Review Checklist
 
 - [ ] **`DATABASE_URL` reaches the engine driver-qualified** — the Settings validator normalizes `postgresql://`; no code assumes the platform sends `+asyncpg` (DEPLOY-1)
 - [ ] **Every production launch command pins `--workers 1`** — scaling proposals split the scheduler out instead of raising the worker count (DEPLOY-2)
 - [ ] **Nothing the app must retain lives in the evicting Valkey** — job stores and other silent-loss durable state stay out of `allkeys-lru` instances; every cross-run lock TTL derives from that job's own interval plus a margin (never equal to the interval, never a standalone constant) and is pinned by a test that reconfigures the interval and asserts the TTL follows (DEPLOY-3)
+- [ ] **Deploys are timed into the post-ingestion idle window, and same-commit redeploys go through the CD workflow's `workflow_dispatch` `sha` input** — a `pre_deploy_failed` ~38s in is the lock_timeout collision signature, not a migration bug (DEPLOY-4)
 
 ---
 
@@ -331,6 +344,11 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 ---
 
 # Appendix A: Historical Changelog
+
+## 2026-07-27 — DEPLOY-4 added; ENV-8 extended with the transient-empty .env mode
+
+- Added DEPLOY-4 (pre-deploy migration vs in-flight ingestion collision; the ~38s `pre_deploy_failed` signature; same-commit redeploy via the CD workflow's `workflow_dispatch` `sha` input) from the PR #95 release: first attempt failed exactly as designed, idle-window redeploy applied the same migrations cleanly.
+- Extended ENV-8: the 1Password-managed root `.env` can transiently empty mid-session and repopulate — check names/value-lengths (never values) before concluding a credential is gone.
 
 ## 2026-07-26 — DEPLOY-3 added: jobstore keys evicted by the allkeys-lru Valkey
 
@@ -401,6 +419,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | DEPLOY-1 | Managed platforms inject postgresql:// URLs; async stack needs +asyncpg | HIGH | VALIDATED | Deployment & Platform |
 | DEPLOY-2 | uvicorn stays --workers 1 (in-process scheduler) | MEDIUM | VALIDATED | Deployment & Platform |
 | DEPLOY-3 | Durable coordination state must not live in an evicting cache | HIGH | VALIDATED | Deployment & Platform |
+| DEPLOY-4 | Pre-deploy migrations collide with in-flight ingestion; redeploy via CD dispatch | MEDIUM | VALIDATED | Deployment & Platform |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
 Severity levels: `CRITICAL` (production data loss / security), `HIGH` (correctness bug under predictable conditions), `MEDIUM` (correctness bug under edge cases), `LOW` (cleanliness / clarity / dev-loop hazard).
