@@ -824,7 +824,16 @@ If round 3 still finds issues, keep going until clean.
       mechanism — **item fetches per run are in the hundreds (churn-sized), not ~46,000**.
       Not "seconds": steady state still performs the 34-page discovery sweep, name
       resolution, a ~46k-row upsert and ~100–250 sequential churn fetches. The fetch-count
-      clause is what actually demonstrates skip-known is working.
+      clause is what actually demonstrates skip-known is working. **Expected fetch count is
+      `churn + persistent-failure set`, not churn alone:** any listed contract that keeps
+      failing enrichment (zero-item results — measured 15/384 ≈ 3.9% — plus
+      ENRICHMENT_INCOMPLETE and fetch errors) is retried every run by design. If the
+      zero-item rate is a persistent property of those contracts rather than a transient
+      artifact, steady state could be **~1,800 fetches/run (~3 min sequential)** — that is
+      the retry loop working, NOT skip-known failing. The repair migration's `[requeue]`
+      counts at deploy time and the per-run zero-item warning are the evidence that
+      separates the two. Read the new "Fetched items for N contracts (M skipped)" log line
+      for the direct number.
 - [ ] `/ready`'s freshness advances within one cycle
 
 ## Out of scope (deliberately)
