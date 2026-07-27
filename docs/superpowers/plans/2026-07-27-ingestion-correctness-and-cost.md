@@ -57,13 +57,31 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** 🚧 In progress — claimed 2026-07-27T02:58Z on branch `claude/m5-plan-a-ingestion` (subagent-driven execution). All six tasks implemented and review-clean; branch rebased onto post-#93 dev (SHAs in this table are post-rebase); final verification passed (486 green pristine after the codex-driven ship-flag/category fixes, backend flake8 clean, combined migration cycle verified on a seeded scratch DB). PR: [#94](https://github.com/scarson/hangar-bay/pull/94) — Merge classification: Review (schema migration and data integrity); codex adversarial review done (disposition on the PR; one new finding fixed in-branch plus the deeper category-resolution gap it exposed); awaiting CI + Sam's merge.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 1 — Make "enriched" mean it | ⬜ Not started | — | Tasks 1–3; MUST ship as one release |
-| 2 — Skip what we already have | ⬜ Not started | — | Tasks 4–5 |
-| 3 — Rate-limit honesty | ⬜ Not started | — | Task 6; independent |
+| 1 — Make "enriched" mean it | ✅ Implemented on branch, review clean | f8fd05f, eeb6ca7, ba0da8c (T1) · ab6a9e9, 7737401, f0d3a6d (T2) · c205ec8, deb91ba, 37549df, 1d450ab (T3) | 2026-07-27; 3-round batch review clean; PR pending with Phases 2–3 |
+| 2 — Skip what we already have | ✅ Implemented on branch, review clean | 79f4bb8, f7f86c5 (T4) · 5b8b3d6, 6db1159, 87d9725, 8688822 (T5) · 5a761ae, 796341a (review hardening) | 2026-07-27; 3-round batch review clean; PR pending |
+| 3 — Rate-limit honesty | ✅ Implemented on branch, review clean | 2845933, 73603f5, 453c9c8 | 2026-07-27; 3-round review clean; PR pending |
+
+### Deviations
+
+- **(Task 4, 2026-07-27) `ix_contracts_enrichment_queue` is NOT created.** The plan (and design) specified a composite index on `(item_processing_status, enrichment_version)`. Review measured Task 5's actual predicate on a 46k-row replica: Postgres resolves the per-batch skip query through the contracts **PK** with the two columns as a filter (1.1 ms per 1000-id chunk); the composite index is never consulted — `(COMPLETED, current-version)` covers ~97% of rows, so it has no selectivity to offer — and a future "NOT (COMPLETED AND current)" queue scan can't use a btree either. Carrying it would add a second write target on the hottest ingestion column for nothing. Dropped from both the migration and the model. If Plan B's discovery/enrichment split needs a queue scan, the existing single-column `ix_contracts_item_processing_status` (baseline) serves a `PENDING_ITEMS` scan.
+- **(Task 6, 2026-07-27) The rate-limit wait is clamped and budgeted, beyond the plan's snippet.** Review found the snippet fed an unvalidated `float(Retry-After)` straight into `asyncio.sleep` on a path shared with the user-facing watchlist add: `float("inf")` parses (wedging the singleton ingestion job until restart), and a large legitimate value held user requests open for minutes before the same 502. Shipped instead: waits are finite, positive, and capped at 60s (`RATE_LIMIT_SLEEP_CEILING`, ESI's error-window size), and `ESIClient` takes a `rate_limit_wait_budget` (default 60s for background; the request-scoped client in `core/dependencies.py` passes 1.0s) — a wait exceeding the budget fails fast to the identical 502 instead of sleeping. This is NOT the shared governor (still Plan B); it's bounds-checking on one sleep. Also: the plan's Task 6 test snippet needed `X-Pages: "1"` on the success fixture (the `all_pages=True` walk over-requests without it), and the retry block was extracted to a helper because inlining tripped flake8's C901 max-complexity 10.
+- **(Task 6, 2026-07-27) 420 does not carry `Retry-After`** — per the repo's ESI-doc verification, only the 429 token bucket sends it; the error limiter signals via `X-Esi-Error-Limit-Remain`/`-Reset`. So every 420 takes the fallback backoff schedule (still a ~30× request-rate reduction inside the window — a net improvement, not the final answer). Reading `X-Esi-Error-Limit-Reset` belongs to Plan B's governor; noted in the code's docstring so nobody mistakes the Retry-After path as covering 420.
+
+### Discoveries
+
+- **(Task 1 review, 2026-07-27)** A silent-truncation path survives the `all_pages=True` fix: if a mid-walk item page returns 304 while its cached body was evicted from Valkey, `_read_etag_cached_page` returns `[]` and `_last_page_reached`'s empty-page check fires *before* the `X-Pages` check (`esi_client_class.py` ~lines 132–186), so the walk stops early and returns a short non-empty list with no exception — Task 2's zero-item guard cannot see it, and fetch-once would make it permanent. Requires memory-pressure eviction between the ETag key surviving and the data key dying (low probability, real mechanism). **Dissolved entirely by the parked Plan B decision to remove the ETag cache on item pages** (see Out of scope) — that decision now carries correctness weight, not just cost weight. **Sharpened by the post-codex ship-flag work (2026-07-27):** a page-1-only truncated read whose ship sat on page 2 would now not merely go stale but have its correct flag actively cleared (`is_ship_contract=False`, COMPLETED, stamped, skip-frozen). Interim mitigation candidate if Plan B slips: treat "ETag present, cached body absent" as a cache miss in `_read_etag_cached_page` instead of an empty page.
+- **(Task 2 review, 2026-07-27)** The test suite's model of a 304 has diverged from production: `ESINotModifiedError` is defined (`core/exceptions.py`) and caught (`background_aggregation.py` `_fetch_item_rows`) but **raised nowhere in production code** — real 304s are resolved inside `get_esi_data_with_etag_caching` (cache hit → cached body; evicted body → `[]`). Tests that stub `get_contract_items` with `side_effect=ESINotModifiedError()` (e.g. `test_reingestion_with_unmodified_items_keeps_ship_flag`) model a shape the client never produces, so the real-world trigger of Task 2's zero-item guard (304 + evicted body → `[]`) is unmodelled in tests. Route to Plan B alongside the ETag-cache decision — if the item-page ETag cache is removed, both the dead exception path and the divergent test model should be cleaned up with it.
+- **(Task 3 review, 2026-07-27)** Two accepted risks, recorded deliberately. (a) The repair migration's predicate has no automated regression test — CI executes it only against an empty database (`tests/conftest.py` runs `alembic upgrade head`), which exercises nothing. Accepted because applied migrations are run-once artifacts: after production applies `d5f83b17c0ae`, future edits to it are inert, so regression protection has near-zero value; the seeded scratch-DB verification (three-case seed, exact-row assertions, done independently twice) is the evidence of record. (b) Alembic's `env.py` wraps an entire `upgrade head` invocation in ONE transaction, so when the Phase 1 and Phase 2 migrations deploy together, the repair UPDATE's row locks are held across Task 4's ~44.5k-row backfill — a larger contention window with a concurrent ingestion run than either migration alone. Mitigated by the existing rule (time deploys just after an ingestion run completes) and bounded by `lock_timeout='30s'` → failed pre-deploy aborts the deploy, which is the intended failure mode. Verified empirically in review: `lock_timeout` does bound row-lock waits, and a deadlock can also choose the ingestion run as victim (acceptable: the run retries next tick).
+- **(Task 3 re-review, 2026-07-27)** The widely-cited **"3.1%" zero-item rate was an arithmetic slip**: the raw measurement is 15 of a 384-contract sample, which is **~3.9%** (3.1% would imply ~12/384). Raw counts are the record of truth. Corrected in this plan, the handoff, the clean-sheet design, and the migration comments; left as-is in immutable history (Task 2's shipped commit message says 3.1%) and in the review-record docs (`clean-sheet-review-fable.md`), which quote the era's number. No decision changes: the guard threshold (25%) has ~6.4× headroom either way.
+- **(Phase 1 batch review, 2026-07-27)** Three mechanism facts verified and worth not re-deriving. (a) **Re-queued rows cannot duplicate items on re-fetch:** `ContractItem.record_id` is the ESI-supplied sole PK and `bulk_upsert` does `ON CONFLICT (record_id) DO UPDATE`, so a truncated-then-repaired contract's re-fetch updates its first 1,000 rows in place and inserts the rest. (b) **The migration→cutover window self-heals in both release shapes:** old code re-minting a flipped listed row is repaired by the new code's next cycle (status is not yet read as a gate), and under Phase 1+2 together a window re-mint stays `enrichment_version=0` (old code cannot write that column), so the skip predicate re-fetches it. (c) **Withhold-not-demote is deliberate and load-bearing:** `_update_item_processing_status` never demotes an existing COMPLETED row, nothing in ingestion deletes `contract_items`, so `COMPLETED ⇒ items persisted` holds even when a later run returns zero items for an already-enriched contract — the invariant Phase 2's skip depends on. Also live-verified: ESI 304 responses carry `X-Pages` on both the region and items endpoints, so the multi-page walk terminates correctly across a deploy's ETag reuse.
+- **(Task 4 review, 2026-07-27)** Latent test-ordering hazard: `alembic/env.py` calls `logging.config.fileConfig`, which disables existing loggers process-wide, so running `tests/test_migrations.py` BEFORE `tests/services/test_background_aggregation.py` breaks 8 caplog-based tests. Default collection order runs `services/` first, so the suite is green today — but any reordering plugin or targeted-subset run in the wrong order will hit it. Pre-existing, not introduced by this plan. **Fixed on dev 2026-07-27 via PR [#93](https://github.com/scarson/hangar-bay/pull/93)** (merge `9e2e430`, both fileConfig call sites pass `disable_existing_loggers=False`); this branch predates the fix, which arrives at merge.
+- **(Phase 2 batch review, 2026-07-27)** The version-bump resweep runbook, traced with real numbers: a bump's next run is ~80 min, outliving the 65-min aggregation lock TTL. What actually serializes runs is **APScheduler `max_instances=1`** (safe while run < 2× interval), not the lock — so the end-of-resweep "Aggregation lock token mismatch on release" warning is expected then, a deploy or scale-out mid-resweep re-opens the concurrent-runner window, and shortening the scheduler interval requires re-deriving that margin (the TTL shrinks in lockstep). Recorded in the `ENRICHMENT_VERSION` constant's comment. Also verified: no path can produce `(COMPLETED, current-version)` for a zero-item contract, so the skip can never protect an empty one; the stamp UPDATE has no status predicate, so deploy-window rows minted `(COMPLETED, 0)` by old code are re-stamped on the next cycle.
+- **(Phase 2 batch review round 2, 2026-07-27)** The `enrichment_version` backfill migration is accepted without automated coverage (same run-once rationale as the repair migration), and its failure modes are asymmetric: **too-narrow** (WHERE mismatch / literal drift) costs one full resweep, self-heals in a single run, and announces itself in the "0 skipped" log line; **too-broad** (stamping non-COMPLETED rows) is harmless *only because* the skip predicate's status arm re-fetches them anyway. That interlock is why the status arm and the never-stamp-INCOMPLETE property are now pinned by dedicated tests — the acceptance is sound because of them, not luck.
+- **(Codex adversarial review, 2026-07-27)** Five findings; four were already-recorded decisions (420 reset-header → Plan B governor; withhold-not-demote; per-process `max_instances`; per-wait budget), one was new and real: **`is_ship_contract` was monotonic** — enrichment only ever set it True, so a version bump could not repair a false-positive flag despite being the advertised repair lever. Fixed: completed non-ship contracts now clear the flag, with an **unresolved-category exclusion** — the naive `completed - ships` clear was empirically shown to strip genuine ship flags on a transient group-resolution blip and then freeze them via skip-known (worse than the defect). Chasing that thread exposed the deeper gap: **only `type_name` failures counted as incomplete; a failed GROUP/category resolution still produced COMPLETED-at-current-version** — permanently skipped, silently unenriched. Fixed in the same PR: unresolved-category contracts now stay ENRICHMENT_INCOMPLETE and retry, per the plan's own "COMPLETED must mean enrichment actually succeeded" invariant.
 
 ---
 
@@ -109,7 +127,7 @@ Do NOT use `env VAR=x` with a shell variable holding the pairs — zsh does not 
 
 ## Phase 1 — Make "enriched" mean it
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ IMPLEMENTED on `claude/m5-plan-a-ingestion` 2026-07-27; per-task spec+quality reviews plus a 3-round batch review (holistic / adversarial-tests / fresh-eyes), all findings fixed, final round clean. Ships in the single Plan A PR (pending).
 
 Tasks 1–3 **MUST reach production in a single release.**
 
@@ -130,7 +148,7 @@ is ever split, no publication PR may run between the first and last Phase-1 merg
 - Modify: `app/backend/src/fastapi_app/core/esi_client_class.py` (`get_contract_items`)
 - Test: `app/backend/src/fastapi_app/tests/core/test_esi_client.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `app/backend/src/fastapi_app/tests/core/test_esi_client.py`. **Use that module's
 existing doubles — `_etag_response` (line 88) and `_etag_client` (line 110). It has no
@@ -163,14 +181,14 @@ async def test_get_contract_items_fetches_every_page():
     assert get_mock.await_count == 2
 ```
 
-- [ ] **Step 2: Run the test and watch it fail**
+- [x] **Step 2: Run the test and watch it fail**
 
 ```bash
 cd app/backend && .venv/bin/pytest src/fastapi_app/tests/core/test_esi_client.py::test_get_contract_items_fetches_every_page -v
 ```
 Expected: FAIL — only `record_id` 1 is returned, because the walk stops after page 1.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `esi_client_class.py`, change `get_contract_items`:
 
@@ -186,14 +204,14 @@ In `esi_client_class.py`, change `get_contract_items`:
         return await self.get_esi_data_with_etag_caching(path, all_pages=True)
 ```
 
-- [ ] **Step 4: Verify green, then mutation-verify**
+- [x] **Step 4: Verify green, then mutation-verify**
 
 ```bash
 cd app/backend && .venv/bin/pytest src/fastapi_app/tests/core/test_esi_client.py -v
 ```
 Then revert `all_pages=True` to the default, confirm the new test goes red, and restore from a `cp` snapshot (TEST-12).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/backend/src/fastapi_app/core/esi_client_class.py app/backend/src/fastapi_app/tests/core/test_esi_client.py
@@ -206,13 +224,13 @@ passes True, truncating any contract past 1,000 items to page 1. Latent today
 
 ### Task 2: An empty item result is a failure, not a success
 
-**Why:** `_update_item_processing_status` computes `completed = processed - incomplete`, where `incomplete` only contains contracts whose items lacked a `type_name`. A contract that returned **zero** items contributes nothing to `all_items`, so it falls into `completed` and is marked `COMPLETED`. An `item_exchange`/`auction` contract cannot legitimately have zero items — measured at **3.1% of a 384-contract production sample**. Under Phase 2's skip-known these rows become permanently invisible.
+**Why:** `_update_item_processing_status` computes `completed = processed - incomplete`, where `incomplete` only contains contracts whose items lacked a `type_name`. A contract that returned **zero** items contributes nothing to `all_items`, so it falls into `completed` and is marked `COMPLETED`. An `item_exchange`/`auction` contract cannot legitimately have zero items — measured at **15 of a 384-contract production sample (~3.9%)**. Under Phase 2's skip-known these rows become permanently invisible.
 
 **Files:**
 - Modify: `app/backend/src/fastapi_app/services/background_aggregation.py` (`_update_item_processing_status`)
 - Test: `app/backend/src/fastapi_app/tests/services/test_background_aggregation.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 async def test_contract_returning_no_items_is_not_marked_completed(db_session: AsyncSession):
@@ -231,14 +249,14 @@ async def test_contract_returning_no_items_is_not_marked_completed(db_session: A
     assert row.item_processing_status != "COMPLETED"
 ```
 
-- [ ] **Step 2: Run the test and watch it fail**
+- [x] **Step 2: Run the test and watch it fail**
 
 ```bash
 cd app/backend && .venv/bin/pytest src/fastapi_app/tests/services/test_background_aggregation.py::test_contract_returning_no_items_is_not_marked_completed -v
 ```
 Expected: FAIL — status is `COMPLETED`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `_update_item_processing_status`, replace the two set computations:
 
@@ -269,14 +287,14 @@ Then, after the existing `ENRICHMENT_INCOMPLETE` logging block, add:
 
 **Do NOT** add a new status value — reusing `PENDING_ITEMS` keeps the queue definition in Task 5 to one predicate.
 
-- [ ] **Step 4: Verify green, run the full suite, mutation-verify**
+- [x] **Step 4: Verify green, run the full suite, mutation-verify**
 
 ```bash
 cd app/backend && .venv/bin/pytest -q
 ```
 Mutation: restore `completed = processed - incomplete`, confirm the new test reddens, restore from a `cp` snapshot.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/backend/src/fastapi_app/services/background_aggregation.py app/backend/src/fastapi_app/tests/services/test_background_aggregation.py
@@ -294,14 +312,14 @@ of a production sample. They now stay PENDING_ITEMS."
 **Files:**
 - Create: `app/backend/src/alembic/versions/<rev>_requeue_falsely_completed_contracts.py`
 
-- [ ] **Step 1: Generate the revision id and find the current head**
+- [x] **Step 1: Generate the revision id and find the current head**
 
 ```bash
 cd app/backend && ls src/alembic/versions/
 ```
 Use the latest revision as `down_revision`. At time of writing that is `c7e2a9b41d36` (contracts.last_seen_at) — **verify**, since PR #91 may have merged since.
 
-- [ ] **Step 2: Write the migration**
+- [x] **Step 2: Write the migration**
 
 ```python
 """requeue falsely-completed contracts
@@ -354,7 +372,7 @@ def upgrade() -> None:
     # the outgoing instance's ingestion transaction (DEPLOY-1 step class).
     op.execute("SET lock_timeout = '30s'")
     bind = op.get_bind()
-    # Logged deliberately: the 3.1% rate is measured but the mechanism behind it is
+    # Logged deliberately: the rate is measured (15 of 384, ~3.9%) but the mechanism behind it is
     # still inferred, and this is the one cheap opportunity to see the real split.
     empty = bind.execute(COUNT_EMPTY).scalar()
     truncated = bind.execute(COUNT_TRUNCATED).scalar()
@@ -370,7 +388,7 @@ def downgrade() -> None:
     pass
 ```
 
-- [ ] **Step 3: Verify the migration on a scratch database**
+- [x] **Step 3: Verify the migration on a scratch database**
 
 ```bash
 cd app/backend
@@ -408,7 +426,7 @@ docker exec hangar_bay_postgres psql -U hangar_bay_user -d hb_mig_repair -tAc \
 Expected: `1|PENDING_ITEMS`, `2|PENDING_ITEMS`, `3|COMPLETED`. If row 3 flipped, the
 predicate is over-broad and would re-enrich the entire corpus.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add app/backend/src/alembic/versions/
@@ -429,7 +447,7 @@ If round 3 still finds issues, keep going until clean.
 
 ## Phase 2 — Skip what we already have
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ IMPLEMENTED on `claude/m5-plan-a-ingestion` 2026-07-27; per-task spec+quality reviews plus a 3-round batch review (holistic / adversarial-tests / fresh-eyes); all findings fixed (incl. the version-bump resweep runbook, three surviving-mutation test pins, and an explicit `max_instances=1`); final round clean. Ships in the single Plan A PR (pending).
 
 ### Task 4: Add `enrichment_version`
 
@@ -441,7 +459,7 @@ If round 3 still finds issues, keep going until clean.
 - Create: `app/backend/src/alembic/versions/<rev>_contracts_enrichment_version.py`
 - Test: `app/backend/src/fastapi_app/tests/services/test_background_aggregation.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 async def test_successful_enrichment_stamps_the_current_version(db_session: AsyncSession):
@@ -467,9 +485,9 @@ async def test_successful_enrichment_stamps_the_current_version(db_session: Asyn
     assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
 ```
 
-- [ ] **Step 2: Run and watch it fail** — `AttributeError`/`UndefinedColumn` on `enrichment_version`.
+- [x] **Step 2: Run and watch it fail** — `AttributeError`/`UndefinedColumn` on `enrichment_version`.
 
-- [ ] **Step 3: Add the column**
+- [x] **Step 3: Add the column**
 
 In `models/contracts.py`, beside `item_processing_status`:
 
@@ -498,7 +516,9 @@ In `_update_item_processing_status`, stamp it alongside `COMPLETED`:
             )
 ```
 
-- [ ] **Step 4: Write the migration**
+- [x] **Step 4: Write the migration**
+
+> **Deviation applied:** the `create_index`/`drop_index` lines below were NOT shipped — the composite index is never consulted by Task 5's predicate. See Deviations at the top of this plan. Do not re-add it from this snippet.
 
 ```python
 """contracts.enrichment_version
@@ -541,7 +561,7 @@ def downgrade() -> None:
     op.drop_column("contracts", "enrichment_version")
 ```
 
-- [ ] **Step 5: Verify green + migration up/down/up, then commit**
+- [x] **Step 5: Verify green + migration up/down/up, then commit**
 
 ```bash
 cd app/backend && .venv/bin/pytest -q
@@ -560,7 +580,7 @@ to the current version so adopting this does not itself trigger a 46k backfill."
 - Modify: `app/backend/src/fastapi_app/services/background_aggregation.py` (`_process_contracts`, `_fetch_item_rows`)
 - Test: `app/backend/src/fastapi_app/tests/services/test_background_aggregation.py`
 
-- [ ] **Step 1: Write the failing tests** (two — skip, and version-bump re-queue)
+- [x] **Step 1: Write the failing tests** (two — skip, and version-bump re-queue)
 
 ```python
 async def test_already_enriched_contracts_are_not_refetched(db_session: AsyncSession):
@@ -610,9 +630,9 @@ async def test_bumping_the_enrichment_version_requeues_a_contract(
     assert service.esi_client.get_contract_items.await_count == before + 1
 ```
 
-- [ ] **Step 2: Run both and watch them fail** — the first fails because the fetch happens twice.
+- [x] **Step 2: Run both and watch them fail** — the first fails because the fetch happens twice.
 
-- [ ] **Step 3: Implement the skip**
+- [x] **Step 3: Implement the skip**
 
 First add the missing import — `background_aggregation.py` imports `update` but **not** `select`:
 
@@ -662,12 +682,12 @@ Update the call site in `_process_contracts` to pass `already_enriched`.
 
 **Do NOT** add concurrency here. That is a later phase and needs the governor first.
 
-- [ ] **Step 4: Verify green, run the full suite, mutation-verify both tests**
+- [x] **Step 4: Verify green, run the full suite, mutation-verify both tests**
 
 Mutation A: delete the `continue` — the skip test reddens.
 Mutation B: compare against a hardcoded `1` instead of `ENRICHMENT_VERSION` — the version-bump test reddens.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A app/backend
@@ -688,7 +708,7 @@ If round 3 still finds issues, keep going until clean.
 
 ## Phase 3 — Rate-limit honesty
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ IMPLEMENTED on `claude/m5-plan-a-ingestion` 2026-07-27; spec review plus three quality rounds (deep review / empirical re-review / fresh-eyes), all findings fixed incl. the clamp+budget deviation; final round clean. Ships in the single Plan A PR (pending).
 
 ### Task 6: Treat 420 and 429 as retryable rate-limit signals
 
@@ -698,7 +718,7 @@ If round 3 still finds issues, keep going until clean.
 - Modify: `app/backend/src/fastapi_app/core/esi_client_class.py` (`_get_with_transient_retry`)
 - Test: `app/backend/src/fastapi_app/tests/core/test_esi_client.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 async def test_rate_limit_status_is_retried_and_honours_retry_after(monkeypatch):
@@ -729,9 +749,9 @@ async def test_rate_limit_status_is_retried_and_honours_retry_after(monkeypatch)
     assert 7 in slept, "Retry-After must drive the wait, not the fixed backoff schedule"
 ```
 
-- [ ] **Step 2: Run and watch it fail** — the 429 returns immediately and the caller sees a non-JSON/empty result rather than a retry.
+- [x] **Step 2: Run and watch it fail** — the 429 returns immediately and the caller sees a non-JSON/empty result rather than a retry.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `_get_with_transient_retry`, replace the break condition:
 
@@ -768,7 +788,7 @@ RATE_LIMIT_STATUSES = frozenset({420, 429})
 
 **Do NOT** build the shared governor here — that is a later phase. This task only stops rate-limit responses being misread as per-request failures.
 
-- [ ] **Step 4: Verify green + mutation-verify**
+- [x] **Step 4: Verify green + mutation-verify**
 
 Mutation: remove `420`/`429` from `RATE_LIMIT_STATUSES` — the new test reddens.
 
@@ -780,7 +800,7 @@ never depends on real time. If synchronization cannot make it reliable, STOP and
 raise it rather than shipping a weaker test.
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/backend/src/fastapi_app/core/esi_client_class.py app/backend/src/fastapi_app/tests/core/test_esi_client.py
@@ -801,15 +821,24 @@ If round 3 still finds issues, keep going until clean.
 
 ## Verification before the plan is considered done
 
-- [ ] Full backend suite green with pristine output: `.venv/bin/pytest -q`
-- [ ] `flake8` clean on every touched file
-- [ ] Both migrations verified up → down → up on a scratch database
-- [ ] Every new test mutation-verified, with the failure output recorded in the PR
+- [x] Full backend suite green with pristine output: `.venv/bin/pytest -q`
+- [x] `flake8` clean on every touched file
+- [x] Both migrations verified up → down → up on a scratch database
+- [x] Every new test mutation-verified, with the failure output recorded in the PR
 - [ ] After deploy: a run completes in **under ~5 minutes**, and — the real proof of
       mechanism — **item fetches per run are in the hundreds (churn-sized), not ~46,000**.
       Not "seconds": steady state still performs the 34-page discovery sweep, name
       resolution, a ~46k-row upsert and ~100–250 sequential churn fetches. The fetch-count
-      clause is what actually demonstrates skip-known is working.
+      clause is what actually demonstrates skip-known is working. **Expected fetch count is
+      `churn + persistent-failure set`, not churn alone:** any listed contract that keeps
+      failing enrichment (zero-item results — measured 15/384 ≈ 3.9% — plus
+      ENRICHMENT_INCOMPLETE and fetch errors) is retried every run by design. If the
+      zero-item rate is a persistent property of those contracts rather than a transient
+      artifact, steady state could be **~1,800 fetches/run (~3 min sequential)** — that is
+      the retry loop working, NOT skip-known failing. The repair migration's `[requeue]`
+      counts at deploy time and the per-run zero-item warning are the evidence that
+      separates the two. Read the new "Fetched items for N contracts (M skipped)" log line
+      for the direct number.
 - [ ] `/ready`'s freshness advances within one cycle
 
 ## Out of scope (deliberately)

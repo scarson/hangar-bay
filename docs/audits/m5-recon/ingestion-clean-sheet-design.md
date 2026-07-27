@@ -136,7 +136,7 @@ A **single shared limiter** in front of every ESI call, because both ESI limits 
 - **Poisoned** (repeated failures past a threshold): dead-lettered with a metric, so it stops consuming error budget every cycle.
 
 **The invariant that makes fetch-once safe: enrichment succeeds only when the result is non-empty AND every page was fetched.** Violated two ways today:
-- An `item_exchange`/`auction` contract with zero items is impossible; an empty result is an error, never `COMPLETED`. Currently recorded as success — **3.1% of a 384-contract sample** (2026-07-27).
+- An `item_exchange`/`auction` contract with zero items is impossible; an empty result is an error, never `COMPLETED`. Currently recorded as success — **15 of a 384-contract sample, ~3.9%** (2026-07-27).
 - `get_contract_items` passes the default `all_pages=False` while `get_public_contracts` passes `True`, truncating any contract past 1,000 items. **Latent in that same sample** (max 422 items, p99 16, none at 1,000) — but fetch-once makes truncation permanent, so it is fixed before, not after.
 
 ## What fetch-once destroys, and how to give it back
@@ -190,7 +190,7 @@ backfill is explicitly outside this row. The first and last rows are not ours an
 
 Each step is independently deployable; recreate deploys prevent dual-writer overlap.
 
-1. **Success invariant + repair, in one release.** Repair-first leaves a window where the old pipeline re-mints zero-item `COMPLETED` rows. Predicate: zero-item `COMPLETED` contracts, plus item counts at exact multiples of 1,000. Log the distribution — 3.1% is measured, but the 304-with-evicted-body *mechanism* is still inferred, and this is the cheap chance to confirm it.
+1. **Success invariant + repair, in one release.** Repair-first leaves a window where the old pipeline re-mints zero-item `COMPLETED` rows. Predicate: zero-item `COMPLETED` contracts, plus item counts at exact multiples of 1,000. Log the distribution — the rate is measured (15 of 384, ~3.9%), but the 304-with-evicted-body *mechanism* is still inferred, and this is the cheap chance to confirm it.
 2. **`enrichment_version`** — replace self-healing before removing it.
 3. **Skip-known.** Collapses the steady-state workload; the single largest win.
 4. **Governor**, before any concurrency.

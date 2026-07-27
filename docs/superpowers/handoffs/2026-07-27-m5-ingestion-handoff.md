@@ -43,7 +43,7 @@ Prerequisites are satisfied: #91 is merged, so Task 3's `down_revision` (`c7e2a9
 1. **PR #91's delisted detection reaching production** — unblocks with the next `dev` → `main` publication PR. Should not be rushed: give #90's migration a healthy interval first.
 2. **Freshness record eviction.** `/ready` reported `last_ingest_age_seconds: null` **four minutes after a successful ingest wrote that key** — the DEPLOY-3 pattern, milder consequence. Two options analysed: switch the Key Value `maxmemoryPolicy` from `allkeys-lru` to **`volatile-lru`** (one config line; every cache-like key already carries a TTL — ESI bodies, sessions, locks — so the protected set is one ~200-byte key), or move the record to Postgres. **Recommendation: `volatile-lru`.** Needs Sam's Render credentials; `render.yaml` is documentation-of-record and must be mirrored manually.
 3. **Scheduler cadence vs run duration — LIVE IN PRODUCTION.** The aggregation lock TTL is `interval + margin` = **65 minutes** while runs take **~77 minutes**, so the lock expires ~12 minutes before a run ends. Today it is saved only by tick alignment (ticks at T+60 and T+120 never land in the T+65→T+77 window), which fails once runs exceed ~120 minutes. Plan A's skip-known dissolves this by making runs short; until then it is a live latent hazard. Checkable: every run should be logging `Aggregation lock token mismatch on release`.
-4. **The 3.1% zero-item contracts — LIVE IN PRODUCTION.** Measured: 15 of 384 sampled `item_exchange` contracts serve zero items, which is impossible legitimately. Plan A Tasks 2–3 fix and repair it.
+4. **The ~3.9% zero-item contracts — LIVE IN PRODUCTION.** Measured: 15 of 384 sampled `item_exchange` contracts serve zero items, which is impossible legitimately. Plan A Tasks 2–3 fix and repair it.
 5. **Sam's live SSO login** — still the M4 exit criterion. Needs an EVE character.
 6. **Spike-repo deletion** — `gh repo delete scarson/hb-render-spike-m4` needs a token scope this session lacked.
 7. ~~Fable's Plan A review pending~~ — **landed and fully applied.** Two blockers and five
@@ -87,7 +87,7 @@ Prerequisites are satisfied: #91 is merged, so Task 3's `down_revision` (`c7e2a9
 | `X-Pages` | Jita **34**; Amarr 3; Dodixie/Rens/Hek **2** each | same sample |
 | Contract churn | **~230/hour** against a 45,441 corpus | 300-contract sample; **diurnal** |
 | Per-contract ESI fetch | ~95–100 ms | derived from a 77-min run over ~46k contracts |
-| Zero-item `item_exchange` contracts | **3.1%** | 384-contract sample |
+| Zero-item `item_exchange` contracts | **15/384 (~3.9%)** | 384-contract sample; earlier docs said 3.1%, an arithmetic slip |
 | Warm page time-to-content | **~450–500 ms** (document ~35–50 ms, API ~270 ms) | clean browser tab; earlier 1265 ms and ~650 ms figures were contaminated |
 | Apex-rewrite hop cost | **~161 ms** (edge cache HIT vs ohio origin) | 12 samples/target |
 
@@ -138,7 +138,7 @@ superpowers:subagent-driven-development — six tasks, full code in every step,
 takes a steady-state ingestion run from ~77 minutes to seconds.
 
 TWO LIVE PRODUCTION HAZARDS, both fixed by Plan A: the aggregation lock TTL is
-65 min against ~77-min runs (saved today only by tick alignment), and 3.1% of
+65 min against ~77-min runs (saved today only by tick alignment), and ~3.9% of
 item_exchange contracts serve zero items, which is impossible legitimately.
 
 CONSTRAINTS: work in worktrees off origin/dev; explicit git -C / cd every call

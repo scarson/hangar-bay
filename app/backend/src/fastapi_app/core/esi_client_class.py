@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -12,6 +13,34 @@ from .exceptions import ESIRequestFailedError
 from .config import Settings
 
 logger = logging.getLogger(__name__)
+
+# ESI's error-limit (420) and per-group token-bucket (429) responses mean "come back
+# later", not "this request failed" — see _get_with_transient_retry.
+RATE_LIMIT_STATUSES = frozenset({420, 429})
+
+# ESI's error-limit window is 60s; nothing legitimate asks a caller to wait longer.
+RATE_LIMIT_SLEEP_CEILING = 60.0
+
+
+def _rate_limit_wait(retry_after: Optional[str], attempt: int, backoff_factor: float) -> float:
+    """Seconds to wait before retrying a 420/429.
+
+    Retry-After drives the wait when it parses to a sane number; otherwise this falls
+    back to the same exponential backoff schedule as a 5xx. The result is always
+    finite, positive, and clamped to RATE_LIMIT_SLEEP_CEILING — an absent, garbled,
+    negative, or non-finite header must not translate into an unbounded sleep
+    (float("inf") parses, and asyncio.sleep honors it: an unclamped value can wedge
+    the singleton ingestion job until restart). Note 420 (error limit) does not carry
+    Retry-After at all — it always takes the fallback schedule; reading
+    X-Esi-Error-Limit-Reset is deferred to the rate-limit governor phase.
+    """
+    try:
+        wait = float(retry_after)
+    except (TypeError, ValueError):
+        wait = backoff_factor * (2 ** attempt)
+    if not math.isfinite(wait) or wait <= 0:
+        wait = backoff_factor * (2 ** attempt)
+    return min(wait, RATE_LIMIT_SLEEP_CEILING)
 
 
 class ESIClient:
@@ -30,12 +59,22 @@ class ESIClient:
         settings: Settings,
         http_client: Optional[httpx.AsyncClient] = None,
         redis_client: Optional[aioredis.Redis] = None,
+        rate_limit_wait_budget: float = RATE_LIMIT_SLEEP_CEILING,
     ):
         self.settings = settings
         self._http_client = http_client
         self._redis_client = redis_client
         self._managed_http_client: Optional[httpx.AsyncClient] = None
         self._managed_redis_client: Optional[aioredis.Redis] = None
+        # A computed rate-limit wait beyond this budget is not slept at all — the
+        # caller fails fast instead. This bounds each individual wait, not the request
+        # total: under a 1.0s budget a 420's fallback schedule sleeps 0.5s (attempt 1)
+        # and 1.0s (attempt 2, exactly at the strict > threshold), so a user request
+        # can still spend ~1.5s per ESI call retrying before it gives up.
+        # Background ingestion (its own managed clients, no override) keeps the full 60s
+        # patience; the request-scoped dependency overrides this down to fail user
+        # requests fast (core/dependencies.py).
+        self.rate_limit_wait_budget = rate_limit_wait_budget
 
     @property
     def http_client(self) -> httpx.AsyncClient:
@@ -198,9 +237,40 @@ class ESIClient:
         return await self.get_esi_data_with_etag_caching(path, all_pages=True, ignore_404=True)
 
     async def get_contract_items(self, contract_id: int) -> list[dict[str, Any]]:
-        """Fetches all items for a specific public contract."""
+        """Fetches all items for a specific public contract.
+
+        all_pages=True is load-bearing: contracts can exceed one 1,000-item page, and
+        the default (False) stops after page 1, truncating silently. Once enrichment
+        stops revisiting completed contracts, a truncated result would be permanent.
+        """
         path = f"/v1/contracts/public/items/{contract_id}/"
-        return await self.get_esi_data_with_etag_caching(path)
+        return await self.get_esi_data_with_etag_caching(path, all_pages=True)
+
+    async def _wait_out_rate_limit_or_give_up(
+        self, path: str, response: httpx.Response, attempt: int, max_retries: int, backoff_factor: float
+    ) -> tuple[httpx.HTTPStatusError, bool]:
+        """Log a 420/429, then either sleep out its (clamped) wait or give up on it.
+
+        Returns (exception_to_record, gave_up). gave_up is True when the computed wait
+        exceeds this client's rate_limit_wait_budget — the caller must stop retrying now,
+        failing fast rather than holding the connection through ESI's cool-down, instead
+        of sleeping. Otherwise this sleeps (skipped on the final attempt) and the caller
+        retries as usual.
+        """
+        exc = httpx.HTTPStatusError(
+            f"Rate limited '{response.status_code}'", request=response.request, response=response,
+        )
+        retry_after = response.headers.get("Retry-After")
+        logger.warning(
+            f"ESI rate limited {path} with {response.status_code}; "
+            f"Retry-After={retry_after!r}. Attempt {attempt + 1}/{max_retries}."
+        )
+        wait = _rate_limit_wait(retry_after, attempt, backoff_factor)
+        if wait > self.rate_limit_wait_budget:
+            return exc, True
+        if attempt < max_retries - 1:
+            await asyncio.sleep(wait)
+        return exc, False
 
     async def _get_with_transient_retry(
         self, path: str, headers: Optional[Dict[str, str]] = None
@@ -218,6 +288,18 @@ class ESIClient:
         for attempt in range(max_retries):
             try:
                 response = await self.http_client.get(path, headers=headers)
+                # 420 (ESI error limit) and 429 (token bucket) mean "come back later", not
+                # "this request failed". Treating them as ordinary 4xx burns error budget and
+                # records the run as successful over missing data.
+                if response.status_code in RATE_LIMIT_STATUSES:
+                    last_exception, gave_up = await self._wait_out_rate_limit_or_give_up(
+                        path, response, attempt, max_retries, backoff_factor
+                    )
+                    if gave_up:
+                        # last_exception is already set; exhaustion handling below raises the
+                        # identical ESIRequestFailedError a spent retry budget would.
+                        break
+                    continue
                 if response.status_code < 500:
                     last_exception = None
                     break

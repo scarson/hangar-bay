@@ -63,6 +63,12 @@ class Contract(Base):
     issuer_corporation_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_ship_contract: Mapped[bool] = mapped_column(Boolean, default=False)
     item_processing_status: Mapped[str] = mapped_column(String, default='PENDING_ITEMS', index=True)
+    # Stamped on successful enrichment. Bumping ENRICHMENT_VERSION re-queues the corpus
+    # through the normal budgeted path — the deliberate replacement for the refetch
+    # loop's accidental self-healing, which this repo has relied on twice.
+    # Only meaningful while item_processing_status = 'COMPLETED': an ENRICHMENT_INCOMPLETE
+    # row keeps whatever version it last stamped, which says nothing about its items.
+    enrichment_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     items_last_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     contract_esi_etag: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
