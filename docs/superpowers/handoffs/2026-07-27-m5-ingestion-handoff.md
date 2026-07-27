@@ -46,7 +46,18 @@ Prerequisites are satisfied: #91 is merged, so Task 3's `down_revision` (`c7e2a9
 4. **The 3.1% zero-item contracts — LIVE IN PRODUCTION.** Measured: 15 of 384 sampled `item_exchange` contracts serve zero items, which is impossible legitimately. Plan A Tasks 2–3 fix and repair it.
 5. **Sam's live SSO login** — still the M4 exit criterion. Needs an EVE character.
 6. **Spike-repo deletion** — `gh repo delete scarson/hb-render-spike-m4` needs a token scope this session lacked.
-7. **Fable's Plan A review** was dispatched and had not returned when this handoff was written. If it landed, it is at `docs/audits/m5-recon/plan-a-review-fable.md` — **read it before executing Plan A.**
+7. ~~Fable's Plan A review pending~~ — **landed and fully applied.** Two blockers and five
+   majors, at `docs/audits/m5-recon/plan-a-review-fable.md`. Worth knowing what it caught,
+   because all of it would have hit a subagent immediately: Tasks 1 and 6 used pytest fixtures
+   that **do not exist** in `tests/core/test_esi_client.py` (its idiom is `_etag_response` /
+   `_etag_client` doubles); Task 4's migration template omitted the `revision`/`down_revision`
+   module attributes Alembic reads; Task 5 called `select()` without the import; Task 3's
+   verification ran against an empty database and exercised nothing; and the acceptance
+   criterion said "seconds" when steady state still performs a 34-page sweep and a 46k-row
+   upsert — a literal executor would have reported false failure. The reviewer's *first*
+   blocker (a missing migration) was **stale**, from reading the branch before its rebase onto
+   post-#91 dev; its advice was adopted anyway — verify migration chains with
+   `alembic heads`, never by listing filenames.
 
 ## Open questions for Sam
 
@@ -82,12 +93,11 @@ Prerequisites are satisfied: #91 is merged, so Task 3's `down_revision` (`c7e2a9
 
 ## Priority queue
 
-1. **Read Fable's Plan A review** if it landed, apply findings.
-2. **Open a PR for `claude/m5-ingest-perf`** (docs only, Routine) so the design and plan reach dev.
-3. **Execute Plan A** — subagent-driven, fresh session.
-4. **Publication PR** for #91 + Plan A's output.
-5. Plan B, then Plan C — or Plan C first if the trial date is near, since delivery is the binding constraint on the alert story.
-6. Sam: SSO login, Discord embed check, Render `volatile-lru`, spike-repo deletion.
+1. **Open a PR for `claude/m5-ingest-perf`** (docs only, Routine) so the design and plan reach dev.
+2. **Execute Plan A** — subagent-driven, fresh session. Its review is applied; no pre-work needed.
+3. **Publication PR** for #91 + Plan A's output.
+4. Plan B, then Plan C — or Plan C first if the trial date is near, since delivery is the binding constraint on the alert story.
+5. Sam: SSO login, Discord embed check, Render `volatile-lru`, spike-repo deletion.
 
 ## Adversarial review of this handoff
 
