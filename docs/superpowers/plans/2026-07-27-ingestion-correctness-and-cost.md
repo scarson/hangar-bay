@@ -62,8 +62,8 @@ notes and commit messages.
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 1 — Make "enriched" mean it | ✅ Implemented on branch, review clean | d7db161, e70fa48, 39a8cf4 (T1) · 88670e4, da5b580, 8b29950 (T2) · d068fa2, ae68ca9, b0e47d4, b663872 (T3) | 2026-07-27; 3-round batch review clean; PR pending with Phases 2–3 |
-| 2 — Skip what we already have | 🚧 In progress | — | Tasks 4–5 |
-| 3 — Rate-limit honesty | ⬜ Not started | — | Task 6; independent |
+| 2 — Skip what we already have | ✅ Implemented on branch, review clean | a233859, e08b5ba (T4) · e7374b9, c8b22ec, 2e4b83b, f36299e (T5) · 88b749f, 62b59ff (review hardening) | 2026-07-27; 3-round batch review clean; PR pending |
+| 3 — Rate-limit honesty | 🚧 In progress | — | Task 6; independent |
 
 ### Deviations
 
@@ -444,7 +444,7 @@ If round 3 still finds issues, keep going until clean.
 
 ## Phase 2 — Skip what we already have
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-27, branch `claude/m5-plan-a-ingestion`
+**Execution Status:** ✅ IMPLEMENTED on `claude/m5-plan-a-ingestion` 2026-07-27; per-task spec+quality reviews plus a 3-round batch review (holistic / adversarial-tests / fresh-eyes); all findings fixed (incl. the version-bump resweep runbook, three surviving-mutation test pins, and an explicit `max_instances=1`); final round clean. Ships in the single Plan A PR (pending).
 
 ### Task 4: Add `enrichment_version`
 
@@ -705,7 +705,7 @@ If round 3 still finds issues, keep going until clean.
 
 ## Phase 3 — Rate-limit honesty
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-27, branch `claude/m5-plan-a-ingestion`
 
 ### Task 6: Treat 420 and 429 as retryable rate-limit signals
 
