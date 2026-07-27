@@ -66,6 +66,12 @@ class Contract(Base):
     items_last_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     contract_esi_etag: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
+    # Stamped with the run's timestamp on every upsert, so a contract that stops appearing
+    # in ESI's public list (sold or withdrawn) stops being restamped and can be told apart
+    # from a live one. NULL means "never observed by a stamping run" and is treated as
+    # visible — see contract_service._apply_contract_filters.
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     items: Mapped[List["ContractItem"]] = relationship(back_populates="contract", cascade="all, delete-orphan")
 
     __table_args__ = (
@@ -79,6 +85,8 @@ class Contract(Base):
         # Every list query filters date_expired > now(), so this one is on the hot path
         # for all of them, not just for sorting by "Time left".
         Index('ix_contracts_date_expired', 'date_expired'),
+        # Serves the per-region watermark lookup (max(last_seen_at) grouped by region).
+        Index('ix_contracts_region_last_seen', 'start_location_region_id', 'last_seen_at'),
         Index('ix_contracts_collateral', 'collateral'),
         Index('ix_contracts_volume', 'volume'),
     )

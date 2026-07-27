@@ -3,7 +3,7 @@ import time
 from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from ..core.logging import get_logger, log_key_event
 from ..models.contracts import Contract, ContractItem
@@ -17,6 +17,10 @@ from ..schemas.contracts import (
 
 # Initialize logger for this module
 logger = get_logger(__name__)
+
+# Distinct alias so the per-region watermark subquery can reference the contracts table
+# without colliding with the outer query's own reference to it.
+_ContractWatermark = aliased(Contract)
 
 # This SORT_MAP is a critical security feature. It prevents arbitrary column sorting
 # by mapping API-facing sort keys to the actual, safe SQLAlchemy model columns.
@@ -60,6 +64,30 @@ def _apply_contract_filters(query, filters: ContractFilters):
     # The detail endpoint deliberately does NOT filter this way: a shared link outlives the
     # contract it points at, and 404-ing yesterday's link reads as a broken site.
     query = query.filter(Contract.date_expired > func.now())
+
+    # 0b. Delisted contracts. Expiry only catches contracts that ran out of time; a contract
+    # that was ACCEPTED disappears from ESI's public list while keeping a future date_expired,
+    # so it survives the expiry predicate and would go on being offered for up to two weeks.
+    # Ingestion restamps last_seen_at on every sighting, so a contract is present when its
+    # stamp equals the newest stamp IN ITS OWN REGION.
+    #
+    # Per-region rather than global, deliberately: if one region's ESI fetch fails, nothing in
+    # it is restamped, and judging it against another region's fresher watermark would erase
+    # every contract that region holds in one go. A stalled region simply keeps its own
+    # watermark. If ingestion stops entirely, no watermark advances and everything stays
+    # visible — stale data with a staleness signal beats an empty site.
+    #
+    # NULL is visible: rows predating this column have no stamp, and hiding them would blank
+    # the site between the migration and the first run. The migration backfills them anyway.
+    newest_in_region = (
+        select(func.max(_ContractWatermark.last_seen_at))
+        .where(_ContractWatermark.start_location_region_id == Contract.start_location_region_id)
+        .correlate(Contract)
+        .scalar_subquery()
+    )
+    query = query.filter(
+        or_(Contract.last_seen_at.is_(None), Contract.last_seen_at >= newest_in_region)
+    )
 
     # 1. Text search (on contract title or item name)
     if filters.search:

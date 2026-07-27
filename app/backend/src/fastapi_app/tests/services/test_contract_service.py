@@ -479,3 +479,91 @@ async def test_expired_exclusion_holds_across_page_boundaries(db_session: AsyncS
 
     assert sorted(seen) == live_ids           # every live contract, exactly once
     assert not set(seen) & set(dead_ids)      # and no dead one on any page
+
+
+# --- Delisted (sold) contract filtering ------------------------------------
+#
+# Expiry only catches contracts that ran out of time. A contract that is ACCEPTED
+# vanishes from ESI's public list while keeping a future date_expired, so it passes
+# the expiry filter and shows as available for up to two weeks. Ingestion stamps
+# last_seen_at on every upsert; a contract is present if its stamp matches the newest
+# stamp IN ITS OWN REGION. Per-region, not global, so a region whose fetch failed
+# stalls its own watermark instead of erasing every contract it holds.
+
+DELISTED_REGION_A = 99999911
+DELISTED_REGION_B = 99999912
+
+
+def _seen_contract(contract_id: int, *, region: int, seen: datetime | None) -> Contract:
+    now = datetime.now(timezone.utc)
+    return Contract(
+        contract_id=contract_id,
+        title=f"Seen Case {contract_id}",
+        price=1_000_000,
+        collateral=0,
+        status="outstanding",
+        type="item_exchange",
+        issuer_id=943,
+        issuer_corporation_id=943,
+        start_location_id=60003760,
+        start_location_system_id=30000142,
+        start_location_region_id=region,
+        for_corporation=False,
+        date_issued=now - timedelta(days=1),
+        date_expired=now + timedelta(days=5),   # live, so only delisting can hide it
+        last_seen_at=seen,
+    )
+
+
+async def test_contracts_missing_from_the_latest_run_are_excluded(db_session: AsyncSession):
+    """A contract not restamped by the most recent run for its region was not in ESI's
+    public list any more — sold or withdrawn — so it must stop being offered."""
+    latest = datetime.now(timezone.utc)
+    stale = latest - timedelta(hours=2)
+    db_session.add_all([
+        _seen_contract(943001, region=DELISTED_REGION_A, seen=latest),
+        _seen_contract(943002, region=DELISTED_REGION_A, seen=stale),   # sold
+        _seen_contract(943003, region=DELISTED_REGION_A, seen=latest),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(db_session, ContractFilters(region_ids=[DELISTED_REGION_A]))
+
+    assert sorted(c.contract_id for c in result.items) == [943001, 943003]
+    assert result.total == 2
+
+
+async def test_a_region_whose_run_failed_keeps_all_its_contracts(db_session: AsyncSession):
+    """THE case that can take the site down. Region A refreshed; region B's fetch failed,
+    so nothing in B was restamped. B's contracts must all remain visible — judging them
+    against A's newer watermark would erase an entire region at once."""
+    fresh = datetime.now(timezone.utc)
+    older = fresh - timedelta(hours=3)
+    db_session.add_all([
+        _seen_contract(943101, region=DELISTED_REGION_A, seen=fresh),
+        _seen_contract(943102, region=DELISTED_REGION_B, seen=older),
+        _seen_contract(943103, region=DELISTED_REGION_B, seen=older),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session, ContractFilters(region_ids=[DELISTED_REGION_A, DELISTED_REGION_B])
+    )
+
+    assert sorted(c.contract_id for c in result.items) == [943101, 943102, 943103]
+    assert result.total == 3
+
+
+async def test_never_stamped_contracts_stay_visible(db_session: AsyncSession):
+    """Rows predating the last_seen_at column carry NULL. Treating NULL as 'not in the
+    latest run' would blank the entire site between the migration and the first run —
+    the migration backfills, and this pins the belt-and-braces behaviour besides."""
+    db_session.add_all([
+        _seen_contract(943201, region=DELISTED_REGION_A, seen=None),
+        _seen_contract(943202, region=DELISTED_REGION_A, seen=None),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(db_session, ContractFilters(region_ids=[DELISTED_REGION_A]))
+
+    assert result.total == 2
