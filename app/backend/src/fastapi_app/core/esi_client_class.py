@@ -198,9 +198,14 @@ class ESIClient:
         return await self.get_esi_data_with_etag_caching(path, all_pages=True, ignore_404=True)
 
     async def get_contract_items(self, contract_id: int) -> list[dict[str, Any]]:
-        """Fetches all items for a specific public contract."""
+        """Fetches all items for a specific public contract.
+
+        all_pages=True is load-bearing: contracts can exceed one 1,000-item page, and
+        the default (False) stops after page 1, truncating silently. Enrichment is
+        fetch-once, so a truncated result would be permanent.
+        """
         path = f"/v1/contracts/public/items/{contract_id}/"
-        return await self.get_esi_data_with_etag_caching(path)
+        return await self.get_esi_data_with_etag_caching(path, all_pages=True)
 
     async def _get_with_transient_retry(
         self, path: str, headers: Optional[Dict[str, str]] = None

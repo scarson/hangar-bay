@@ -606,3 +606,28 @@ async def test_etag_path_tolerates_str_valued_redis_client():
 
     assert data == [{"contract_id": 1}]
     assert get_mock.await_args.kwargs["headers"]["If-None-Match"] == "an-etag-as-str"
+
+
+async def test_get_contract_items_fetches_every_page():
+    """A contract with more items than one page must return all of them.
+
+    TEST-4: a single-page fixture cannot detect truncation, so this crosses the
+    boundary. Truncation is silent — the caller sees a short, plausible list.
+    """
+    page_1 = _etag_response(
+        json_data=[{"record_id": 1, "type_id": 587}],
+        content=b'[{"record_id": 1, "type_id": 587}]',
+        headers={"ETag": "etag-p1", "X-Pages": "2"},
+    )
+    page_2 = _etag_response(
+        json_data=[{"record_id": 2, "type_id": 588}],
+        content=b'[{"record_id": 2, "type_id": 588}]',
+        headers={"ETag": "etag-p2", "X-Pages": "2"},
+    )
+    get_mock = AsyncMock(side_effect=[page_1, page_2])
+    client = _etag_client(get_mock)
+
+    items = await client.get_contract_items(999)
+
+    assert [i["record_id"] for i in items] == [1, 2]
+    assert get_mock.await_count == 2
