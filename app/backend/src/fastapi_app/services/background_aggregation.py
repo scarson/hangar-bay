@@ -552,11 +552,15 @@ class ContractAggregationService:
         # item_processing_status must not imply enrichment SUCCESS: a contract
         # whose type/group resolution failed keeps NULL enrichment (the
         # graceful-degrade path), so a future consumer trusting 'COMPLETED' would
-        # skip re-enriching a transiently-failed row. Mark COMPLETED only when
-        # every fetched item resolved a type_name; the rest are ENRICHMENT_INCOMPLETE.
+        # skip re-enriching a transiently-failed row. Mark COMPLETED only when every
+        # fetched item resolved a type_name AND every included item resolved a
+        # category; the rest are ENRICHMENT_INCOMPLETE. An unresolved category is a
+        # half-done enrichment exactly like an unresolved type — it decides the ship
+        # flag — and stamping it COMPLETED would hand it to the skip, which withholds
+        # it from every later run: silently unenriched with no route back.
         incomplete_contract_ids = {
             item["contract_id"] for item in all_items if item.get("type_name") is None
-        }
+        } | unresolved_category_contract_ids
         # A contract that produced NO items cannot have succeeded: item_exchange and
         # auction contracts always carry at least one item. Excluding it from the
         # COMPLETED set means it is not recorded as successfully enriched, so it
@@ -580,13 +584,12 @@ class ContractAggregationService:
         # it may clear the flag as well as set it: without this the flag is monotonic
         # and a false positive from a past enrichment bug survives every re-enrichment,
         # which is precisely what an ENRICHMENT_VERSION bump is meant to repair.
-        # Contracts whose category resolution degraded are held back — a failed group
-        # lookup reads as "not a ship" while the type_name still resolves, so clearing
-        # on that would strip correct flags off the ships-only default view during an
-        # ESI blip. "Not a ship" clears; "could not tell" leaves the flag alone.
-        non_ship_completed = (
-            completed_contract_ids - ship_contract_ids - unresolved_category_contract_ids
-        )
+        # "Could not tell" never reaches here to begin with: an unresolved category
+        # makes the contract incomplete above, and completed excludes incomplete. That
+        # is what keeps a degraded group lookup — which reads as "not a ship" while the
+        # type_name still resolves — from stripping correct flags off the ships-only
+        # default view during an ESI blip.
+        non_ship_completed = completed_contract_ids - ship_contract_ids
         for chunk in _chunk_ids(non_ship_completed):
             await db_session.execute(
                 update(Contract)
@@ -602,7 +605,7 @@ class ContractAggregationService:
         if incomplete_contract_ids:
             logger.info(
                 f"{len(incomplete_contract_ids)} contracts left ENRICHMENT_INCOMPLETE "
-                "(item type/group resolution degraded)."
+                "(item type or category resolution degraded)."
             )
         if empty_contract_ids:
             logger.warning(

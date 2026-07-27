@@ -740,17 +740,58 @@ async def test_a_version_bump_clears_a_stale_ship_flag(
     assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
 
 
+async def test_unresolved_category_leaves_a_contract_retryable(db_session: AsyncSession):
+    """An unresolved item category is an incomplete enrichment, not a success.
+
+    The type resolves, so the older rule (every item resolved a type_name) called this
+    contract COMPLETED and stamped it — after which the skip withheld it forever,
+    silently unenriched and mis-flagged, recoverable only by a version bump. It is the
+    same invariant the zero-item guard enforces: COMPLETED must mean enrichment
+    actually succeeded. Left incomplete, the contract simply retries next run.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 86, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(side_effect=RuntimeError("ESI down"))
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930209)])
+    before = service.esi_client.get_contract_items.await_count
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930209))
+    ).scalar_one()
+    assert row.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    assert row.enrichment_version == 0
+
+    # ESI recovers. No version bump and no sweep: the contract was never marked
+    # COMPLETED, so the skip never withheld it.
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    await service._process_contracts(db_session, [_ship_contract_dict(930209)])
+
+    assert service.esi_client.get_contract_items.await_count == before + 1
+    await db_session.refresh(row)
+    assert row.item_processing_status == "COMPLETED"
+    assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
+    assert row.is_ship_contract is True
+
+
 async def test_degraded_category_resolution_does_not_clear_a_ship_flag(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ):
     """Clearing may only act on an authoritative determination.
 
     A failed /universe/groups/ lookup yields is_ship=False while the item's type_name
-    resolves fine — so the contract still counts as COMPLETED, and a clear keyed on
-    "completed and not in the ship set" would strip correct flags on a transient ESI
-    blip. That is worse than the stale flag it repairs: the ships-only default view is
-    the app's landing page. Only contracts whose included items all resolved a category
-    may have the flag cleared."""
+    resolves fine, so a clear keyed on "not in the ship set" would strip correct flags
+    on a transient ESI blip — worse than the stale flag it repairs, since the
+    ships-only default view is the app's landing page. What protects the flag is that
+    an unresolved category leaves the contract ENRICHMENT_INCOMPLETE, and the clear
+    only ever draws from the completed set."""
     service = _make_service()
     service.esi_client.get_contract_items = AsyncMock(
         return_value=[{"record_id": 85, "type_id": 587, "quantity": 1, "is_included": True}]
