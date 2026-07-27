@@ -454,7 +454,7 @@ If round 3 still finds issues, keep going until clean.
 - Create: `app/backend/src/alembic/versions/<rev>_contracts_enrichment_version.py`
 - Test: `app/backend/src/fastapi_app/tests/services/test_background_aggregation.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 async def test_successful_enrichment_stamps_the_current_version(db_session: AsyncSession):
@@ -480,9 +480,9 @@ async def test_successful_enrichment_stamps_the_current_version(db_session: Asyn
     assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
 ```
 
-- [ ] **Step 2: Run and watch it fail** — `AttributeError`/`UndefinedColumn` on `enrichment_version`.
+- [x] **Step 2: Run and watch it fail** — `AttributeError`/`UndefinedColumn` on `enrichment_version`.
 
-- [ ] **Step 3: Add the column**
+- [x] **Step 3: Add the column**
 
 In `models/contracts.py`, beside `item_processing_status`:
 
@@ -511,7 +511,9 @@ In `_update_item_processing_status`, stamp it alongside `COMPLETED`:
             )
 ```
 
-- [ ] **Step 4: Write the migration**
+- [x] **Step 4: Write the migration**
+
+> **Deviation applied:** the `create_index`/`drop_index` lines below were NOT shipped — the composite index is never consulted by Task 5's predicate. See Deviations at the top of this plan. Do not re-add it from this snippet.
 
 ```python
 """contracts.enrichment_version
@@ -554,7 +556,7 @@ def downgrade() -> None:
     op.drop_column("contracts", "enrichment_version")
 ```
 
-- [ ] **Step 5: Verify green + migration up/down/up, then commit**
+- [x] **Step 5: Verify green + migration up/down/up, then commit**
 
 ```bash
 cd app/backend && .venv/bin/pytest -q
