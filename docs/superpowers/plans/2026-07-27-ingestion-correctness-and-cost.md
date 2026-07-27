@@ -67,6 +67,16 @@ notes and commit messages.
 
 ---
 
+## How to execute this plan
+
+Tasks are **sequential in a single worktree**, in the order given. Tasks 2, 4 and 5 all modify
+`background_aggregation.py` and Tasks 1 and 6 both modify `esi_client_class.py`; later snippets
+presuppose earlier edits. Do not dispatch them to parallel agents on separate branches.
+
+Verify the migration chain with `python -m alembic heads` (from `app/backend`, with
+`ALEMBIC_CONFIG=src/alembic.ini`), **never by listing filenames** — filenames cannot show
+parentage, and a second head only surfaces at `upgrade head` time, in pre-deploy, in production.
+
 ## Mandatory reading before any task
 
 ```
@@ -101,7 +111,16 @@ Do NOT use `env VAR=x` with a shell variable holding the pairs — zsh does not 
 
 **Execution Status:** ⬜ NOT STARTED
 
-Tasks 1–3 **MUST ship in a single release.** Repairing rows before the invariant lands leaves a window where the old code re-mints the same bad rows between deploys.
+Tasks 1–3 **MUST reach production in a single release.**
+
+Precisely: separate merges to `dev` are fine. What must be atomic is the `dev` → `main`
+**publication** — repairing rows in production before the invariant is also in production
+leaves a window where the old code re-mints the same bad rows.
+
+**Enforcement, not just assertion:** Phase 1 ships as **one PR** containing Tasks 1–3. If it
+is ever split, no publication PR may run between the first and last Phase-1 merge. State the
+`## Merge classification` in that PR body as **Review — schema migration and data integrity**
+(a repo-mandated heading, and a genuine Review trigger).
 
 ### Task 1: Fetch every page of a contract's items
 
@@ -113,32 +132,36 @@ Tasks 1–3 **MUST ship in a single release.** Repairing rows before the invaria
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `app/backend/src/fastapi_app/tests/core/test_esi_client.py`:
+Append to `app/backend/src/fastapi_app/tests/core/test_esi_client.py`. **Use that module's
+existing doubles — `_etag_response` (line 88) and `_etag_client` (line 110). It has no
+`esi_client` or `httpx_mock` fixture; `test_pagination_follows_x_pages` (line 360) is the
+template this mirrors.**
 
 ```python
-async def test_get_contract_items_fetches_every_page(httpx_mock, esi_client):
+async def test_get_contract_items_fetches_every_page():
     """A contract with more items than one page must return all of them.
 
     TEST-4: a single-page fixture cannot detect truncation, so this crosses the
     boundary. Truncation is silent — the caller sees a short, plausible list.
     """
-    httpx_mock.add_response(
-        url="https://esi.evetech.net/v1/contracts/public/items/999/?page=1",
-        json=[{"record_id": 1, "type_id": 587, "quantity": 1, "is_included": True}],
-        headers={"X-Pages": "2", "ETag": '"page1"', "Expires": "Mon, 27 Jul 2026 02:00:00 GMT"},
+    page_1 = _etag_response(
+        json_data=[{"record_id": 1, "type_id": 587}],
+        content=b'[{"record_id": 1, "type_id": 587}]',
+        headers={"ETag": "etag-p1", "X-Pages": "2"},
     )
-    httpx_mock.add_response(
-        url="https://esi.evetech.net/v1/contracts/public/items/999/?page=2",
-        json=[{"record_id": 2, "type_id": 588, "quantity": 1, "is_included": True}],
-        headers={"X-Pages": "2", "ETag": '"page2"', "Expires": "Mon, 27 Jul 2026 02:00:00 GMT"},
+    page_2 = _etag_response(
+        json_data=[{"record_id": 2, "type_id": 588}],
+        content=b'[{"record_id": 2, "type_id": 588}]',
+        headers={"ETag": "etag-p2", "X-Pages": "2"},
     )
+    get_mock = AsyncMock(side_effect=[page_1, page_2])
+    client = _etag_client(get_mock)
 
-    items = await esi_client.get_contract_items(999)
+    items = await client.get_contract_items(999)
 
     assert [i["record_id"] for i in items] == [1, 2]
+    assert get_mock.await_count == 2
 ```
-
-If `esi_client` / `httpx_mock` fixtures are not already available in that module, mirror the construction used by the existing tests in the same file rather than inventing a new fixture.
 
 - [ ] **Step 2: Run the test and watch it fail**
 
@@ -357,7 +380,33 @@ ESI_USER_AGENT="t/1.0" CACHE_URL="redis://localhost:6379/0" \
 DATABASE_URL="postgresql+asyncpg://hangar_bay_user:hangar_bay_password@localhost:5432/hb_mig_repair" \
 ALEMBIC_CONFIG=src/alembic.ini .venv/bin/python -m alembic upgrade head
 ```
-Expected: runs clean, prints both counts (0 and 0 on an empty database).
+Expected: runs clean. **An empty database prints 0/0 and the UPDATE matches no rows — that
+verifies nothing.** Seed the cases first, then assert only the right rows flipped:
+
+```bash
+docker exec hangar_bay_postgres psql -U hangar_bay_user -d hb_mig_repair <<'SQL'
+-- one wrongly-COMPLETED (zero items), one truncation suspect (exactly 1000 items),
+-- one legitimately good row that MUST be left alone.
+INSERT INTO contracts (contract_id, price, collateral, status, type, issuer_id,
+  issuer_corporation_id, for_corporation, date_issued, date_expired, item_processing_status)
+VALUES (1, 1, 0, 'unknown', 'item_exchange', 1, 1, false, now(), now() + interval '5 days', 'COMPLETED'),
+       (2, 1, 0, 'unknown', 'item_exchange', 1, 1, false, now(), now() + interval '5 days', 'COMPLETED'),
+       (3, 1, 0, 'unknown', 'item_exchange', 1, 1, false, now(), now() + interval '5 days', 'COMPLETED');
+INSERT INTO contract_items (record_id, contract_id, type_id, quantity, is_included, is_singleton)
+SELECT g, 2, 587, 1, true, false FROM generate_series(1, 1000) g;
+INSERT INTO contract_items (record_id, contract_id, type_id, quantity, is_included, is_singleton)
+VALUES (100001, 3, 587, 1, true, false);
+SQL
+```
+
+Re-run the migration, then assert:
+
+```bash
+docker exec hangar_bay_postgres psql -U hangar_bay_user -d hb_mig_repair -tAc \
+  "SELECT contract_id, item_processing_status FROM contracts ORDER BY contract_id;"
+```
+Expected: `1|PENDING_ITEMS`, `2|PENDING_ITEMS`, `3|COMPLETED`. If row 3 flipped, the
+predicate is over-broad and would re-enrich the entire corpus.
 
 - [ ] **Step 4: Commit**
 
@@ -457,8 +506,17 @@ In `_update_item_processing_status`, stamp it alongside `COMPLETED`:
 Revision ID: <rev>
 Revises: <task 3 rev>
 """
+from typing import Sequence, Union
+
 from alembic import op
 import sqlalchemy as sa
+
+# Alembic reads these MODULE ATTRIBUTES, not the docstring. Omitting them fails with
+# "Could not determine revision id" when the file is applied.
+revision: str = "<rev>"
+down_revision: Union[str, None] = "<task 3 rev>"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
@@ -470,6 +528,9 @@ def upgrade() -> None:
     # Backfill already-enriched rows to the CURRENT version. Without this every existing
     # COMPLETED contract mismatches version 1 and the first deploy triggers a full ~46k
     # re-enrichment backfill — the exact cost this plan exists to remove.
+    # The literal 1 MUST equal ENRICHMENT_VERSION at ship time. If that constant is
+    # bumped before this migration runs, update both together or the backfill stamps
+    # a version that no longer matches and re-queues the whole corpus.
     op.execute("UPDATE contracts SET enrichment_version = 1 WHERE item_processing_status = 'COMPLETED'")
     op.create_index("ix_contracts_enrichment_queue", "contracts",
                     ["item_processing_status", "enrichment_version"], unique=False)
@@ -553,7 +614,15 @@ async def test_bumping_the_enrichment_version_requeues_a_contract(
 
 - [ ] **Step 3: Implement the skip**
 
-In `_process_contracts`, after the contract upsert and before item fetching, query what is already done and pass it down:
+First add the missing import — `background_aggregation.py` imports `update` but **not** `select`:
+
+```python
+from sqlalchemy import select, update
+```
+
+(adjust to match the existing import line rather than adding a second one).
+
+Then in `_process_contracts`, after the contract upsert and before item fetching:
 
 ```python
         # Public contracts are immutable, so a contract already enriched at the current
@@ -632,27 +701,29 @@ If round 3 still finds issues, keep going until clean.
 - [ ] **Step 1: Write the failing test**
 
 ```python
-async def test_rate_limit_status_is_retried_and_honours_retry_after(httpx_mock, esi_client, monkeypatch):
+async def test_rate_limit_status_is_retried_and_honours_retry_after(monkeypatch):
     """420 and 429 mean 'come back later', not 'this contract failed'. Treating them as
     ordinary 4xx burns error budget and, under concurrency, turns one tripped limit into
-    a sustained firehose that still records a successful run."""
+    a sustained firehose that still records a successful run.
+
+    Uses this module's _etag_response/_etag_client doubles — there is no httpx_mock here.
+    """
     slept: list[float] = []
 
     async def fake_sleep(seconds):
         slept.append(seconds)
 
     monkeypatch.setattr("fastapi_app.core.esi_client_class.asyncio.sleep", fake_sleep)
-    httpx_mock.add_response(
-        url="https://esi.evetech.net/v1/contracts/public/items/777/?page=1",
-        status_code=429, headers={"Retry-After": "7"},
+    limited = _etag_response(status_code=429, headers={"Retry-After": "7"})
+    ok = _etag_response(
+        json_data=[{"record_id": 1, "type_id": 587}],
+        content=b'[{"record_id": 1, "type_id": 587}]',
+        headers={"ETag": "etag-ok"},
     )
-    httpx_mock.add_response(
-        url="https://esi.evetech.net/v1/contracts/public/items/777/?page=1",
-        json=[{"record_id": 1, "type_id": 587, "quantity": 1, "is_included": True}],
-        headers={"ETag": '"ok"', "Expires": "Mon, 27 Jul 2026 02:00:00 GMT"},
-    )
+    get_mock = AsyncMock(side_effect=[limited, ok])
+    client = _etag_client(get_mock)
 
-    items = await esi_client.get_contract_items(777)
+    items = await client.get_contract_items(777)
 
     assert [i["record_id"] for i in items] == [1]
     assert 7 in slept, "Retry-After must drive the wait, not the fixed backoff schedule"
@@ -734,11 +805,20 @@ If round 3 still finds issues, keep going until clean.
 - [ ] `flake8` clean on every touched file
 - [ ] Both migrations verified up → down → up on a scratch database
 - [ ] Every new test mutation-verified, with the failure output recorded in the PR
-- [ ] After deploy: confirm a run's duration drops from ~77 minutes to seconds, and that `/ready`'s freshness advances within one cycle
+- [ ] After deploy: a run completes in **under ~5 minutes**, and — the real proof of
+      mechanism — **item fetches per run are in the hundreds (churn-sized), not ~46,000**.
+      Not "seconds": steady state still performs the 34-page discovery sweep, name
+      resolution, a ~46k-row upsert and ~100–250 sequential churn fetches. The fetch-count
+      clause is what actually demonstrates skip-known is working.
+- [ ] `/ready`'s freshness advances within one cycle
 
 ## Out of scope (deliberately)
 
 - **Concurrency** — needs the shared governor first; Plan B.
 - **Discovery/enrichment split and `Expires` scheduling** — Plan B.
 - **Alert delivery to Discord** — Plan C, and the other half of the user story.
-- **Removing the ETag cache on item pages** — correct per the design, but it interacts with the discovery-side caching decisions in Plan B; keeping it changes nothing about this plan's correctness.
+- **Removing the ETag cache on item pages** — correct per the design (a validator on immutable
+  read-once data buys nothing and costs pressure in a 25 MB instance), but it interacts with the
+  discovery-side caching decisions in Plan B. Keeping it changes nothing about this plan's
+  correctness. **Carry it into Plan B explicitly** — it is the kind of parked decision that
+  silently evaporates between plans.
