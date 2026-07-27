@@ -71,7 +71,10 @@ def upgrade() -> None:
     # out-of-order restore): that would match every COMPLETED row and silently
     # re-queue the whole corpus. The measured defect rate is ~3.1%; 25% is far
     # above any plausible repair and far below "the join table is missing".
-    if total and (empty + truncated) > total * 0.25:
+    # The >= 100 floor keeps small dev/CI corpora from tripping the ratio on
+    # arithmetic noise — the restore scenario this guards against only exists at
+    # corpus scale.
+    if total >= 100 and (empty + truncated) > total * 0.25:
         raise RuntimeError(
             f"refusing to re-queue {empty + truncated} of {total} COMPLETED contracts: "
             "contract_items looks unpopulated, not a percent-scale repair"
