@@ -7,7 +7,7 @@ from typing import Iterable, Iterator, List, Callable  # Added Callable
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis  # For on-demand client creation
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import Settings  # Settings type for hinting
@@ -412,7 +412,31 @@ class ContractAggregationService:
 
         logger.info(f"Finished upserting all {total_contracts} contracts.")
 
-        all_items, processed_contract_ids = await self._fetch_item_rows(contracts)
+        # Public contracts are immutable, so a contract already enriched at the current
+        # version never needs re-fetching. This is what turns a corpus-sized run into a
+        # churn-sized one. Reads back the status column that enrichment writes; a
+        # contract at any other status (PENDING_ITEMS from a failed fetch,
+        # ENRICHMENT_INCOMPLETE from degraded type resolution) is still re-fetched, so
+        # transient failures keep recovering on the next run.
+        candidate_ids = [c["contract_id"] for c in contracts]
+        already_enriched: set[int] = set()
+        for chunk in _chunk_ids(candidate_ids):
+            rows = await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_(chunk),
+                    Contract.item_processing_status == "COMPLETED",
+                    Contract.enrichment_version == ENRICHMENT_VERSION,
+                )
+            )
+            already_enriched.update(row[0] for row in rows)
+        if already_enriched:
+            logger.info(
+                f"Skipping item fetch for {len(already_enriched)} already-enriched contracts."
+            )
+
+        all_items, processed_contract_ids = await self._fetch_item_rows(
+            contracts, already_enriched
+        )
 
         # Enrich items with static type data BEFORE upserting so a single
         # write carries names/categories, and collect which contracts hold an
@@ -443,16 +467,22 @@ class ContractAggregationService:
 
         await self._update_item_processing_status(db_session, processed_contract_ids, all_items)
 
-    async def _fetch_item_rows(self, contracts: List[dict]) -> tuple[list[dict], set[int]]:
+    async def _fetch_item_rows(
+        self, contracts: List[dict], already_enriched: set[int] | None = None
+    ) -> tuple[list[dict], set[int]]:
         """Fetch contract items from ESI, returning the item rows and the contract IDs reached.
 
         A per-contract fetch failure is isolated: that contract is left out of the
-        processed set and the run continues.
+        processed set and the run continues. Contracts in already_enriched are not
+        fetched at all, and are likewise absent from the processed set — the status
+        bookkeeping keys off that set, so their existing COMPLETED status stands.
         """
         all_items: List[dict] = []
         processed_contract_ids: set[int] = set()
         for contract in contracts:
             if contract["type"] not in ["item_exchange", "auction"]:
+                continue
+            if already_enriched and contract["contract_id"] in already_enriched:
                 continue
 
             try:
