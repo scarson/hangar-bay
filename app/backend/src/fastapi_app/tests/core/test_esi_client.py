@@ -631,3 +631,7 @@ async def test_get_contract_items_fetches_every_page():
 
     assert [i["record_id"] for i in items] == [1, 2]
     assert get_mock.await_count == 2
+    assert [call.args[0] for call in get_mock.await_args_list] == [
+        "/v1/contracts/public/items/999/?page=1",
+        "/v1/contracts/public/items/999/?page=2",
+    ]
