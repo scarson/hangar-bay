@@ -22,7 +22,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from fastapi_app.core.esi_client_class import ESIClient
+from fastapi_app.core.esi_client_class import (
+    RATE_LIMIT_SLEEP_CEILING,
+    ESIClient,
+    _rate_limit_wait,
+)
 from fastapi_app.core.exceptions import ESIRequestFailedError
 
 pytestmark = pytest.mark.asyncio
@@ -107,12 +111,19 @@ def _etag_response(
     return response
 
 
-def _etag_client(get_mock: AsyncMock, cache: dict | None = None) -> ESIClient:
+def _etag_client(
+    get_mock: AsyncMock,
+    cache: dict | None = None,
+    rate_limit_wait_budget: float = RATE_LIMIT_SLEEP_CEILING,
+) -> ESIClient:
     """Wire an ESIClient for the ETag path against a bytes-valued cache double.
 
     The ETag path's production client is `aioredis.from_url(...)` with the default
     `decode_responses=False`, and the cached-etag read calls `.decode()` — so seeded
     values are bytes and an unseeded key reads back as None.
+
+    `rate_limit_wait_budget` defaults to the client's own default (the full
+    RATE_LIMIT_SLEEP_CEILING) unless a test needs the request-scoped fail-fast budget.
     """
     store = dict(cache or {})
     http_client = MagicMock()
@@ -120,7 +131,12 @@ def _etag_client(get_mock: AsyncMock, cache: dict | None = None) -> ESIClient:
     redis_client = MagicMock()
     redis_client.get = AsyncMock(side_effect=lambda key: store.get(key))
     redis_client.set = AsyncMock()
-    return ESIClient(settings=MagicMock(), http_client=http_client, redis_client=redis_client)
+    return ESIClient(
+        settings=MagicMock(),
+        http_client=http_client,
+        redis_client=redis_client,
+        rate_limit_wait_budget=rate_limit_wait_budget,
+    )
 
 
 async def test_get_universe_type_returns_the_object_not_its_keys():
@@ -480,6 +496,118 @@ async def test_retry_exhaustion_raises_esi_request_failed():
     assert [call.args[0] for call in sleep_mock.await_args_list] == [0.5, 1.0]
 
 
+async def test_rate_limit_status_is_retried_and_honours_retry_after(monkeypatch):
+    """420 and 429 mean 'come back later', not 'this contract failed'. Treating them as
+    ordinary 4xx burns error budget and, under concurrency, turns one tripped limit into
+    a sustained firehose that still records a successful run.
+
+    Uses this module's _etag_response/_etag_client doubles — there is no httpx_mock here.
+    """
+    slept: list[float] = []
+
+    async def fake_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr("fastapi_app.core.esi_client_class.asyncio.sleep", fake_sleep)
+    limited = _etag_response(status_code=429, headers={"Retry-After": "7"})
+    ok = _etag_response(
+        json_data=[{"record_id": 1, "type_id": 587}],
+        content=b'[{"record_id": 1, "type_id": 587}]',
+        headers={"ETag": "etag-ok", "X-Pages": "1"},
+    )
+    get_mock = AsyncMock(side_effect=[limited, ok])
+    client = _etag_client(get_mock)
+
+    items = await client.get_contract_items(777)
+
+    assert [i["record_id"] for i in items] == [1]
+    assert slept == [7], "Retry-After must drive the wait, not the fixed backoff schedule"
+
+
+async def test_exhausted_rate_limit_retries_raise_after_backoff():
+    """Three 429s with no Retry-After header exhaust the retry budget and raise, using
+    the same fallback backoff schedule as a 5xx (no sleep after the final attempt) —
+    the same failure shape exhausted 5xx retries produce.
+    """
+    get_mock = AsyncMock(return_value=_etag_response(status_code=429, headers={}))
+    client = _etag_client(get_mock)
+
+    sleep_mock = AsyncMock()
+    with patch("asyncio.sleep", new=sleep_mock):
+        with pytest.raises(ESIRequestFailedError) as excinfo:
+            await client.get_esi_data_with_etag_caching(ETAG_PATH)
+
+    assert excinfo.value.status_code == 429
+    assert get_mock.await_count == 3
+    assert [call.args[0] for call in sleep_mock.await_args_list] == [0.5, 1.0]
+
+
+async def test_rate_limit_wait_is_clamped_to_ceiling():
+    """A garbage-large numeric Retry-After ("1e9") clamps to RATE_LIMIT_SLEEP_CEILING
+    (60s), the width of ESI's error-limit window. A non-finite one ("inf") takes a
+    different branch — it fails the isfinite guard in _rate_limit_wait and falls back
+    to the ordinary backoff schedule instead of reaching the clamp. Both hostile inputs
+    must still land on a bounded, positive wait.
+    """
+    async def _sleeps_for(retry_after: str) -> list[float]:
+        limited = _etag_response(status_code=429, headers={"Retry-After": retry_after})
+        ok = _etag_response(
+            json_data=[{"record_id": 1, "type_id": 587}],
+            content=b'[{"record_id": 1, "type_id": 587}]',
+            headers={"ETag": "etag-ok", "X-Pages": "1"},
+        )
+        get_mock = AsyncMock(side_effect=[limited, ok])
+        client = _etag_client(get_mock)
+        sleep_mock = AsyncMock()
+        with patch("asyncio.sleep", new=sleep_mock):
+            items = await client.get_contract_items(777)
+        assert [i["record_id"] for i in items] == [1]
+        return [call.args[0] for call in sleep_mock.await_args_list]
+
+    assert await _sleeps_for("1e9") == [60.0]
+    assert await _sleeps_for("inf") == [0.5]
+
+
+async def test_rate_limit_wait_over_budget_fails_fast():
+    """A request-scoped client with a tight wait budget must not sleep through ESI's
+    cool-down — it fails fast with the same ESIRequestFailedError an exhausted retry
+    budget would raise, so the caller maps it to a 502 immediately instead of holding
+    the connection open for the full Retry-After.
+    """
+    limited = _etag_response(status_code=429, headers={"Retry-After": "7"})
+    get_mock = AsyncMock(return_value=limited)
+    client = _etag_client(get_mock, rate_limit_wait_budget=1.0)
+
+    sleep_mock = AsyncMock()
+    with patch("asyncio.sleep", new=sleep_mock):
+        with pytest.raises(ESIRequestFailedError) as excinfo:
+            await client.get_esi_data_with_etag_caching(ETAG_PATH)
+
+    assert excinfo.value.status_code == 429
+    assert get_mock.await_count == 1
+    assert [call.args[0] for call in sleep_mock.await_args_list] == []
+
+
+@pytest.mark.parametrize(
+    "retry_after, expected_wait",
+    [
+        ("7", 7.0),                                # Retry-After drives the wait
+        ("120", 60.0),                              # clamped to RATE_LIMIT_SLEEP_CEILING
+        ("1e9", 60.0),                               # clamped to RATE_LIMIT_SLEEP_CEILING
+        ("inf", 0.5),                                # non-finite -> isfinite guard -> fallback
+        ("-inf", 0.5),                               # non-finite -> isfinite guard -> fallback
+        ("nan", 0.5),                                # non-finite -> isfinite guard -> fallback
+        ("-5", 0.5),                                 # parses, but non-positive -> fallback
+        ("0", 0.5),                                  # parses, but non-positive -> fallback
+        ("Wed, 21 Oct 2015 07:28:00 GMT", 0.5),      # not float-parseable -> fallback
+        (None, 0.5),                                 # header absent -> fallback
+        ("", 0.5),                                   # header present but empty -> fallback
+    ],
+)
+async def test_rate_limit_wait_matrix(retry_after, expected_wait):
+    assert _rate_limit_wait(retry_after, attempt=0, backoff_factor=0.5) == expected_wait
+
+
 async def test_200_with_empty_body_treated_as_empty_page():
     """ESI answers 200 with an empty body; the content guard keeps that off json()."""
     response = _etag_response(
@@ -606,3 +734,38 @@ async def test_etag_path_tolerates_str_valued_redis_client():
 
     assert data == [{"contract_id": 1}]
     assert get_mock.await_args.kwargs["headers"]["If-None-Match"] == "an-etag-as-str"
+
+
+async def test_get_contract_items_fetches_every_page():
+    """A contract with more items than one page must return all of them.
+
+    TEST-4: a single-page fixture cannot detect truncation, so this crosses the
+    boundary. Truncation is silent — the caller sees a short, plausible list.
+    """
+    page_1 = _etag_response(
+        json_data=[{"record_id": 1, "type_id": 587}],
+        content=b'[{"record_id": 1, "type_id": 587}]',
+        headers={"ETag": "etag-p1", "X-Pages": "3"},
+    )
+    page_2 = _etag_response(
+        json_data=[{"record_id": 2, "type_id": 588}],
+        content=b'[{"record_id": 2, "type_id": 588}]',
+        headers={"ETag": "etag-p2", "X-Pages": "3"},
+    )
+    page_3 = _etag_response(
+        json_data=[{"record_id": 3, "type_id": 589}],
+        content=b'[{"record_id": 3, "type_id": 589}]',
+        headers={"ETag": "etag-p3", "X-Pages": "3"},
+    )
+    get_mock = AsyncMock(side_effect=[page_1, page_2, page_3])
+    client = _etag_client(get_mock)
+
+    items = await client.get_contract_items(999)
+
+    assert [i["record_id"] for i in items] == [1, 2, 3]
+    assert get_mock.await_count == 3
+    assert [call.args[0] for call in get_mock.await_args_list] == [
+        "/v1/contracts/public/items/999/?page=1",
+        "/v1/contracts/public/items/999/?page=2",
+        "/v1/contracts/public/items/999/?page=3",
+    ]

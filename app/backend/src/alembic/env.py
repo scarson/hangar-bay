@@ -25,7 +25,9 @@ target_metadata = Base.metadata
 def run_migrations_offline() -> None:
     config = context.config
     if config.config_file_name is not None:
-        fileConfig(config.config_file_name)
+        # disable_existing_loggers=False: migrations run in-process under pytest, and the
+        # default (True) would kill every already-created logger, breaking caplog assertions.
+        fileConfig(config.config_file_name, disable_existing_loggers=False)
     context.configure(
         url=str(settings.DATABASE_URL),
         target_metadata=target_metadata,
@@ -62,7 +64,9 @@ async def run_migrations_online_async_cli():
 def run_migrations_online():
     config = context.config
     if config.config_file_name is not None:
-        fileConfig(config.config_file_name)
+        # disable_existing_loggers=False: migrations run in-process under pytest, and the
+        # default (True) would kill every already-created logger, breaking caplog assertions.
+        fileConfig(config.config_file_name, disable_existing_loggers=False)
     connectable = context.config.attributes.get("connection", None)
     if connectable is None:
         asyncio.run(run_migrations_online_async_cli())

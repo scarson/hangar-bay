@@ -63,8 +63,20 @@ class Contract(Base):
     issuer_corporation_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_ship_contract: Mapped[bool] = mapped_column(Boolean, default=False)
     item_processing_status: Mapped[str] = mapped_column(String, default='PENDING_ITEMS', index=True)
+    # Stamped on successful enrichment. Bumping ENRICHMENT_VERSION re-queues the corpus
+    # through the normal budgeted path — the deliberate replacement for the refetch
+    # loop's accidental self-healing, which this repo has relied on twice.
+    # Only meaningful while item_processing_status = 'COMPLETED': an ENRICHMENT_INCOMPLETE
+    # row keeps whatever version it last stamped, which says nothing about its items.
+    enrichment_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     items_last_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     contract_esi_etag: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # Stamped with the run's timestamp on every upsert, so a contract that stops appearing
+    # in ESI's public list (sold or withdrawn) stops being restamped and can be told apart
+    # from a live one. NULL means "never observed by a stamping run" and is treated as
+    # visible — see contract_service._apply_contract_filters.
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     items: Mapped[List["ContractItem"]] = relationship(back_populates="contract", cascade="all, delete-orphan")
 
@@ -79,6 +91,8 @@ class Contract(Base):
         # Every list query filters date_expired > now(), so this one is on the hot path
         # for all of them, not just for sorting by "Time left".
         Index('ix_contracts_date_expired', 'date_expired'),
+        # Serves the per-region watermark lookup (max(last_seen_at) grouped by region).
+        Index('ix_contracts_region_last_seen', 'start_location_region_id', 'last_seen_at'),
         Index('ix_contracts_collateral', 'collateral'),
         Index('ix_contracts_volume', 'volume'),
     )

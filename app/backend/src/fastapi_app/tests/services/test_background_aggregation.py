@@ -10,16 +10,18 @@ general shape of this trap: the gap only shows up when the real pipeline,
 not a hand-built fixture, writes the row.
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.background_aggregation as bg_agg
 from fastapi_app.models.contracts import Contract, ContractItem
 from fastapi_app.services.background_aggregation import ContractAggregationService
+from fastapi_app.tests.core.test_esi_client import _etag_client, _etag_response
 from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
 
 pytestmark = pytest.mark.asyncio
@@ -205,6 +207,10 @@ async def test_process_contracts_type_resolution_failure_degrades_gracefully(
     # Enrichment failed for this contract's item, so its status must NOT claim
     # COMPLETED — a future consumer trusting COMPLETED would skip re-enriching it.
     assert contract.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    # ...and it must NOT carry the current enrichment stamp either. The stamp means
+    # "enriched at this version"; stamping a degraded row would make the skip predicate
+    # withhold it the moment anything repaired its status, stranding it unenriched.
+    assert contract.enrichment_version == 0
     item = (
         await db_session.execute(
             select(ContractItem).where(ContractItem.record_id == 31)
@@ -214,12 +220,18 @@ async def test_process_contracts_type_resolution_failure_degrades_gracefully(
 
 
 async def test_reingestion_with_unmodified_items_keeps_ship_flag(
-    db_session: AsyncSession,
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ):
     """Regression: the contract upsert used to write is_ship_contract=False on
     every run, while ETag-304'd items skip enrichment — so ship flags decayed
     to False on the next aggregation cycle. The upsert must leave
-    enrichment-maintained columns untouched on conflict."""
+    enrichment-maintained columns untouched on conflict.
+
+    The version bump is what puts the contract back in the fetch set, so the 304
+    branch is actually reached: an already-enriched contract is skipped before ESI
+    is asked at all. A 304 leaves the contract unenriched this cycle, so its stamp
+    must stay at the old version — stamping the new one on a 304 would claim an
+    enrichment that never ran."""
     from fastapi_app.core.exceptions import ESINotModifiedError
 
     service = _make_service()
@@ -233,16 +245,26 @@ async def test_reingestion_with_unmodified_items_keeps_ship_flag(
         return_value={"name": "Frigate", "category_id": 6}
     )
     await service._process_contracts(db_session, [_ship_contract_dict(900104)])
+    stamped_version = bg_agg.ENRICHMENT_VERSION
 
-    # Second run: same contract, items unchanged (ESI answers 304).
+    # Second run: same contract, re-queued by a version bump, items unchanged
+    # (ESI answers 304).
+    monkeypatch.setattr(bg_agg, "ENRICHMENT_VERSION", bg_agg.ENRICHMENT_VERSION + 1)
     service.esi_client.get_contract_items = AsyncMock(side_effect=ESINotModifiedError())
     await service._process_contracts(db_session, [_ship_contract_dict(900104)])
+    assert service.esi_client.get_contract_items.await_count == 1, (
+        "the re-queued contract must actually reach ESI, or the 304 branch is untested"
+    )
 
     contract = (
         await db_session.execute(select(Contract).where(Contract.contract_id == 900104))
     ).scalar_one()
     assert contract.is_ship_contract is True, "ship flag must survive 304'd re-ingestion"
     assert contract.item_processing_status == "COMPLETED"
+    assert contract.enrichment_version == stamped_version
+    assert contract.enrichment_version != bg_agg.ENRICHMENT_VERSION, (
+        "a 304 enriches nothing, so the contract stays queued at the old version"
+    )
 
 
 async def test_id_list_updates_batch_across_the_chunk_boundary(
@@ -424,6 +446,419 @@ async def test_item_fetch_failure_for_one_contract_does_not_abort_batch(db_sessi
     assert healthy_row.item_processing_status == "COMPLETED"
 
 
+async def test_contract_returning_no_items_is_not_marked_completed(
+    db_session: AsyncSession, caplog
+):
+    """An item_exchange contract with zero items is impossible — the fetch failed or
+    returned an evicted-cache empty page. COMPLETED must mean the items were actually
+    fetched, so a zero-item result must not claim success. The exclusion is per
+    contract: a healthy contract in the same batch still completes."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: (
+            []
+            if cid == 930001
+            # record_id is deliberately NOT the contract_id: the bookkeeping keys on
+            # contract_id, and an item-keyed confusion would pass unnoticed if the two
+            # were equal here.
+            else [
+                {
+                    "record_id": cid + 500_000,
+                    "type_id": 587,
+                    "quantity": 1,
+                    "is_included": True,
+                }
+            ]
+        )
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    with caplog.at_level("WARNING"):
+        await service._process_contracts(
+            db_session, [_ship_contract_dict(930001), _ship_contract_dict(930002)]
+        )
+
+    rows = {
+        row.contract_id: row
+        for row in (
+            await db_session.execute(
+                select(Contract).where(Contract.contract_id.in_([930001, 930002]))
+            )
+        ).scalars()
+    }
+    assert rows[930001].item_processing_status != "COMPLETED"
+    # PENDING_ITEMS specifically — the model default, which the empty result leaves
+    # untouched — and not a third status: a contract not marked COMPLETED stays in
+    # the re-fetch set.
+    assert rows[930001].item_processing_status == "PENDING_ITEMS"
+    # The exclusion is per contract; it must not spill onto a healthy one.
+    assert rows[930002].item_processing_status == "COMPLETED"
+
+    # The count pins that only the empty contract was excluded.
+    assert any(
+        "1 contracts returned zero items and were not marked COMPLETED" in rec.getMessage()
+        for rec in caplog.records
+        if rec.levelname == "WARNING"
+    ), f"expected the zero-item warning; got {[r.getMessage() for r in caplog.records]}"
+
+
+async def test_multipage_item_fetch_persists_every_row_and_completes(db_session: AsyncSession):
+    """Drives _process_contracts through a REAL ESIClient over a mocked transport,
+    so the pagination walk and the enrichment bookkeeping are exercised together —
+    a fixture-satisfied seam between them cannot hide truncation."""
+    items_path = "/v1/contracts/public/items/940001/"
+    pages = {
+        f"{items_path}?page=1": [
+            {"record_id": 990001, "type_id": 587, "quantity": 1, "is_included": True}
+        ],
+        f"{items_path}?page=2": [
+            {"record_id": 990002, "type_id": 587, "quantity": 1, "is_included": True}
+        ],
+    }
+
+    def serve_page(path, headers=None):
+        # An unexpected path raises KeyError rather than serving a default: a walk
+        # that runs past page 2 must fail loudly, not quietly repeat a page.
+        body = pages[path]
+        return _etag_response(
+            200,
+            json_data=body,
+            content=json.dumps(body).encode(),
+            headers={"X-Pages": "2"},
+        )
+
+    client = _etag_client(AsyncMock(side_effect=serve_page))
+    # Location-name resolution is a POST sitting above this seam; serve it over the
+    # same transport so the real method runs and logs no resolution failure.
+    client.http_client.post = AsyncMock(
+        return_value=_etag_response(
+            200,
+            json_data=[
+                {"id": 60003760, "name": "Jita IV - Moon 4 - Caldari Navy Assembly Plant"}
+            ],
+        )
+    )
+    client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 64}
+    )
+    client.get_universe_group = AsyncMock(return_value={"name": "Frigate", "category_id": 6})
+
+    service = ContractAggregationService(esi_client=client, settings=MagicMock())
+
+    await service._process_contracts(db_session, [_ship_contract_dict(940001)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 940001))
+    ).scalar_one()
+    assert row.item_processing_status == "COMPLETED"
+
+    # Both pages must have landed: a truncated walk yields {990001} while the status
+    # still reads COMPLETED, which is exactly the failure this seam can hide.
+    record_ids = set(
+        (
+            await db_session.execute(
+                select(ContractItem.record_id).where(ContractItem.contract_id == 940001)
+            )
+        ).scalars()
+    )
+    assert record_ids == {990001, 990002}
+
+
+async def test_successful_enrichment_stamps_the_current_version(db_session: AsyncSession):
+    """The version stamp is what lets a future enrichment bug re-queue the corpus
+    deliberately, replacing the refetch loop's accidental self-healing."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 71, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930101)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930101))
+    ).scalar_one()
+    assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
+
+
+async def test_already_enriched_contracts_are_not_refetched(
+    db_session: AsyncSession, caplog
+):
+    """The whole point: public contracts are immutable, so a contract enriched at the
+    current version never needs fetching again."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 81, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930201)])
+    first_call_count = service.esi_client.get_contract_items.await_count
+
+    # at_level only sets the capture level; records from run 1 are still in the
+    # buffer, so clear it — the assertion below must only be satisfiable by run 2.
+    caplog.clear()
+    with caplog.at_level("INFO"):
+        await service._process_contracts(db_session, [_ship_contract_dict(930201)])
+
+    assert service.esi_client.get_contract_items.await_count == first_call_count
+    # The run must REPORT the skip it performed, not the skip it intended: the fetched
+    # count is what a disabled skip cannot fake.
+    assert any(
+        "Fetched items for 0 contracts (1 skipped as already enriched)."
+        in rec.getMessage()
+        for rec in caplog.records
+    ), f"expected the fetched-vs-skipped line; got {[r.getMessage() for r in caplog.records]}"
+
+
+async def test_a_demoted_contract_is_refetched_despite_a_current_stamp(
+    db_session: AsyncSession,
+):
+    """The skip predicate needs BOTH arms: status AND version.
+
+    Demoting item_processing_status is the repair lever — it is exactly what the
+    zero-item repair migration pulls to put damaged rows back in the fetch set. That
+    lever only works if the skip actually reads the status: a version-only predicate
+    would keep skipping a demoted row forever, because a repair demotes the status
+    without touching the stamp.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 83, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930203)])
+    before = service.esi_client.get_contract_items.await_count
+
+    # The repair: status demoted, stamp deliberately LEFT at the current version.
+    await db_session.execute(
+        update(Contract)
+        .where(Contract.contract_id == 930203)
+        .values(item_processing_status="PENDING_ITEMS")
+    )
+    db_session.expire_all()
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930203)])
+
+    assert service.esi_client.get_contract_items.await_count == before + 1
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930203))
+    ).scalar_one()
+    assert row.item_processing_status == "COMPLETED"
+    assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
+
+
+async def test_bumping_the_enrichment_version_requeues_a_contract(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """Version bump is the deliberate replacement for accidental self-healing, so it
+    must actually re-fetch."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 82, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930202)])
+    before = service.esi_client.get_contract_items.await_count
+
+    monkeypatch.setattr(bg_agg, "ENRICHMENT_VERSION", bg_agg.ENRICHMENT_VERSION + 1)
+    await service._process_contracts(db_session, [_ship_contract_dict(930202)])
+
+    assert service.esi_client.get_contract_items.await_count == before + 1
+    # Stamp and skip must read the SAME constant. If either side hardcoded a literal
+    # they would agree at version 1 forever: the re-fetch above would still happen,
+    # while the contract never advanced past the old version and would be re-fetched
+    # on every subsequent run — the skip silently doing nothing.
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930202))
+    ).scalar_one()
+    assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
+
+
+async def test_a_version_bump_clears_a_stale_ship_flag(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """is_ship_contract must not be monotonic. Enrichment that only ever SET the flag
+    left a false positive from a past enrichment bug surviving every re-enrichment,
+    which breaks what the version bump is for: it is the deliberate repair lever for
+    enrichment-logic fixes, and flags are exactly what such a fix must repair."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 84, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930207)])
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930207))
+    ).scalar_one()
+    assert row.is_ship_contract is True, "precondition: the stale flag must be set first"
+
+    # The repaired enrichment: same item, now correctly resolved as a non-ship. The
+    # group RESOLVES — this is a corrected answer, not a degraded one.
+    monkeypatch.setattr(bg_agg, "ENRICHMENT_VERSION", bg_agg.ENRICHMENT_VERSION + 1)
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Mineral", "category_id": 4}
+    )
+    await service._process_contracts(db_session, [_ship_contract_dict(930207)])
+
+    await db_session.refresh(row)
+    assert row.is_ship_contract is False
+    assert row.item_processing_status == "COMPLETED"
+    assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
+
+
+async def test_unresolved_category_leaves_a_contract_retryable(db_session: AsyncSession):
+    """An unresolved item category is an incomplete enrichment, not a success.
+
+    The type resolves, so the older rule (every item resolved a type_name) called this
+    contract COMPLETED and stamped it — after which the skip withheld it forever,
+    silently unenriched and mis-flagged, recoverable only by a version bump. It is the
+    same invariant the zero-item guard enforces: COMPLETED must mean enrichment
+    actually succeeded. Left incomplete, the contract simply retries next run.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 86, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(side_effect=RuntimeError("ESI down"))
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930209)])
+    before = service.esi_client.get_contract_items.await_count
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930209))
+    ).scalar_one()
+    assert row.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    assert row.enrichment_version == 0
+
+    # ESI recovers. No version bump and no sweep: the contract was never marked
+    # COMPLETED, so the skip never withheld it.
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    await service._process_contracts(db_session, [_ship_contract_dict(930209)])
+
+    assert service.esi_client.get_contract_items.await_count == before + 1
+    await db_session.refresh(row)
+    assert row.item_processing_status == "COMPLETED"
+    assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
+    assert row.is_ship_contract is True
+
+
+async def test_degraded_category_resolution_does_not_clear_a_ship_flag(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """Clearing may only act on an authoritative determination.
+
+    A failed /universe/groups/ lookup yields is_ship=False while the item's type_name
+    resolves fine, so a clear keyed on "not in the ship set" would strip correct flags
+    on a transient ESI blip — worse than the stale flag it repairs, since the
+    ships-only default view is the app's landing page. What protects the flag is that
+    an unresolved category leaves the contract ENRICHMENT_INCOMPLETE, and the clear
+    only ever draws from the completed set."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 85, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930208)])
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930208))
+    ).scalar_one()
+    assert row.is_ship_contract is True
+
+    monkeypatch.setattr(bg_agg, "ENRICHMENT_VERSION", bg_agg.ENRICHMENT_VERSION + 1)
+    service.esi_client.get_universe_group = AsyncMock(side_effect=RuntimeError("ESI down"))
+    await service._process_contracts(db_session, [_ship_contract_dict(930208)])
+
+    await db_session.refresh(row)
+    assert row.is_ship_contract is True, "a degraded category read must not clear a flag"
+
+
+async def test_skip_select_reads_across_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, caplog
+):
+    """The already-enriched SELECT chunks its id list for the same reason the UPDATEs
+    do (asyncpg's 32767 bind-param cap; a corpus-scale IN() rolls the run back), and
+    a read that stops after the first chunk silently re-fetches the rest — cheaper to
+    miss than a crash, so it needs its own boundary crossing. With the chunk size
+    forced to 2 and THREE enriched contracts, all three must be skipped."""
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 2)
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: [
+            {"record_id": cid + 500_000, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    cids = [930204, 930205, 930206]
+    batch = [_ship_contract_dict(c) for c in cids]
+    await service._process_contracts(db_session, batch)
+    after_first_run = service.esi_client.get_contract_items.await_count
+    assert after_first_run == 3
+
+    with caplog.at_level("INFO"):
+        await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+
+    assert service.esi_client.get_contract_items.await_count == after_first_run
+    # The count is the boundary evidence: a read that stopped after the first chunk
+    # reports 2 skipped, not 3, while still looking like the skip works.
+    assert any(
+        "Fetched items for 0 contracts (3 skipped as already enriched)."
+        in rec.getMessage()
+        for rec in caplog.records
+    ), f"expected all three skipped; got {[r.getMessage() for r in caplog.records]}"
+
+
 async def test_structure_ids_are_excluded_from_name_resolution(db_session: AsyncSession, caplog):
     """The resolvable-ID cut is `id < 100_000_000_000` (10^11): player-structure
     IDs at or above 10^11 are unresolvable via /universe/names/ and are filtered
@@ -500,12 +935,11 @@ async def test_resolved_location_names_land_on_persisted_contract_rows(db_sessio
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
     """A contract whose item fetch failed is retried by the NEXT run, with no sweep.
 
-    `_fetch_item_rows` gates only on contract type, never on item_processing_status,
-    so every run re-fetches items for every item_exchange/auction contract in the
-    batch. A contract left at PENDING_ITEMS by a transient ESI failure therefore
-    recovers on the following run without any retry machinery. Adding a status gate
-    as an "optimization" would strand those contracts permanently — this test is what
-    catches that.
+    The item-fetch skip is narrow by design: only COMPLETED-at-the-current-version
+    contracts are withheld. A contract left at PENDING_ITEMS by a transient ESI
+    failure is still fetched every run and therefore recovers without any retry
+    machinery. Widening the gate to "any contract we already have a status for"
+    would strand those contracts permanently — this test is what catches that.
     """
     service = _make_service()
     service.esi_client.get_universe_type = AsyncMock(

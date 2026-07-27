@@ -7,7 +7,7 @@ from typing import Iterable, Iterator, List, Callable  # Added Callable
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis  # For on-demand client creation
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import Settings  # Settings type for hinting
@@ -54,6 +54,16 @@ UPDATE_ID_CHUNK_SIZE = 1000
 # minutes of added runtime that also push a run past the lock TTL.
 ENRICHMENT_CONCURRENCY = 8
 
+# Bump to re-queue every contract for re-enrichment after an enrichment-logic fix.
+# Runbook for a bump: the next run is a one-off full-corpus resweep (~80 min at a
+# ~46k corpus), which outlives the aggregation lock TTL — the "Aggregation lock
+# token mismatch on release" warning at its end is expected then, not a concurrency
+# incident. What actually serializes runs is APScheduler's max_instances=1, safe
+# while a run stays under 2x the scheduler interval — so don't deploy again or
+# scale out mid-resweep, and re-derive that margin before shortening
+# AGGREGATION_SCHEDULER_INTERVAL_SECONDS.
+ENRICHMENT_VERSION = 1
+
 
 def _chunk_ids(ids: Iterable[int]) -> Iterator[list[int]]:
     """Yield id-list slices capped at UPDATE_ID_CHUNK_SIZE (asyncpg bind limit)."""
@@ -94,8 +104,16 @@ def _collect_resolvable_ids(contracts: List[dict]) -> list[int]:
     return all_ids_to_resolve
 
 
-def _build_contract_rows(contracts: List[dict], id_to_name_map: dict) -> list[dict]:
-    """Transform ESI contract payloads into Contract upsert rows, enriched with names."""
+def _build_contract_rows(
+    contracts: List[dict], id_to_name_map: dict, seen_at: datetime | None = None
+) -> list[dict]:
+    """Transform ESI contract payloads into Contract upsert rows, enriched with names.
+
+    Every row carries the SAME seen_at for the whole run: a contract is judged present
+    by matching the newest stamp in its region, which only works if one run writes one
+    value. The upsert copies mapped columns on conflict, so re-sighting restamps.
+    """
+    seen_at = seen_at or datetime.now(timezone.utc)
     return [
         {
             "contract_id": c["contract_id"],
@@ -113,17 +131,20 @@ def _build_contract_rows(contracts: List[dict], id_to_name_map: dict) -> list[di
             "date_completed": _parse_esi_datetime(c.get("date_completed")),
             "price": c.get("price"),
             "collateral": c.get("collateral", 0.0),  # Default to 0.0 if null
+            "last_seen_at": seen_at,
             "reward": c.get("reward"),
             "volume": c.get("volume"),
             # Denormalized data for search performance
             "start_location_name": id_to_name_map.get(c.get("start_location_id")),
             "issuer_name": id_to_name_map.get(c.get('issuer_id')),
             "issuer_corporation_name": id_to_name_map.get(c.get('issuer_corporation_id')),
-            # is_ship_contract and item_processing_status are deliberately
-            # ABSENT: they are maintained by item enrichment, and the upsert
-            # copies every mapped column on conflict — including them here
+            # is_ship_contract, item_processing_status and enrichment_version are
+            # deliberately ABSENT: they are maintained by item enrichment, and the
+            # upsert copies every mapped column on conflict — including them here
             # decayed ship flags to False whenever items were ETag-304'd and
-            # skipped re-enrichment. Column defaults cover fresh inserts.
+            # skipped re-enrichment, and would likewise reset a stamped
+            # enrichment_version to 0 on every re-sighting, re-queueing the corpus
+            # forever. Column defaults cover fresh inserts.
         }
         for c in contracts
     ]
@@ -398,14 +419,27 @@ class ContractAggregationService:
 
         logger.info(f"Finished upserting all {total_contracts} contracts.")
 
-        all_items, processed_contract_ids = await self._fetch_item_rows(contracts)
+        already_enriched = await self._select_already_enriched(db_session, contracts)
+
+        all_items, processed_contract_ids = await self._fetch_item_rows(
+            contracts, already_enriched
+        )
+        # Counts the EFFECT, not the intent: a skip that silently stopped working still
+        # reports what it meant to skip, so the fetched count is what the log has to
+        # carry for the run to be verifiable from its output alone.
+        logger.info(
+            f"Fetched items for {len(processed_contract_ids)} contracts "
+            f"({len(already_enriched)} skipped as already enriched)."
+        )
 
         # Enrich items with static type data BEFORE upserting so a single
         # write carries names/categories, and collect which contracts hold an
         # included ship (fills the gap that left is_ship_contract permanently
         # False — "will be updated later" never happened; found during the
         # /impeccable design phase when the ships-only default matched nothing).
-        ship_contract_ids = await self._enrich_items_and_find_ships(all_items)
+        ship_contract_ids, unresolved_category_contract_ids = (
+            await self._enrich_items_and_find_ships(all_items)
+        )
 
         if all_items:
             logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
@@ -427,18 +461,54 @@ class ContractAggregationService:
         if ship_contract_ids:
             logger.info(f"Flagged {len(ship_contract_ids)} contracts as ship contracts.")
 
-        await self._update_item_processing_status(db_session, processed_contract_ids, all_items)
+        await self._update_item_processing_status(
+            db_session,
+            processed_contract_ids,
+            all_items,
+            ship_contract_ids,
+            unresolved_category_contract_ids,
+        )
 
-    async def _fetch_item_rows(self, contracts: List[dict]) -> tuple[list[dict], set[int]]:
+    async def _select_already_enriched(
+        self, db_session: AsyncSession, contracts: List[dict]
+    ) -> set[int]:
+        """Return the contract IDs already enriched at the current ENRICHMENT_VERSION.
+
+        Public contracts are immutable, so a contract already enriched at the current
+        version never needs re-fetching. This is what turns a corpus-sized run into a
+        churn-sized one. Reads back the status column that enrichment writes; a
+        contract at any other status (PENDING_ITEMS from a failed fetch,
+        ENRICHMENT_INCOMPLETE from degraded type resolution) is still re-fetched, so
+        transient failures keep recovering on the next run.
+        """
+        already_enriched: set[int] = set()
+        for chunk in _chunk_ids(c["contract_id"] for c in contracts):
+            rows = await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_(chunk),
+                    Contract.item_processing_status == "COMPLETED",
+                    Contract.enrichment_version == ENRICHMENT_VERSION,
+                )
+            )
+            already_enriched.update(rows.scalars())
+        return already_enriched
+
+    async def _fetch_item_rows(
+        self, contracts: List[dict], already_enriched: set[int]
+    ) -> tuple[list[dict], set[int]]:
         """Fetch contract items from ESI, returning the item rows and the contract IDs reached.
 
         A per-contract fetch failure is isolated: that contract is left out of the
-        processed set and the run continues.
+        processed set and the run continues. Contracts in already_enriched are not
+        fetched at all, and are likewise absent from the processed set — the status
+        bookkeeping keys off that set, so their existing COMPLETED status stands.
         """
         all_items: List[dict] = []
         processed_contract_ids: set[int] = set()
         for contract in contracts:
             if contract["type"] not in ["item_exchange", "auction"]:
+                continue
+            if contract["contract_id"] in already_enriched:
                 continue
 
             try:
@@ -475,22 +545,56 @@ class ContractAggregationService:
         db_session: AsyncSession,
         processed_contract_ids: set[int],
         all_items: list[dict],
+        ship_contract_ids: set[int],
+        unresolved_category_contract_ids: set[int],
     ) -> None:
         """Record per-contract item enrichment outcome on the Contract rows."""
         # item_processing_status must not imply enrichment SUCCESS: a contract
         # whose type/group resolution failed keeps NULL enrichment (the
         # graceful-degrade path), so a future consumer trusting 'COMPLETED' would
-        # skip re-enriching a transiently-failed row. Mark COMPLETED only when
-        # every fetched item resolved a type_name; the rest are ENRICHMENT_INCOMPLETE.
+        # skip re-enriching a transiently-failed row. Mark COMPLETED only when every
+        # fetched item resolved a type_name AND every included item resolved a
+        # category; the rest are ENRICHMENT_INCOMPLETE. An unresolved category is a
+        # half-done enrichment exactly like an unresolved type — it decides the ship
+        # flag — and stamping it COMPLETED would hand it to the skip, which withholds
+        # it from every later run: silently unenriched with no route back.
         incomplete_contract_ids = {
             item["contract_id"] for item in all_items if item.get("type_name") is None
-        }
-        completed_contract_ids = processed_contract_ids - incomplete_contract_ids
+        } | unresolved_category_contract_ids
+        # A contract that produced NO items cannot have succeeded: item_exchange and
+        # auction contracts always carry at least one item. Excluding it from the
+        # COMPLETED set means it is not recorded as successfully enriched, so it
+        # remains in the re-fetch set. COMPLETED must mean the items were actually
+        # fetched; a zero-item result must not claim success.
+        contracts_with_items = {item["contract_id"] for item in all_items}
+        empty_contract_ids = processed_contract_ids - contracts_with_items
+        completed_contract_ids = (
+            processed_contract_ids - incomplete_contract_ids - empty_contract_ids
+        )
         for chunk in _chunk_ids(completed_contract_ids):
             await db_session.execute(
                 update(Contract)
                 .where(Contract.contract_id.in_(chunk))
-                .values(item_processing_status="COMPLETED")
+                .values(
+                    item_processing_status="COMPLETED",
+                    enrichment_version=ENRICHMENT_VERSION,
+                )
+            )
+        # A completed contract's ship verdict is authoritative in BOTH directions, so
+        # it may clear the flag as well as set it: without this the flag is monotonic
+        # and a false positive from a past enrichment bug survives every re-enrichment,
+        # which is precisely what an ENRICHMENT_VERSION bump is meant to repair.
+        # "Could not tell" never reaches here to begin with: an unresolved category
+        # makes the contract incomplete above, and completed excludes incomplete. That
+        # is what keeps a degraded group lookup — which reads as "not a ship" while the
+        # type_name still resolves — from stripping correct flags off the ships-only
+        # default view during an ESI blip.
+        non_ship_completed = completed_contract_ids - ship_contract_ids
+        for chunk in _chunk_ids(non_ship_completed):
+            await db_session.execute(
+                update(Contract)
+                .where(Contract.contract_id.in_(chunk))
+                .values(is_ship_contract=False)
             )
         for chunk in _chunk_ids(incomplete_contract_ids):
             await db_session.execute(
@@ -501,22 +605,34 @@ class ContractAggregationService:
         if incomplete_contract_ids:
             logger.info(
                 f"{len(incomplete_contract_ids)} contracts left ENRICHMENT_INCOMPLETE "
-                "(item type/group resolution degraded)."
+                "(item type or category resolution degraded)."
+            )
+        if empty_contract_ids:
+            logger.warning(
+                f"{len(empty_contract_ids)} contracts returned zero items and were not "
+                "marked COMPLETED (an item_exchange/auction contract cannot be empty); "
+                "they stay in the item re-fetch set."
             )
 
     SHIP_CATEGORY_ID = 6  # EVE static category: Ship
 
-    async def _enrich_items_and_find_ships(self, item_values: List[dict]) -> set:
+    async def _enrich_items_and_find_ships(
+        self, item_values: List[dict]
+    ) -> tuple[set[int], set[int]]:
         """Resolve type -> group -> category for fetched items (ESI static data,
         ETag-cached in Valkey, so repeat runs are near-free), enrich the item
-        dicts in place (type_name, market_group_id, category), and return the
-        contract_ids whose INCLUDED items contain a ship (EVE category 6).
+        dicts in place (type_name, market_group_id, category), and return
+        (ship_contract_ids, unresolved_category_contract_ids): the contract_ids
+        whose INCLUDED items contain a ship (EVE category 6), and those with an
+        INCLUDED item whose category could not be determined at all.
 
         Resolution failures degrade gracefully: the item keeps NULL enrichment
         and the contract stays unflagged; the aggregation run never dies here.
+        The second set is what keeps "not a ship" distinguishable from "we could
+        not tell" — only the former may clear an existing flag.
         """
         if not item_values:
-            return set()
+            return set(), set()
 
         # Bounded-concurrency fan-out: resolve unique ids through a shared
         # semaphore instead of strictly sequential awaits. Each resolver keeps the
@@ -565,6 +681,7 @@ class ContractAggregationService:
         }
 
         ship_contract_ids: set[int] = set()
+        unresolved_category_contract_ids: set[int] = set()
         for item in item_values:
             info = type_info.get(item["type_id"]) or {}
             group = group_info.get(info.get("group_id")) or {}
@@ -573,6 +690,16 @@ class ContractAggregationService:
             item["type_name"] = info.get("name")
             item["market_group_id"] = info.get("market_group_id")
             item["category"] = "ship" if is_ship else None
+            # Only INCLUDED items decide the flag, so only they classify the contract.
             if is_ship and item["is_included"]:
                 ship_contract_ids.add(item["contract_id"])
-        return ship_contract_ids
+            # An empty group means the category is UNKNOWN, not "not a ship": the group
+            # fetch failed, the payload had a surprise shape, or the type carried no
+            # group_id. Deliberately narrowed to INCLUDED items: only they decide the
+            # ship flag, and the narrowing bounds the retry-forever population. The
+            # accepted cost is that an EXCLUDED item's category can stay NULL
+            # permanently on an otherwise-COMPLETED contract (cosmetic: the detail
+            # page renders no Ship badge for that item).
+            elif not group and item["is_included"]:
+                unresolved_category_contract_ids.add(item["contract_id"])
+        return ship_contract_ids, unresolved_category_contract_ids

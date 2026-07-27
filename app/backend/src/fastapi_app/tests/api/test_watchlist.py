@@ -1,6 +1,7 @@
 # ABOUTME: HTTP-level tests for the /me/watchlist-items surface (F006) — add pipeline, CRUD, auth.
 # ABOUTME: ESI is mocked at the app.state.http_client seam (base http://sso.test) via pytest-httpx.
 import json
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -98,21 +99,30 @@ async def test_add_esi_type_404_is_400_not_502(authed_user, httpx_mock, db_sessi
 
 @pytest.mark.asyncio
 async def test_add_esi_5xx_is_502(authed_user, httpx_mock, db_session):
-    # _get_esi_object retries 5xx 3x (~1.5s) then raises ESIRequestFailedError(status=503) -> 502.
+    # _get_esi_object retries 5xx 3x then raises ESIRequestFailedError(status=503) -> 502.
+    # asyncio.sleep is patched so the test doesn't burn the real ~1.5s of backoff.
     # Repeatable response; DO NOT assert request count == 1 (retries are load-bearing).
     user, client = authed_user
     httpx_mock.add_response(method="GET", url=_type_url(587), status_code=503, text="down", is_reusable=True)
-    resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
+    with patch("asyncio.sleep", new=AsyncMock()):
+        resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
     assert resp.status_code == 502
     assert (await db_session.execute(select(WatchlistItem))).first() is None
 
 
 @pytest.mark.asyncio
 async def test_add_esi_type_420_is_502_rate_limit(authed_user, httpx_mock, db_session):
-    # 420 is ESI error-limiting, not user error: normalize to a retryable upstream 502, not a 400.
+    # 420 is ESI error-limiting: the client retries it 3x (no Retry-After -> fixed backoff
+    # 0.5s/1.0s, both within the request-scoped 1.0s wait budget) before exhausting, then
+    # normalizes to a retryable upstream 502, not a 400. asyncio.sleep is patched so the
+    # test doesn't burn the real ~1.5s of backoff.
+    # Repeatable response; DO NOT assert request count == 1 (retries are load-bearing).
     user, client = authed_user
-    httpx_mock.add_response(method="GET", url=_type_url(587), status_code=420, json={"error": "err-limited"})
-    resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
+    httpx_mock.add_response(
+        method="GET", url=_type_url(587), status_code=420, json={"error": "err-limited"}, is_reusable=True
+    )
+    with patch("asyncio.sleep", new=AsyncMock()):
+        resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
     assert resp.status_code == 502
     assert resp.json()["detail"] == "ESI is rate-limiting requests; try again shortly"
     assert (await db_session.execute(select(WatchlistItem))).first() is None
@@ -120,10 +130,15 @@ async def test_add_esi_type_420_is_502_rate_limit(authed_user, httpx_mock, db_se
 
 @pytest.mark.asyncio
 async def test_add_esi_type_429_is_502_rate_limit(authed_user, httpx_mock, db_session):
-    # 429 is ESI rate-limiting, not user error: same retryable-upstream 502 mapping as 420.
+    # 429 is ESI rate-limiting: same retry-then-exhaust-then-502 mapping as 420.
+    # asyncio.sleep is patched so the test doesn't burn the real ~1.5s of backoff.
+    # Repeatable response; DO NOT assert request count == 1 (retries are load-bearing).
     user, client = authed_user
-    httpx_mock.add_response(method="GET", url=_type_url(587), status_code=429, json={"error": "slow down"})
-    resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
+    httpx_mock.add_response(
+        method="GET", url=_type_url(587), status_code=429, json={"error": "slow down"}, is_reusable=True
+    )
+    with patch("asyncio.sleep", new=AsyncMock()):
+        resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
     assert resp.status_code == 502
     assert resp.json()["detail"] == "ESI is rate-limiting requests; try again shortly"
     assert (await db_session.execute(select(WatchlistItem))).first() is None
