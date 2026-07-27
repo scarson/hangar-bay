@@ -57,13 +57,13 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** 🚧 In progress — claimed 2026-07-27T02:58Z on branch `claude/m5-plan-a-ingestion` (subagent-driven execution).
+**Overall:** 🚧 In progress — claimed 2026-07-27T02:58Z on branch `claude/m5-plan-a-ingestion` (subagent-driven execution). All six tasks implemented and review-clean; branch rebased onto post-#93 dev (SHAs in this table are post-rebase); final verification + PR in progress.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 1 — Make "enriched" mean it | ✅ Implemented on branch, review clean | d7db161, e70fa48, 39a8cf4 (T1) · 88670e4, da5b580, 8b29950 (T2) · d068fa2, ae68ca9, b0e47d4, b663872 (T3) | 2026-07-27; 3-round batch review clean; PR pending with Phases 2–3 |
-| 2 — Skip what we already have | ✅ Implemented on branch, review clean | a233859, e08b5ba (T4) · e7374b9, c8b22ec, 2e4b83b, f36299e (T5) · 88b749f, 62b59ff (review hardening) | 2026-07-27; 3-round batch review clean; PR pending |
-| 3 — Rate-limit honesty | ✅ Implemented on branch, review clean | 67c894f, d953ae0, 1e4f53f | 2026-07-27; 3-round review clean; PR pending |
+| 1 — Make "enriched" mean it | ✅ Implemented on branch, review clean | f8fd05f, eeb6ca7, ba0da8c (T1) · ab6a9e9, 7737401, f0d3a6d (T2) · c205ec8, deb91ba, 37549df, 1d450ab (T3) | 2026-07-27; 3-round batch review clean; PR pending with Phases 2–3 |
+| 2 — Skip what we already have | ✅ Implemented on branch, review clean | 79f4bb8, f7f86c5 (T4) · 5b8b3d6, 6db1159, 87d9725, 8688822 (T5) · 5a761ae, 796341a (review hardening) | 2026-07-27; 3-round batch review clean; PR pending |
+| 3 — Rate-limit honesty | ✅ Implemented on branch, review clean | 2845933, 73603f5, 453c9c8 | 2026-07-27; 3-round review clean; PR pending |
 
 ### Deviations
 
