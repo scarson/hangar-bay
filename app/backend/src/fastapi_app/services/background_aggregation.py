@@ -437,7 +437,9 @@ class ContractAggregationService:
         # included ship (fills the gap that left is_ship_contract permanently
         # False — "will be updated later" never happened; found during the
         # /impeccable design phase when the ships-only default matched nothing).
-        ship_contract_ids = await self._enrich_items_and_find_ships(all_items)
+        ship_contract_ids, unresolved_category_contract_ids = (
+            await self._enrich_items_and_find_ships(all_items)
+        )
 
         if all_items:
             logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
@@ -459,7 +461,13 @@ class ContractAggregationService:
         if ship_contract_ids:
             logger.info(f"Flagged {len(ship_contract_ids)} contracts as ship contracts.")
 
-        await self._update_item_processing_status(db_session, processed_contract_ids, all_items)
+        await self._update_item_processing_status(
+            db_session,
+            processed_contract_ids,
+            all_items,
+            ship_contract_ids,
+            unresolved_category_contract_ids,
+        )
 
     async def _select_already_enriched(
         self, db_session: AsyncSession, contracts: List[dict]
@@ -537,6 +545,8 @@ class ContractAggregationService:
         db_session: AsyncSession,
         processed_contract_ids: set[int],
         all_items: list[dict],
+        ship_contract_ids: set[int],
+        unresolved_category_contract_ids: set[int],
     ) -> None:
         """Record per-contract item enrichment outcome on the Contract rows."""
         # item_processing_status must not imply enrichment SUCCESS: a contract
@@ -566,6 +576,23 @@ class ContractAggregationService:
                     enrichment_version=ENRICHMENT_VERSION,
                 )
             )
+        # A completed contract's ship verdict is authoritative in BOTH directions, so
+        # it may clear the flag as well as set it: without this the flag is monotonic
+        # and a false positive from a past enrichment bug survives every re-enrichment,
+        # which is precisely what an ENRICHMENT_VERSION bump is meant to repair.
+        # Contracts whose category resolution degraded are held back — a failed group
+        # lookup reads as "not a ship" while the type_name still resolves, so clearing
+        # on that would strip correct flags off the ships-only default view during an
+        # ESI blip. "Not a ship" clears; "could not tell" leaves the flag alone.
+        non_ship_completed = (
+            completed_contract_ids - ship_contract_ids - unresolved_category_contract_ids
+        )
+        for chunk in _chunk_ids(non_ship_completed):
+            await db_session.execute(
+                update(Contract)
+                .where(Contract.contract_id.in_(chunk))
+                .values(is_ship_contract=False)
+            )
         for chunk in _chunk_ids(incomplete_contract_ids):
             await db_session.execute(
                 update(Contract)
@@ -586,17 +613,23 @@ class ContractAggregationService:
 
     SHIP_CATEGORY_ID = 6  # EVE static category: Ship
 
-    async def _enrich_items_and_find_ships(self, item_values: List[dict]) -> set:
+    async def _enrich_items_and_find_ships(
+        self, item_values: List[dict]
+    ) -> tuple[set[int], set[int]]:
         """Resolve type -> group -> category for fetched items (ESI static data,
         ETag-cached in Valkey, so repeat runs are near-free), enrich the item
-        dicts in place (type_name, market_group_id, category), and return the
-        contract_ids whose INCLUDED items contain a ship (EVE category 6).
+        dicts in place (type_name, market_group_id, category), and return
+        (ship_contract_ids, unresolved_category_contract_ids): the contract_ids
+        whose INCLUDED items contain a ship (EVE category 6), and those with an
+        INCLUDED item whose category could not be determined at all.
 
         Resolution failures degrade gracefully: the item keeps NULL enrichment
         and the contract stays unflagged; the aggregation run never dies here.
+        The second set is what keeps "not a ship" distinguishable from "we could
+        not tell" — only the former may clear an existing flag.
         """
         if not item_values:
-            return set()
+            return set(), set()
 
         # Bounded-concurrency fan-out: resolve unique ids through a shared
         # semaphore instead of strictly sequential awaits. Each resolver keeps the
@@ -645,6 +678,7 @@ class ContractAggregationService:
         }
 
         ship_contract_ids: set[int] = set()
+        unresolved_category_contract_ids: set[int] = set()
         for item in item_values:
             info = type_info.get(item["type_id"]) or {}
             group = group_info.get(info.get("group_id")) or {}
@@ -653,6 +687,12 @@ class ContractAggregationService:
             item["type_name"] = info.get("name")
             item["market_group_id"] = info.get("market_group_id")
             item["category"] = "ship" if is_ship else None
+            # Only INCLUDED items decide the flag, so only they classify the contract.
             if is_ship and item["is_included"]:
                 ship_contract_ids.add(item["contract_id"])
-        return ship_contract_ids
+            # An empty group means the category is UNKNOWN, not "not a ship": the group
+            # fetch failed, the payload had a surprise shape, or the type carried no
+            # group_id.
+            elif not group and item["is_included"]:
+                unresolved_category_contract_ids.add(item["contract_id"])
+        return ship_contract_ids, unresolved_category_contract_ids

@@ -702,6 +702,80 @@ async def test_bumping_the_enrichment_version_requeues_a_contract(
     assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
 
 
+async def test_a_version_bump_clears_a_stale_ship_flag(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """is_ship_contract must not be monotonic. Enrichment that only ever SET the flag
+    left a false positive from a past enrichment bug surviving every re-enrichment,
+    which breaks what the version bump is for: it is the deliberate repair lever for
+    enrichment-logic fixes, and flags are exactly what such a fix must repair."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 84, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930207)])
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930207))
+    ).scalar_one()
+    assert row.is_ship_contract is True, "precondition: the stale flag must be set first"
+
+    # The repaired enrichment: same item, now correctly resolved as a non-ship. The
+    # group RESOLVES — this is a corrected answer, not a degraded one.
+    monkeypatch.setattr(bg_agg, "ENRICHMENT_VERSION", bg_agg.ENRICHMENT_VERSION + 1)
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Mineral", "category_id": 4}
+    )
+    await service._process_contracts(db_session, [_ship_contract_dict(930207)])
+
+    await db_session.refresh(row)
+    assert row.is_ship_contract is False
+    assert row.item_processing_status == "COMPLETED"
+    assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
+
+
+async def test_degraded_category_resolution_does_not_clear_a_ship_flag(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """Clearing may only act on an authoritative determination.
+
+    A failed /universe/groups/ lookup yields is_ship=False while the item's type_name
+    resolves fine — so the contract still counts as COMPLETED, and a clear keyed on
+    "completed and not in the ship set" would strip correct flags on a transient ESI
+    blip. That is worse than the stale flag it repairs: the ships-only default view is
+    the app's landing page. Only contracts whose included items all resolved a category
+    may have the flag cleared."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 85, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930208)])
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930208))
+    ).scalar_one()
+    assert row.is_ship_contract is True
+
+    monkeypatch.setattr(bg_agg, "ENRICHMENT_VERSION", bg_agg.ENRICHMENT_VERSION + 1)
+    service.esi_client.get_universe_group = AsyncMock(side_effect=RuntimeError("ESI down"))
+    await service._process_contracts(db_session, [_ship_contract_dict(930208)])
+
+    await db_session.refresh(row)
+    assert row.is_ship_contract is True, "a degraded category read must not clear a flag"
+
+
 async def test_skip_select_reads_across_the_chunk_boundary(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, caplog
 ):
