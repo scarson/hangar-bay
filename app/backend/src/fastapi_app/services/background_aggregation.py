@@ -55,6 +55,13 @@ UPDATE_ID_CHUNK_SIZE = 1000
 ENRICHMENT_CONCURRENCY = 8
 
 # Bump to re-queue every contract for re-enrichment after an enrichment-logic fix.
+# Runbook for a bump: the next run is a one-off full-corpus resweep (~80 min at a
+# ~46k corpus), which outlives the aggregation lock TTL — the "Aggregation lock
+# token mismatch on release" warning at its end is expected then, not a concurrency
+# incident. What actually serializes runs is APScheduler's max_instances=1, safe
+# while a run stays under 2x the scheduler interval — so don't deploy again or
+# scale out mid-resweep, and re-derive that margin before shortening
+# AGGREGATION_SCHEDULER_INTERVAL_SECONDS.
 ENRICHMENT_VERSION = 1
 
 
