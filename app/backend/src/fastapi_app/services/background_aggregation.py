@@ -695,7 +695,11 @@ class ContractAggregationService:
                 ship_contract_ids.add(item["contract_id"])
             # An empty group means the category is UNKNOWN, not "not a ship": the group
             # fetch failed, the payload had a surprise shape, or the type carried no
-            # group_id.
+            # group_id. Deliberately narrowed to INCLUDED items: only they decide the
+            # ship flag, and the narrowing bounds the retry-forever population. The
+            # accepted cost is that an EXCLUDED item's category can stay NULL
+            # permanently on an otherwise-COMPLETED contract (cosmetic: the detail
+            # page renders no Ship badge for that item).
             elif not group and item["is_included"]:
                 unresolved_category_contract_ids.add(item["contract_id"])
         return ship_contract_ids, unresolved_category_contract_ids
