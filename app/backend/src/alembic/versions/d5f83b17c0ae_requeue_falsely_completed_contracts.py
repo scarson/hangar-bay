@@ -28,8 +28,9 @@ REQUEUE = sa.text("""
        SET item_processing_status = 'PENDING_ITEMS'
      WHERE c.item_processing_status = 'COMPLETED'
        AND (
-             -- NOT EXISTS is logically implied by the % 1000 arm but short-circuits the
-             -- count() for zero-item rows and keeps the two repair intents legible.
+             -- NOT EXISTS is subsumed by the % 1000 arm (zero is a multiple of 1000)
+             -- but short-circuits the count() for zero-item rows and keeps the two
+             -- repair intents legible.
              NOT EXISTS (SELECT 1 FROM contract_items i WHERE i.contract_id = c.contract_id)
           OR (SELECT count(*) FROM contract_items i WHERE i.contract_id = c.contract_id) % 1000 = 0
            )
@@ -56,9 +57,9 @@ def upgrade() -> None:
     # the preceding two migrations guard against.
     op.execute("SET lock_timeout = '30s'")
     bind = op.get_bind()
-    # Logged deliberately: the 3.1% rate is measured (15 of a 384-contract production
-    # sample, 2026-07-27) but the mechanism behind it is still inferred, and this is
-    # the one cheap opportunity to see the real split.
+    # Logged deliberately: the defect rate is measured (15 of a 384-contract
+    # production sample, ~3.9%, 2026-07-27) but the mechanism behind it is still
+    # inferred, and this is the one cheap opportunity to see the real split.
     empty = bind.execute(COUNT_EMPTY).scalar()
     truncated = bind.execute(COUNT_TRUNCATED).scalar()
     print(f"[requeue] zero-item COMPLETED contracts: {empty}")
@@ -69,7 +70,7 @@ def upgrade() -> None:
     )).scalar()
     # Guard against running with an unpopulated contract_items table (e.g. an
     # out-of-order restore): that would match every COMPLETED row and silently
-    # re-queue the whole corpus. The measured defect rate is ~3.1%; 25% is far
+    # re-queue the whole corpus. The measured defect rate is ~3.9%; 25% is far
     # above any plausible repair and far below "the join table is missing".
     # The >= 100 floor keeps small dev/CI corpora from tripping the ratio on
     # arithmetic noise — the restore scenario this guards against only exists at
