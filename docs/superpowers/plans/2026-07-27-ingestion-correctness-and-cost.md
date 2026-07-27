@@ -821,10 +821,10 @@ If round 3 still finds issues, keep going until clean.
 
 ## Verification before the plan is considered done
 
-- [ ] Full backend suite green with pristine output: `.venv/bin/pytest -q`
-- [ ] `flake8` clean on every touched file
-- [ ] Both migrations verified up → down → up on a scratch database
-- [ ] Every new test mutation-verified, with the failure output recorded in the PR
+- [x] Full backend suite green with pristine output: `.venv/bin/pytest -q`
+- [x] `flake8` clean on every touched file
+- [x] Both migrations verified up → down → up on a scratch database
+- [x] Every new test mutation-verified, with the failure output recorded in the PR
 - [ ] After deploy: a run completes in **under ~5 minutes**, and — the real proof of
       mechanism — **item fetches per run are in the hundreds (churn-sized), not ~46,000**.
       Not "seconds": steady state still performs the 34-page discovery sweep, name
