@@ -63,7 +63,7 @@ notes and commit messages.
 |---|---|---|---|
 | 1 — Make "enriched" mean it | ✅ Implemented on branch, review clean | d7db161, e70fa48, 39a8cf4 (T1) · 88670e4, da5b580, 8b29950 (T2) · d068fa2, ae68ca9, b0e47d4, b663872 (T3) | 2026-07-27; 3-round batch review clean; PR pending with Phases 2–3 |
 | 2 — Skip what we already have | ✅ Implemented on branch, review clean | a233859, e08b5ba (T4) · e7374b9, c8b22ec, 2e4b83b, f36299e (T5) · 88b749f, 62b59ff (review hardening) | 2026-07-27; 3-round batch review clean; PR pending |
-| 3 — Rate-limit honesty | 🚧 In progress | — | Task 6; independent |
+| 3 — Rate-limit honesty | ✅ Implemented on branch, review clean | 67c894f, d953ae0, 1e4f53f | 2026-07-27; 3-round review clean; PR pending |
 
 ### Deviations
 
@@ -707,7 +707,7 @@ If round 3 still finds issues, keep going until clean.
 
 ## Phase 3 — Rate-limit honesty
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-27, branch `claude/m5-plan-a-ingestion`
+**Execution Status:** ✅ IMPLEMENTED on `claude/m5-plan-a-ingestion` 2026-07-27; spec review plus three quality rounds (deep review / empirical re-review / fresh-eyes), all findings fixed incl. the clamp+budget deviation; final round clean. Ships in the single Plan A PR (pending).
 
 ### Task 6: Treat 420 and 429 as retryable rate-limit signals
 
@@ -717,7 +717,7 @@ If round 3 still finds issues, keep going until clean.
 - Modify: `app/backend/src/fastapi_app/core/esi_client_class.py` (`_get_with_transient_retry`)
 - Test: `app/backend/src/fastapi_app/tests/core/test_esi_client.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 async def test_rate_limit_status_is_retried_and_honours_retry_after(monkeypatch):
@@ -748,9 +748,9 @@ async def test_rate_limit_status_is_retried_and_honours_retry_after(monkeypatch)
     assert 7 in slept, "Retry-After must drive the wait, not the fixed backoff schedule"
 ```
 
-- [ ] **Step 2: Run and watch it fail** — the 429 returns immediately and the caller sees a non-JSON/empty result rather than a retry.
+- [x] **Step 2: Run and watch it fail** — the 429 returns immediately and the caller sees a non-JSON/empty result rather than a retry.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `_get_with_transient_retry`, replace the break condition:
 
@@ -787,7 +787,7 @@ RATE_LIMIT_STATUSES = frozenset({420, 429})
 
 **Do NOT** build the shared governor here — that is a later phase. This task only stops rate-limit responses being misread as per-request failures.
 
-- [ ] **Step 4: Verify green + mutation-verify**
+- [x] **Step 4: Verify green + mutation-verify**
 
 Mutation: remove `420`/`429` from `RATE_LIMIT_STATUSES` — the new test reddens.
 
@@ -799,7 +799,7 @@ never depends on real time. If synchronization cannot make it reliable, STOP and
 raise it rather than shipping a weaker test.
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/backend/src/fastapi_app/core/esi_client_class.py app/backend/src/fastapi_app/tests/core/test_esi_client.py
