@@ -217,7 +217,7 @@ passes True, truncating any contract past 1,000 items to page 1. Latent today
 - Modify: `app/backend/src/fastapi_app/services/background_aggregation.py` (`_update_item_processing_status`)
 - Test: `app/backend/src/fastapi_app/tests/services/test_background_aggregation.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 async def test_contract_returning_no_items_is_not_marked_completed(db_session: AsyncSession):
@@ -236,14 +236,14 @@ async def test_contract_returning_no_items_is_not_marked_completed(db_session: A
     assert row.item_processing_status != "COMPLETED"
 ```
 
-- [ ] **Step 2: Run the test and watch it fail**
+- [x] **Step 2: Run the test and watch it fail**
 
 ```bash
 cd app/backend && .venv/bin/pytest src/fastapi_app/tests/services/test_background_aggregation.py::test_contract_returning_no_items_is_not_marked_completed -v
 ```
 Expected: FAIL — status is `COMPLETED`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `_update_item_processing_status`, replace the two set computations:
 
@@ -274,14 +274,14 @@ Then, after the existing `ENRICHMENT_INCOMPLETE` logging block, add:
 
 **Do NOT** add a new status value — reusing `PENDING_ITEMS` keeps the queue definition in Task 5 to one predicate.
 
-- [ ] **Step 4: Verify green, run the full suite, mutation-verify**
+- [x] **Step 4: Verify green, run the full suite, mutation-verify**
 
 ```bash
 cd app/backend && .venv/bin/pytest -q
 ```
 Mutation: restore `completed = processed - incomplete`, confirm the new test reddens, restore from a `cp` snapshot.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/backend/src/fastapi_app/services/background_aggregation.py app/backend/src/fastapi_app/tests/services/test_background_aggregation.py
