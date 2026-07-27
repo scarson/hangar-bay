@@ -57,11 +57,11 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** 🚧 In progress — claimed 2026-07-27T02:58Z on branch `claude/m5-plan-a-ingestion` (subagent-driven execution).
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 1 — Make "enriched" mean it | ⬜ Not started | — | Tasks 1–3; MUST ship as one release |
+| 1 — Make "enriched" mean it | 🚧 In progress | — | Tasks 1–3; MUST ship as one release |
 | 2 — Skip what we already have | ⬜ Not started | — | Tasks 4–5 |
 | 3 — Rate-limit honesty | ⬜ Not started | — | Task 6; independent |
 
@@ -109,7 +109,7 @@ Do NOT use `env VAR=x` with a shell variable holding the pairs — zsh does not 
 
 ## Phase 1 — Make "enriched" mean it
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-27T02:58Z, branch `claude/m5-plan-a-ingestion`
 
 Tasks 1–3 **MUST reach production in a single release.**
 
