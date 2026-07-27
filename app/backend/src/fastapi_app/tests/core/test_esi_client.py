@@ -22,7 +22,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from fastapi_app.core.esi_client_class import ESIClient
+from fastapi_app.core.esi_client_class import (
+    RATE_LIMIT_SLEEP_CEILING,
+    ESIClient,
+    _rate_limit_wait,
+)
 from fastapi_app.core.exceptions import ESIRequestFailedError
 
 pytestmark = pytest.mark.asyncio
@@ -108,7 +112,9 @@ def _etag_response(
 
 
 def _etag_client(
-    get_mock: AsyncMock, cache: dict | None = None, rate_limit_wait_budget: float | None = None
+    get_mock: AsyncMock,
+    cache: dict | None = None,
+    rate_limit_wait_budget: float = RATE_LIMIT_SLEEP_CEILING,
 ) -> ESIClient:
     """Wire an ESIClient for the ETag path against a bytes-valued cache double.
 
@@ -116,7 +122,7 @@ def _etag_client(
     `decode_responses=False`, and the cached-etag read calls `.decode()` — so seeded
     values are bytes and an unseeded key reads back as None.
 
-    `rate_limit_wait_budget` is left at the client's own default (the full
+    `rate_limit_wait_budget` defaults to the client's own default (the full
     RATE_LIMIT_SLEEP_CEILING) unless a test needs the request-scoped fail-fast budget.
     """
     store = dict(cache or {})
@@ -125,11 +131,11 @@ def _etag_client(
     redis_client = MagicMock()
     redis_client.get = AsyncMock(side_effect=lambda key: store.get(key))
     redis_client.set = AsyncMock()
-    kwargs = {}
-    if rate_limit_wait_budget is not None:
-        kwargs["rate_limit_wait_budget"] = rate_limit_wait_budget
     return ESIClient(
-        settings=MagicMock(), http_client=http_client, redis_client=redis_client, **kwargs
+        settings=MagicMock(),
+        http_client=http_client,
+        redis_client=redis_client,
+        rate_limit_wait_budget=rate_limit_wait_budget,
     )
 
 
@@ -537,25 +543,29 @@ async def test_exhausted_rate_limit_retries_raise_after_backoff():
 
 
 async def test_rate_limit_wait_is_clamped_to_ceiling():
-    """A garbage-large Retry-After must not translate into an unbounded sleep — clamp to
-    RATE_LIMIT_SLEEP_CEILING (60s), the width of ESI's error-limit window. float("inf")
-    or a header like "1e9" both parse as sane floats and must not escape the clamp.
+    """A garbage-large numeric Retry-After ("1e9") clamps to RATE_LIMIT_SLEEP_CEILING
+    (60s), the width of ESI's error-limit window. A non-finite one ("inf") takes a
+    different branch — it fails the isfinite guard in _rate_limit_wait and falls back
+    to the ordinary backoff schedule instead of reaching the clamp. Both hostile inputs
+    must still land on a bounded, positive wait.
     """
-    limited = _etag_response(status_code=429, headers={"Retry-After": "1e9"})
-    ok = _etag_response(
-        json_data=[{"record_id": 1, "type_id": 587}],
-        content=b'[{"record_id": 1, "type_id": 587}]',
-        headers={"ETag": "etag-ok", "X-Pages": "1"},
-    )
-    get_mock = AsyncMock(side_effect=[limited, ok])
-    client = _etag_client(get_mock)
+    async def _sleeps_for(retry_after: str) -> list[float]:
+        limited = _etag_response(status_code=429, headers={"Retry-After": retry_after})
+        ok = _etag_response(
+            json_data=[{"record_id": 1, "type_id": 587}],
+            content=b'[{"record_id": 1, "type_id": 587}]',
+            headers={"ETag": "etag-ok", "X-Pages": "1"},
+        )
+        get_mock = AsyncMock(side_effect=[limited, ok])
+        client = _etag_client(get_mock)
+        sleep_mock = AsyncMock()
+        with patch("asyncio.sleep", new=sleep_mock):
+            items = await client.get_contract_items(777)
+        assert [i["record_id"] for i in items] == [1]
+        return [call.args[0] for call in sleep_mock.await_args_list]
 
-    sleep_mock = AsyncMock()
-    with patch("asyncio.sleep", new=sleep_mock):
-        items = await client.get_contract_items(777)
-
-    assert [i["record_id"] for i in items] == [1]
-    assert [call.args[0] for call in sleep_mock.await_args_list] == [60.0]
+    assert await _sleeps_for("1e9") == [60.0]
+    assert await _sleeps_for("inf") == [0.5]
 
 
 async def test_rate_limit_wait_over_budget_fails_fast():
@@ -576,6 +586,26 @@ async def test_rate_limit_wait_over_budget_fails_fast():
     assert excinfo.value.status_code == 429
     assert get_mock.await_count == 1
     assert [call.args[0] for call in sleep_mock.await_args_list] == []
+
+
+@pytest.mark.parametrize(
+    "retry_after, expected_wait",
+    [
+        ("7", 7.0),                                # Retry-After drives the wait
+        ("120", 60.0),                              # clamped to RATE_LIMIT_SLEEP_CEILING
+        ("1e9", 60.0),                               # clamped to RATE_LIMIT_SLEEP_CEILING
+        ("inf", 0.5),                                # non-finite -> isfinite guard -> fallback
+        ("-inf", 0.5),                               # non-finite -> isfinite guard -> fallback
+        ("nan", 0.5),                                # non-finite -> isfinite guard -> fallback
+        ("-5", 0.5),                                 # parses, but non-positive -> fallback
+        ("0", 0.5),                                  # parses, but non-positive -> fallback
+        ("Wed, 21 Oct 2015 07:28:00 GMT", 0.5),      # not float-parseable -> fallback
+        (None, 0.5),                                 # header absent -> fallback
+        ("", 0.5),                                   # header present but empty -> fallback
+    ],
+)
+async def test_rate_limit_wait_matrix(retry_after, expected_wait):
+    assert _rate_limit_wait(retry_after, attempt=0, backoff_factor=0.5) == expected_wait
 
 
 async def test_200_with_empty_body_treated_as_empty_page():

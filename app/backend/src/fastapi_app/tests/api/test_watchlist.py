@@ -99,11 +99,13 @@ async def test_add_esi_type_404_is_400_not_502(authed_user, httpx_mock, db_sessi
 
 @pytest.mark.asyncio
 async def test_add_esi_5xx_is_502(authed_user, httpx_mock, db_session):
-    # _get_esi_object retries 5xx 3x (~1.5s) then raises ESIRequestFailedError(status=503) -> 502.
+    # _get_esi_object retries 5xx 3x then raises ESIRequestFailedError(status=503) -> 502.
+    # asyncio.sleep is patched so the test doesn't burn the real ~1.5s of backoff.
     # Repeatable response; DO NOT assert request count == 1 (retries are load-bearing).
     user, client = authed_user
     httpx_mock.add_response(method="GET", url=_type_url(587), status_code=503, text="down", is_reusable=True)
-    resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
+    with patch("asyncio.sleep", new=AsyncMock()):
+        resp = await client.post("/me/watchlist-items/", json={"type_id": 587})
     assert resp.status_code == 502
     assert (await db_session.execute(select(WatchlistItem))).first() is None
 

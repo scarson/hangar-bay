@@ -67,9 +67,12 @@ class ESIClient:
         self._managed_http_client: Optional[httpx.AsyncClient] = None
         self._managed_redis_client: Optional[aioredis.Redis] = None
         # A computed rate-limit wait beyond this budget is not slept at all — the
-        # caller fails fast instead. Background ingestion (its own managed clients,
-        # no override) keeps the full 60s patience; the request-scoped dependency
-        # overrides this down to fail user requests fast (core/dependencies.py).
+        # caller fails fast instead. This bounds each individual wait, not the request
+        # total: a 420's fallback schedule (0.5s + 1.0s) stays under a 1.0s budget on
+        # every attempt, so a user request can still spend ~1.5s per ESI call retrying.
+        # Background ingestion (its own managed clients, no override) keeps the full 60s
+        # patience; the request-scoped dependency overrides this down to fail user
+        # requests fast (core/dependencies.py).
         self.rate_limit_wait_budget = rate_limit_wait_budget
 
     @property
