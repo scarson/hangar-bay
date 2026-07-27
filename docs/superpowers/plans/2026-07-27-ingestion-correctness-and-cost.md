@@ -134,7 +134,7 @@ is ever split, no publication PR may run between the first and last Phase-1 merg
 - Modify: `app/backend/src/fastapi_app/core/esi_client_class.py` (`get_contract_items`)
 - Test: `app/backend/src/fastapi_app/tests/core/test_esi_client.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `app/backend/src/fastapi_app/tests/core/test_esi_client.py`. **Use that module's
 existing doubles — `_etag_response` (line 88) and `_etag_client` (line 110). It has no
@@ -167,14 +167,14 @@ async def test_get_contract_items_fetches_every_page():
     assert get_mock.await_count == 2
 ```
 
-- [ ] **Step 2: Run the test and watch it fail**
+- [x] **Step 2: Run the test and watch it fail**
 
 ```bash
 cd app/backend && .venv/bin/pytest src/fastapi_app/tests/core/test_esi_client.py::test_get_contract_items_fetches_every_page -v
 ```
 Expected: FAIL — only `record_id` 1 is returned, because the walk stops after page 1.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `esi_client_class.py`, change `get_contract_items`:
 
@@ -190,14 +190,14 @@ In `esi_client_class.py`, change `get_contract_items`:
         return await self.get_esi_data_with_etag_caching(path, all_pages=True)
 ```
 
-- [ ] **Step 4: Verify green, then mutation-verify**
+- [x] **Step 4: Verify green, then mutation-verify**
 
 ```bash
 cd app/backend && .venv/bin/pytest src/fastapi_app/tests/core/test_esi_client.py -v
 ```
 Then revert `all_pages=True` to the default, confirm the new test goes red, and restore from a `cp` snapshot (TEST-12).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/backend/src/fastapi_app/core/esi_client_class.py app/backend/src/fastapi_app/tests/core/test_esi_client.py
