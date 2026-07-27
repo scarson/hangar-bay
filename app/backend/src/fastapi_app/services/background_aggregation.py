@@ -54,6 +54,9 @@ UPDATE_ID_CHUNK_SIZE = 1000
 # minutes of added runtime that also push a run past the lock TTL.
 ENRICHMENT_CONCURRENCY = 8
 
+# Bump to re-queue every contract for re-enrichment after an enrichment-logic fix.
+ENRICHMENT_VERSION = 1
+
 
 def _chunk_ids(ids: Iterable[int]) -> Iterator[list[int]]:
     """Yield id-list slices capped at UPDATE_ID_CHUNK_SIZE (asyncpg bind limit)."""
@@ -508,7 +511,10 @@ class ContractAggregationService:
             await db_session.execute(
                 update(Contract)
                 .where(Contract.contract_id.in_(chunk))
-                .values(item_processing_status="COMPLETED")
+                .values(
+                    item_processing_status="COMPLETED",
+                    enrichment_version=ENRICHMENT_VERSION,
+                )
             )
         for chunk in _chunk_ids(incomplete_contract_ids):
             await db_session.execute(

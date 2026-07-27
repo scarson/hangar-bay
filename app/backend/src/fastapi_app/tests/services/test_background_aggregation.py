@@ -549,6 +549,28 @@ async def test_multipage_item_fetch_persists_every_row_and_completes(db_session:
     assert record_ids == {990001, 990002}
 
 
+async def test_successful_enrichment_stamps_the_current_version(db_session: AsyncSession):
+    """The version stamp is what lets a future enrichment bug re-queue the corpus
+    deliberately, replacing the refetch loop's accidental self-healing."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[{"record_id": 71, "type_id": 587, "quantity": 1, "is_included": True}]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930101)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930101))
+    ).scalar_one()
+    assert row.enrichment_version == bg_agg.ENRICHMENT_VERSION
+
+
 async def test_structure_ids_are_excluded_from_name_resolution(db_session: AsyncSession, caplog):
     """The resolvable-ID cut is `id < 100_000_000_000` (10^11): player-structure
     IDs at or above 10^11 are unresolvable via /universe/names/ and are filtered
