@@ -65,6 +65,10 @@ notes and commit messages.
 | 2 — Skip what we already have | ⬜ Not started | — | Tasks 4–5 |
 | 3 — Rate-limit honesty | ⬜ Not started | — | Task 6; independent |
 
+### Discoveries
+
+- **(Task 1 review, 2026-07-27)** A silent-truncation path survives the `all_pages=True` fix: if a mid-walk item page returns 304 while its cached body was evicted from Valkey, `_read_etag_cached_page` returns `[]` and `_last_page_reached`'s empty-page check fires *before* the `X-Pages` check (`esi_client_class.py` ~lines 132–186), so the walk stops early and returns a short non-empty list with no exception — Task 2's zero-item guard cannot see it, and fetch-once would make it permanent. Requires memory-pressure eviction between the ETag key surviving and the data key dying (low probability, real mechanism). **Dissolved entirely by the parked Plan B decision to remove the ETag cache on item pages** (see Out of scope) — that decision now carries correctness weight, not just cost weight.
+
 ---
 
 ## How to execute this plan
