@@ -63,9 +63,21 @@ Enforcement, with pinning tests:
 - Test: a fixture serving a mid-sweep `Last-Modified` change must not advance the watermark.
 - Opposite edge: a poll returning the *previous* generation triggers a short bounded re-poll rather than accepting it — otherwise the scheduler silently concedes the race it exists to win, one cycle at a time.
 
+**Two settings change meaning here, and neither may be left implicit.**
+`AGGREGATION_SCHEDULER_INTERVAL_SECONDS` stops being the cadence and becomes only the fallback
+used when a header is missing or unparseable. And `/ready`'s staleness threshold is currently
+derived from it as `2 ×` the interval — with cadence now set by CCP, that derivation is
+meaningless and must be replaced by an explicit "how old is too old for a user" setting. This
+is the same coupling flagged earlier: a threshold that is an artifact of scheduler config
+silently retunes what the site tells people about its own trustworthiness.
+
 ### Stage 2 — Enrichment
 
-The queue is a **query, not a data structure**: contracts whose items have never been successfully fetched. `item_processing_status` already models this and is written but never read back.
+The queue is a **query, not a data structure**: contracts whose items have never been
+successfully fetched **at the current `enrichment_version`**. `item_processing_status` already
+models most of this and is written but never read back. Defining the queue against the version
+rather than against a boolean is what lets a version bump re-queue the corpus without a
+separate backfill mechanism — the two features are one query.
 
 - **Fetch once, ever.** Steady state drops from the corpus (~46,000) to churn — measured **~230 new contracts/hour** against a 45,441 corpus (300-contract sample spanning 78.4 minutes of `date_issued`; single sample, and **churn is diurnal**, so treat it as an order of magnitude rather than a rate — the budget below absorbs the variance).
 - **Do not ETag-cache item pages.** A validator on immutable read-once data buys nothing and costs pressure in a 25 MB instance that cannot hold it. This deletes the silent-empty-page failure rather than fixing it.
@@ -151,12 +163,15 @@ No lock inherits another's TTL. `run_aggregation` splits along the seam it alrea
 |---|---|---|---|
 | EVE issue → ESI generation | 0–30 min | 0–30 min | **CCP's** |
 | ESI → our discovery | up to 125 min | seconds (poll at `Expires + ε`) | ours |
-| Discovery → ship flag set | up to 77 min | ~12 s, sequential | ours |
+| Discovery → ship flag set | up to 77 min | ~12 s sequential (≈115 contracts × ~100 ms, from the single churn sample) | ours |
 | Ship flag → matched | up to 15 min | seconds (chained) | ours |
 | Matched → delivered to Discord | **never** | seconds (first attempt inline) | ours + Discord's |
 | Delivered → user acts | unbounded | unbounded | **the user's** |
 
-Ours falls from ~140 minutes to under one. The first and last rows are not ours and do not move.
+Ours falls from ~140 minutes to under one — **under stated conditions**: a consistent sweep, a
+governor with headroom, and a churn cycle near the measured ~230/hour. A governor pause, a
+sheared sweep needing a restart, or a diurnal churn peak all extend it, and a cold start or
+backfill is explicitly outside this row. The first and last rows are not ours and do not move.
 
 ## What this buys
 
