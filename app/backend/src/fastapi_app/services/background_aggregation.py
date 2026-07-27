@@ -494,7 +494,15 @@ class ContractAggregationService:
         incomplete_contract_ids = {
             item["contract_id"] for item in all_items if item.get("type_name") is None
         }
-        completed_contract_ids = processed_contract_ids - incomplete_contract_ids
+        # A contract that produced NO items cannot have succeeded: item_exchange and
+        # auction contracts always carry at least one item. Leaving it out of the
+        # COMPLETED set keeps its status at PENDING_ITEMS so a later run retries it —
+        # which is what makes fetch-once safe to adopt.
+        contracts_with_items = {item["contract_id"] for item in all_items}
+        empty_contract_ids = processed_contract_ids - contracts_with_items
+        completed_contract_ids = (
+            processed_contract_ids - incomplete_contract_ids - empty_contract_ids
+        )
         for chunk in _chunk_ids(completed_contract_ids):
             await db_session.execute(
                 update(Contract)
@@ -511,6 +519,11 @@ class ContractAggregationService:
             logger.info(
                 f"{len(incomplete_contract_ids)} contracts left ENRICHMENT_INCOMPLETE "
                 "(item type/group resolution degraded)."
+            )
+        if empty_contract_ids:
+            logger.warning(
+                f"{len(empty_contract_ids)} contracts returned zero items and were left "
+                "PENDING_ITEMS for retry (an item_exchange/auction contract cannot be empty)."
             )
 
     SHIP_CATEGORY_ID = 6  # EVE static category: Ship

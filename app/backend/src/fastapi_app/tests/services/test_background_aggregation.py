@@ -424,6 +424,25 @@ async def test_item_fetch_failure_for_one_contract_does_not_abort_batch(db_sessi
     assert healthy_row.item_processing_status == "COMPLETED"
 
 
+async def test_contract_returning_no_items_is_not_marked_completed(db_session: AsyncSession):
+    """An item_exchange contract with zero items is impossible — the fetch failed or
+    returned an evicted-cache empty page. Marking it COMPLETED makes the failure
+    permanent once skip-known lands, so it must stay retryable."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[])
+
+    await service._process_contracts(db_session, [_ship_contract_dict(930001)])
+    await db_session.flush()
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 930001))
+    ).scalar_one()
+    assert row.item_processing_status != "COMPLETED"
+    # PENDING_ITEMS specifically, not a third status: the later skip-known predicate
+    # is defined over a single "not COMPLETED at the current version" test.
+    assert row.item_processing_status == "PENDING_ITEMS"
+
+
 async def test_structure_ids_are_excluded_from_name_resolution(db_session: AsyncSession, caplog):
     """The resolvable-ID cut is `id < 100_000_000_000` (10^11): player-structure
     IDs at or above 10^11 are unresolvable via /universe/names/ and are filtered
