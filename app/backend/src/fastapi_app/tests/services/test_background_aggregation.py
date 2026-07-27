@@ -424,23 +424,55 @@ async def test_item_fetch_failure_for_one_contract_does_not_abort_batch(db_sessi
     assert healthy_row.item_processing_status == "COMPLETED"
 
 
-async def test_contract_returning_no_items_is_not_marked_completed(db_session: AsyncSession):
+async def test_contract_returning_no_items_is_not_marked_completed(
+    db_session: AsyncSession, caplog
+):
     """An item_exchange contract with zero items is impossible — the fetch failed or
-    returned an evicted-cache empty page. Marking it COMPLETED makes the failure
-    permanent once skip-known lands, so it must stay retryable."""
+    returned an evicted-cache empty page. COMPLETED must mean the items were actually
+    fetched, so a zero-item result must not claim success. The exclusion is per
+    contract: a healthy contract in the same batch still completes."""
     service = _make_service()
-    service.esi_client.get_contract_items = AsyncMock(return_value=[])
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: (
+            []
+            if cid == 930001
+            else [{"record_id": cid, "type_id": 587, "quantity": 1, "is_included": True}]
+        )
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
 
-    await service._process_contracts(db_session, [_ship_contract_dict(930001)])
-    await db_session.flush()
+    with caplog.at_level("WARNING"):
+        await service._process_contracts(
+            db_session, [_ship_contract_dict(930001), _ship_contract_dict(930002)]
+        )
 
-    row = (
-        await db_session.execute(select(Contract).where(Contract.contract_id == 930001))
-    ).scalar_one()
-    assert row.item_processing_status != "COMPLETED"
-    # PENDING_ITEMS specifically, not a third status: the later skip-known predicate
-    # is defined over a single "not COMPLETED at the current version" test.
-    assert row.item_processing_status == "PENDING_ITEMS"
+    rows = {
+        row.contract_id: row
+        for row in (
+            await db_session.execute(
+                select(Contract).where(Contract.contract_id.in_([930001, 930002]))
+            )
+        ).scalars()
+    }
+    assert rows[930001].item_processing_status != "COMPLETED"
+    # PENDING_ITEMS specifically — the model default, which the empty result leaves
+    # untouched — and not a third status: a contract not marked COMPLETED stays in
+    # the re-fetch set.
+    assert rows[930001].item_processing_status == "PENDING_ITEMS"
+    # The exclusion is per contract; it must not spill onto a healthy one.
+    assert rows[930002].item_processing_status == "COMPLETED"
+
+    # The count pins that only the empty contract was excluded.
+    assert any(
+        "1 contracts returned zero items and were not marked COMPLETED" in rec.getMessage()
+        for rec in caplog.records
+        if rec.levelname == "WARNING"
+    ), f"expected the zero-item warning; got {[r.getMessage() for r in caplog.records]}"
 
 
 async def test_structure_ids_are_excluded_from_name_resolution(db_session: AsyncSession, caplog):

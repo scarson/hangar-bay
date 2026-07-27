@@ -495,9 +495,10 @@ class ContractAggregationService:
             item["contract_id"] for item in all_items if item.get("type_name") is None
         }
         # A contract that produced NO items cannot have succeeded: item_exchange and
-        # auction contracts always carry at least one item. Leaving it out of the
-        # COMPLETED set keeps its status at PENDING_ITEMS so a later run retries it —
-        # which is what makes fetch-once safe to adopt.
+        # auction contracts always carry at least one item. Excluding it from the
+        # COMPLETED set means it is not recorded as successfully enriched, so it
+        # remains in the re-fetch set. COMPLETED must mean the items were actually
+        # fetched; a zero-item result must not claim success.
         contracts_with_items = {item["contract_id"] for item in all_items}
         empty_contract_ids = processed_contract_ids - contracts_with_items
         completed_contract_ids = (
@@ -522,8 +523,9 @@ class ContractAggregationService:
             )
         if empty_contract_ids:
             logger.warning(
-                f"{len(empty_contract_ids)} contracts returned zero items and were left "
-                "PENDING_ITEMS for retry (an item_exchange/auction contract cannot be empty)."
+                f"{len(empty_contract_ids)} contracts returned zero items and were not "
+                "marked COMPLETED (an item_exchange/auction contract cannot be empty); "
+                "they stay in the item re-fetch set."
             )
 
     SHIP_CATEGORY_ID = 6  # EVE static category: Ship
