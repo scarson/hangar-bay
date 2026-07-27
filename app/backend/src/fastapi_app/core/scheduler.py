@@ -36,6 +36,12 @@ def add_aggregation_job(scheduler: AsyncIOScheduler, aggregation_service: Contra
         id="aggregate_public_contracts",
         replace_existing=True,
         misfire_grace_time=300,  # 5 minutes
+        # Serializes runs in-process: the Valkey lock's TTL is shorter than a
+        # full-corpus resweep, so this — not the lock — is what prevents a
+        # concurrent runner (see the ENRICHMENT_VERSION runbook in
+        # services/background_aggregation.py). Explicit, though it matches the
+        # library default, because the runbook's safety argument depends on it.
+        max_instances=1,
         next_run_time=datetime.now()  # Run immediately on startup
     )
     logger.info(
