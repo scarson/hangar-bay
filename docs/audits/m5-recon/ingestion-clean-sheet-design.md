@@ -42,13 +42,45 @@ The work queue is a **query, not a data structure**: contracts whose items have 
 
 - **Fetch once, ever.** A successfully enriched contract is never re-fetched. Steady state drops from the corpus (~46,000) to the churn (new contracts since the last cycle).
 - **Do not ETag-cache item pages.** A validator on immutable read-once data buys nothing and costs cache pressure in a 25 MB instance that cannot hold it. This deletes the silent-empty-page failure entirely rather than fixing it.
-- **Budgeted per cycle** — wall-clock first, plus caps on requests and error budget. This is what makes run duration *bounded by construction*.
+- **Budgeted per cycle** — wall-clock first, plus caps on requests and error budget. This is
+  what makes run duration *bounded by construction*, and it only holds under an explicit
+  invariant: **every governor sleep is `min(governor_deadline, cycle_deadline)`.** Without that
+  clipping, a single long `Retry-After` un-bounds the run and the lock-TTL guarantee collapses.
+- **Retry scheduling, not just retry counting.** Volume-descending order plus retryable failures
+  would otherwise park the same heavy failing contracts at the queue head every cycle and starve
+  everything behind them. Each queued contract carries a `next_attempt_at`, and
+  never-attempted contracts sort ahead of retries.
 - **Resumable.** The queue lives in the database, so an interrupted, rate-limited, or redeployed run loses no work; the next cycle resumes.
 - **Ordered by contract volume, descending.** Under a budget, ordering decides what you get first — and hulls are the product's headline. This is where volume belongs: as a **priority**, never as the filter that was rejected for foreclosing non-ship item data.
+
+### What fetch-once destroys, and how to give it back
+
+The refetch-everything loop is an accidental **self-healing mechanism**, and this codebase has
+already cashed that cheque twice: `is_ship_contract` never being set, and `is_blueprint_copy`
+never being mapped, were both repaired by the next full sweep after the fix landed. Fetch-once
+removes that safety net, so the *next* enrichment bug becomes a hand-written production
+migration instead of a no-op.
+
+The cheap replacement is an **`enrichment_version` stamp** on each contract. Bumping a
+constant re-queues the corpus through exactly the same budgeted, governed machinery — a
+deliberate, observable, rate-limited backfill rather than an accident that happened to work.
+This is what makes fetch-once safe to adopt rather than merely fast.
 
 ### Stage 3 — Derived flags
 
 `is_ship_contract` is computed when enrichment lands, from items — unchanged in substance, but now it happens once per contract rather than being recomputed against refetched data every cycle.
+
+### A state the split creates, which must be decided rather than discovered
+
+Today contracts, items and derived flags commit in one transaction, so a contract is never
+visible without its items. Splitting the stages makes **"listed, zero items, enrichment
+pending"** a real, persistent, user-visible state — and indistinguishable from the 3.1% bug
+unless it is modelled deliberately.
+
+Decision: **un-enriched contracts are excluded from filtered list views.** `is_ship_contract`
+is genuinely *unknown* until items land, and answering "not a ship" is a lie that puts hulls in
+the wrong bucket. They remain reachable by direct link, consistent with the expired-contract
+treatment already shipped.
 
 ### The rate-limit governor
 
@@ -58,17 +90,59 @@ It must:
 - Track `X-Esi-Error-Limit-Remain` / `-Reset` and the token-bucket headers, and slow the *whole* pipeline as headroom shrinks rather than reacting after a breach.
 - Treat 420 and 429 as first-class, honoring `Retry-After`. The current client's `< 500 == success` predicate makes both invisible — they skip retry and degrade into per-contract "failures."
 - Price 4xx correctly (5 tokens under the new scheme), so an error storm throttles itself.
-- **Fail the run as degraded, not successful,** when it pauses on a limit. Today a limit breach would record a successful run over missing data.
+- **Fail the run as degraded, not successful,** when it pauses on a limit. Today a limit breach
+  would record a successful run over missing data.
+- **Reserve headroom for discovery.** Both stages share one bucket because both share one egress
+  IP, so an enrichment backfill can otherwise starve the very stage that freshness is measured
+  from. The governor needs priority classes: discovery draws first.
 
 ### Failure taxonomy
 
 The current code has one bucket ("fetch failed"). Three behaviors are needed:
 
 - **Transient** (5xx, timeout, 420/429): stays queued, bounded retries with backoff. Not an error about the contract.
-- **Gone** (403/404): almost certainly the contract was accepted or withdrawn between the list fetch and the item fetch. This is a **delisting signal, not an error** — it should feed Stage 1's absence handling. I suspect this is the entire explanation for the unattributed 403s in the Jul 23 logs.
+- **Gone** (403/404): the contract was almost certainly accepted or withdrawn between the list
+  fetch and the item fetch — expected in volume, since the list is served from a cache up to
+  30 minutes old. **Drop it from the queue and write nothing.** An earlier draft made 403 a
+  delisting signal; that is wrong. It would bet existence-authority on an undocumented
+  "Forbidden" to buy at most one cycle of latency over what the discovery watermark already
+  provides. **Stage 1 remains the sole authority on existence.** A contract still listed on the
+  next sweep that 403s repeatedly is dead-lettered with a metric.
 - **Poisoned** (repeated failures beyond a threshold): dead-lettered so it stops consuming error budget every cycle, and stays visible in metrics.
 
-And one invariant worth enforcing loudly: **an `item_exchange`/`auction` contract with zero items is impossible.** An empty result is an error, never a `COMPLETED`. Today it is silently recorded as success — measured at 3.1% of sampled contracts in production.
+And the invariant that makes fetch-once safe at all. **Enrichment succeeds only when the
+result is non-empty AND every page was fetched.** Two ways that is violated today:
+
+- **An `item_exchange`/`auction` contract with zero items is impossible.** An empty result is
+  an error, never `COMPLETED`. Currently recorded as success — measured at 3.1% of sampled
+  production contracts.
+- **`get_contract_items` requests only page 1.** It calls the ETag helper with the default
+  `all_pages=False`, while its sibling `get_public_contracts` correctly passes `all_pages=True`
+  — so any contract with >1,000 items is silently truncated. Latent rather than active today
+  (sampled max 422 items, p99 16, none at 1,000), but fetch-once would make that truncation
+  permanent and unrepairable. Fix before, not after.
+
+### Latency: what is actually achievable
+
+**Measured against live ESI, not assumed.** A region's public contract list returns
+`Expires` − `Last-Modified` = **1800 s**; the swagger documents up to 3600 s. `X-Pages` is
+**34** for The Forge at 1,000/page.
+
+So **discovery cannot beat ~30 minutes** — CCP's cache is the floor, and polling faster only
+buys 304s. "New contracts within minutes" is not reachable for discovery at any cadence.
+
+What *is* reachable, and what users actually feel, is the second half. A contract only enters
+the default view once enrichment sets `is_ship_contract`, and today that is welded to a
+77-minute run. With a resumable queue and small budgets, enrichment can run every 5–10
+minutes, so a contract becomes visible within minutes **of discovery**.
+
+| | today | this design |
+|---|---|---|
+| Newest contract in the database | **129 min old** (measured) | ~30–40 min |
+| Discovery → visible in the ships view | up to 77 min | 5–10 min |
+| Floor set by | our pipeline | CCP's 30-min cache |
+
+The honest headline: 129 minutes → ~30–40, with the remainder being CCP's, not ours.
 
 ### Locking and cadence
 
@@ -96,8 +170,14 @@ The last row is the strategic point: the current design makes each new region co
 
 ## Migration from the current state
 
-1. **Repair before optimizing.** Contracts marked `COMPLETED` with zero items must be re-queued *before* skip-known is enabled, or the ~3% currently missing items become permanently invisible. One-time query.
-2. Land the failure taxonomy and the invariant, so the repair cannot silently recur.
+1. **Land the success invariant and the repair in the same release.** Repairing first leaves a
+   window in which the old pipeline re-mints zero-item `COMPLETED` rows between deploys. The
+   repair predicate covers zero-item `COMPLETED` contracts *and* item counts that are an exact
+   multiple of 1,000 (the truncation signature — currently expected to match nothing, which is
+   itself worth confirming). Log the distribution of what it finds: 3.1% is measured, but the
+   304-with-evicted-body *mechanism* behind it is still inferred, and the repair is the one
+   cheap opportunity to confirm it.
+2. Add `enrichment_version`, so the self-healing property is replaced before it is removed.
 3. Enable skip-known. This alone collapses the steady-state workload.
 4. Add the governor before any concurrency.
 5. Add bounded concurrency, scoped to cold start and backfill.
