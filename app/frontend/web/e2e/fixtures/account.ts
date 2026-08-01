@@ -63,7 +63,10 @@ export function makeNotification(overrides: Partial<WireNotification> = {}): Wir
     watch_type_id: 587,
     price: 900_000,
     is_read: false,
-    created_at: '2026-07-17T11:00:00Z',
+    // Relative to the clock: NotificationsPage renders this through timeAgo(),
+    // which reads the real Date.now(). A literal drifts a little further into
+    // "Nd ago" every day the suite runs (testing-pitfalls TEST-17).
+    created_at: new Date(Date.now() - 30 * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
     ...overrides,
   }
 }
