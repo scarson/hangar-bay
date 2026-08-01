@@ -29,7 +29,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, PROXY-1 | §1.C |
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8 | §3.C |
-| 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, upstream status | ESI-1 | §4.C |
+| 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status | ESI-1, ESI-2 | §4.C |
 | 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
@@ -250,11 +250,31 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 **Where It Stands:** The backend already complies — every data route pins `/v1`/`/v3` and JWTs are validated offline, so Hangar Bay was unaffected by the 24 March 2026 removals. The lone `/latest` usage, the `generate-regions.mjs` build script, was pinned to `/v1`. References: "Spring Cleaning: legacy routes removed 24 March 2026" (https://developers.eveonline.com/blog/spring-cleaning-legacy-routes-removed-24-march-2026) and "A better view on status: improving ESI health monitoring" (https://developers.eveonline.com/blog/a-better-view-on-status-improving-esi-health-monitoring).
 
+### ESI-2: `Expires` is being deprecated; read `Cache-Control` for cache lifetimes
+
+**The Flaw:** ESI is converting routes from time-based expiry to **event-driven invalidation**. On a converted route the cache no longer turns over on a clock, so `Expires` "is no longer meaningful" — it is still emitted, but only for backward compatibility. Code that derives a cache TTL or a poll schedule from `Expires` keeps parsing a header that has quietly stopped describing anything.
+
+**Why It Matters:** This fails silently and asymmetrically. Nothing errors; a wrong-but-plausible number comes out. Too long and we sit on a stale generation past the moment it changed; too short and we re-request needlessly, burning the error budget the 420 limiter meters. Worse, the failure arrives on **CCP's** schedule rather than ours — a route we already consume can convert between deploys, with no change on our side.
+
+**The Fix:**
+*   Prefer `Cache-Control: max-age` when the response states one; fall back to `Expires` only when it does not. This is both RFC 9111's precedence rule and ESI's stated direction.
+*   Subtract `Age` from `max-age` — `max-age` is the response's total lifetime, not its remaining one, and ESI serves these through a shared cache that can hand over a response most of the way through it.
+*   Treat an invalid `max-age` (unparseable, valueless, negative) as *absent* rather than as zero, so it falls back instead of collapsing the TTL.
+*   `no-store` means do not store. `no-cache` does **not** — it requires revalidation before reuse, which a conditional-request cache already does; dropping storage for it forfeits the 304 savings for nothing.
+*   Do not hard-code a TTL from a measured sample. The observed 1800 s on public contracts is one generation of one route, and the swagger documents up to 3600 s.
+
+**Where It Bit Us:** Not yet, and the live headers say why (probed 2026-08-01). The routes Hangar Bay consumes have **not** converted: `/v1/contracts/public/{region}/`, `/v3/universe/types/{id}/` and `/v1/universe/groups/{id}/` all send a bare `Cache-Control: public` carrying no lifetime at all, alongside a real `Expires`. So `Expires` is still authoritative there and their TTLs are unchanged. `/v1/sovereignty/map/` shows the shape we are heading for — `cache-control: public, max-age=3600, must-revalidate, stale-if-error=900`, with `Expires` merely restating `Date + max-age`. `core/esi_client_class.py` (`_cache_ttl_seconds`) now reads Cache-Control first and falls back to Expires, so the conversion is a no-op for us whenever it lands. Reference: "Smarter caching: when events drive invalidation" (https://developers.eveonline.com/blog/smarter-caching-when-events-drive-invalidation), 2026-01-27, which converted `/characters/{id}/skills` and `/characters/{id}/skillqueue` first and states more routes follow "over the next few months".
+
+> **Design consequence, unresolved:** the ingestion clean-sheet design (`docs/audits/m5-recon/ingestion-clean-sheet-design.md`) schedules discovery at each region's `Expires + ε`. That rests entirely on `Expires` staying meaningful on `/v1/contracts/public/{region}/`. It does today — that route is unconverted and regenerates lazily on a 1800 s cycle — but a conversion would remove the signal the scheduler is built on, not merely change its value. Re-check the live headers before implementing `Expires`-driven scheduling, and prefer deriving the poll instant from whichever header actually carries the lifetime.
+
 ### §4.C — Review Checklist
 
 - [ ] **Every ESI request names an explicit version prefix** (`/v1`, `/v3`, …), not `/latest` (ESI-1)
 - [ ] **Upstream status checks target `/meta/status`, not the removed `/status.json`** (ESI-1)
 - [ ] **SSO JWT validation is offline against JWKS, not a `/verify` round-trip** (ESI-1)
+- [ ] **Cache lifetimes read `Cache-Control: max-age` first (less `Age`), with `Expires` only as fallback** (ESI-2)
+- [ ] **No cache TTL or poll interval is hard-coded from a measured sample** (ESI-2)
+- [ ] **Any new `Expires`-derived scheduling is checked against the live headers for that route first** (ESI-2)
 
 ---
 
@@ -345,6 +365,12 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
+## 2026-08-01 — ESI-2 added: `Expires` deprecated by event-driven invalidation
+
+- Added ESI-2 from CCP's 2026-01-27 caching dev blog: on converted routes `Expires` survives only for backward compatibility and `Cache-Control` is authoritative. `_cache_ttl_seconds` in `core/esi_client_class.py` now reads `max-age` (less `Age`) first and falls back to `Expires`, with `no-store` suppressing storage and `no-cache` deliberately not doing so.
+- Live header probe (2026-08-01) recorded in the entry: none of the routes we consume have converted — they send a bare `Cache-Control: public` with no lifetime — so the change is a no-op today and arms us for the conversion. `/v1/sovereignty/map/` already shows the post-conversion shape.
+- Flagged the consequence for the ingestion clean-sheet design, whose per-region discovery scheduling is built on `Expires` for `/v1/contracts/public/{region}/`.
+
 ## 2026-07-27 — DEPLOY-4 added; ENV-8 extended with the transient-empty .env mode
 
 - Added DEPLOY-4 (pre-deploy migration vs in-flight ingestion collision; the ~38s `pre_deploy_failed` signature; same-commit redeploy via the CD workflow's `workflow_dispatch` `sha` input) from the PR #95 release: first attempt failed exactly as designed, idle-window redeploy applied the same migrations cleanly.
@@ -416,6 +442,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ENV-7 | `pdm run format` is repo-wide black on a non-black codebase | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-8 | Gitignored credential files exist only in the main checkout | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
+| ESI-2 | `Expires` deprecated by event-driven invalidation; read `Cache-Control` | MEDIUM | VALIDATED | External Integrations (ESI) |
 | DEPLOY-1 | Managed platforms inject postgresql:// URLs; async stack needs +asyncpg | HIGH | VALIDATED | Deployment & Platform |
 | DEPLOY-2 | uvicorn stays --workers 1 (in-process scheduler) | MEDIUM | VALIDATED | Deployment & Platform |
 | DEPLOY-3 | Durable coordination state must not live in an evicting cache | HIGH | VALIDATED | Deployment & Platform |
