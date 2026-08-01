@@ -97,7 +97,12 @@ Enrichment already resolves each item's `group_id` and `category_id` from ESI an
 
 ### 4.2 Dropped ESI fields
 
-Field-level claims below were verified directly against ESI's published OpenAPI spec (`https://esi.evetech.net/meta/openapi.json`) on 2026-08-01, not inferred. The **complete** public contract-items schema is exactly: `record_id, type_id, quantity, is_included, item_id, is_blueprint_copy, material_efficiency, time_efficiency, runs`.
+**Every field claim in this section was verified directly against ESI's published OpenAPI spec** (`https://esi.evetech.net/meta/openapi.json`) on 2026-08-01 — not inferred from documentation or research summaries. Both routes are public and unauthenticated. The two **complete** schemas:
+
+- **Contract** (`/contracts/public/{region_id}`, 16 fields): `contract_id, type, title, price, buyout, collateral, reward, volume, date_issued, date_expired, days_to_complete, issuer_id, issuer_corporation_id, for_corporation, start_location_id, end_location_id`.
+- **Contract item** (`/contracts/public/items/{contract_id}`, 9 fields): `record_id, type_id, quantity, is_included, item_id, is_blueprint_copy, material_efficiency, time_efficiency, runs`.
+
+Reading those two lists against our schema settles several open questions at once. We drop exactly two real contract fields (`buyout`, `days_to_complete`) and four real item fields (`item_id`, `runs`, `material_efficiency`, `time_efficiency`). We persist four columns that **cannot** be populated from public data — `status` and `date_completed` (absent from the contract schema; §4.4 item 7), and `raw_quantity` and `is_singleton` (absent from the item schema, authenticated routes only). And note there is **no system or region identifier anywhere on a contract** — only `start_location_id` — which is why the `system_ids` filter needs a location→system resolution hop rather than a mapping fix.
 
 | Field | ESI has it | We store | Blocks |
 |---|---|---|---|
@@ -105,7 +110,7 @@ Field-level claims below were verified directly against ESI's published OpenAPI 
 | item **`item_id`** | yes | no | **abyssal/mutated module display — see §4.5.** This is the join key to the rolled-attribute endpoint |
 | contract `buyout` | yes | no | any meaningful auction display (~527 live auctions show only starting bid) |
 | contract `days_to_complete` | yes | no | courier display |
-| auction bids (`/contracts/public/bids/`) | yes (no bidder identity) | not fetched | current-bid display |
+| auction bids (`/contracts/public/bids/`) | yes — public, but only `bid_id`, `amount`, `date_bid`; **no bidder identity** | not fetched | current-bid display |
 
 Two columns we persist do **not exist on the public items route** at all (they appear only on the authenticated character/corporation contract routes), so they can only ever be NULL in our data: `raw_quantity` (empirically confirmed absent across 1,658 sampled live rows) and `is_singleton` (same class; spec-confirmed absent). The `min_runs`/`max_runs` filter being wired to `raw_quantity` is why it matches nothing — see §4.4.
 
