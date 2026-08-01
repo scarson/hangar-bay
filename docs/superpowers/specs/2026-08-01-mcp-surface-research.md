@@ -15,7 +15,11 @@
 
 ### 1a. The registry and governance landscape
 
-The official registry (`github.com/modelcontextprotocol/registry`) is still **preview, not GA**, with an API freeze at v0.1 since 2025-10-24; publishing requires namespace ownership proof via GitHub OAuth/OIDC or DNS/HTTP domain verification ([repo](https://github.com/modelcontextprotocol/registry)). Secondary sources claim 10,000+ public servers and ~97M SDK downloads/month as of March 2026 — **unverified marketing-adjacent stats**.
+The official registry (`github.com/modelcontextprotocol/registry`) is still **preview, not GA**, with an API freeze at v0.1 since 2025-10-24; publishing requires namespace ownership proof via GitHub OAuth/OIDC or DNS/HTTP domain verification ([repo](https://github.com/modelcontextprotocol/registry)).
+
+**Registry scale, counted first-hand** (Part 4 lane paginated the whole registry on 2026-08-01): **19,577 latest-version server records** — roughly double the "10,000 active servers" figure Anthropic cited in December 2025. Growth is steep; treat any published count more than a couple of months old as low. Domain density measured the same way: `commerce` 48, `shopify` 12, `stripe` 10, **`eve online` 0**.
+
+**Governance changed hands.** Anthropic donated MCP to the **Agentic AI Foundation** (a Linux Foundation directed fund) on 2025-12-09, co-founded with Block and OpenAI, with Google, Microsoft, AWS, Cloudflare, and Bloomberg as supporting members. MCP retains technical autonomy through the SEP process; the 2026 roadmap reorganizes work around Working Groups rather than release milestones.
 
 ### 1b. The single best structural analog: Shopify Storefront Catalog MCP
 
@@ -31,9 +35,9 @@ Notable conventions: opaque cursor pagination with `limit` min 1 / default 10 / 
 
 The lesson: **default limit 10, not 50.** Shopify's human storefront paginates at 24–48; their agent-facing tool defaults to 10.
 
-### 1c. Financial / market-data MCPs: the anti-pattern
+### 1c. Financial / market-data MCPs: the anti-pattern, and its very public retreat
 
-Polygon.io's official MCP server "exposes all Polygon.io API endpoints as MCP tools" — 35+ tools ([PulseMCP](https://www.pulsemcp.com/servers/polygon)). This endpoint-mirroring approach is exactly what Anthropic and FastMCP's maintainer both argue against (§4d). Popular because it is cheap to generate, not because it works well.
+**Correction to a widely-repeated claim** (caught by the prior-art lane, Part 4): Polygon.io's 35–53-tool endpoint-mirroring server is the example everyone cites, and it no longer exists. Polygon renamed to **Massive.com** (2025-10-30) and [rebuilt the server](https://massive.com/blog/massive-rebuilds-mcp-server) down to **3 tools** (`search_endpoints`, `call_api`, `query_data`), publishing the before/after: 53 tools → 4, ~450 parameters → 11, an estimated 15,000–25,000 definition tokens → 1,000–1,500. **CoinGecko** went further, to 2 tools in code-execution mode. The endpoint-mirroring approach is what Anthropic and FastMCP's maintainer both argue against (§4d) — and the market-data vendors who shipped it first have since walked it back in public with numbers attached. Treat any write-up describing these servers' old tool counts as stale.
 
 ### 1d. EVE Online MCP servers — they exist, and none of them do contracts
 
@@ -173,6 +177,8 @@ Design points, each earned from the repo:
 { names: string[], kinds?: ("type"|"region"|"system"|"station")[] }
 → { resolved: [{name, id, kind, published, category}], ambiguous: [...], not_found: [...] }
 ```
+
+**Refinement from Part 4:** the best-designed game-data server found (OSRS Grand Exchange) accepts a *human name* on its data tools and resolves name→ID internally, so the model never handles an ID and can never guess a wrong one. Prefer that: let `hangarbay_search_contracts` take ship/item names directly, and keep `hangarbay_resolve_names` for explicit disambiguation and bulk lookup rather than making it a mandatory first hop.
 
 Every P1 query starts with a name; every filter takes an id. Today there is **no backend reference surface at all**: regions are a generated static array in the *frontend* (`app/frontend/web/src/features/contracts/regions.ts`), and type-name resolution exists only inside `watchlist_service._resolve_name_to_type_id` (calls ESI). An MCP server needs this promoted into a real, cached backend service. Bulk-in/bulk-out with explicit `ambiguous`/`not_found` buckets follows Shopify's `lookup_catalog`; ambiguity ("Ishtar" vs "Ishtar Blueprint") is the natural elicitation point (3i).
 
@@ -316,6 +322,44 @@ Full detail lives in that lane's report; the durable facts:
 - **`Expires` is being deprecated.** ESI is migrating routes to event-driven invalidation; on converted routes the `Expires` header "is no longer meaningful" and `Cache-Control` is authoritative. Hangar Bay's ESI client parses `Expires` (`core/esi_client_class.py:191-195`) — flagged as a follow-up task.
 - **AI/MCP consumption is entirely unregulated** by CCP policy. The EULA's automation rules target in-game unfair advantage, not out-of-game data processing.
 - **Unverified this session:** the support-site policy pages (3rd Party EULA, Third Party Policies, Botting, main EULA) 403 automated fetches; anything quoted from them needs a human read before entering a legal artifact.
+
+## Part 4 — prior-art survey (late lane, same date)
+
+A third lane surveyed the registry, commerce, financial-data, and gaming MCP landscape first-hand. It corrected two claims in Part 1 (both fixed inline above) and added the following.
+
+### Commerce semantics moved above MCP
+
+The single biggest shift for anyone designing a marketplace MCP: **MCP is now the transport beneath a commerce-semantics spec, not where commerce semantics live.** Google and Shopify announced **UCP (Universal Commerce Protocol)** at NRF on 2026-01-11 with 20+ retailers; its Tech Council expanded on 2026-04-24 to include Amazon, Meta, Microsoft, Salesforce, and Stripe. Shopify's Storefront Catalog MCP now speaks UCP at `/api/ucp/mcp`, and the legacy `/api/mcp` cart tools sunset **2026-08-31**. Three protocols coexist at different layers: UCP (discovery→cart→checkout shape), ACP (checkout execution inside an AI surface), AP2 (payment authorization via signed mandates).
+
+None of this binds Hangar Bay — the CCP license forecloses commerce anyway — but two UCP conventions are worth stealing: **a dereferenceable agent-profile URL as caller identity** (capability negotiation keyed on published agent identity rather than an API key), and **soft-failure as a successful result** carrying `status: "error"` plus a `messages` array, distinct from hard JSON-RPC transport errors.
+
+### Client-side limits, and the escape hatch I did not know about
+
+Claude Code warns above **10,000 tokens** of tool output and caps at **25,000** (`MAX_MCP_OUTPUT_TOKENS`). The new detail: a server can raise its own tool's ceiling by setting **`_meta["anthropic/maxResultSizeChars"]`** in its `tools/list` entry, hard-capped at **500,000 characters**. Over-threshold results are written to disk and replaced with a file reference. This changes the calculus for a `detailed` response format — but it is Anthropic-specific, not spec.
+
+### `outputSchema` / `structuredContent`: spec-blessed, client-unreliable
+
+Part 1 flagged this as an unmeasured uncertainty; the survey found concrete evidence in both directions. **Claude Desktop ignored `structuredContent` entirely** (blockscout/mcp-server#324, 2026-02-09) — breaking a server that had slimmed its `content` block on the assumption clients read the structured field. **Claude Code had the inverse bug** (claude-code#15412, 2025-12-26), displaying only `structuredContent` and dropping `content`. Two flagship clients, opposite failure modes, seven weeks apart. Of ten financial-data servers surveyed, exactly one used `outputSchema` at all — and its schema asserted nothing (`{"type":"object","additionalProperties":true}`).
+
+**Operational rule: make `content` self-sufficient; treat `structuredContent` as an optimization for clients that read it, never as the only channel.**
+
+### The EVE MCP landscape is real but negligible — and the void is contracts-shaped
+
+Measured on 2026-08-01: GitHub search for `eve online mcp` returns **14 repos, maximum 12 stars**; `eve online contracts mcp` returns **zero**; the official registry returns **zero**; neither canonical awesome-list has an EVE entry; the highest-traffic EVE server on pulsemcp shows ~38 estimated weekly visitors. The widely-cited "400+ auto-generated tools" EVE ESI server **404s from GitHub today** while still being listed by three directories — a stale claim propagating through aggregators.
+
+The three worth reading are instructive about shape rather than scale: an SDE-only server with **zero network I/O** (static reference data cleanly separated from live data), a combined SDE+ESI server using PKCE without a client secret, and `eve-mentor-mcp`, whose 28 tools are **judgment-shaped rather than API-shaped** (`what_should_i_do_tonight`, `can_i_fly`, `route_danger`). The only substantive community feedback on any EVE MCP effort was a link to a talk titled "Your API is not an MCP."
+
+Calibration: the whole game-data MCP category is pre-consolidation — nothing anywhere has broken 60 stars, and there are six competing Scryfall servers. The community rewards two poles and rejects the middle: a *thin* passthrough that delegates query complexity to the upstream's own search syntax, or a *thick* server whose tools are named after user tasks. The thing everyone builds and nobody uses is the auto-generated OpenAPI proxy.
+
+**One directly transferable idea, from the OSRS Grand Exchange server:** its item tools accept a **human name** and resolve name→ID internally, so the model never sees an ID. That eliminates a whole class of "the agent guessed the wrong typeID" failure — and EVE's typeID problem is worse than RuneScape's. It argues for `hangarbay_resolve_names` (§3c) being a fallback rather than a required first hop: search tools should accept names directly.
+
+### ESI operational limits, quantified
+
+Relevant to both the MCP surface and ingestion generally. ESI's token-bucket costs are **2xx = 2 tokens, 3xx = 1, 4xx = 5, 5xx = 0** — conditional requests that 304 are deliberately half-price, so ETag discipline is a rate-limit strategy, not just politeness. A separate error limit caps non-2xx/3xx at 100/minute before a blanket 420. `/markets/{region_id}/orders` carries a 12,000-token / 5-minute budget sized on the assumption you respect the 5-minute cache. CCP has publicly named generic User-Agents (`Python/3.13 aiohttp/…`) as an offense. Precedent worth remembering: Evepraisal died in 2023 after CCP IP-banned its scraper.
+
+### Pagination, re-confirmed independently
+
+`tools/call` has no pagination in any spec revision — `CallToolResult` has no cursor field, and the opaque-cursor MUST binds list operations only. Tool-result pagination is entirely application-level. Commerce standardized on opaque cursors (Shopify: limit 1–250, **default 10**) because carts and catalogs mutate underneath you; most financial-data servers use plain offset/limit. Two arguments worth weighing for our design: JetBrains chose offset plus a snapshot cache key specifically to enable **early stopping** and actionable out-of-range errors, and Datadog proposed the most agent-native unit of all — **paginating by token budget** rather than record count, since records vary in size and the real constraint is context.
 
 ## Appendix: repo-grounded facts a plan would need
 
