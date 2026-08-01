@@ -230,6 +230,15 @@ Some artifacts in this repo are append-heavy with **sequential, human-meaningful
 
 This is not hypothetical. On 2026-08-01 three collisions landed in one day: `ESI-2` was claimed by both "Expires is being deprecated" and "ESI omits fields instead of sending falsy values"; `TEST-17` was claimed by both "a fixture date only currently in the future" and "a fixture that hand-writes a column ingestion never writes"; and two agents wrote **separate entries for the same incident**, one of which had to be deleted outright.
 
+**The collision does not reliably announce itself as a conflict.** In that same session, git **auto-merged `testing-pitfalls.md` cleanly** and produced a file containing **two `TEST-17` entries** — different traps, same ID, no conflict markers, nothing for a human to resolve. The two entries were added in different regions of an append-heavy file, so from git's point of view nothing overlapped. It was caught only by an explicit census:
+
+```bash
+grep -oE "TEST-[0-9]+ —" docs/pitfalls/testing-pitfalls.md | sort | uniq -d      # must print nothing
+grep -oE "^### (ESI|FASTAPI|SQLA|ENV|PROXY|DEPLOY)-[0-9]+" docs/pitfalls/implementation-pitfalls.md | sort | uniq -d
+```
+
+Run that census after any merge or rebase that touches a sequential-ID artifact. "It merged without conflicts" is not evidence of correctness here.
+
 The damage is not confined to the document. **Pitfall IDs are cited from source comments** (`contract_service.py` carried `# (pitfall ESI-2)`), so renumbering to resolve a collision silently repoints a code comment at an unrelated trap unless someone greps for it.
 
 Rules:
@@ -239,6 +248,17 @@ Rules:
 - **When you renumber, grep the source tree** for citations of the old ID (`grep -rn "ESI-2" app/`) and update them in the same commit.
 - **If another agent already documented the same incident, keep one entry** and fold in any unique nuance. Two entries for one trap is worse than none — the reader cannot tell which is authoritative.
 - **When dispatching parallel agents that may add entries, tell each which IDs are reserved.** A one-line "TEST-18 and TEST-19 are taken by an in-flight PR; start at TEST-20" in the dispatch prompt costs nothing and prevents the whole class.
+
+### A long-lived branch can silently revert the base's newer content
+
+The same "clean merge, wrong result" shape appears whenever a branch edits a **shared document** that keeps moving on `dev` — release notes, handoffs, design docs, pitfalls, any file several workstreams append to. The branch carries its own older version of a paragraph; `dev` has since gained new content in that file; the rebase preserves the branch's side; and the eventual merge **deletes** the newer content with no conflict and no signal.
+
+Observed 2026-08-01: a bugfix PR held open for human review had edited two docs early on. While it waited, two later PRs added production-measured findings to those same docs. The held branch would have silently deleted both findings on merge — caught only by explicitly diffing the branch against `dev` on those paths before merging.
+
+- **Before merging any branch that has been open across other merges, diff it against `dev` on every shared-doc path it touches:** `git diff origin/dev..HEAD -- docs/` and read it as "what would merging this DELETE?", not just "what does it add?"
+- **Prefer not to touch shared docs from a feature branch at all.** If the fact you want to record belongs to `dev`, land it in its own small docs PR rather than carrying it on a branch that will sit. A held branch is a stale snapshot of every file it touches.
+- **If the branch's version is genuinely obsolete, take `dev`'s wholesale:** `git checkout origin/dev -- <path>`, then verify `git diff origin/dev..HEAD -- <path>` is empty.
+- **This risk scales with how long the branch waits.** A PR classified `Review` that sits pending human attention is exactly the branch most likely to hit it — so re-run the check immediately before merge, not when the PR was opened.
 
 ### Output persistence — analysis dispatches MUST write findings before returning
 
