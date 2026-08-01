@@ -26,10 +26,10 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 | § | Section | You're working on... | Entries | Checklist |
 |---|---------|---------------------|---------|-----------|
-| 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, PROXY-1 | §1.C |
+| 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, FASTAPI-3, PROXY-1 | §1.C |
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8 | §3.C |
-| 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status | ESI-1, ESI-2 | §4.C |
+| 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status | ESI-1, ESI-2, ESI-3 | §4.C |
 | 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
@@ -76,11 +76,24 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### FASTAPI-3: A response schema stricter than its own column 500s the whole page
+
+**The Flaw:** A Pydantic response field declared non-optional (`start_location_id: int`) sitting over a model column declared `nullable=True`. Nothing rejects the row on the way in; the mismatch fires only when a NULL actually reaches serialization.
+
+**Why It Matters:** The blast radius is the *page*, not the row. `PaginatedResponse` validates every item, so one NULL-bearing contract raises `ValidationError` inside the endpoint and returns 500 for a page that also held 49 perfectly good rows — and the same row 500s its detail endpoint. It stays invisible until real data supplies the NULL, which for an upstream-optional field can be long after the code ships.
+
+**The Fix:** Read optionality as a three-link chain and check all of it whenever you touch any link: upstream `required` array → model `nullable=` → response schema `Optional[...]`. Each link MUST be at least as permissive as the one above it. Where a field is genuinely required for the UI to make sense, enforce it at INGESTION (reject or default the row) rather than at serialization, where the failure lands on a reader who did nothing wrong.
+
+**Where It Bit Us:** `ContractSchema.start_location_id` was a bare `int` over a nullable column fed by an ESI field absent from the public-contracts `required` array (2026-08-01). Pinned by `test_serializes_a_contract_esi_sent_without_a_start_location`, which 500s on the pre-fix schema. Pairs with ESI-2 and testing-pitfalls TEST-17.
+
+---
+
 ### §1.C — Review Checklist
 
 - [ ] **Query-param models use `Annotated[Model, Query()]`, not `Depends(Model)`** — confirm non-scalar fields (e.g. `List[int]`) bind to query params, not the GET body (FASTAPI-1)
 - [ ] **Every filter param the schema accepts is actually applied by the service layer** — known-inert params are explicitly marked in the schema description (FASTAPI-2)
 - [ ] **Clients call schema paths verbatim, including trailing slashes** — the openapi-fetch `baseUrl` owns the `/api/v1` prefix; no bare-path request 307-escapes the proxy (PROXY-1)
+- [ ] **Response-schema optionality is at least as permissive as the column, which is at least as permissive as the upstream `required` array** — a stricter response field 500s the entire page a NULL lands on, not just its row (FASTAPI-3)
 
 ---
 
@@ -267,6 +280,21 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 > **Design consequence, unresolved:** the ingestion clean-sheet design (`docs/audits/m5-recon/ingestion-clean-sheet-design.md`) schedules discovery at each region's `Expires + ε`. That rests entirely on `Expires` staying meaningful on `/v1/contracts/public/{region}/`. It does today — that route is unconverted and regenerates lazily on a 1800 s cycle — but a conversion would remove the signal the scheduler is built on, not merely change its value. Re-check the live headers before implementing `Expires`-driven scheduling, and prefer deriving the poll instant from whichever header actually carries the lifetime.
 
+---
+
+### ESI-3: ESI omits fields instead of sending falsy values, so `== False` and range filters match nothing
+
+**The Flaw:** ESI's public routes express "no" by *leaving the key out*, not by sending `false`/`0`. `is_blueprint_copy` arrives `true` on copies and is absent on everything else — it is never `false`. `for_corporation` is likewise present-and-`true` or absent. A `.get()` mapping therefore writes True-or-NULL into a nullable column, and the natural filter `column == False` matches **zero rows**, because SQL `NULL = FALSE` is NULL, not TRUE. The same shape hides a second trap: the PUBLIC and AUTHENTICATED contract-item routes are near mirror images, so a field copied from the wrong one is silently always-NULL.
+
+**Why It Matters:** Both failures are *silent and total*. The filter returns HTTP 200 with an empty list, which reads as "no contracts match" rather than "this control is broken"; every layer above (schema, generated client, UI control) looks healthy. A filter reading an always-NULL column is worse still — it has no working branch at all, and a fixture that populates the column by hand makes the test suite agree that it works (testing-pitfalls TEST-18).
+
+**The Fix:**
+* Treat a nullable column fed by an optional ESI field as **tri-state**, and decide explicitly what NULL means. For a present-when-true flag, NULL means false: filter `or_(col.is_(False), col.is_(None))`, never `col == False`.
+* Before filtering on any ingested column, confirm the route you actually call populates it. The public item route (`/v1/contracts/public/items/{id}/`) carries `is_blueprint_copy`, `runs`, `material_efficiency`, `time_efficiency`. The authenticated character/corporation item routes carry `raw_quantity` and `is_singleton` and **not** those four. `raw_quantity`'s documented `-1`/`-2` blueprint markers therefore do not exist on any data Hangar Bay ingests.
+* Verify against the retrieved spec plus a live sample, not from memory — the spec's prose is unreliable here (`collateral` is documented "for Couriers only" yet is present on every item_exchange contract, and `runs`'s documented `-1` for originals never occurs publicly; originals simply omit the field).
+
+**Where It Bit Us:** `is_bpc=false` returned `total: 0` in production for the entire life of the filter (fixed 2026-08-01: `contract_service._apply_item_filters`). The neighbouring `min_runs`/`max_runs` filter reads `ContractItem.raw_quantity`, a column no public payload can ever populate, and is inert for the same family of reasons. Verified against `https://esi.evetech.net/meta/openapi.json` and a live sample of 7,292 contracts / 1,658 item rows: `is_blueprint_copy` was `true` 1,396 times and absent 262 times — never once `false`.
+
 ### §4.C — Review Checklist
 
 - [ ] **Every ESI request names an explicit version prefix** (`/v1`, `/v3`, …), not `/latest` (ESI-1)
@@ -275,6 +303,8 @@ This document serves three audiences. Start here, then go directly to the sectio
 - [ ] **Cache lifetimes read `Cache-Control: max-age` first (less `Age`), with `Expires` only as fallback** (ESI-2)
 - [ ] **No cache TTL or poll interval is hard-coded from a measured sample** (ESI-2)
 - [ ] **Any new `Expires`-derived scheduling is checked against the live headers for that route first** (ESI-2)
+- [ ] **Filters over ESI-fed nullable columns treat NULL explicitly** — a present-when-true flag is never sent as false, so `col == False` matches zero rows (ESI-3)
+- [ ] **Every filtered column is actually populated by the route ingestion calls** — the public and authenticated contract-item routes carry disjoint field sets; `raw_quantity` is authenticated-only (ESI-3)
 
 ---
 
@@ -371,6 +401,13 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 - Live header probe (2026-08-01) recorded in the entry: none of the routes we consume have converted — they send a bare `Cache-Control: public` with no lifetime — so the change is a no-op today and arms us for the conversion. `/v1/sovereignty/map/` already shows the post-conversion shape.
 - Flagged the consequence for the ingestion clean-sheet design, whose per-region discovery scheduling is built on `Expires` for `/v1/contracts/public/{region}/`.
 
+## 2026-08-01 — ESI-3 and FASTAPI-3 added: optional-field shapes and over-strict response schemas
+
+- Added ESI-3 (ESI omits fields instead of sending falsy values, so `col == False` matches zero rows; and the public vs authenticated contract-item routes carry disjoint field sets) after `is_bpc=false` was found returning `total: 0` in production for the whole life of the filter. Fixed in `services/contract_service.py`; verified against the retrieved `meta/openapi.json` plus a live sample of 7,292 contracts / 1,658 item rows in which `is_blueprint_copy` was never once `false`. Numbered ESI-3 because ESI-2 was concurrently taken by the Cache-Control migration (PR #101).
+- Added FASTAPI-3 (a response field stricter than its own nullable column 500s the entire page, not just the row) from `ContractSchema.start_location_id`, a bare `int` over a nullable column fed by an ESI field that is not in the public-contracts `required` array.
+- Recorded the same root cause on the verification side as testing-pitfalls TEST-18 (fixtures that write columns ingestion never writes). The absolute-future-date trap found alongside it was already recorded on dev as TEST-17, so it is not duplicated here.
+- Grepped for further instances of the ESI-3 shape: `min_runs`/`max_runs` read `ContractItem.raw_quantity`, which no public ESI payload can populate — left inert and reported rather than fixed, since populating it needs the `runs` field ingested (schema + migration).
+
 ## 2026-07-27 — DEPLOY-4 added; ENV-8 extended with the transient-empty .env mode
 
 - Added DEPLOY-4 (pre-deploy migration vs in-flight ingestion collision; the ~38s `pre_deploy_failed` signature; same-commit redeploy via the CD workflow's `workflow_dispatch` `sha` input) from the PR #95 release: first attempt failed exactly as designed, idle-window redeploy applied the same migrations cleanly.
@@ -430,6 +467,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 |----|-------|----------|--------|--------|
 | FASTAPI-1 | `Depends(Model)` sends list fields to the GET body | HIGH | VALIDATED | API & Request Binding |
 | FASTAPI-2 | Declared-but-unimplemented filter params ship dead controls | MEDIUM | UNIMPLEMENTED | API & Request Binding |
+| FASTAPI-3 | Response schema stricter than its column 500s the whole page | HIGH | VALIDATED | API & Request Binding |
 | PROXY-1 | Trailing-slash 307 escapes a prefix-rewriting proxy | MEDIUM | VALIDATED | API & Request Binding |
 | SQLA-1 | Paginating a joined query paginates joined rows | HIGH | VALIDATED | Data & Persistence |
 | SQLA-2 | ON CONFLICT vs a partial unique index needs index_where | HIGH | VALIDATED | Data & Persistence |
@@ -443,6 +481,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ENV-8 | Gitignored credential files exist only in the main checkout | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
 | ESI-2 | `Expires` deprecated by event-driven invalidation; read `Cache-Control` | MEDIUM | VALIDATED | External Integrations (ESI) |
+| ESI-3 | ESI omits fields rather than sending falsy values; `== False` matches nothing | HIGH | VALIDATED | External Integrations (ESI) |
 | DEPLOY-1 | Managed platforms inject postgresql:// URLs; async stack needs +asyncpg | HIGH | VALIDATED | Deployment & Platform |
 | DEPLOY-2 | uvicorn stays --workers 1 (in-process scheduler) | MEDIUM | VALIDATED | Deployment & Platform |
 | DEPLOY-3 | Durable coordination state must not live in an evicting cache | HIGH | VALIDATED | Deployment & Platform |
