@@ -1,0 +1,124 @@
+# ABOUTME: Scheduled watch on the parts of EVE's ESI spec Hangar Bay consumes — diffs the live
+# ABOUTME: projection against the committed snapshot and files a self-closing issue when it moves.
+name: ESI spec monitor
+
+# Deliberately NOT wired to pull_request or push. This job reports on the outside
+# world, not on our diff: a change CCP made overnight must not turn an unrelated PR
+# red. The comparison logic's own unit tests DO run on every backend PR, via the
+# backend lane in ci.yml (pyproject's testpaths includes app/backend/tools).
+on:
+  schedule:
+    # Daily, off the top of the hour — GitHub drops scheduled runs during the
+    # congestion at :00. The spec is served with max-age=600, so daily is ample.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write        # the only write: filing/closing the drift issue below
+
+concurrency:
+  group: esi-spec-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: app/backend
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: tools
+      ISSUE_LABEL: esi-spec-drift
+      ISSUE_TITLE: ESI spec drift detected in routes Hangar Bay consumes
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      # No dependency install step: the monitor is standard-library only, so it
+      # cannot be broken by an unrelated change to the backend's dependency tree.
+
+      - name: Ensure the drift label exists
+        # Hoisted out of the two steps below because `gh issue list --label` errors on
+        # a label the repository has never had — which would make the green-path
+        # cleanup step fail on the very first run.
+        run: |
+          gh label create "$ISSUE_LABEL" --color B60205 \
+            --description 'The published ESI spec no longer matches the committed snapshot' \
+            2>/dev/null || true
+
+      - name: Compare the live spec against the committed snapshot
+        id: check
+        run: |
+          set +e
+          python -m esi_spec_monitor.monitor > "$RUNNER_TEMP/report.txt" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/report.txt"
+          # Only the exit code crosses into GITHUB_OUTPUT. The report itself stays in
+          # a file and is passed to `gh` with --body-file: it is built from a document
+          # CCP controls, and interpolating that into GITHUB_OUTPUT would let a crafted
+          # string forge output variables.
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: File the drift issue
+        # Exactly 1 means "the spec moved". 2 means ESI was unreachable or served
+        # something unparseable — a real failure worth a red run, but not drift, and
+        # filing it as drift would train readers to ignore the issue.
+        if: steps.check.outputs.status == '1'
+        run: |
+          set -euo pipefail
+          open_issue=$(gh issue list --state open --label "$ISSUE_LABEL" \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$open_issue" ]; then
+            # A drift that nobody has actioned yet is still the same drift. Commenting
+            # daily on it would turn a standing alarm into a notification stream, which
+            # is how alarms get muted.
+            echo "drift issue #$open_issue is already open — not filing a duplicate"
+            exit 0
+          fi
+
+          {
+            echo 'The scheduled ESI spec monitor found differences between the live spec and'
+            echo '`app/backend/tools/esi_spec_monitor/snapshot.json`.'
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/report.txt"
+            echo '```'
+            echo
+            echo '## What to do'
+            echo
+            echo '1. Read the breaking findings first — each names the call path, the field, what'
+            echo '   changed, and the code that reads it.'
+            echo '2. Fix or adapt the consuming code if the change breaks it.'
+            echo '3. Re-run `pdm run esi-spec-monitor --update` in `app/backend` and commit the'
+            echo '   snapshot in the same PR, so the accepted shape is reviewable.'
+            echo
+            echo 'This issue closes itself on the next green run.'
+            echo
+            echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "$RUNNER_TEMP/body.md"
+
+          gh issue create --title "$ISSUE_TITLE" --label "$ISSUE_LABEL" \
+            --body-file "$RUNNER_TEMP/body.md"
+
+      - name: Close a resolved drift issue
+        if: steps.check.outputs.status == '0'
+        run: |
+          set -euo pipefail
+          # Self-resetting alarm: without this, a drift that was handled leaves a stale
+          # open issue, and a stale alarm is one nobody reads the next time it fires.
+          for number in $(gh issue list --state open --label "$ISSUE_LABEL" \
+              --json number --jq '.[].number'); do
+            gh issue close "$number" --comment \
+              "The ESI spec monitor is green again — the live spec matches the committed snapshot. Closed by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+          done
+
+      - name: Fail the run
+        if: steps.check.outputs.status != '0'
+        run: |
+          echo "::error::the ESI spec monitor exited ${{ steps.check.outputs.status }} — see the report above"
+          exit 1
