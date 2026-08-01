@@ -323,6 +323,8 @@ pdm run pytest              # test suite (drops/recreates the DATABASE_URL_TESTS
 pdm run lint                # flake8
 pdm run format              # black
 pdm run export-openapi      # writes app/frontend/web/openapi.json from the live schema
+pdm run esi-spec-monitor    # diff EVE's published ESI spec against the committed
+                            #   snapshot of what we consume; --update to accept (ESI-4)
 ```
 
 **Frontend** (run from `app/frontend/web/`):

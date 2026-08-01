@@ -29,7 +29,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, FASTAPI-3, PROXY-1 | §1.C |
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8, ENV-9, ENV-10 | §3.C |
-| 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status | ESI-1, ESI-2, ESI-3 | §4.C |
+| 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status, spec drift | ESI-1, ESI-2, ESI-3, ESI-4 | §4.C |
 | 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
@@ -346,6 +346,20 @@ One expression negated makes the branches exact complements *by construction*, i
 
 **Where It Bit Us:** `is_bpc=false` returned `total: 0` in production for the entire life of the filter (fixed 2026-08-01: `contract_service._has_blueprint_copy_item`, applied in `_apply_contract_filters`). The neighbouring `min_runs`/`max_runs` filter reads `ContractItem.raw_quantity`, a column no public payload can ever populate, and is inert for the same family of reasons. Verified against `https://esi.evetech.net/meta/openapi.json` and a live sample of 7,292 contracts / 1,658 item rows: `is_blueprint_copy` was `true` 1,396 times and absent 262 times — never once `false`.
 
+### ESI-4: Omitting `X-Compatibility-Date` pins the client to the OLDEST published date
+
+**The Flaw:** ESI replaced route versioning with a date header. A request that omits `X-Compatibility-Date` is not served "the current shape" — it is served the **oldest** date ESI still publishes, today `2020-01-01`. Hangar Bay sends no such header, so every call the `ESIClient` makes is answered from a five-year-old contract, chosen for us by default rather than by decision. CCP can raise that floor with notice, and the day they do, our routes change shape with no commit on our side.
+
+**Why It Matters:** It is an unmanaged, invisible dependency in the exact shape of the traps this section already catalogues — nothing in the codebase names the date, nothing fails when it moves, and the effect lands at ingestion where a missing field becomes a NULL column rather than an error (ESI-3). It also silently withholds routes: `/meta/status`, which ESI-1 tells us to use for upstream health, **does not exist at `2020-01-01`**. It first appears at a later compatibility date, so adopting it requires sending the header, not just changing a URL. The same date range removes `/sovereignty/map` and renames `/route/{origin}/{destination}` — proof that the date dimension moves real routes, not just field descriptions.
+
+**The Fix:**
+*   Treat the served date as a tracked value, not an accident. `app/backend/tools/esi_spec_monitor/` fetches `https://esi.evetech.net/meta/openapi.json` on a schedule, projects it down to the routes and fields we consume, and diffs that projection against a committed snapshot. The snapshot records the date served with no header (so a moved floor is an alarm) and the shape at the newest published date (so "what changes if we adopt a newer date" is answerable without a spike). Run it locally with `pdm run esi-spec-monitor` from `app/backend`; `--update` rewrites the snapshot, and that update belongs in a PR with a reason, like a lockfile bump.
+*   Before adopting a route that is absent from the spec you are reading, check `https://esi.evetech.net/meta/compatibility-dates` and re-fetch the spec with the header set. An "ESI does not have that route" conclusion drawn from a header-less fetch is a conclusion about 2020, not about ESI.
+*   Diff the **shape**, never the prose. The spec's `description` strings are unreliable (ESI-3: `collateral` is documented "for Couriers only" but ships on every item_exchange contract; `runs`'s documented `-1` for originals never occurs). The machine-readable `properties`, `required`, `security` and `x-server-cache-mode` fields have been accurate every time we have checked them against live payloads.
+*   Diff a **projection**, not the whole document. The spec is 182 paths and churns constantly in areas we never call; a whole-spec diff produces noise, noise gets ignored, and an ignored monitor rots. The manifest at `tools/esi_spec_monitor/manifest.py` names the nine operations we consume and the fields each one feeds, so a failure can say which function breaks.
+
+**Where It Stands:** Discovered 2026-08-01 while building the monitor; nothing has broken yet. The header-less floor is `2020-01-01` and the newest published date is `2026-07-21`; every route Hangar Bay consumes is byte-identical across that whole range and all nine are unauthenticated, so adopting a newer date would currently be a no-op for us. The monitor exists so that the *next* answer to that question does not require a spike. It replaces a set of VCR cassettes that were deleted in PR #110 — they had been intended to catch this class of drift and could not, because they recorded our own app talking to itself (testing-pitfalls TEST-14) and because a live sample can only reveal drift the sample happens to contain.
+
 ### §4.C — Review Checklist
 
 - [ ] **Every ESI request names an explicit version prefix** (`/v1`, `/v3`, …), not `/latest` (ESI-1)
@@ -357,6 +371,9 @@ One expression negated makes the branches exact complements *by construction*, i
 - [ ] **Filters over ESI-fed nullable columns treat NULL explicitly** — a present-when-true flag is never sent as false, so `col == False` matches zero rows (ESI-3)
 - [ ] **Every filtered column is actually populated by the route ingestion calls** — the public and authenticated contract-item routes carry disjoint field sets; `raw_quantity` is authenticated-only (ESI-3)
 - [ ] **No response field is served that the ingesting route cannot populate** — a wire field that is always NULL or always a placeholder publishes information the corpus does not have, and every client that reads it inherits the lie. Drop it from the response schema; keep the COLUMN when a known future ingestion path would fill it (ESI-3)
+- [ ] **A new or changed ESI dependency is added to `tools/esi_spec_monitor/manifest.py` in the same PR** — an endpoint or field outside the manifest is outside the drift monitor's lens (ESI-4)
+- [ ] **A conclusion about what ESI does or does not offer is drawn from a spec fetched with an explicit `X-Compatibility-Date`** — a header-less fetch answers for the oldest published date, currently 2020-01-01 (ESI-4)
+- [ ] **A snapshot update in `tools/esi_spec_monitor/snapshot.json` comes with a stated reason** — it is a lockfile-shaped artifact; re-generating it to silence a red run defeats the monitor (ESI-4)
 
 ---
 
@@ -455,6 +472,13 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 - Added ENV-9. `7dce47f` bumped the dev compose pin from `postgres:16-alpine` to `postgres:18-alpine` without moving the volume mount; Postgres 18 stores data at `PGDATA=/var/lib/postgresql/18/docker` and refuses to start when a volume is mounted at the pre-18 `/var/lib/postgresql/data`, even an empty one. `compose.dependencies.yml` now mounts the parent. CI was unaffected throughout (ephemeral service container, no volume), which is why it stayed green while local dev was broken.
 
+## 2026-08-01 — ESI-4 added: the compatibility-date floor, and a monitor for spec drift
+
+- Added ESI-4. Building a drift monitor surfaced that omitting `X-Compatibility-Date` is not "no opinion" — it pins the client to the OLDEST published date (`2020-01-01`), a floor CCP can raise with notice. It also explains a puzzle in ESI-1: `/meta/status` is absent from a header-less spec fetch and appears only at a later date, so adopting it needs the header, not just the URL.
+- Landed `app/backend/tools/esi_spec_monitor/` — a manifest of the nine operations we consume, a projection of the published spec down to those, a committed snapshot, and a daily GitHub Actions job that diffs them and files a self-closing issue. The comparison logic carries 35 unit tests against constructed fixture specs, mutation-verified.
+- Deliberately NOT a live-ESI test lane. The VCR cassettes deleted in PR #110 were the previous attempt at this and failed twice over (testing-pitfalls TEST-14); beyond that, detecting a spec lie live requires the sample to contain the case, which is inherently flaky, and flaky monitors get muted.
+- The monitor's manifest records five fields our ingestion reads that no public ESI route documents: `status` and `date_completed` on contracts, `raw_quantity` and `is_singleton` on contract items (`runs` remains unimplemented). Recorded as known-absent rather than fixed — see the ESI-3 note above on `raw_quantity`.
+
 ## 2026-08-01 — SQLA-3 added; ESI-3's prescribed fix corrected
 
 - Added SQLA-3 (a per-row predicate over a one-to-many join classifies the CHILD, not the parent, so a condition and its negation can both match the same parent). Found by adversarial review of PR #98: the first `is_bpc=false` fix corrected the NULL half but kept the per-item form, so a contract bundling a BPC with a hull matched `is_bpc=true` AND `is_bpc=false`. Re-fixed as a correlated EXISTS negated for the false branch, which also removes the filter's join and with it the SQLA-1 pagination hazard.
@@ -551,6 +575,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
 | ESI-2 | `Expires` deprecated by event-driven invalidation; read `Cache-Control` | MEDIUM | VALIDATED | External Integrations (ESI) |
 | ESI-3 | ESI omits fields rather than sending falsy values; `== False` matches nothing | HIGH | VALIDATED | External Integrations (ESI) |
+| ESI-4 | No `X-Compatibility-Date` pins the client to the oldest published date | MEDIUM | VALIDATED | External Integrations (ESI) |
 | DEPLOY-1 | Managed platforms inject postgresql:// URLs; async stack needs +asyncpg | HIGH | VALIDATED | Deployment & Platform |
 | DEPLOY-2 | uvicorn stays --workers 1 (in-process scheduler) | MEDIUM | VALIDATED | Deployment & Platform |
 | DEPLOY-3 | Durable coordination state must not live in an evicting cache | HIGH | VALIDATED | Deployment & Platform |
