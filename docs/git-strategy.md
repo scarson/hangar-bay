@@ -224,6 +224,22 @@ Multi-agent safety has two orthogonal dimensions — **git isolation** (preventi
 - **Persistence-only writes by analysis subagents are exempt from writer isolation.** This is the one deliberate seam between the two rules on this page: the output-persistence rule below (§Output persistence) requires analysis subagents to write their report *into the orchestrator's worktree* before returning. That is a tree write, but it does NOT make the subagent a "writer" for isolation purposes and does NOT earn it a dedicated worktree. The exemption is narrow and load-bearing: it covers **only** report/artifact files at dedicated, non-source paths — `docs/plans/`, `docs/superpowers/`, `docs/audits/<topic>/`, `dev/bug-hunts/`, or a scratch report file — which cannot collide with another writer's source edits, and which the orchestrator (the single writer for that branch) commits. Source-tree writes get no exemption: an analysis subagent that needs to modify application code, config, tests, or any non-artifact file **is** a writer and MUST take its own worktree (or hand the edit back to the orchestrator).
 - **Fetch before comparing.** When scripts or agents compare against `dev`, always use `origin/dev` after `git fetch origin dev`. Never the local `dev` ref — it can be stale by minutes when another agent just merged.
 
+### Shared sequential identifiers — allocate against `origin/dev`, and re-check before merge
+
+Some artifacts in this repo are append-heavy with **sequential, human-meaningful IDs**: pitfall entries (`ESI-2`, `TEST-17`, `FASTAPI-3`, `SQLA-3`), and anything else where the next contributor picks "the next free number." Git isolation does not protect these. Two agents on separate worktrees each read their own branch, each see the same next-free ID, and each take it — for entirely different content. Nothing conflicts until merge, and the second PR's conflict looks mechanical when it is not.
+
+This is not hypothetical. On 2026-08-01 three collisions landed in one day: `ESI-2` was claimed by both "Expires is being deprecated" and "ESI omits fields instead of sending falsy values"; `TEST-17` was claimed by both "a fixture date only currently in the future" and "a fixture that hand-writes a column ingestion never writes"; and two agents wrote **separate entries for the same incident**, one of which had to be deleted outright.
+
+The damage is not confined to the document. **Pitfall IDs are cited from source comments** (`contract_service.py` carried `# (pitfall ESI-2)`), so renumbering to resolve a collision silently repoints a code comment at an unrelated trap unless someone greps for it.
+
+Rules:
+
+- **Allocate the ID against `origin/dev` after a fresh fetch**, never against your local branch.
+- **Re-check before merging.** A branch that has been open for a while may have had its IDs taken underneath it. Verify the IDs are still free as part of the pre-merge check, not after a conflict forces it.
+- **When you renumber, grep the source tree** for citations of the old ID (`grep -rn "ESI-2" app/`) and update them in the same commit.
+- **If another agent already documented the same incident, keep one entry** and fold in any unique nuance. Two entries for one trap is worse than none — the reader cannot tell which is authoritative.
+- **When dispatching parallel agents that may add entries, tell each which IDs are reserved.** A one-line "TEST-18 and TEST-19 are taken by an in-flight PR; start at TEST-20" in the dispatch prompt costs nothing and prevents the whole class.
+
 ### Output persistence — analysis dispatches MUST write findings before returning
 
 **The rule:** every dispatched analysis subagent that produces non-trivial output (reports, findings, audits, deep-analysis summaries) MUST write its complete output to a persistent file in the repo BEFORE returning to the orchestrator. The response message exists for consolidation and can be summarized; the file is the canonical record.
