@@ -179,6 +179,14 @@ jobs:
         run: npx tsc -b
       - name: Unit tests
         run: npm run test
+      # The same suite with Date moved 400 days ahead. A fixture date that is only
+      # CURRENTLY in the future passes the lane above and fails this one, so a time
+      # bomb fails in the PR that introduces it instead of turning dev red on a
+      # calendar boundary, on a branch whose diff cannot explain it (TEST-17).
+      # A step rather than a job: it reuses this job's checkout and node_modules and
+      # adds a couple of seconds to a lane that already runs for minutes.
+      - name: Unit tests (future clock)
+        run: npm run test:future-clock
       - name: Cache Playwright browsers
         uses: actions/cache@v6
         id: playwright-cache
