@@ -397,3 +397,101 @@ async def test_detail_still_serves_an_expired_contract(
     detail = await client.get("/contracts/942001")
     assert detail.status_code == 200            # but still reachable by direct link
     assert detail.json()["contract_id"] == 942001
+
+
+# --- ESI shape fidelity -----------------------------------------------------
+#
+# The tests below pin behaviour against the shapes ESI's PUBLIC contract routes
+# actually emit, which differ from the shapes the shared `setup_contracts`
+# fixture writes. Verified 2026-08-01 against
+# https://esi.evetech.net/meta/openapi.json plus a live sample of 7,292
+# contracts / 1,658 item rows:
+#
+#   * `is_blueprint_copy` is a present-when-true flag. It was `true` on 1,396
+#     item rows and ABSENT on the other 262 — never once `false`. So the column
+#     is True-or-NULL in production, and NULL means "not a copy".
+#   * `start_location_id` is NOT in the response schema's `required` array, so a
+#     spec-conformant payload may omit it and the column is nullable.
+#
+# Any test that relies on `setup_contracts` writing `is_blueprint_copy=False`
+# is therefore testing a shape production never produces (see the fixture note
+# in conftest.py).
+
+
+async def test_is_bpc_false_matches_items_esi_left_unmarked(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """is_bpc=false must treat a NULL is_blueprint_copy as "not a copy".
+
+    ESI never sends is_blueprint_copy=false, so `== False` matches zero rows in
+    production and the false branch of the filter returns an empty list.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add_all(
+        [
+            Contract(
+                contract_id=951001,
+                title="Plain Hull",
+                price=1_000_000,
+                collateral=0,
+                status="outstanding",
+                type="item_exchange",
+                issuer_id=951,
+                issuer_corporation_id=951,
+                start_location_id=60003760,
+                start_location_region_id=99999951,
+                for_corporation=False,
+                date_issued=now,
+                date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=9510011,
+                        type_id=587,
+                        type_name="Tristan",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=False,
+                        # ESI omitted the flag; ingestion writes NULL, not False.
+                        is_blueprint_copy=None,
+                    )
+                ],
+            ),
+            Contract(
+                contract_id=951002,
+                title="Copy Only",
+                price=2_000_000,
+                collateral=0,
+                status="outstanding",
+                type="item_exchange",
+                issuer_id=951,
+                issuer_corporation_id=951,
+                start_location_id=60003760,
+                start_location_region_id=99999951,
+                for_corporation=False,
+                date_issued=now,
+                date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=9510021,
+                        type_id=621,
+                        type_name="Caracal Blueprint",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=True,
+                        is_blueprint_copy=True,
+                    )
+                ],
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    non_copies = await client.get("/contracts/?region_ids=99999951&is_bpc=false")
+    assert non_copies.status_code == 200
+    assert [c["contract_id"] for c in non_copies.json()["items"]] == [951001]
+
+    # The true branch must stay exact — a fix that widens `false` must not also
+    # start matching unmarked items as copies.
+    copies = await client.get("/contracts/?region_ids=99999951&is_bpc=true")
+    assert copies.status_code == 200
+    assert [c["contract_id"] for c in copies.json()["items"]] == [951002]

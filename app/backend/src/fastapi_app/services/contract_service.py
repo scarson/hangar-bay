@@ -130,7 +130,19 @@ def _apply_item_filters(query, filters: ContractFilters):
     if filters.type_ids:
         query = query.filter(ContractItem.type_id.in_(filters.type_ids))
     if filters.is_bpc is not None:
-        query = query.filter(ContractItem.is_blueprint_copy == filters.is_bpc)
+        if filters.is_bpc:
+            query = query.filter(ContractItem.is_blueprint_copy.is_(True))
+        else:
+            # ESI's public item payload carries is_blueprint_copy only when the item
+            # IS a copy — it is never sent as false — so the column is True-or-NULL and
+            # NULL means "not a copy". `== False` therefore matched zero rows, and the
+            # false branch of this filter returned an empty list on all real data.
+            query = query.filter(
+                or_(
+                    ContractItem.is_blueprint_copy.is_(False),
+                    ContractItem.is_blueprint_copy.is_(None),
+                )
+            )
     # BPC Run filters (Note: ME/TE not implemented as data is not in model)
     if filters.min_runs is not None:
         query = query.filter(ContractItem.raw_quantity >= filters.min_runs)
