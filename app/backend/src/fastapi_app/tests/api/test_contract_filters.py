@@ -357,11 +357,6 @@ async def test_detail_still_serves_an_expired_contract(
 ):
     """The LIST endpoint hides expired contracts; the DETAIL endpoint must not.
 
-    Deliberately NOT in test_contracts.py: that module carries a file-level
-    pytest.mark.vcr, and vcrpy intercepts ahead of ASGITransport — so this test
-    replayed a cassette and passed even with the expiry predicate deleted. It has to
-    live somewhere that actually reaches the app.
-
     A link pasted into chat routinely outlives the contract it points at, and 404-ing
     yesterday's link reads as a broken site rather than an expired deal. This pins the
     asymmetry deliberately, so a later change that "consistently" filters both does not

@@ -109,9 +109,7 @@ This section provides a detailed breakdown of the backend project structure. The
 │       │   ├── __init__.py
 │       │   ├── test_contract_filters.py # Integration tests for the contract filters API endpoints.
 │       │   ├── test_contracts.py # Integration tests for the contracts API endpoints.
-│       │   ├── test_main_endpoints.py # Tests for basic endpoints like `/` and `/health`.
-│       │   └── cassettes/        # Stores VCRpy cassettes for mocking live ESI API calls.
-│       │       └── test_get_contracts_live.yaml
+│       │   └── test_main_endpoints.py # Tests for basic endpoints like `/` and `/health`.
 │       │
 │       └── services/
 │           ├── __init__.py
