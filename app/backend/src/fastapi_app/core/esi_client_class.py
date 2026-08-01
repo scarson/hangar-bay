@@ -21,6 +21,62 @@ RATE_LIMIT_STATUSES = frozenset({420, 429})
 # ESI's error-limit window is 60s; nothing legitimate asks a caller to wait longer.
 RATE_LIMIT_SLEEP_CEILING = 60.0
 
+# TTL for a page whose response describes no freshness lifetime we can read.
+DEFAULT_CACHE_TTL_SECONDS = 600
+
+
+def _parse_cache_control(header: Optional[str]) -> Dict[str, Optional[str]]:
+    """Split a Cache-Control header into lower-cased directives.
+
+    A directive with no `=value` maps to None, which is how `no-store` and a
+    valueless `max-age` are told apart from `max-age=0`.
+    """
+    directives: Dict[str, Optional[str]] = {}
+    if not header:
+        return directives
+    for part in header.split(","):
+        name, sep, value = part.strip().partition("=")
+        if name:
+            directives[name.strip().lower()] = value.strip() if sep else None
+    return directives
+
+
+def _freshness_from_cache_control(
+    directives: Dict[str, Optional[str]], age_header: Optional[str]
+) -> Optional[int]:
+    """Remaining freshness in seconds from Cache-Control, or None if it says nothing.
+
+    None means "this header carries no lifetime" — an absent or invalid `max-age`
+    (unparseable, valueless, or negative, none of which are valid delta-seconds) —
+    and the caller falls back to Expires. A returned 0 is a real answer meaning
+    "not fresh", not a missing one.
+
+    `no-store` forbids storage outright. `no-cache` does not: it requires
+    revalidation before reuse, and every read here is already a conditional
+    request whose cached body is served only on a 304 — the origin confirming it
+    is still current — so a stored entry satisfies it.
+
+    Age is subtracted because max-age is the response's total lifetime, not its
+    remaining one: a shared upstream cache can hand us a response most of the way
+    through it (RFC 9111 §4.2). An unparseable Age is ignored rather than assumed.
+    """
+    if "no-store" in directives:
+        return 0
+    raw_max_age = directives.get("max-age")
+    if raw_max_age is None:
+        return None
+    try:
+        max_age = int(raw_max_age)
+    except ValueError:
+        return None
+    if max_age < 0:
+        return None
+    try:
+        age = int(age_header) if age_header is not None else 0
+    except ValueError:
+        age = 0
+    return max(max_age - max(age, 0), 0)
+
 
 def _rate_limit_wait(retry_after: Optional[str], attempt: int, backoff_factor: float) -> float:
     """Seconds to wait before retrying a 420/429.
@@ -184,12 +240,29 @@ class ESIClient:
         return json.loads(cached_data)
 
     def _cache_ttl_seconds(self, response: httpx.Response) -> int:
-        """Seconds to cache a page for, derived from its Expires header.
+        """Seconds to cache a page for, read from Cache-Control, else Expires.
 
-        An absent, already-elapsed, or unparseable Expires yields 600.
+        Cache-Control wins where it states a lifetime, per RFC 9111 and ESI's own
+        guidance: routes converting to event-driven invalidation keep emitting
+        Expires for back-compat only, where it no longer describes when the cache
+        turns over (CCP dev blog, 2026-01-27 — see pitfall ESI-2). Routes that have
+        not converted send a bare `Cache-Control: public` with no lifetime at all,
+        so Expires stays in charge there and their TTLs are unchanged.
+
+        Zero means "do not store". An absent, already-elapsed, or unparseable
+        Expires with nothing better available yields DEFAULT_CACHE_TTL_SECONDS.
+
+        An over-long TTL costs freshness nothing: entries are never served blind,
+        only revalidated by a conditional request, so a stale one yields a 200 with
+        the new body. Too short merely forfeits a 304.
         """
+        directives = _parse_cache_control(response.headers.get("Cache-Control"))
+        freshness = _freshness_from_cache_control(directives, response.headers.get("Age"))
+        if freshness is not None:
+            return freshness
+
         expires_header = response.headers.get("Expires")
-        cache_duration_seconds = 600
+        cache_duration_seconds = DEFAULT_CACHE_TTL_SECONDS
         if expires_header:
             try:
                 expire_time = parsedate_to_datetime(expires_header).replace(tzinfo=timezone.utc)
@@ -207,11 +280,16 @@ class ESIClient:
 
         A response carrying no ETag is not cached at all — without a validator the
         stored body could never be revalidated by a later conditional request.
+        Neither is one whose headers give it no remaining freshness (`no-store`, or
+        a max-age already spent): a zero TTL is Valkey's "no expiry" sentinel, so
+        writing it would strand the entry forever rather than skip it.
         """
         new_etag = response.headers.get("ETag")
         if not new_etag:
             return
         cache_duration_seconds = self._cache_ttl_seconds(response)
+        if cache_duration_seconds <= 0:
+            return
         await self.redis_client.set(etag_key, new_etag, ex=cache_duration_seconds)
         await self.redis_client.set(data_key, response.content, ex=cache_duration_seconds)
 
