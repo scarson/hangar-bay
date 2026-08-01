@@ -7,9 +7,9 @@ from sqlalchemy.orm import aliased, selectinload
 
 from ..core.logging import get_logger, log_key_event
 from ..models.contracts import Contract, ContractItem
-from ..schemas.common import PaginatedResponse
 from ..schemas.contracts import (
     ContractFilters,
+    ContractListResponse,
     SortDirection,
     ContractSchema,
     SortableContractFields,
@@ -173,11 +173,11 @@ def _apply_contract_filters(query, filters: ContractFilters):
 def _apply_location_filters(query, filters: ContractFilters):
     """Narrow to the requested regions, solar systems, and stations.
 
-    NOTE: system_ids is inert against real data — nothing populates
-    start_location_system_id, because ESI's public contracts carry a
-    station/structure id and no system id, and no enrichment resolves one.
-    The predicate itself is correct and pinned by tests; it filters an
-    always-NULL column until that resolution exists.
+    system_ids has partial coverage: ingestion resolves start_location_system_id for
+    NPC stations through the public /universe/stations/ route, but player-owned
+    structures have no tokenless location→system route and keep a NULL system, so
+    their contracts can never match. _count_unknown_system_excluded measures exactly
+    that shortfall per query, so callers can report it rather than absorb it.
     """
     if filters.region_ids:
         query = query.filter(Contract.start_location_region_id.in_(filters.region_ids))
@@ -213,6 +213,30 @@ async def _count_distinct_contracts(db: AsyncSession, query) -> int:
 
     total_result = await db.execute(count_query)
     return total_result.scalar_one()
+
+
+async def _count_unknown_system_excluded(
+    db: AsyncSession, filters: ContractFilters, needs_item_join: bool
+) -> int:
+    """How many contracts the system_ids filter dropped for want of a known system.
+
+    The same query the caller ran, minus the system predicate and plus "the system is
+    unknown" — so the figure counts exactly the rows the user's OTHER criteria selected
+    and only the system filter removed. Counting every system-less contract in the
+    corpus instead would answer a question nobody asked.
+
+    Costs one additional COUNT, and only when system_ids is applied. It reuses
+    _count_distinct_contracts, so the joined path counts contracts rather than
+    duplicated joined rows (SQLA-1).
+    """
+    residual_filters = filters.model_copy(update={"system_ids": None})
+    query = select(Contract)
+    if needs_item_join:
+        query = query.outerjoin(ContractItem)
+    query = _apply_contract_filters(query, residual_filters)
+    query = _apply_item_filters(query, residual_filters)
+    query = query.filter(Contract.start_location_system_id.is_(None))
+    return await _count_distinct_contracts(db, query)
 
 
 async def _fetch_page_joined(
@@ -275,7 +299,7 @@ async def _fetch_page_simple(
 
 async def get_contracts(
     db: AsyncSession, filters: ContractFilters
-) -> PaginatedResponse[ContractSchema]:
+) -> ContractListResponse:
     """
     Retrieves a paginated list of contracts based on specified filters.
 
@@ -320,6 +344,15 @@ async def get_contracts(
         # --- Count Query ---
         total = await _count_distinct_contracts(db, query)
 
+        # Measured before the empty-result short-circuit: an empty page is where the
+        # figure matters most, since a system holding only structure-hosted contracts
+        # is otherwise indistinguishable from an empty one.
+        unknown_system_excluded = (
+            await _count_unknown_system_excluded(db, filters, needs_item_join)
+            if filters.system_ids
+            else None
+        )
+
         if total == 0:
             duration_ms = (time.time() - start_time) * 1000
             log_key_event(
@@ -335,7 +368,13 @@ async def get_contracts(
                     "size": filters.size,
                 }
             )
-            return PaginatedResponse(total=0, page=filters.page, size=filters.size, items=[])
+            return ContractListResponse(
+                total=0,
+                page=filters.page,
+                size=filters.size,
+                items=[],
+                unknown_system_excluded=unknown_system_excluded,
+            )
 
         # --- Data Query ---
         # Apply sorting and pagination to get the specific page of results.
@@ -354,11 +393,12 @@ async def get_contracts(
         # Calculate duration and log successful completion
         duration_ms = (time.time() - start_time) * 1000
 
-        response = PaginatedResponse(
+        response = ContractListResponse(
             total=total,
             page=filters.page,
             size=filters.size,
             items=[ContractSchema.model_validate(c) for c in contracts],
+            unknown_system_excluded=unknown_system_excluded,
         )
 
         # Log successful contract search with key event schema
