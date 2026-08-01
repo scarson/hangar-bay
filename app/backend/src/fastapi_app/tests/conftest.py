@@ -26,6 +26,7 @@ from fastapi_app.core.config import settings
 from fastapi_app.core import session as sess
 from fastapi_app.models import User
 from fastapi_app.models.contracts import Contract, ContractItem
+from fastapi_app.tests.marker_guards import forbid_vcr_on_app_client_tests
 
 # Use a separate, real Postgres database for testing to match production.
 # This ensures that tests run against the same database engine as the live application.
@@ -34,6 +35,13 @@ if not settings.DATABASE_URL_TESTS:
     raise ValueError("DATABASE_URL_TESTS environment variable must be set for testing")
 
 TEST_DATABASE_URL = str(settings.DATABASE_URL_TESTS)
+
+
+# --- Collection Guards ---
+
+
+def pytest_collection_modifyitems(items):
+    forbid_vcr_on_app_client_tests(items)
 
 
 # --- Database Fixtures ---

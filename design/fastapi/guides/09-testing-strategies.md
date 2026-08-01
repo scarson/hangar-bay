@@ -413,6 +413,8 @@ We use the `pytest-vcr` library to implement a "record-and-replay" strategy.
 
 These tests **must** be marked with a custom `esi_live` marker. This allows us to run them separately from the main test suite. They should also be marked with `vcr`.
 
+> **Never put these markers on a test that uses the `client` or `auth_client` fixture.** Those fixtures reach our app over `ASGITransport`, and vcrpy patches *below* `httpx` — so the marker turns the test into a replay of a cassette of our own app talking to itself, which passes whether the behavior works or is deleted (pitfall TEST-14). `tests/marker_guards.py` now rejects that pairing at collection time. The rule in §B below is what keeps you clear of it.
+
 #### B. Write the Test
 
 These tests should be focused *only* on the client-to-API interaction, not our own database or internal endpoints.
