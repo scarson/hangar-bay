@@ -131,6 +131,10 @@ Two properties make the cost far better than it first appears: a rolled module's
 
 One region ingested (The Forge) while the frontend offers a 70-region filter — 69 of which can never match. Multi-region is an explicit M5 non-goal (`2026-07-26-m5-trust-shareability-design.md`); noted here because several ecosystem patterns (jumps-from-my-location, route security) only pay off with broader coverage.
 
+**Measured against production, 2026-08-01** (not inferred): `REGIONS` in `app/frontend/web/src/features/contracts/regions.ts` carries 70 entries; The Forge (`10000002`) returns 33,941 contracts while Domain (`10000043`), Sinq Laison (`10000032`), and Heimatar (`10000030`) each return **0**. A user selecting any of the other 69 sees "no contracts match," not "we don't cover that region yet" — the same silent-filter-no-op this document criticizes in EVE Workbench's PLEX/region behavior (§2.2), shipped in our own UI.
+
+The live response shape compounds it. `GET /contracts/` returns `start_location_name` but **not** `start_location_region_id`, so the client can filter by region and can never label which region a row is in. Meanwhile the payload does return `status` and `date_completed` — the two fields §4.2 shows can never hold data. We ship two permanently-dead fields and withhold a useful one. (`collateral` was also absent; PR #98 fixes that and is not yet deployed — production is on commit `7a95118`.) The list envelope is `items`/`page`/`size`/`total` only, confirming the M5 `data_as_of`/`data_stale` freshness envelope is designed but not yet live on this endpoint; today it exists only on `/ready`.
+
 ### 4.4 Defects — independently verified; four fixed in [PR #98](https://github.com/scarson/hangar-bay/pull/98) (Review — serialization contract; awaiting Sam)
 
 | # | Defect | Verdict | Action |
