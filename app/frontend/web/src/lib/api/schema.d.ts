@@ -771,9 +771,9 @@ export interface operations {
                 min_collateral?: number | null;
                 /** @description Maximum collateral. */
                 max_collateral?: number | null;
-                /** @description Minimum runs for BPCs (-1 for original). */
+                /** @description Minimum runs for BPCs. (NO MATCHES — filters an always-NULL column; do not expose in clients) */
                 min_runs?: number | null;
-                /** @description Maximum runs for BPCs. */
+                /** @description Maximum runs for BPCs. (NO MATCHES — filters an always-NULL column; do not expose in clients) */
                 max_runs?: number | null;
                 /** @description Minimum Material Efficiency for BPCs. (NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients) */
                 min_me?: number | null;
@@ -785,7 +785,7 @@ export interface operations {
                 max_te?: number | null;
                 /** @description List of region IDs to filter by. */
                 region_ids?: number[] | null;
-                /** @description List of solar system IDs to filter by. */
+                /** @description List of solar system IDs to filter by. (NO MATCHES — filters an always-NULL column; do not expose in clients) */
                 system_ids?: number[] | null;
                 /** @description List of station IDs to filter by. */
                 station_ids?: number[] | null;

@@ -97,10 +97,27 @@ class ContractFilters(BaseModel):
     max_collateral: Optional[float] = Field(
         default=None, ge=0, description="Maximum collateral."
     )
+    # NOTE (ESI-3): min_runs/max_runs are applied, but against ContractItem.raw_quantity —
+    # a field ESI returns only on the AUTHENTICATED contract-item routes, never on the public
+    # one we ingest. The column is therefore always NULL and both bounds match zero rows.
+    # Making them work requires ingesting the public `runs` field; note that on that route an
+    # original OMITS `runs` rather than sending -1, so the documented sentinel never appears.
     min_runs: Optional[int] = Field(
-        default=None, ge=-1, description="Minimum runs for BPCs (-1 for original)."
+        default=None,
+        ge=-1,
+        description=(
+            "Minimum runs for BPCs. "
+            "(NO MATCHES — filters an always-NULL column; do not expose in clients)"
+        ),
     )
-    max_runs: Optional[int] = Field(default=None, ge=-1, description="Maximum runs for BPCs.")
+    max_runs: Optional[int] = Field(
+        default=None,
+        ge=-1,
+        description=(
+            "Maximum runs for BPCs. "
+            "(NO MATCHES — filters an always-NULL column; do not expose in clients)"
+        ),
+    )
     # NOTE (FASTAPI-2): min_me/max_me/min_te/max_te are accepted but never applied
     # by the service (ME/TE data is not in the model). The descriptions flag them as
     # inert so generated clients (openapi.json → frontend codegen) do not surface them
@@ -142,8 +159,16 @@ class ContractFilters(BaseModel):
     region_ids: Optional[List[int]] = Field(
         default=None, description="List of region IDs to filter by."
     )
+    # NOTE: system_ids is applied, but Contract.start_location_system_id is never populated —
+    # ESI's public contracts carry a station/structure id and no system id, and no enrichment
+    # resolves one. Making it work needs a location→system lookup (/universe/stations/ covers
+    # NPC stations; player structures need an ACL-scoped token and would stay NULL).
     system_ids: Optional[List[int]] = Field(
-        default=None, description="List of solar system IDs to filter by."
+        default=None,
+        description=(
+            "List of solar system IDs to filter by. "
+            "(NO MATCHES — filters an always-NULL column; do not expose in clients)"
+        ),
     )
     station_ids: Optional[List[int]] = Field(
         default=None, description="List of station IDs to filter by."
