@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { anonymousMe, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
-import { daysFromNow } from '../../../test/dates'
+import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
 const CONTRACT = {
   contract_id: 101,
@@ -64,6 +64,34 @@ describe('ContractsPage', () => {
     // here would notice (testing-pitfalls TEST-17).
     expect(screen.getByText(/^\d+d \d+h$/)).toBeInTheDocument()
     expect(screen.queryByText('Expired')).not.toBeInTheDocument()
+  })
+
+  it('renders each row its own countdown, across the day, hour, and minute buckets', async () => {
+    // Every offset carries a half-minute of padding so the truncating formatter
+    // lands on the same bucket however long the render takes — a bare
+    // minutesFromNow(20) is 20 minutes exactly and floors to "19m" the instant
+    // any time elapses. The offsets are clock-relative (TEST-17) and the
+    // expected strings are literal, so nothing here re-implements the formatter.
+    const rows = [
+      { name: 'Rifter', minutes: 3 * 1440 + 5 * 60 + 30, expected: '3d 5h' },
+      { name: 'Myrmidon', minutes: 6 * 60 + 12.5, expected: '6h 12m' },
+      { name: 'Dominix', minutes: 20.5, expected: '20m' },
+    ]
+    const items = rows.map((row, index) => ({
+      ...CONTRACT,
+      contract_id: 200 + index,
+      date_expired: minutesFromNow(row.minutes),
+      items: [{ ...CONTRACT.items[0], record_id: 200 + index, type_name: row.name }],
+    }))
+    stubFetch(anonymousMe(() => jsonResponse({ total: 3, page: 1, size: 50, items })))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Rifter')
+    for (const row of rows) {
+      const cells = within(screen.getByRole('row', { name: new RegExp(row.name) }))
+      expect(cells.getByText(row.expected)).toBeInTheDocument()
+    }
   })
 
   it('announces the result count in a polite status region (WCAG 4.1.3)', async () => {
@@ -224,6 +252,28 @@ describe('ContractDetailPage', () => {
     stubFetch(anonymousMe(() => jsonResponse(bare)))
     renderApp('/contracts/778')
     expect(await screen.findByRole('heading', { name: 'Contract 778' })).toBeInTheDocument()
+  })
+
+  it('badges a contract past its expiry and drops the countdown, keeping both while it is live', async () => {
+    // The detail endpoint deliberately keeps serving contracts past
+    // date_expired even though the list endpoint filters them out, so a
+    // past-dated detail response is one the real API still produces. Both the
+    // badge and the parenthetical countdown hang off timeRemaining's 'Expired'
+    // sentinel, and neither branch had an assertion.
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, date_expired: daysFromNow(-1) })))
+    const expired = renderApp('/contracts/101')
+
+    expect(await screen.findByText('Expired')).toBeInTheDocument()
+    expect(screen.queryByText(/^\(.+\)$/)).not.toBeInTheDocument()
+    expired.unmount()
+    vi.unstubAllGlobals()
+
+    stubFetch(anonymousMe(() => jsonResponse(CONTRACT)))
+    renderApp('/contracts/101')
+
+    await screen.findByRole('heading', { name: 'Tristan' })
+    expect(screen.getByText(/^\(\d+d \d+h\)$/)).toBeInTheDocument()
+    expect(screen.queryByText('Expired')).not.toBeInTheDocument()
   })
 
   it('shows not-found for a 404', async () => {

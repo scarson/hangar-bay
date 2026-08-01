@@ -15,4 +15,35 @@ describe('timeAgo', () => {
   it('returns em dash for an unparseable input', () => {
     expect(timeAgo('not-a-date', now)).toBe('—')
   })
+
+  const SECOND = 1_000
+  const MINUTE = 60 * SECOND
+  const HOUR = 60 * MINUTE
+  const DAY = 24 * HOUR
+  /** A timestamp `ms` before `now`, so offsets read as durations instead of ISO arithmetic. */
+  const ago = (ms: number) => new Date(now - ms).toISOString()
+
+  it('reads a future timestamp as "just now" rather than a negative span', () => {
+    // The server stamps created_at; a few seconds of clock skew between it and
+    // the browser must not surface as "-1m ago".
+    expect(timeAgo(ago(0), now)).toBe('just now')
+    expect(timeAgo(ago(-30 * SECOND), now)).toBe('just now')
+    expect(timeAgo(ago(-2 * HOUR), now)).toBe('just now')
+  })
+
+  it('switches units only on the exact boundary', () => {
+    expect(timeAgo(ago(59 * SECOND), now)).toBe('just now')
+    expect(timeAgo(ago(MINUTE), now)).toBe('1m ago')
+    expect(timeAgo(ago(HOUR - SECOND), now)).toBe('59m ago')
+    expect(timeAgo(ago(HOUR), now)).toBe('1h ago')
+    expect(timeAgo(ago(DAY - SECOND), now)).toBe('23h ago')
+    expect(timeAgo(ago(DAY), now)).toBe('1d ago')
+  })
+
+  it('keeps counting in days past a month — there is no coarser bucket', () => {
+    // Retention can leave old rows in the list; they read as "90d ago", not as a
+    // wrapped or truncated span.
+    expect(timeAgo(ago(90 * DAY), now)).toBe('90d ago')
+    expect(timeAgo(ago(400 * DAY), now)).toBe('400d ago')
+  })
 })
