@@ -8,15 +8,21 @@ from .common import PaginatedResponse
 
 
 class ContractItemSchema(BaseModel):
-    """Schema for an item within a contract."""
+    """Schema for an item within a contract.
+
+    `is_singleton` and `raw_quantity` are deliberately absent. Both are fields of ESI's
+    AUTHENTICATED character/corporation contract-item routes; the public item route
+    Hangar Bay reads carries neither, so `is_singleton` is the mapping default and
+    `raw_quantity` is NULL for every item in the corpus today. The columns stay — they
+    fill in the moment a user's own contracts are ingested — but a wire field that can
+    only misinform is worse than no wire field (ESI-3).
+    """
 
     record_id: int
     type_id: int
     quantity: int
     is_included: bool
-    is_singleton: bool
     is_blueprint_copy: Optional[bool] = None
-    raw_quantity: Optional[int] = None
     type_name: Optional[str] = None
     category: Optional[str] = None
     market_group_id: Optional[int] = None

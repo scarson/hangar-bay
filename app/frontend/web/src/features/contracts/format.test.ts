@@ -28,7 +28,6 @@ function contract(items: Partial<Contract['items'][number]>[], title = ''): Cont
       type_id: 1,
       quantity: 1,
       is_included: true,
-      is_singleton: false,
       ...item,
     })),
   } as Contract

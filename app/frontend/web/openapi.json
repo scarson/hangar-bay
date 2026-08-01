@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "ContractItemSchema": {
-        "description": "Schema for an item within a contract.",
+        "description": "Schema for an item within a contract.\n\n`is_singleton` and `raw_quantity` are deliberately absent. Both are fields of ESI's\nAUTHENTICATED character/corporation contract-item routes; the public item route\nHangar Bay reads carries neither, so `is_singleton` is the mapping default and\n`raw_quantity` is NULL for every item in the corpus today. The columns stay \u2014 they\nfill in the moment a user's own contracts are ingested \u2014 but a wire field that can\nonly misinform is worse than no wire field (ESI-3).",
         "properties": {
           "category": {
             "anyOf": [
@@ -30,10 +30,6 @@
             "title": "Is Included",
             "type": "boolean"
           },
-          "is_singleton": {
-            "title": "Is Singleton",
-            "type": "boolean"
-          },
           "market_group_id": {
             "anyOf": [
               {
@@ -48,17 +44,6 @@
           "quantity": {
             "title": "Quantity",
             "type": "integer"
-          },
-          "raw_quantity": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Raw Quantity"
           },
           "record_id": {
             "title": "Record Id",
@@ -84,8 +69,7 @@
           "record_id",
           "type_id",
           "quantity",
-          "is_included",
-          "is_singleton"
+          "is_included"
         ],
         "title": "ContractItemSchema",
         "type": "object"

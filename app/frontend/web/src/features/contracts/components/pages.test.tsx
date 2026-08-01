@@ -25,7 +25,6 @@ const CONTRACT = {
       type_id: 587,
       quantity: 1,
       is_included: true,
-      is_singleton: false,
       type_name: 'Tristan',
     },
   ],

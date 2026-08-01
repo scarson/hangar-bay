@@ -314,6 +314,13 @@ export interface components {
         /**
          * ContractItemSchema
          * @description Schema for an item within a contract.
+         *
+         *     `is_singleton` and `raw_quantity` are deliberately absent. Both are fields of ESI's
+         *     AUTHENTICATED character/corporation contract-item routes; the public item route
+         *     Hangar Bay reads carries neither, so `is_singleton` is the mapping default and
+         *     `raw_quantity` is NULL for every item in the corpus today. The columns stay — they
+         *     fill in the moment a user's own contracts are ingested — but a wire field that can
+         *     only misinform is worse than no wire field (ESI-3).
          */
         ContractItemSchema: {
             /** Category */
@@ -322,14 +329,10 @@ export interface components {
             is_blueprint_copy?: boolean | null;
             /** Is Included */
             is_included: boolean;
-            /** Is Singleton */
-            is_singleton: boolean;
             /** Market Group Id */
             market_group_id?: number | null;
             /** Quantity */
             quantity: number;
-            /** Raw Quantity */
-            raw_quantity?: number | null;
             /** Record Id */
             record_id: number;
             /** Type Id */
