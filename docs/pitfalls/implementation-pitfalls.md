@@ -28,7 +28,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 |---|---------|---------------------|---------|-----------|
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, FASTAPI-3, PROXY-1 | §1.C |
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3 | §2.C |
-| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8 | §3.C |
+| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8, ENV-9, ENV-10 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status | ESI-1, ESI-2, ESI-3 | §4.C |
 | 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
@@ -253,6 +253,30 @@ One expression negated makes the branches exact complements *by construction*, i
 
 ---
 
+### ENV-9: Postgres 18 moved PGDATA — a volume at `/var/lib/postgresql/data` blocks startup
+
+**The Flaw:** Postgres 18 images store data in a major-version-specific subdirectory (`PGDATA=/var/lib/postgresql/18/docker`) and expect a single volume mounted one level up, at `/var/lib/postgresql`. The pre-18 convention — mounting at `/var/lib/postgresql/data` — is now actively rejected: the entrypoint treats a volume at that path as un-upgraded data from an older major and **refuses to start**, even when the volume is completely empty. Bumping the image pin without moving the mount is therefore a breaking change, not a version bump.
+
+**Why It Matters:** Two distinct failures, and the second is the dangerous one. First, the container crash-loops with an error that reads like a data-migration problem ("this is usually the result of upgrading the Docker image without upgrading the underlying database"), sending you toward `pg_upgrade` when the actual fix is a one-line mount path. Second — and silently — if the container *did* start, the image's own `VOLUME /var/lib/postgresql` declaration means PGDATA lands in an **anonymous** volume while your named volume sits unused at the old path: data would not persist across `docker compose down`, and nothing would say so. The named-volume mount looks correct in `compose.yml` the whole time.
+
+**The Fix:** Mount the parent: `- postgres_data:/var/lib/postgresql`. Verify with `docker inspect <container> --format '{{range .Mounts}}{{.Name}} -> {{.Destination}}{{"\n"}}{{end}}'` — the named volume must be the mount at `/var/lib/postgresql`, and `docker exec <container> sh -c 'echo $PGDATA; ls /var/lib/postgresql'` should show the major-version directory inside it. Existing data from an older major cannot be carried across by remounting; it needs `pg_upgrade` or, for disposable dev data, recreation (ENV-2 means the dev database is rebuilt on every backend start anyway).
+
+**Where It Bit Us:** `7dce47f build(deploy): unify postgres at 18` changed the dev compose pin from `postgres:16-alpine` to `postgres:18-alpine` without moving the mount. It went unnoticed because CI runs Postgres as an ephemeral GitHub Actions service container with no volume mount at all, so CI stayed green while local dev was broken for anyone who recreated the volume. It surfaced on 2026-08-01 when the crash-looping container blocked local backend tests for a whole multi-agent session; the pre-existing volume also held PG 16 data, which masked the mount bug behind a genuine major-version mismatch.
+
+---
+
+### ENV-10: A container created from a worktree dies when that worktree is removed
+
+**The Flaw:** `docker compose up` resolves relative bind-mount paths against the compose file's directory, so a container started from `.claude/worktrees/<slug>/app/backend/docker/` records **absolute** host paths into that worktree. Reclaiming the worktree after its PR merges — the normal, encouraged end of the workflow (see `docs/git-strategy.md`) — deletes the mount sources out from under a container that is still registered and still set to `restart: unless-stopped`.
+
+**Why It Matters:** The container does not fail where you would look for it. It exits **127**, which reads as "command not found" and sends you hunting for a broken image or entrypoint; the real message is buried in `docker inspect`'s `.State.Error`, naming a path that no longer exists. Worse, the failure is deferred: the container runs fine for days or weeks and only dies at the next restart — the Docker daemon restarting, a Colima stop/start, a machine reboot — long after the worktree removal that caused it, so the two events are never associated. If the mount was a **gitignored credential file** (ENV-8), removing the worktree also destroyed the only copy, and recreating the container is blocked until it is regenerated from 1Password.
+
+**The Fix:** Start long-lived dependency containers from the **main checkout**, never from a worktree — `docker compose -f /Users/sam/Code/hangar-bay/app/backend/docker/compose.yml ... up -d`. Before reclaiming a worktree, check nothing is bound to it: `docker ps -a --format '{{.Names}}' | xargs -I{} sh -c 'docker inspect {} --format "{{{{.Name}}}} {{{{range .Mounts}}}}{{{{.Source}}}} {{{{end}}}}"' | grep worktrees`. When you meet an exit-127 container, read `docker inspect <name> --format '{{.State.Error}}'` before anything else — it distinguishes a missing mount source from a genuinely missing binary.
+
+**Where It Bit Us:** The `alloy` telemetry container was created from `.claude/worktrees/grafana-cloud-migration-5a5464/` during the Grafana Cloud migration (2026-07-19). The worktree was reclaimed when that work merged; alloy kept running until its next restart, then exited 127 and stayed dead for ~11 days unnoticed, silently ending local telemetry shipping. Discovered 2026-08-01. Recovery is blocked on regenerating `app/backend/docker/grafana-cloud.env` in the main checkout, since that gitignored file existed only inside the deleted worktree.
+
+---
+
 ### §3.C — Review Checklist
 
 - [ ] **Complex settings fields (e.g. `List[int]`) are supplied as JSON** — `AGGREGATION_REGION_IDS=[...]`; env is loaded from `app/backend/src/.env`; `ESI_USER_AGENT` is set; the single consolidated `core/config.py` Settings class is satisfied (ENV-1)
@@ -263,6 +287,8 @@ One expression negated makes the branches exact complements *by construction*, i
 - [ ] **Deleting a debug print/function also drops any module-level import it orphaned** — flake8 ignores F401 here so it won't catch it, but F811 will trip on an unrelated function (ENV-6)
 - [ ] **No repo-wide `pdm run format`** — the codebase is not black-formatted; format new files individually with `.venv/bin/black <file>` (ENV-7)
 - [ ] **Sessions needing platform credentials source the MAIN checkout's root `.env` per Bash call (worktrees lack it), and MCP servers with `${VAR}` config get the export at launch** — never print or copy the values (ENV-8)
+- [ ] **A Postgres major-version bump moves the volume mount too — 18+ mounts at `/var/lib/postgresql`, not `/var/lib/postgresql/data`** (ENV-9)
+- [ ] **Long-lived dependency containers are started from the MAIN checkout, and nothing is bind-mounted to a worktree before that worktree is reclaimed** (ENV-10)
 
 ---
 
@@ -420,6 +446,14 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
+## 2026-08-01 — ENV-10 added: containers bind-mounted to reclaimed worktrees
+
+- Added ENV-10. The `alloy` telemetry container was created from the `grafana-cloud-migration-5a5464` worktree; reclaiming that worktree removed its bind-mount sources, and alloy exited 127 at its next restart and stayed dead ~11 days unnoticed. Exit 127 reads as "command not found"; the real cause is only in `docker inspect`'s `.State.Error`. Recovery is blocked on regenerating the gitignored `grafana-cloud.env` in the main checkout (ENV-8).
+
+## 2026-08-01 — ENV-9 added: Postgres 18 volume mount path
+
+- Added ENV-9. `7dce47f` bumped the dev compose pin from `postgres:16-alpine` to `postgres:18-alpine` without moving the volume mount; Postgres 18 stores data at `PGDATA=/var/lib/postgresql/18/docker` and refuses to start when a volume is mounted at the pre-18 `/var/lib/postgresql/data`, even an empty one. `compose.dependencies.yml` now mounts the parent. CI was unaffected throughout (ephemeral service container, no volume), which is why it stayed green while local dev was broken.
+
 ## 2026-08-01 — SQLA-3 added; ESI-3's prescribed fix corrected
 
 - Added SQLA-3 (a per-row predicate over a one-to-many join classifies the CHILD, not the parent, so a condition and its negation can both match the same parent). Found by adversarial review of PR #98: the first `is_bpc=false` fix corrected the NULL half but kept the per-item form, so a contract bundling a BPC with a hull matched `is_bpc=true` AND `is_bpc=false`. Re-fixed as a correlated EXISTS negated for the false branch, which also removes the filter's join and with it the SQLA-1 pagination hazard.
@@ -511,6 +545,8 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ENV-6 | F811 cascade when removing debug prints/functions | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-7 | `pdm run format` is repo-wide black on a non-black codebase | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-8 | Gitignored credential files exist only in the main checkout | MEDIUM | VALIDATED | Environment & Dev Loop |
+| ENV-9 | Postgres 18 moved PGDATA; volume must mount at /var/lib/postgresql | MEDIUM | VALIDATED | Environment & Dev Loop |
+| ENV-10 | Container bind-mounted to a worktree dies (exit 127) when it is reclaimed | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
 | ESI-2 | `Expires` deprecated by event-driven invalidation; read `Cache-Control` | MEDIUM | VALIDATED | External Integrations (ESI) |
 | ESI-3 | ESI omits fields rather than sending falsy values; `== False` matches nothing | HIGH | VALIDATED | External Integrations (ESI) |

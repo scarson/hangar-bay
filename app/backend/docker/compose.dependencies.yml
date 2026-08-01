@@ -37,7 +37,10 @@ services:
       POSTGRES_PASSWORD: hangar_bay_password # TODO: Consider using Docker secrets or .env for production-like setup
       POSTGRES_DB: hangar_bay_dev
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Persist PostgreSQL data
+      # Mount the parent, NOT /var/lib/postgresql/data. Postgres 18 images store data in a
+      # major-version-specific subdirectory (PGDATA=/var/lib/postgresql/18/docker) and refuse
+      # to start when a volume is mounted at the pre-18 path, treating it as un-upgraded data (ENV-9).
+      - postgres_data:/var/lib/postgresql # Persist PostgreSQL data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hangar_bay_user -d hangar_bay_dev"]
