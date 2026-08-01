@@ -90,6 +90,54 @@
         "title": "ContractItemSchema",
         "type": "object"
       },
+      "ContractListResponse": {
+        "description": "A page of contracts plus the coverage figure the system_ids filter needs.\n\nA bare total hides that system_ids can only ever match the locations we resolved:\na search returning 3 results reads as \"there are 3\" when it may mean \"there are 3\nwe can place, and 40 more we cannot\". Publishing the residual next to the number\nis the convention the EVE tooling ecosystem already uses for partial data \u2014\nAdam4EVE prints a NoP (number of participants) column beside its aggregates,\nEVE Tycoon labels each row with the appraisal method behind it.",
+        "properties": {
+          "items": {
+            "description": "List of items for the current page",
+            "items": {
+              "$ref": "#/components/schemas/ContractSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "description": "Current page number",
+            "title": "Page",
+            "type": "integer"
+          },
+          "size": {
+            "description": "Number of items per page",
+            "title": "Size",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items",
+            "title": "Total",
+            "type": "integer"
+          },
+          "unknown_system_excluded": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many contracts matched every other filter but were excluded because their start location has no known solar system (player-owned structures, which need an ACL-scoped token to resolve). Null when system_ids was not applied \u2014 no results were dropped for that reason, which is different from none having been.",
+            "title": "Unknown System Excluded"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "size",
+          "items"
+        ],
+        "title": "ContractListResponse",
+        "type": "object"
+      },
       "ContractSchema": {
         "description": "Schema for a public contract.\n\n`status` and `date_completed` are deliberately absent. Both are fields of ESI's\nAUTHENTICATED character/corporation contract routes; the public route Hangar Bay\nreads carries neither, so the columns behind them hold a placeholder and a NULL for\nevery contract in the corpus today. The columns stay \u2014 they fill in the moment a\nuser's own contracts are ingested \u2014 but a wire field that can only misinform is\nworse than no wire field (ESI-3).",
         "properties": {
@@ -211,6 +259,17 @@
               }
             ],
             "title": "Start Location Name"
+          },
+          "start_location_system_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Location System Id"
           },
           "title": {
             "anyOf": [
@@ -376,41 +435,6 @@
           "watchlist_alerts_enabled"
         ],
         "title": "NotificationSettingsSchema",
-        "type": "object"
-      },
-      "PaginatedResponse_ContractSchema_": {
-        "properties": {
-          "items": {
-            "description": "List of items for the current page",
-            "items": {
-              "$ref": "#/components/schemas/ContractSchema"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "page": {
-            "description": "Current page number",
-            "title": "Page",
-            "type": "integer"
-          },
-          "size": {
-            "description": "Number of items per page",
-            "title": "Size",
-            "type": "integer"
-          },
-          "total": {
-            "description": "Total number of items",
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total",
-          "page",
-          "size",
-          "items"
-        ],
-        "title": "PaginatedResponse[ContractSchema]",
         "type": "object"
       },
       "PaginatedResponse_NotificationSchema_": {
@@ -1229,7 +1253,7 @@
             }
           },
           {
-            "description": "List of solar system IDs to filter by. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
+            "description": "List of solar system IDs to filter by. Partial coverage: contracts in NPC stations carry a resolved system, contracts in player-owned structures do not and never match. The response's unknown_system_excluded field reports how many results were dropped for that reason.",
             "in": "query",
             "name": "system_ids",
             "required": false,
@@ -1245,7 +1269,7 @@
                   "type": "null"
                 }
               ],
-              "description": "List of solar system IDs to filter by. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
+              "description": "List of solar system IDs to filter by. Partial coverage: contracts in NPC stations carry a resolved system, contracts in player-owned structures do not and never match. The response's unknown_system_excluded field reports how many results were dropped for that reason.",
               "title": "System Ids"
             }
           },
@@ -1382,7 +1406,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaginatedResponse_ContractSchema_"
+                  "$ref": "#/components/schemas/ContractListResponse"
                 }
               }
             },

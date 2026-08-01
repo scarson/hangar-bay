@@ -11,6 +11,7 @@ not a hand-built fixture, writes the row.
 """
 
 import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1358,3 +1359,202 @@ async def test_apply_dev_limit_passes_through_when_none(caplog):
 
     assert [c["contract_id"] for c in limited] == [920011, 920012, 920013]
     assert "DEV_MODE" not in caplog.text
+
+
+# --- Start-location system resolution ---------------------------------------
+#
+# ESI's public contract payload carries a location id and no system id, so
+# Contract.start_location_system_id stayed NULL for every ingested row and the
+# system_ids filter matched nothing. Ingestion resolves NPC stations through
+# GET /v2/universe/stations/, which is public and returns `system_id`.
+#
+# Coverage is partial by construction. A systematic 5.9% sample of production
+# (2,000 contracts, 2026-08-01) found 99.80% in NPC stations and 0.20% in
+# player-owned Upwell structures, whose /universe/structures/ route needs a token
+# carrying esi-universe.read_structures.v1 and 403s for structures the character
+# cannot reach. Ingestion holds no user tokens, so structures stay NULL. That
+# ratio is a property of The Forge; structure-heavy regions would shift it hard.
+
+
+async def test_npc_station_contract_gets_its_solar_system(db_session: AsyncSession):
+    """A contract in an NPC station stores the system id ESI reports for that station."""
+    service = _make_service()
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 60003760, "system_id": 30000142, "name": "Jita IV - Moon 4"}
+    )
+    contract = dict(_ship_contract_dict(910101))
+    contract["start_location_id"] = 60003760
+    contract["type"] = "courier"  # skip the item-fetch loop entirely
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 910101))
+    ).scalar_one()
+    assert row.start_location_system_id == 30000142
+    service.esi_client.get_universe_station.assert_awaited_once_with(60003760)
+
+
+async def test_player_structure_contract_keeps_a_null_system_and_is_never_requested(
+    db_session: AsyncSession,
+):
+    """An Upwell structure resolves to nothing AND costs no ESI request.
+
+    /universe/structures/ requires an ACL-scoped token, so a tokenless lookup can only
+    fail. Issuing it anyway would spend ESI error budget (100 errors/60s buys a 420)
+    on a location that still could not be resolved — so the range gate must keep the
+    request from being made at all, not merely swallow its failure.
+    """
+    service = _make_service()
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 0, "system_id": 30000142}
+    )
+    contract = dict(_ship_contract_dict(910102))
+    contract["start_location_id"] = 1_035_466_617_946  # Upwell structure id
+    contract["type"] = "courier"
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 910102))
+    ).scalar_one()
+    assert row.start_location_system_id is None
+    service.esi_client.get_universe_station.assert_not_awaited()
+
+
+async def test_a_known_station_survives_an_esi_outage_and_is_not_refetched(
+    db_session: AsyncSession,
+):
+    """Station→system is static, so an already-resolved pair is read back from the
+    contracts table instead of ESI.
+
+    Two properties in one, because they are the same mechanism: the lookup is skipped
+    (steady state costs zero requests) and the stored system survives a total ESI
+    failure. Without the read-back, the upsert — which copies every supplied column on
+    conflict — would write NULL over every resolved system the moment
+    /universe/stations/ went down, blanking the filter site-wide for a full cycle.
+    """
+    service = _make_service()
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=RuntimeError("ESI is down")
+    )
+    # A prior run already resolved this station.
+    seed = dict(_ship_contract_dict(910103))
+    seed["start_location_id"] = 60008494
+    seed["type"] = "courier"
+    db_session.add(
+        Contract(
+            contract_id=910103,
+            title="Seed",
+            price=1,
+            collateral=0,
+            status="outstanding",
+            type="courier",
+            issuer_id=1,
+            issuer_corporation_id=1,
+            start_location_id=60008494,
+            start_location_system_id=30002187,
+            start_location_region_id=10000020,
+            for_corporation=False,
+            date_issued=datetime.now(timezone.utc) - timedelta(days=1),
+            date_expired=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+    )
+    await db_session.flush()
+
+    # A NEW contract in the SAME station, re-ingested alongside the existing one.
+    fresh = dict(_ship_contract_dict(910104))
+    fresh["start_location_id"] = 60008494
+    fresh["type"] = "courier"
+
+    await service._process_contracts(db_session, [seed, fresh])
+
+    rows = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id.in_([910103, 910104]))
+        )
+    ).scalars().all()
+    assert {r.contract_id: r.start_location_system_id for r in rows} == {
+        910103: 30002187,
+        910104: 30002187,
+    }
+    service.esi_client.get_universe_station.assert_not_awaited()
+
+
+async def test_station_resolution_failure_leaves_the_system_null_without_aborting(
+    db_session: AsyncSession,
+):
+    """A failed station lookup degrades that one location to NULL; the run continues
+    and the contract's other columns still persist. The row stays retryable because
+    the next run finds no stored pair for that station and asks again."""
+    service = _make_service()
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=RuntimeError("ESI 500")
+    )
+    contract = dict(_ship_contract_dict(910105))
+    contract["start_location_id"] = 60003760
+    contract["type"] = "courier"
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 910105))
+    ).scalar_one()
+    assert row.start_location_system_id is None
+    assert row.start_location_region_id == 10000002  # the rest of the row survived
+    service.esi_client.get_universe_station.assert_awaited_once_with(60003760)
+
+
+async def test_a_station_payload_without_a_system_id_resolves_to_null(
+    db_session: AsyncSession,
+):
+    """ESI omits fields rather than sending falsy ones (ESI-3), so a payload missing
+    `system_id` must read as unresolved rather than as system 0. Note the STRUCTURE
+    route names the same concept `solar_system_id` — a future structure path copying
+    this code path unchanged would silently read None for every structure."""
+    service = _make_service()
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 60003760, "name": "Jita IV - Moon 4"}
+    )
+    contract = dict(_ship_contract_dict(910106))
+    contract["start_location_id"] = 60003760
+    contract["type"] = "courier"
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 910106))
+    ).scalar_one()
+    assert row.start_location_system_id is None
+
+
+async def test_station_id_range_boundaries_decide_what_is_requested(
+    db_session: AsyncSession,
+):
+    """Pin BOTH edges of the NPC-station id range so an off-by-one cannot slip through.
+
+    60,000,000 is the first station id and 63,999,999 the last; 59,999,999 and
+    64,000,000 are outside and must never be requested.
+    """
+    service = _make_service()
+
+    async def system_for(station_id: int) -> dict:
+        return {"station_id": station_id, "system_id": 30000142}
+
+    service.esi_client.get_universe_station = AsyncMock(side_effect=system_for)
+
+    contracts = []
+    for index, location_id in enumerate(
+        (59_999_999, 60_000_000, 63_999_999, 64_000_000)
+    ):
+        contract = dict(_ship_contract_dict(910110 + index))
+        contract["start_location_id"] = location_id
+        contract["type"] = "courier"
+        contracts.append(contract)
+
+    await service._process_contracts(db_session, contracts)
+
+    requested = {
+        call.args[0] for call in service.esi_client.get_universe_station.await_args_list
+    }
+    assert requested == {60_000_000, 63_999_999}

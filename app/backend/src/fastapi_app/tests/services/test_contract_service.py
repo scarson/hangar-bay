@@ -573,3 +573,162 @@ async def test_never_stamped_contracts_stay_visible(db_session: AsyncSession):
     result = await get_contracts(db_session, ContractFilters(region_ids=[DELISTED_REGION_A]))
 
     assert result.total == 2
+
+
+# --- system_ids coverage ----------------------------------------------------
+#
+# start_location_system_id is populated for NPC stations and NULL for player-owned
+# structures, which have no tokenless location→system route. So system_ids has
+# PARTIAL coverage by construction, and a bare "N results" hides that: rows the
+# user's other criteria selected are dropped for a reason unrelated to their query.
+# The list response publishes the size of that residual alongside the total, the
+# same convention the ecosystem uses (Adam4EVE's NoP column, EVE Tycoon's per-row
+# appraisal method).
+
+SYSTEM_COVERAGE_REGION_ID = 99999911
+JITA_SYSTEM_ID = 30000142
+
+
+def _coverage_contract(
+    contract_id: int, *, system_id: int | None, price: float = 1_000_000
+) -> Contract:
+    now = datetime.now(timezone.utc)
+    return Contract(
+        contract_id=contract_id,
+        title=f"Coverage Case {contract_id}",
+        price=price,
+        collateral=0,
+        status="outstanding",
+        type="item_exchange",
+        issuer_id=951,
+        issuer_corporation_id=951,
+        start_location_id=60003760 if system_id is not None else 1_035_466_617_946,
+        start_location_system_id=system_id,
+        start_location_region_id=SYSTEM_COVERAGE_REGION_ID,
+        for_corporation=False,
+        date_issued=now - timedelta(days=1),
+        date_expired=now + timedelta(days=5),
+    )
+
+
+async def test_system_ids_matches_resolved_contracts_and_reports_the_residual(
+    db_session: AsyncSession,
+):
+    """The filter selects the rows with a known system and says how many it dropped
+    for want of one — so "1 result" is readable as "1 of 3 locations we can place"."""
+    db_session.add_all([
+        _coverage_contract(951001, system_id=JITA_SYSTEM_ID),
+        _coverage_contract(951002, system_id=None),
+        _coverage_contract(951003, system_id=None),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session,
+        ContractFilters(
+            region_ids=[SYSTEM_COVERAGE_REGION_ID], system_ids=[JITA_SYSTEM_ID]
+        ),
+    )
+
+    assert [item.contract_id for item in result.items] == [951001]
+    assert result.total == 1
+    assert result.unknown_system_excluded == 2
+
+
+async def test_the_residual_is_absent_when_system_ids_is_not_applied(
+    db_session: AsyncSession,
+):
+    """Nothing was excluded for want of a system, so there is no coverage figure to
+    publish. Null, not 0 — 0 would assert full coverage of a filter never applied."""
+    db_session.add_all([
+        _coverage_contract(951011, system_id=JITA_SYSTEM_ID),
+        _coverage_contract(951012, system_id=None),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session, ContractFilters(region_ids=[SYSTEM_COVERAGE_REGION_ID])
+    )
+
+    assert result.total == 2
+    assert result.unknown_system_excluded is None
+
+
+async def test_the_residual_counts_only_rows_the_other_filters_kept(
+    db_session: AsyncSession,
+):
+    """The figure answers "what did the SYSTEM filter cost me", so a system-less row
+    that the user's own criteria already rejected must not inflate it. Counting every
+    system-less row in the corpus instead would make the number meaningless."""
+    db_session.add_all([
+        _coverage_contract(951021, system_id=JITA_SYSTEM_ID, price=1_000_000),
+        _coverage_contract(951022, system_id=None, price=1_000_000),
+        # Excluded by max_price, not by the system filter.
+        _coverage_contract(951023, system_id=None, price=900_000_000),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session,
+        ContractFilters(
+            region_ids=[SYSTEM_COVERAGE_REGION_ID],
+            system_ids=[JITA_SYSTEM_ID],
+            max_price=5_000_000,
+        ),
+    )
+
+    assert result.total == 1
+    assert result.unknown_system_excluded == 1
+
+
+async def test_the_residual_is_still_reported_when_nothing_matched(
+    db_session: AsyncSession,
+):
+    """The empty result is exactly where the figure matters most: without it, a system
+    with only structure-hosted contracts is indistinguishable from an empty one."""
+    db_session.add_all([
+        _coverage_contract(951031, system_id=None),
+        _coverage_contract(951032, system_id=None),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session,
+        ContractFilters(
+            region_ids=[SYSTEM_COVERAGE_REGION_ID], system_ids=[JITA_SYSTEM_ID]
+        ),
+    )
+
+    assert result.total == 0
+    assert result.items == []
+    assert result.unknown_system_excluded == 2
+
+
+async def test_the_residual_holds_on_the_item_joined_path(db_session: AsyncSession):
+    """`search` forces an outer join to ContractItem — a different query plan whose
+    duplicated rows would inflate a naive count. The residual counts DISTINCT
+    contracts, so a contract with three items still counts once."""
+    def item(record_id: int, contract: Contract) -> ContractItem:
+        return ContractItem(
+            record_id=record_id, type_id=587, type_name="Rifter", quantity=1,
+            is_included=True, is_singleton=False, is_blueprint_copy=False,
+        )
+
+    matched = _coverage_contract(951041, system_id=JITA_SYSTEM_ID)
+    unresolved = _coverage_contract(951042, system_id=None)
+    matched.items = [item(9511, matched)]
+    unresolved.items = [item(9512, unresolved), item(9513, unresolved), item(9514, unresolved)]
+    db_session.add_all([matched, unresolved])
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session,
+        ContractFilters(
+            region_ids=[SYSTEM_COVERAGE_REGION_ID],
+            system_ids=[JITA_SYSTEM_ID],
+            search="Rifter",
+        ),
+    )
+
+    assert result.total == 1
+    assert result.unknown_system_excluded == 1

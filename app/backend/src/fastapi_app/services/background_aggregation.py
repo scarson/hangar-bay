@@ -54,6 +54,14 @@ UPDATE_ID_CHUNK_SIZE = 1000
 # minutes of added runtime that also push a run past the lock TTL.
 ENRICHMENT_CONCURRENCY = 8
 
+# EVE assigns NPC stations (and the conquerable outposts sharing their ESI route) ids
+# in [60,000,000, 64,000,000). GET /v2/universe/stations/ answers for those without a
+# token. Player-owned Upwell structures fall outside the range and have no tokenless
+# route, so they are never requested: a guaranteed-401 lookup would spend ESI error
+# budget (100 errors/60s buys a 420) on a location it still could not resolve.
+NPC_STATION_ID_MIN = 60_000_000
+NPC_STATION_ID_MAX = 64_000_000
+
 # Bump to re-queue every contract for re-enrichment after an enrichment-logic fix.
 # Runbook for a bump: the next run is a one-off full-corpus resweep (~80 min at a
 # ~46k corpus), which outlives the aggregation lock TTL — the "Aggregation lock
@@ -104,8 +112,56 @@ def _collect_resolvable_ids(contracts: List[dict]) -> list[int]:
     return all_ids_to_resolve
 
 
+async def _resolve_esi_objects(
+    fetch: Callable, obj_ids: Iterable[int], kind: str
+) -> dict[int, dict]:
+    """Fan single-object ESI lookups out under bounded concurrency, dropping failures.
+
+    Bounded because without it thousands of unique ids resolve as strictly sequential
+    round-trips — minutes of added runtime that can also push a run past the lock TTL.
+    Each lookup keeps its own try/except and shape guard, so one bad or failing id
+    degrades to an absent entry rather than killing the run; gather never sees an
+    exception. An absent id means "could not resolve", which callers must not conflate
+    with a resolved falsy value.
+    """
+    semaphore = asyncio.Semaphore(ENRICHMENT_CONCURRENCY)
+
+    async def _resolve(obj_id: int) -> tuple[int, dict | None]:
+        async with semaphore:
+            try:
+                payload = await fetch(obj_id)
+            except Exception as e:
+                logger.warning(f"{kind} resolution failed for {kind.lower()} {obj_id}: {e}")
+                return obj_id, None
+        # Shape guard (outside the semaphore): a surprise payload must degrade this
+        # one id, never kill the run (this happened live when the list-shaped ETag
+        # helper flattened object payloads into keys).
+        if isinstance(payload, dict):
+            return obj_id, payload
+        logger.warning(
+            f"Unexpected {kind.lower()} payload shape for {obj_id}: {type(payload).__name__}"
+        )
+        return obj_id, None
+
+    results = await asyncio.gather(*(_resolve(obj_id) for obj_id in obj_ids))
+    return {obj_id: payload for obj_id, payload in results if payload is not None}
+
+
+def _npc_station_ids(contracts: List[dict]) -> set[int]:
+    """The distinct start locations that /universe/stations/ can answer for."""
+    return {
+        location_id
+        for contract in contracts
+        if (location_id := contract.get("start_location_id")) is not None
+        and NPC_STATION_ID_MIN <= location_id < NPC_STATION_ID_MAX
+    }
+
+
 def _build_contract_rows(
-    contracts: List[dict], id_to_name_map: dict, seen_at: datetime | None = None
+    contracts: List[dict],
+    id_to_name_map: dict,
+    station_to_system: dict[int, int] | None = None,
+    seen_at: datetime | None = None,
 ) -> list[dict]:
     """Transform ESI contract payloads into Contract upsert rows, enriched with names.
 
@@ -114,12 +170,18 @@ def _build_contract_rows(
     value. The upsert copies mapped columns on conflict, so re-sighting restamps.
     """
     seen_at = seen_at or datetime.now(timezone.utc)
+    station_to_system = station_to_system or {}
     return [
         {
             "contract_id": c["contract_id"],
             "issuer_id": c["issuer_id"],
             "issuer_corporation_id": c["issuer_corporation_id"],
             "start_location_id": c.get("start_location_id"),
+            # NULL for anything the station route cannot answer for — chiefly
+            # player-owned structures. The system_ids filter is honest about that
+            # gap rather than silent: the list response publishes how many rows it
+            # excluded for want of a system.
+            "start_location_system_id": station_to_system.get(c.get("start_location_id")),
             "start_location_region_id": c.get("_hb_region_id"),
             "end_location_id": c.get("end_location_id"),
             "type": c["type"],  # Direct mapping - field names now match
@@ -404,8 +466,10 @@ class ContractAggregationService:
             id_to_name_map = await self.esi_client.resolve_ids_to_names(all_ids_to_resolve)
             logger.info(f"Successfully resolved {len(id_to_name_map)} names.")
 
-        # Step 3: Transform contracts into the format for the database model, enriching with names.
-        contract_values = _build_contract_rows(contracts, id_to_name_map)
+        # Step 3: Resolve start locations to solar systems, then transform contracts
+        # into the format for the database model, enriching with names and systems.
+        station_to_system = await self._resolve_station_systems(db_session, contracts)
+        contract_values = _build_contract_rows(contracts, id_to_name_map, station_to_system)
 
         batch_size = 500  # Number of contracts to process in each batch
         total_contracts = len(contract_values)
@@ -468,6 +532,70 @@ class ContractAggregationService:
             ship_contract_ids,
             unresolved_category_contract_ids,
         )
+
+    async def _resolve_station_systems(
+        self, db_session: AsyncSession, contracts: List[dict]
+    ) -> dict[int, int]:
+        """Map the batch's NPC start stations to their solar system ids.
+
+        ESI's public contract payload carries a location id and no system id, so
+        without this the system_ids filter has nothing to match. Station→system is
+        static universe data: a pair resolved once is correct forever, which is why
+        pairs already stored on contract rows are read back instead of re-fetched.
+
+        Structures are absent from the result and their contracts keep a NULL system
+        (see NPC_STATION_ID_MIN/MAX). A station whose lookup fails is likewise absent
+        and gets retried next run, since no pair for it lands in the table.
+        """
+        station_ids = _npc_station_ids(contracts)
+        if not station_ids:
+            return {}
+
+        station_to_system = await self._select_known_station_systems(db_session, station_ids)
+        unresolved = station_ids - station_to_system.keys()
+        if not unresolved:
+            return station_to_system
+
+        payloads = await _resolve_esi_objects(
+            self.esi_client.get_universe_station, unresolved, "Station"
+        )
+        for station_id, payload in payloads.items():
+            # ESI omits fields rather than sending falsy ones (pitfall ESI-3), so an
+            # absent system_id means unresolved — not system 0.
+            system_id = payload.get("system_id")
+            if system_id is not None:
+                station_to_system[station_id] = system_id
+
+        logger.info(
+            f"Resolved {len(payloads)} new station→system pairs "
+            f"({len(station_ids) - len(unresolved)} already known)."
+        )
+        return station_to_system
+
+    async def _select_known_station_systems(
+        self, db_session: AsyncSession, station_ids: set[int]
+    ) -> dict[int, int]:
+        """Station→system pairs already recorded on stored contracts.
+
+        Makes the contracts table its own durable cache for a lookup whose answer never
+        changes, so steady state costs zero station requests. It is also what keeps an
+        ESI outage from blanking the filter: the upsert copies every supplied column on
+        conflict, so a run that re-resolved from scratch and came back empty would write
+        NULL over every system the site already knew — the same decay that ETag-304s once
+        inflicted on is_ship_contract.
+        """
+        known: dict[int, int] = {}
+        for chunk in _chunk_ids(station_ids):
+            rows = await db_session.execute(
+                select(Contract.start_location_id, Contract.start_location_system_id)
+                .where(
+                    Contract.start_location_id.in_(chunk),
+                    Contract.start_location_system_id.is_not(None),
+                )
+                .distinct()
+            )
+            known.update({station_id: system_id for station_id, system_id in rows})
+        return known
 
     async def _select_already_enriched(
         self, db_session: AsyncSession, contracts: List[dict]
@@ -634,51 +762,18 @@ class ContractAggregationService:
         if not item_values:
             return set(), set()
 
-        # Bounded-concurrency fan-out: resolve unique ids through a shared
-        # semaphore instead of strictly sequential awaits. Each resolver keeps the
-        # per-id try/except + shape guard, so one bad/failed id degrades to NULL
-        # enrichment without killing the run — gather never sees an exception.
-        semaphore = asyncio.Semaphore(ENRICHMENT_CONCURRENCY)
-
-        async def _resolve(fetch, obj_id: int, kind: str) -> tuple[int, dict | None]:
-            async with semaphore:
-                try:
-                    payload = await fetch(obj_id)
-                except Exception as e:
-                    logger.warning(f"{kind} resolution failed for {kind.lower()} {obj_id}: {e}")
-                    return obj_id, None
-            # Shape guard (outside the semaphore): a surprise payload must degrade
-            # this one id, never kill the run (this happened live when the
-            # list-shaped ETag helper flattened object payloads into keys).
-            if isinstance(payload, dict):
-                return obj_id, payload
-            logger.warning(
-                f"Unexpected {kind.lower()} payload shape for {obj_id}: {type(payload).__name__}"
-            )
-            return obj_id, None
-
-        type_results = await asyncio.gather(
-            *(
-                _resolve(self.esi_client.get_universe_type, type_id, "Type")
-                for type_id in {item["type_id"] for item in item_values}
-            )
+        type_info = await _resolve_esi_objects(
+            self.esi_client.get_universe_type,
+            {item["type_id"] for item in item_values},
+            "Type",
         )
-        type_info: dict[int, dict] = {
-            type_id: info for type_id, info in type_results if info is not None
-        }
 
         group_ids = {
             info.get("group_id") for info in type_info.values() if info.get("group_id") is not None
         }
-        group_results = await asyncio.gather(
-            *(
-                _resolve(self.esi_client.get_universe_group, group_id, "Group")
-                for group_id in group_ids
-            )
+        group_info = await _resolve_esi_objects(
+            self.esi_client.get_universe_group, group_ids, "Group"
         )
-        group_info: dict[int, dict] = {
-            group_id: group for group_id, group in group_results if group is not None
-        }
 
         ship_contract_ids: set[int] = set()
         unresolved_category_contract_ids: set[int] = set()

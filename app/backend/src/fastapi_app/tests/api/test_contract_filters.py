@@ -702,3 +702,78 @@ async def test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle(
     unfiltered = await client.get("/contracts/?region_ids=99999954")
     assert unfiltered.json()["total"] == 2
     assert copies.json()["total"] + non_copies.json()["total"] == 2
+
+
+# --- Location system exposure over the wire ---------------------------------
+
+
+async def test_the_wire_carries_the_start_location_system(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """A client that can filter by system must be able to read the system on a row.
+
+    The API accepted region_ids and system_ids while returning neither on the
+    contract, so a UI had no way to show what it had filtered on — or to mark the
+    rows whose system is unknown.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add_all([
+        Contract(
+            contract_id=952001, title="Resolved Location", price=1_000_000, collateral=0,
+            status="outstanding", type="item_exchange", issuer_id=952,
+            issuer_corporation_id=952, start_location_id=60003760,
+            start_location_system_id=30000142, start_location_region_id=99999904,
+            for_corporation=False, date_issued=now - timedelta(days=1),
+            date_expired=now + timedelta(days=5),
+        ),
+        Contract(
+            contract_id=952002, title="Structure Location", price=1_000_000, collateral=0,
+            status="outstanding", type="item_exchange", issuer_id=952,
+            issuer_corporation_id=952, start_location_id=1_035_466_617_946,
+            start_location_system_id=None, start_location_region_id=99999904,
+            for_corporation=False, date_issued=now - timedelta(days=2),
+            date_expired=now + timedelta(days=5),
+        ),
+    ])
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999904")
+    assert listed.status_code == 200
+    body = listed.json()
+    systems = {
+        item["contract_id"]: item["start_location_system_id"] for item in body["items"]
+    }
+    assert systems == {952001: 30000142, 952002: None}
+    # No system filter was applied, so there is no coverage figure to publish.
+    assert body["unknown_system_excluded"] is None
+
+    filtered = await client.get(
+        "/contracts/?region_ids=99999904&system_ids=30000142"
+    )
+    assert filtered.status_code == 200
+    filtered_body = filtered.json()
+    assert [item["contract_id"] for item in filtered_body["items"]] == [952001]
+    assert filtered_body["unknown_system_excluded"] == 1
+
+
+async def test_the_detail_endpoint_carries_the_start_location_system(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The detail page renders the same location block as the list row, so it needs
+    the same field — the two views share one schema and must not drift."""
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        Contract(
+            contract_id=952011, title="Detail Location", price=1_000_000, collateral=0,
+            status="outstanding", type="item_exchange", issuer_id=952,
+            issuer_corporation_id=952, start_location_id=60008494,
+            start_location_system_id=30002187, start_location_region_id=99999905,
+            for_corporation=False, date_issued=now - timedelta(days=1),
+            date_expired=now + timedelta(days=5),
+        )
+    )
+    await db_session.flush()
+
+    detail = await client.get("/contracts/952011")
+    assert detail.status_code == 200
+    assert detail.json()["start_location_system_id"] == 30002187

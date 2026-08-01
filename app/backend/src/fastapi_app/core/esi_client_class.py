@@ -450,6 +450,17 @@ class ESIClient:
         """Fetches static group info (name, category_id)."""
         return await self._get_esi_object(f"/v1/universe/groups/{group_id}/")
 
+    async def get_universe_station(self, station_id: int) -> dict[str, Any]:
+        """Fetches static NPC-station info (name, `system_id`, type_id).
+
+        Public — no token, no scope. The player-structure counterpart
+        (/universe/structures/) is not: it requires
+        esi-universe.read_structures.v1 and 403s for structures the token's
+        character cannot dock at, so it has no tokenless equivalent here. That
+        route also names the field `solar_system_id`, not `system_id`.
+        """
+        return await self._get_esi_object(f"/v2/universe/stations/{station_id}/")
+
     async def resolve_ids_to_names(self, ids: list[int]) -> dict[int, str]:
         """Resolves a list of EVE Online IDs to their names."""
         if not ids:

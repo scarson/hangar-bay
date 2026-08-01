@@ -4,6 +4,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .common import PaginatedResponse
+
 
 class ContractItemSchema(BaseModel):
     """Schema for an item within a contract."""
@@ -40,6 +42,11 @@ class ContractSchema(BaseModel):
     # column is nullable to match. Declaring it a bare int made a spec-conformant row fail
     # response validation, which 500s the whole page that row lands on.
     start_location_id: Optional[int] = None
+    # Resolved from the start location during ingestion. NULL for player-owned
+    # structures, whose /universe/structures/ route needs an ACL-scoped token — so a
+    # client can show the system where one is known and say "system unknown" where it
+    # is not, rather than being unable to tell the two apart.
+    start_location_system_id: Optional[int] = None
     end_location_id: Optional[int] = None
     type: str
     title: Optional[str] = None
@@ -60,6 +67,29 @@ class ContractSchema(BaseModel):
     items: List[ContractItemSchema] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ContractListResponse(PaginatedResponse[ContractSchema]):
+    """A page of contracts plus the coverage figure the system_ids filter needs.
+
+    A bare total hides that system_ids can only ever match the locations we resolved:
+    a search returning 3 results reads as "there are 3" when it may mean "there are 3
+    we can place, and 40 more we cannot". Publishing the residual next to the number
+    is the convention the EVE tooling ecosystem already uses for partial data —
+    Adam4EVE prints a NoP (number of participants) column beside its aggregates,
+    EVE Tycoon labels each row with the appraisal method behind it.
+    """
+
+    unknown_system_excluded: Optional[int] = Field(
+        default=None,
+        description=(
+            "How many contracts matched every other filter but were excluded because "
+            "their start location has no known solar system (player-owned structures, "
+            "which need an ACL-scoped token to resolve). Null when system_ids was not "
+            "applied — no results were dropped for that reason, which is different from "
+            "none having been."
+        ),
+    )
 
 
 class SortableContractFields(str, Enum):
@@ -167,15 +197,20 @@ class ContractFilters(BaseModel):
     region_ids: Optional[List[int]] = Field(
         default=None, description="List of region IDs to filter by."
     )
-    # NOTE: system_ids is applied, but Contract.start_location_system_id is never populated —
-    # ESI's public contracts carry a station/structure id and no system id, and no enrichment
-    # resolves one. Making it work needs a location→system lookup (/universe/stations/ covers
-    # NPC stations; player structures need an ACL-scoped token and would stay NULL).
+    # NOTE: system_ids has PARTIAL coverage. Ingestion resolves start locations through
+    # the public /universe/stations/ route, which answers for NPC stations only; a
+    # contract in a player-owned Upwell structure keeps a NULL system and can never
+    # match. A 5.9% sample of production (2026-08-01) put NPC stations at 99.80% of The
+    # Forge's contracts, but that ratio is a property of THIS region — structure-based
+    # trade dominates null/lowsec, so the unresolvable share rises sharply with coverage.
+    # The list response's unknown_system_excluded field publishes the residual per query.
     system_ids: Optional[List[int]] = Field(
         default=None,
         description=(
-            "List of solar system IDs to filter by. "
-            "(NO MATCHES — filters an always-NULL column; do not expose in clients)"
+            "List of solar system IDs to filter by. Partial coverage: contracts in NPC "
+            "stations carry a resolved system, contracts in player-owned structures do "
+            "not and never match. The response's unknown_system_excluded field reports "
+            "how many results were dropped for that reason."
         ),
     )
     station_ids: Optional[List[int]] = Field(

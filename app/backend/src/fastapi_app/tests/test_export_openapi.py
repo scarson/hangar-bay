@@ -26,4 +26,10 @@ def test_export_openapi_writes_usable_schema(tmp_path):
     assert "requestBody" not in list_op
     param_names = {p["name"] for p in list_op["parameters"]}
     assert {"region_ids", "system_ids", "station_ids", "type_ids"} <= param_names
-    assert "PaginatedResponse_ContractSchema_" in schema["components"]["schemas"]
+    # The list envelope the TS client is generated from. It carries the page fields
+    # plus unknown_system_excluded, the coverage figure that makes the partial reach
+    # of system_ids readable instead of silent.
+    envelope = schema["components"]["schemas"]["ContractListResponse"]
+    assert {"total", "page", "size", "items", "unknown_system_excluded"} <= set(
+        envelope["properties"]
+    )

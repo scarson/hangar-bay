@@ -125,15 +125,17 @@ async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 async def setup_contracts(db_session: AsyncSession):
     """Fixture to populate the DB with a diverse set of contracts for testing.
 
-    WARNING — two columns below hold values ingestion never writes, so a test that
-    depends on them proves the QUERY binds, not that the feature works on real data:
+    WARNING — one column below holds a value ingestion never writes, so a test that
+    depends on it proves the QUERY binds, not that the feature works on real data:
 
     * ``raw_quantity`` does not exist on ESI's public contract-items route at all
       (it belongs to the authenticated character/corporation routes), so ingestion
       leaves it NULL for every real row. The min_runs/max_runs filter reads it.
-    * ``start_location_system_id`` is never populated by ingestion — ESI's public
-      contracts carry a station/structure id and no system id, and nothing resolves
-      one. The system_ids filter reads it.
+
+    ``start_location_system_id`` is populated here and matches production: ingestion
+    resolves NPC stations through /universe/stations/, and 60003760 really does sit in
+    30000142. Contracts in player-owned structures still carry NULL — the shape these
+    fixtures do not exercise.
 
     ``is_blueprint_copy`` is deliberately None rather than False on the non-copy
     items: ESI sends the flag only when an item IS a copy, so True-or-NULL is the
