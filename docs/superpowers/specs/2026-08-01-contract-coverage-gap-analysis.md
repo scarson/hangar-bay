@@ -17,7 +17,7 @@ Five parallel research lanes, run 2026-08-01 (Opus/Sonnet subagents; findings sy
 4. **Domain research** — ESI public-contracts schema, player use-cases per contract type, appraisal-source conventions. ESI schema facts verified against the OpenAPI spec.
 5. **MCP surface research** — see §7.
 
-A parallel verify-and-fix lane confirmed the defects in §4.4 and is producing a Review-classified PR from branch `claude/contract-filter-bugfixes`.
+A parallel verify-and-fix lane independently confirmed all §4.4 defects (correcting recon's causal story on two) and produced the Review-classified [PR #98](https://github.com/scarson/hangar-bay/pull/98). A sixth lane researched the MCP protocol/hosting landscape (§7 and companion doc).
 
 ## 1. Headline findings
 
@@ -108,15 +108,26 @@ Enrichment already resolves each item's `group_id` and `category_id` from ESI an
 
 One region ingested (The Forge) while the frontend offers a 70-region filter — 69 of which can never match. Multi-region is an explicit M5 non-goal (`2026-07-26-m5-trust-shareability-design.md`); noted here because several ecosystem patterns (jumps-from-my-location, route security) only pay off with broader coverage.
 
-### 4.4 Defects (verification + fixes in flight on `claude/contract-filter-bugfixes`)
+### 4.4 Defects — independently verified; four fixed in [PR #98](https://github.com/scarson/hangar-bay/pull/98) (Review — serialization contract; awaiting Sam)
 
-1. `is_bpc=false` matches zero rows (`is_blueprint_copy` is True-or-NULL; empirically `total: 0` in prod).
-2. `system_ids` filter matches zero rows (`start_location_system_id` never populated by ingestion).
-3. Courier contracts render as "Exchange" in both table and detail views (two-way badge assumes exchange/auction).
-4. Courier serialization 500 risk: `ContractSchema.start_location_id` non-optional over a nullable column, reachable via the shipped `ships_only=false` view.
-5. `collateral` is filterable and sortable but absent from every response schema.
-6. `min_runs`/`max_runs` filters `raw_quantity`, which is not a run count (deferred to the product plan — the correct fix is ingesting `runs`, §4.2).
-7. `status` is always the literal `"unknown"` and `date_completed` always NULL (fields don't exist in public ESI data); `date_completed` is used as an always-true liveness predicate in the watchlist matcher (dead-code class, report-only).
+| # | Defect | Verdict | Action |
+|---|---|---|---|
+| 1 | `is_bpc=false` matches zero rows | Confirmed | **Fixed** (filter treats NULL as not-a-BPC) |
+| 2 | `system_ids` matches zero rows (column never populated) | Confirmed | Deferred — needs a location→system cache (see below) |
+| 3 | Courier serialization 500 (`start_location_id` non-optional over nullable column) | Confirmed, **worse than reported** — one null row 500s the whole page of 50, since `PaginatedResponse` validates every item | **Fixed** |
+| 4 | Courier renders as "Exchange" | Confirmed | **Fixed** (renders "Courier") |
+| 5 | `collateral` filterable/sortable but never returned | Confirmed | **Fixed** (added to response schema; client chain regenerated) |
+| 6 | `min_runs`/`max_runs` wired to `raw_quantity` | Confirmed, **cause corrected** — `raw_quantity` doesn't exist on the *public* items route at all (authenticated routes only), so the column is permanently NULL | Deferred to the §6 phase-2 plan (ingest `runs`) |
+| 7 | `status` always `"unknown"`, `date_completed` always NULL | Confirmed; one real behavioral gap found (below) | Reported |
+
+Verification corrections and new findings from the fix lane (full evidence in the PR):
+
+- **Defect 1's cause was mis-diagnosed by recon:** ingestion *does* map `is_blueprint_copy`; ESI simply omits the flag for non-copies (live sample of 1,658 public item rows: `true` 1,396×, absent 262×, `false` never). The bug was purely the filter's `col == False` NULL semantics.
+- **ESI public-vs-authenticated schema split matters for §4.2:** `runs` is public (present on exactly the BPC rows), but the documented `runs == -1` for originals **never occurs on the public route** — originals omit the field. A naive implementation of the runs filter would be wrong; recorded as a pitfall (ESI-2) in PR #98 alongside FASTAPI-3, TEST-17, TEST-18.
+- **Root cause behind three false-passing tests:** the backend test fixture hand-wrote three columns ingestion never writes (`is_blueprint_copy=False`, `raw_quantity`, `start_location_system_id`) — a data shape ESI cannot produce — so the dead filters had green tests. The fixture now carries the production shape and documents what it still fakes.
+- **New: watchlist notifications outlive purchase.** The watchlist matcher filters on expiry plus the always-true `date_completed IS NULL`, and does *not* use the per-region `last_seen_at` watermark the list view uses — so an already-accepted contract keeps generating notifications until its expiry date (up to two weeks). Deferred because the fix changes notification semantics; recommended fix is reusing the watermark predicate.
+- **`system_ids` sizing:** ESI's public payload has no system id; `/v1/universe/stations/` resolution covers 97.1% of sampled start locations (player structures need ACL-scoped tokens and would stay NULL); only 160 distinct locations across 7,292 contracts, so a location→system cache table is tiny. Deferred as a design decision, param left in place.
+- The lane also fixed a **pre-existing red test on `origin/dev`** (a hard-coded 2026-07-31 expiry under a liveness predicate — detonated on 2026-08-01, before this work started).
 
 ## 5. Where the specs already stand
 
@@ -139,7 +150,14 @@ Abyssal roll-stats (MutaMarket parity) are explicitly out: ESI public-contract d
 
 ## 7. MCP surface for Hangar Bay's final form
 
-*(Pending — a research lane on MCP prior art, consumer personas, proposed tool surface, and hosting/auth considerations is in flight; this section will be filled in when it reports.)*
+Full research in the companion doc `2026-08-01-mcp-surface-research.md` (prior art, personas, tool sketches, auth/hosting/license analysis). The decision-relevant summary:
+
+- **The gap is a moat, not just a hole.** Every existing EVE MCP server is a thin ESI wrapper and none touch contracts — because ESI's public-contract surface structurally cannot answer "find me a cheap fitted Ishtar near Jita" without first ingesting an entire region (one items call per contract, ~33.8k calls). Hangar Bay is the only party that has already paid that cost; an MCP surface converts a differentiated website into differentiated infrastructure.
+- **Small, hand-designed, read-only v1.** Roughly five to seven `hangarbay_*` tools — contract search (ranked shortlist, default limit 10, concise projection without full item lists), contract detail, name⇄id resolution, an aggregation/summary tool, and (only after appraisal ships) an appraise tool whose schema makes partial valuations impossible to launder into confident prose. Explicitly **not** OpenAPI auto-generation, which would faithfully reproduce our inert ME/TE params, the broken runs filter, and a token-bomb response schema — and which Anthropic's connector review criteria and the empirical record both reject.
+- **Authenticated `/me/*` stays web-only for now.** The MCP auth spec requires an OAuth 2.1 authorization server that Hangar Bay operates; EVE SSO cannot fill that role (no dynamic client registration, no RFC 8707, wrong token audience) and would sit federated *behind* our AS. That is a milestone of its own; a read-only public server is fully spec-conformant without it.
+- **Sequencing: downstream of M5, not parallel.** Freshness (`data_as_of`/`data_stale` in every payload, escalated in words, not just booleans), sold/delisted liveness filtering, and honest coverage signaling ("no data for Amarr", never an empty list) are *preconditions* for an agent-facing surface — an agent laundering a stale row into confident prose is this surface's worst failure mode. API rate limiting is net-new mandatory work (none exists today).
+- **License shapes the strategy:** the CCP developer license forbids monetization, so "free backend" risk is managed operationally (free API keys for attribution/quota), and nobody else can build a paid product on our back either. ESI-data redistribution is unaddressed-but-precedented (EVE Ref, zKillboard, Fuzzwork); a short question to CCP's third-party dev channel is cheap insurance.
+- **Timing note:** the MCP spec had a breaking revision on 2026-07-28; the official Python SDK v2 supports it (and serves older clients) as of the same day, while Claude-side client support is still rolling out. A deliberately small tool surface is also the hedge against further protocol churn.
 
 ## Appendix A. Reasoning notes and uncertainties
 
