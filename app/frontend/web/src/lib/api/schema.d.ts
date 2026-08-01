@@ -342,6 +342,8 @@ export interface components {
          * @description Schema for a public contract.
          */
         ContractSchema: {
+            /** Collateral */
+            collateral: number;
             /** Contract Id */
             contract_id: number;
             /** Date Completed */
@@ -380,7 +382,7 @@ export interface components {
             /** Reward */
             reward?: number | null;
             /** Start Location Id */
-            start_location_id: number;
+            start_location_id?: number | null;
             /** Start Location Name */
             start_location_name?: string | null;
             /** Status */

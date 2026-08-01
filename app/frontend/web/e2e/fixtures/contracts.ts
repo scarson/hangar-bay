@@ -48,9 +48,11 @@ export interface WireContract {
   contract_id: number
   issuer_id: number
   issuer_corporation_id: number
-  start_location_id: number
+  // Nullable to match ESI: the public-contracts schema does not mark
+  // start_location_id required.
+  start_location_id: number | null
   end_location_id: number
-  type: 'item_exchange' | 'auction'
+  type: 'item_exchange' | 'auction' | 'courier'
   status: string
   title: string
   for_corporation: boolean
@@ -58,6 +60,7 @@ export interface WireContract {
   date_expired: string
   date_completed: string | null
   price: number
+  collateral: number
   reward: number
   volume: number
   start_location_name: string | null
@@ -123,6 +126,7 @@ export function makeContract(overrides: Partial<WireContract> = {}): WireContrac
     date_expired: expiryInDays(30),
     date_completed: null,
     price: 250_000_000,
+    collateral: 0,
     reward: 0,
     volume: 470_000,
     start_location_name: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',

@@ -93,6 +93,10 @@
       "ContractSchema": {
         "description": "Schema for a public contract.",
         "properties": {
+          "collateral": {
+            "title": "Collateral",
+            "type": "number"
+          },
           "contract_id": {
             "title": "Contract Id",
             "type": "integer"
@@ -199,8 +203,15 @@
             "title": "Reward"
           },
           "start_location_id": {
-            "title": "Start Location Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Location Id"
           },
           "start_location_name": {
             "anyOf": [
@@ -248,12 +259,12 @@
           "contract_id",
           "issuer_id",
           "issuer_corporation_id",
-          "start_location_id",
           "type",
           "status",
           "for_corporation",
           "date_issued",
           "date_expired",
+          "collateral",
           "is_ship_contract"
         ],
         "title": "ContractSchema",

@@ -495,3 +495,81 @@ async def test_is_bpc_false_matches_items_esi_left_unmarked(
     copies = await client.get("/contracts/?region_ids=99999951&is_bpc=true")
     assert copies.status_code == 200
     assert [c["contract_id"] for c in copies.json()["items"]] == [951002]
+
+
+async def test_contract_response_exposes_collateral(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """collateral is filterable and sortable, so it must be readable in the payload.
+
+    Without it a client can sort by a number it cannot show, and a courier's
+    single most important term is invisible.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        Contract(
+            contract_id=952001,
+            title="Hauling Job",
+            price=0,
+            collateral=8_000_000_000,
+            status="outstanding",
+            type="courier",
+            issuer_id=952,
+            issuer_corporation_id=952,
+            start_location_id=60013288,
+            end_location_id=60003145,
+            start_location_region_id=99999952,
+            for_corporation=False,
+            date_issued=now,
+            date_expired=now + timedelta(days=7),
+            reward=80_000_000,
+            volume=899_999.97,
+        )
+    )
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999952")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["collateral"] == 8_000_000_000
+
+    detail = await client.get("/contracts/952001")
+    assert detail.status_code == 200
+    assert detail.json()["collateral"] == 8_000_000_000
+
+
+async def test_serializes_a_contract_esi_sent_without_a_start_location(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """A NULL start_location_id must serialize, not 500.
+
+    ESI's public-contracts schema does not list start_location_id as required, and
+    the column is nullable — but the response schema declared it a bare `int`, so
+    such a row fails response validation and takes down the whole page it lands on.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        Contract(
+            contract_id=953001,
+            title="Locationless Courier",
+            price=0,
+            collateral=1_000_000,
+            status="outstanding",
+            type="courier",
+            issuer_id=953,
+            issuer_corporation_id=953,
+            start_location_id=None,
+            start_location_region_id=99999953,
+            for_corporation=False,
+            date_issued=now,
+            date_expired=now + timedelta(days=7),
+        )
+    )
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999953")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["start_location_id"] is None
+
+    detail = await client.get("/contracts/953001")
+    assert detail.status_code == 200
+    assert detail.json()["start_location_id"] is None
