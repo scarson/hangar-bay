@@ -28,7 +28,10 @@ class ContractSchema(BaseModel):
     contract_id: int
     issuer_id: int
     issuer_corporation_id: int
-    start_location_id: int
+    # ESI's public-contracts schema does not list start_location_id as required, and the
+    # column is nullable to match. Declaring it a bare int made a spec-conformant row fail
+    # response validation, which 500s the whole page that row lands on.
+    start_location_id: Optional[int] = None
     end_location_id: Optional[int] = None
     type: str
     status: str
@@ -38,6 +41,10 @@ class ContractSchema(BaseModel):
     date_expired: datetime
     date_completed: Optional[datetime] = None
     price: Optional[float] = None
+    # Courier collateral: what the hauler puts up against the cargo. Filterable
+    # (min_collateral/max_collateral) and sortable, so clients must be able to read
+    # the value they are sorting and filtering on.
+    collateral: float
     reward: Optional[float] = None
     volume: Optional[float] = None
     start_location_name: Optional[str] = None

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Contract } from '../../lib/api/client'
-import { formatDate, formatIsk, primaryLabel, timeRemaining } from './format'
+import {
+  contractTypeLabel,
+  formatDate,
+  formatIsk,
+  locationLabel,
+  primaryLabel,
+  timeRemaining,
+} from './format'
 
 function contract(items: Partial<Contract['items'][number]>[], title = ''): Contract {
   return {
@@ -8,6 +15,7 @@ function contract(items: Partial<Contract['items'][number]>[], title = ''): Cont
     issuer_id: 1,
     issuer_corporation_id: 1,
     start_location_id: 60003760,
+    collateral: 0,
     type: 'item_exchange',
     status: 'outstanding',
     title,
@@ -123,3 +131,31 @@ describe('formatDate', () => {
     expect(formatDate('garbage')).toBe('—')
   })
 })
+
+
+describe('contractTypeLabel', () => {
+  it('names every contract type ESI can send', () => {
+    // ESI's public-contracts `type` is a closed enum. Everything that was not
+    // 'auction' used to render as "Exchange", so a courier — a hauling job, not a
+    // sale — was labelled as the one thing it is not.
+    expect(contractTypeLabel('courier')).toBe('Courier')
+    expect(contractTypeLabel('auction')).toBe('Auction')
+    expect(contractTypeLabel('item_exchange')).toBe('Exchange')
+    expect(contractTypeLabel('loan')).toBe('Loan')
+    expect(contractTypeLabel('unknown')).toBe('Unknown')
+  })
+})
+
+describe('locationLabel', () => {
+  it('prefers the resolved name, falls back to the id, and never prints "null"', () => {
+    // start_location_id is optional in ESI's schema, so the id fallback has to
+    // cope with its absence rather than interpolating a null into the UI.
+    expect(locationLabel(contractAt('Jita IV - Moon 4', 60003760))).toBe('Jita IV - Moon 4')
+    expect(locationLabel(contractAt(null, 60003760))).toBe('Location 60003760')
+    expect(locationLabel(contractAt(null, null))).toBe('Unknown location')
+  })
+})
+
+function contractAt(name: string | null, id: number | null): Contract {
+  return { ...contract([]), start_location_name: name, start_location_id: id }
+}

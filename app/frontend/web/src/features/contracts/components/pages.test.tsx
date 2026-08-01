@@ -10,6 +10,7 @@ const CONTRACT = {
   issuer_id: 1,
   issuer_corporation_id: 101,
   start_location_id: 60003760,
+  collateral: 0,
   type: 'item_exchange',
   status: 'outstanding',
   title: 'Tristan for Sale',
@@ -344,5 +345,66 @@ describe('ContractDetailPage', () => {
     await screen.findByRole('heading', { name: 'Tristan' })
     const back = screen.getByRole('link', { name: /all contracts/i })
     expect(back).toHaveAttribute('href', '/contracts')
+  })
+})
+
+
+// A courier carries no items, prices at 0, and puts its money in the reward and
+// the collateral. It reaches the UI whenever the ships-only default is turned off.
+const COURIER = {
+  contract_id: 505,
+  issuer_id: 9,
+  issuer_corporation_id: 99,
+  start_location_id: 60013288,
+  collateral: 8_000_000_000,
+  type: 'courier',
+  status: 'outstanding',
+  title: 'Jita to Amarr rush',
+  for_corporation: false,
+  date_issued: '2026-07-01T00:00:00Z',
+  // Anchored to the clock like CONTRACT: a fixed expiry is a response the real
+  // API cannot produce (the list filters date_expired > now()) and silently
+  // repaints "Time left" as Expired once it passes (testing-pitfalls TEST-17).
+  date_expired: daysFromNow(7),
+  price: 0,
+  reward: 80_000_000,
+  volume: 899_999,
+  start_location_name: 'Airaken V - Moon 6 - Impro Warehouse',
+  is_ship_contract: false,
+  items: [],
+}
+
+describe('courier contracts', () => {
+  it('labels a courier row "Courier", not "Exchange"', async () => {
+    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [COURIER] })))
+
+    renderApp('/contracts?ships_only=false')
+
+    expect(await screen.findByText('Courier')).toBeInTheDocument()
+    expect(screen.queryByText('Exchange')).not.toBeInTheDocument()
+  })
+
+  it('shows the courier badge and its collateral on the detail view', async () => {
+    stubFetch(anonymousMe(() => jsonResponse(COURIER)))
+
+    renderApp('/contracts/505')
+
+    expect(await screen.findByText('Courier')).toBeInTheDocument()
+    expect(screen.queryByText('Exchange')).not.toBeInTheDocument()
+    // Collateral is filterable and sortable, so it has to be readable too.
+    expect(screen.getByText('Collateral')).toBeInTheDocument()
+    expect(screen.getByText(/8,000,000,000/)).toBeInTheDocument()
+  })
+
+  it('renders a contract ESI sent without a start location without printing "null"', async () => {
+    // start_location_id is not required by ESI's schema; the id fallback must not
+    // interpolate a missing value into the page.
+    const nowhere = { ...COURIER, start_location_id: null, start_location_name: null }
+    stubFetch(anonymousMe(() => jsonResponse(nowhere)))
+
+    renderApp('/contracts/505')
+
+    expect(await screen.findByText('Unknown location')).toBeInTheDocument()
+    expect(screen.queryByText(/Location null/)).not.toBeInTheDocument()
   })
 })
