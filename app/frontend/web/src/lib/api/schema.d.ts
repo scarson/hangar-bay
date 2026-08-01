@@ -338,6 +338,44 @@ export interface components {
             type_name?: string | null;
         };
         /**
+         * ContractListResponse
+         * @description A page of contracts plus the coverage figure the system_ids filter needs.
+         *
+         *     A bare total hides that system_ids can only ever match the locations we resolved:
+         *     a search returning 3 results reads as "there are 3" when it may mean "there are 3
+         *     we can place, and 40 more we cannot". Publishing the residual next to the number
+         *     is the convention the EVE tooling ecosystem already uses for partial data —
+         *     Adam4EVE prints a NoP (number of participants) column beside its aggregates,
+         *     EVE Tycoon labels each row with the appraisal method behind it.
+         */
+        ContractListResponse: {
+            /**
+             * Items
+             * @description List of items for the current page
+             */
+            items: components["schemas"]["ContractSchema"][];
+            /**
+             * Page
+             * @description Current page number
+             */
+            page: number;
+            /**
+             * Size
+             * @description Number of items per page
+             */
+            size: number;
+            /**
+             * Total
+             * @description Total number of items
+             */
+            total: number;
+            /**
+             * Unknown System Excluded
+             * @description How many contracts matched every other filter but were excluded because their start location has no known solar system (player-owned structures, which need an ACL-scoped token to resolve). Null when system_ids was not applied — no results were dropped for that reason, which is different from none having been.
+             */
+            unknown_system_excluded?: number | null;
+        };
+        /**
          * ContractSchema
          * @description Schema for a public contract.
          *
@@ -390,6 +428,8 @@ export interface components {
             start_location_id?: number | null;
             /** Start Location Name */
             start_location_name?: string | null;
+            /** Start Location System Id */
+            start_location_system_id?: number | null;
             /** Title */
             title?: string | null;
             /** Type */
@@ -445,29 +485,6 @@ export interface components {
         NotificationSettingsSchema: {
             /** Watchlist Alerts Enabled */
             watchlist_alerts_enabled: boolean;
-        };
-        /** PaginatedResponse[ContractSchema] */
-        PaginatedResponse_ContractSchema_: {
-            /**
-             * Items
-             * @description List of items for the current page
-             */
-            items: components["schemas"]["ContractSchema"][];
-            /**
-             * Page
-             * @description Current page number
-             */
-            page: number;
-            /**
-             * Size
-             * @description Number of items per page
-             */
-            size: number;
-            /**
-             * Total
-             * @description Total number of items
-             */
-            total: number;
         };
         /** PaginatedResponse[NotificationSchema] */
         PaginatedResponse_NotificationSchema_: {
@@ -788,7 +805,7 @@ export interface operations {
                 max_te?: number | null;
                 /** @description List of region IDs to filter by. */
                 region_ids?: number[] | null;
-                /** @description List of solar system IDs to filter by. (NO MATCHES — filters an always-NULL column; do not expose in clients) */
+                /** @description List of solar system IDs to filter by. Partial coverage: contracts in NPC stations carry a resolved system, contracts in player-owned structures do not and never match. The response's unknown_system_excluded field reports how many results were dropped for that reason. */
                 system_ids?: number[] | null;
                 /** @description List of station IDs to filter by. */
                 station_ids?: number[] | null;
@@ -819,7 +836,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponse_ContractSchema_"];
+                    "application/json": components["schemas"]["ContractListResponse"];
                 };
             };
             /** @description Validation Error */
