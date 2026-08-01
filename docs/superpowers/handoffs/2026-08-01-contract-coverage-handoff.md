@@ -5,7 +5,7 @@
 
 **Read this first, then `docs/superpowers/specs/2026-08-01-contract-coverage-gap-analysis.md`.**
 
-**State at close:** `dev` @ `869cc6d`, green. **18 PRs merged today** (#98–#115). One PR open: [#116](https://github.com/scarson/hangar-bay/pull/116). Production untouched and healthy — still `7a95118`, `db: ok`, `cache: ok`, last ingest succeeded, `data_stale: false`. Production deploys from `main`; nothing today went past `dev`.
+**State at close:** `dev` @ `ae1279f`, green. **22 PRs merged today** (#98–#119). One follow-up PR open (§2). Production untouched and healthy — still `7a95118`, `db: ok`, `cache: ok`, last ingest succeeded, `data_stale: false`. Production deploys from `main`; nothing today went past `dev`.
 
 ## 1. The decision waiting on Sam
 
@@ -19,15 +19,29 @@ If the answer is yes, the next step is an **F008 feature spec** for the type-awa
 
 Sequencing lives in the analysis §6. Phase 1 (defect fixes) is **done**. Phases 2–4 are not started.
 
-## 2. In-flight at close — check these before assuming anything
+## 2. Everything from this session has landed
 
-| Item | Owner | State |
-|---|---|---|
-| [PR #116](https://github.com/scarson/hangar-bay/pull/116) — location→system resolution | agent, authorised to self-merge on green | Was green, then conflicted when #115 merged. Agent is rebasing; **must** keep #115's removal of `status`/`date_completed` *and* its own `start_location_system_id`, and must **regenerate** `openapi.json`/`schema.d.ts` rather than hand-merge them |
-| ESI spec-drift monitor | agent, `claude/esi-spec-monitor` | Building. `Routine` |
-| Future-clock vitest lane | agent, `claude/timebomb-verify` | Building, authorised to self-merge on green |
+All three items that were in flight when this handoff was first written are merged. Nothing is running.
 
-All three may touch `.github/workflows/` or the pitfalls files. **Verify their PRs merged and `dev` is green before starting new work.**
+| Item | Merged as |
+|---|---|
+| PR #116 — location→system resolution + `unknown_system_excluded` residual | `788ef8e8a` |
+| PR #118 — future-clock vitest lane | `e301091de` |
+| PR #119 — ESI spec-drift monitor | `ae1279fd6` |
+
+**One PR is open and awaits Sam:** a follow-up removing `is_singleton` and `raw_quantity` from `ContractItemSchema`. PR #115 removed the contract-level equivalents (`status`, `date_completed`) and added the ESI-3 checklist rule requiring it; the item-level fields are the same case one level down and were missed. Columns are kept, no migration — `Review — serialization contract`.
+
+### The monitor found a live problem before it shipped — see ESI-4
+
+**Hangar Bay sends no `X-Compatibility-Date` header, so ESI serves every call the OLDEST published date: `2020-01-01`.** Not "current" — oldest. Every `ESIClient` call today is answered from a five-year-old contract, chosen by default rather than by decision, and CCP can raise that floor with notice at which point our routes change shape with no commit on our side.
+
+Verified consequences, not speculation:
+- **`/meta/status` does not exist at `2020-01-01`.** That is the endpoint ESI-1 tells us to migrate to for upstream health. That deferred work was silently blocked by something nobody had identified.
+- The same date range removes `/sovereignty/map` and renames `/route/{origin}/{destination}` — the date dimension moves real routes, not just field prose.
+
+Today all nine monitored routes are byte-identical across `2020-01-01` → `2026-07-21`, so nothing is broken right now; the snapshot holds both views to catch the day that changes.
+
+**Open decision for Sam:** pin an explicit compatibility date, or keep letting CCP choose. Pinning makes the dependency deliberate and visible at the cost of intentional bumps; not pinning means we learn about a floor change by breakage. Recommendation is to pin — but it changes what every ESI call receives, so it is its own change, not a rider.
 
 ## 3. What shipped today
 
@@ -80,7 +94,7 @@ These cost real time to learn. They are in durable places; this is the index.
 
 ## 7. Priority queue for a fresh session
 
-1. **Verify the three in-flight items landed** (§2) and `dev` is green. Do not build on an unmerged assumption.
+1. **Confirm the open follow-up PR in §2 landed**, and decide the compatibility-date question in §2 — it is a live, unmanaged dependency.
 2. **Get Sam's decision on §1.** Everything below assumes yes.
 3. **Write the F008 feature spec** — brainstorm first per CLAUDE.md skill routing; reconcile the two spec conflicts named in §1.
 4. **Phase 2 of the analysis §6** — ingestion fields + taxonomy, bundled with Plan B where they overlap.
@@ -91,7 +105,7 @@ These cost real time to learn. They are in durable places; this is the index.
 
 > Pick up the Hangar Bay contract-coverage work. Read `docs/superpowers/handoffs/2026-08-01-contract-coverage-handoff.md` first, then `docs/superpowers/specs/2026-08-01-contract-coverage-gap-analysis.md` (§1 findings, §4 the internal gap, §6 the recommendation, and the appendix which records a claim the document got wrong and how).
 >
-> Before anything else: confirm PR #116 merged, confirm the ESI spec-drift monitor and future-clock vitest lane PRs landed, and confirm `dev` CI is green. Then check with Sam whether he has decided on the §1 question — whether to build the type-aware "all contracts" view. If yes, the next deliverable is an F008 feature spec (use the brainstorming skill first per CLAUDE.md), reconciling the F002-vs-M1 market-group conflict and the total absence of any courier policy.
+> Before anything else: confirm `dev` CI is green and check whether the item-schema follow-up PR in §2 landed. Note §2's compatibility-date finding (ESI-4) — it is an open decision, not a closed one. Then check with Sam whether he has decided on the §1 question — whether to build the type-aware "all contracts" view. If yes, the next deliverable is an F008 feature spec (use the brainstorming skill first per CLAUDE.md), reconciling the F002-vs-M1 market-group conflict and the total absence of any courier policy.
 >
 > Do not re-derive the ESI schema facts — they are spec-verified and recorded in analysis §4.2/§4.5. Do not re-propose dropping the four permanently-NULL columns; that was approved, then reversed on Sam's character/corp-ingestion signal, and the reasoning is in §4.2.
 
