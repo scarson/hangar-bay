@@ -340,14 +340,19 @@ export interface components {
         /**
          * ContractSchema
          * @description Schema for a public contract.
+         *
+         *     `status` and `date_completed` are deliberately absent. Both are fields of ESI's
+         *     AUTHENTICATED character/corporation contract routes; the public route Hangar Bay
+         *     reads carries neither, so the columns behind them hold a placeholder and a NULL for
+         *     every contract in the corpus today. The columns stay — they fill in the moment a
+         *     user's own contracts are ingested — but a wire field that can only misinform is
+         *     worse than no wire field (ESI-3).
          */
         ContractSchema: {
             /** Collateral */
             collateral: number;
             /** Contract Id */
             contract_id: number;
-            /** Date Completed */
-            date_completed?: string | null;
             /**
              * Date Expired
              * Format: date-time
@@ -385,8 +390,6 @@ export interface components {
             start_location_id?: number | null;
             /** Start Location Name */
             start_location_name?: string | null;
-            /** Status */
-            status: string;
             /** Title */
             title?: string | null;
             /** Type */

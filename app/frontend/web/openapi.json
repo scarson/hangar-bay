@@ -91,7 +91,7 @@
         "type": "object"
       },
       "ContractSchema": {
-        "description": "Schema for a public contract.",
+        "description": "Schema for a public contract.\n\n`status` and `date_completed` are deliberately absent. Both are fields of ESI's\nAUTHENTICATED character/corporation contract routes; the public route Hangar Bay\nreads carries neither, so the columns behind them hold a placeholder and a NULL for\nevery contract in the corpus today. The columns stay \u2014 they fill in the moment a\nuser's own contracts are ingested \u2014 but a wire field that can only misinform is\nworse than no wire field (ESI-3).",
         "properties": {
           "collateral": {
             "title": "Collateral",
@@ -100,18 +100,6 @@
           "contract_id": {
             "title": "Contract Id",
             "type": "integer"
-          },
-          "date_completed": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Date Completed"
           },
           "date_expired": {
             "format": "date-time",
@@ -224,10 +212,6 @@
             ],
             "title": "Start Location Name"
           },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
           "title": {
             "anyOf": [
               {
@@ -260,7 +244,6 @@
           "issuer_id",
           "issuer_corporation_id",
           "type",
-          "status",
           "for_corporation",
           "date_issued",
           "date_expired",

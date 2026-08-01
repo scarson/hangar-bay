@@ -53,12 +53,10 @@ export interface WireContract {
   start_location_id: number | null
   end_location_id: number
   type: 'item_exchange' | 'auction' | 'courier'
-  status: string
   title: string
   for_corporation: boolean
   date_issued: string
   date_expired: string
-  date_completed: string | null
   price: number
   collateral: number
   reward: number
@@ -119,12 +117,10 @@ export function makeContract(overrides: Partial<WireContract> = {}): WireContrac
     start_location_id: 60_003_760,
     end_location_id: 60_003_760,
     type: 'item_exchange',
-    status: 'unknown',
     title: '',
     for_corporation: false,
     date_issued: '2026-06-14T23:36:29Z',
     date_expired: expiryInDays(30),
-    date_completed: null,
     price: 250_000_000,
     collateral: 0,
     reward: 0,

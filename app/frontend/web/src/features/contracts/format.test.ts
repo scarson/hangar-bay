@@ -17,7 +17,6 @@ function contract(items: Partial<Contract['items'][number]>[], title = ''): Cont
     start_location_id: 60003760,
     collateral: 0,
     type: 'item_exchange',
-    status: 'outstanding',
     title,
     for_corporation: false,
     date_issued: '2026-07-01T00:00:00Z',

@@ -16,7 +16,6 @@ const CONTRACT = {
   issuer_corporation_id: 101,
   start_location_id: 60003760,
   type: 'item_exchange',
-  status: 'outstanding',
   title: 'Tristan for Sale',
   for_corporation: false,
   date_issued: '2026-07-01T00:00:00Z',
