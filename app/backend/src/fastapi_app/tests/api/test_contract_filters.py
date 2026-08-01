@@ -77,6 +77,34 @@ async def test_filter_by_bpc_runs(client: AsyncClient, setup_contracts):
     assert bpc_item["raw_quantity"] == 10
 
 
+async def test_response_omits_fields_public_ingestion_cannot_populate(
+    client: AsyncClient, setup_contracts
+):
+    """`status` and `date_completed` belong to ESI's authenticated character/corporation
+    contract routes. Under public ingestion the columns behind them hold a placeholder and
+    a NULL, so serving them published a value the corpus does not have."""
+    response = await client.get("/contracts/")
+
+    assert response.status_code == 200
+    assert response.json()["items"], "fixture must reach the endpoint for this to mean anything"
+    for contract in response.json()["items"]:
+        assert "status" not in contract
+        assert "date_completed" not in contract
+
+
+async def test_detail_response_omits_fields_public_ingestion_cannot_populate(
+    client: AsyncClient, setup_contracts
+):
+    """The detail endpoint serializes the same schema and must not drift from the list."""
+    response = await client.get("/contracts/101")
+
+    assert response.status_code == 200
+    contract = response.json()
+    assert contract["contract_id"] == 101
+    assert "status" not in contract
+    assert "date_completed" not in contract
+
+
 async def test_complex_filter_api(client: AsyncClient, setup_contracts):
     """Test a complex query combining multiple filters at the API level."""
     # Search for a specific ship (Tristan), with a max price, sorted by price.

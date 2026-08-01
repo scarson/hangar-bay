@@ -23,7 +23,15 @@ class ContractItemSchema(BaseModel):
 
 
 class ContractSchema(BaseModel):
-    """Schema for a public contract."""
+    """Schema for a public contract.
+
+    `status` and `date_completed` are deliberately absent. Both are fields of ESI's
+    AUTHENTICATED character/corporation contract routes; the public route Hangar Bay
+    reads carries neither, so the columns behind them hold a placeholder and a NULL for
+    every contract in the corpus today. The columns stay — they fill in the moment a
+    user's own contracts are ingested — but a wire field that can only misinform is
+    worse than no wire field (ESI-3).
+    """
 
     contract_id: int
     issuer_id: int
@@ -34,12 +42,10 @@ class ContractSchema(BaseModel):
     start_location_id: Optional[int] = None
     end_location_id: Optional[int] = None
     type: str
-    status: str
     title: Optional[str] = None
     for_corporation: bool
     date_issued: datetime
     date_expired: datetime
-    date_completed: Optional[datetime] = None
     price: Optional[float] = None
     # Courier collateral: what the hauler puts up against the cargo. Filterable
     # (min_collateral/max_collateral) and sortable, so clients must be able to read
@@ -98,10 +104,12 @@ class ContractFilters(BaseModel):
         default=None, ge=0, description="Maximum collateral."
     )
     # NOTE (ESI-3): min_runs/max_runs are applied, but against ContractItem.raw_quantity —
-    # a field ESI returns only on the AUTHENTICATED contract-item routes, never on the public
-    # one we ingest. The column is therefore always NULL and both bounds match zero rows.
-    # Making them work requires ingesting the public `runs` field; note that on that route an
-    # original OMITS `runs` rather than sending -1, so the documented sentinel never appears.
+    # a field ESI returns only on the AUTHENTICATED contract-item routes, not on the public
+    # one this ingestion reads. The column is NULL under public ingestion, so both bounds
+    # match zero rows until a user's own contracts are ingested.
+    # Making them work for PUBLIC contracts requires ingesting the public `runs` field; note
+    # that on that route an original OMITS `runs` rather than sending -1, so the documented
+    # sentinel never appears.
     min_runs: Optional[int] = Field(
         default=None,
         ge=-1,

@@ -42,6 +42,12 @@ class Contract(Base):
     title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     price: Mapped[float] = mapped_column(Numeric, nullable=False)
     collateral: Mapped[float] = mapped_column(Numeric, nullable=False)
+    # Contract lifecycle state, and when it reached a terminal one. Both belong to ESI's
+    # AUTHENTICATED character/corporation contract routes; the public route carries neither,
+    # so under public ingestion status holds a placeholder and date_completed stays NULL for
+    # every row. They fill in when a user's own contracts are ingested. Nothing may filter,
+    # sort, or serialize on them until then — a predicate over a column the writer never
+    # populates returns an empty page that reads as "no matches" (ESI-3).
     status: Mapped[str] = mapped_column(String, nullable=False)
     type: Mapped[str] = mapped_column(String, nullable=False)
     issuer_id: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -53,7 +59,7 @@ class Contract(Base):
     for_corporation: Mapped[bool] = mapped_column(Boolean, nullable=False)
     date_issued: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     date_expired: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    date_completed: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    date_completed: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)   # authenticated-route field; see status above
     reward: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     volume: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
@@ -109,8 +115,17 @@ class ContractItem(Base):
     type_id: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     is_included: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    is_singleton: Mapped[bool] = mapped_column(Boolean, nullable=False)
     is_blueprint_copy: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+
+    # Assembled-vs-stacked, and the blueprint run/copy marker. Both belong to ESI's
+    # AUTHENTICATED character/corporation contract-ITEM routes; the public item route
+    # carries neither, so under public ingestion is_singleton takes its mapping default and
+    # raw_quantity stays NULL for every row. They fill in when a user's own contracts are
+    # ingested. Until then no filter may read them — min_runs/max_runs already did, and
+    # returned an empty result that looked like "no BPCs match" rather than a dead control
+    # (ESI-3). A public contract's run count would come from the public `runs` field, which
+    # is a different column nothing ingests yet.
+    is_singleton: Mapped[bool] = mapped_column(Boolean, nullable=False)
     raw_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Denormalized data from other sources

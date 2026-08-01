@@ -78,7 +78,7 @@ async def test_list_contracts_returns_paginated_envelope(
     first_contract = data["items"][0]
     assert first_contract["contract_id"] == 1
     assert first_contract["issuer_id"] == 7
-    assert first_contract["status"] == "outstanding"
+    assert first_contract["title"] == "Envelope Probe"
     assert first_contract["type"] == "item_exchange"
 
 
