@@ -393,6 +393,10 @@ For Review-class PRs, the opening agent MUST NOT merge — that's the user's rol
 
 **Wait for CI with a dedicated monitoring primitive — not a bash sleep-and-poll loop.** Use your agent framework's event-stream / Monitor tool, `gh pr checks --watch`, or your CI system's webhook / push notification. Event-based waits are cheaper on context tokens and more reliable than polling — a tight `sleep N; check` loop burns context every iteration and still misses fast transitions.
 
+**`gh pr merge --auto` is NOT a CI gate in this repository. Do not use it as one.** GitHub's auto-merge waits only for whatever the branch's protection rules actually require — and this repo requires nothing. Verified 2026-08-01: `dev` has no branch protection (`/branches/dev/protection` → 404) and no ruleset covers it; the single active ruleset targets only the default branch and carries `deletion`, `non_fast_forward`, and `pull_request` rules with **no `required_status_checks`**. With nothing to wait on, `--auto` merges the instant it is called, mid-CI-run. An agent hit exactly this: it classified a PR `Routine`, ran `--auto` expecting a gate, and merged while the backend job was still in flight (the checks passed afterward, so nothing broke — the outcome was luck, not policy).
+
+Therefore: **confirm all checks have concluded successfully, then merge explicitly.** The `Routine → auto-merge on green CI` rule above is an instruction to the agent to verify green before merging; it is not delegated to GitHub. If required status checks are ever added to `dev`, this caveat can be revisited — until then, the agent is the gate.
+
 ```bash
 # ALWAYS --merge. NEVER --squash. NEVER --rebase.
 # Full history preserved on dev; squash destroys the per-commit trail

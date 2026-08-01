@@ -69,7 +69,7 @@ The consistent lesson across MutaMarket, Adam4EVE, and EVE Tycoon: browse rows l
 | Single-item exchange | the item | quantity | ask vs market price, margin % |
 | Multi-item ("loot pile") | composition counts (MutaMarket pattern: e.g. `3 modules · 1 BPC · 2 other`) + total m³ | priced-vs-unpriced coverage (Adam4EVE `NoP` column) | ask vs buy-side AND sell-side totals; optionally reprocess value (Fuzzwork) |
 | BPC | name + **ME / TE / Runs as first-class columns** | BPO-vs-BPC flag | never silently price at type market price — either refuse-and-flag (EVE Tycoon) or price per (type, ME, TE, runs) tuple (Adam4EVE) |
-| Abyssal/mutated | base module + mutaplasmid | roll-quality score; per-attribute value + signed delta | estimate with error bars + sample count, or explicit "no estimate" (MutaMarket). Note: rolled stats are NOT in ESI public-contract data; parity with MutaMarket needs another source |
+| Abyssal/mutated | base module + mutaplasmid | roll-quality score; per-attribute value + signed delta | estimate with error bars + sample count, or explicit "no estimate" (MutaMarket). Rolled stats are **not in the contract-items payload but are reachable** via a public per-item endpoint — see §4.5 |
 | Courier | route (origin → destination), jumps | reward, collateral, volume, days_to_complete | reward/jump and reward/m³ — the ratios haulers sort on |
 | Auction | current-bid + countdown | bid count, buyout | requires ingesting `buyout` (§4.2) and the bids endpoint (bidder identity is not public) |
 
@@ -97,12 +97,30 @@ Enrichment already resolves each item's `group_id` and `category_id` from ESI an
 
 ### 4.2 Dropped ESI fields
 
+Field-level claims below were verified directly against ESI's published OpenAPI spec (`https://esi.evetech.net/meta/openapi.json`) on 2026-08-01, not inferred. The **complete** public contract-items schema is exactly: `record_id, type_id, quantity, is_included, item_id, is_blueprint_copy, material_efficiency, time_efficiency, runs`.
+
 | Field | ESI has it | We store | Blocks |
 |---|---|---|---|
 | item `runs`, `material_efficiency`, `time_efficiency` | yes (items endpoint) | no | real ME/TE/runs filters (currently inert per pitfall FASTAPI-2; runs filter mis-wired to `raw_quantity`), honest BPC display for 49% of the corpus |
+| item **`item_id`** | yes | no | **abyssal/mutated module display — see §4.5.** This is the join key to the rolled-attribute endpoint |
 | contract `buyout` | yes | no | any meaningful auction display (~527 live auctions show only starting bid) |
 | contract `days_to_complete` | yes | no | courier display |
 | auction bids (`/contracts/public/bids/`) | yes (no bidder identity) | not fetched | current-bid display |
+
+Two columns we persist do **not exist on the public items route** at all (they appear only on the authenticated character/corporation contract routes), so they can only ever be NULL in our data: `raw_quantity` (empirically confirmed absent across 1,658 sampled live rows) and `is_singleton` (same class; spec-confirmed absent). The `min_runs`/`max_runs` filter being wired to `raw_quantity` is why it matches nothing — see §4.4.
+
+### 4.5 Abyssal modules are reachable from public ESI (correction)
+
+An earlier draft of this analysis asserted that abyssal/mutated roll statistics are absent from public ESI and would require a different data source. **That is wrong**, and the correction matters because abyssal modules are the single largest cluster in the non-ship corpus (§1).
+
+Verified against the ESI spec on 2026-08-01:
+
+- The public contract-items payload includes **`item_id`** for every item being sold (it is omitted only for items the contract *requests*).
+- **`GET /dogma/dynamic/items/{type_id}/{item_id}` is public — no authentication** — and returns `source_type_id` (the base module), `mutator_type_id` (the mutaplasmid applied), `dogma_attributes[]` (`attribute_id` + rolled `value`), `dogma_effects[]`, and `created_by`.
+
+That is exactly MutaMarket's data model: base module + mutaplasmid + rolled attributes. So the full presentation described for abyssals in §3.1 — value plus signed delta against the unmutated base, roll-quality scoring — is achievable with the pipeline we already have, plus persisting `item_id` and one extra ESI call per dynamic item.
+
+Two properties make the cost far better than it first appears: a rolled module's attributes are **immutable for the life of that `item_id`**, so the fetch is once-ever-per-item and cached permanently; and only dynamic items need the call at all. What we do *not* get from ESI is the comparative layer MutaMarket adds on top (per-type best/worst roll statistics, `high_is_good` per attribute, ML value estimates) — that is derived data we would have to accumulate ourselves or approximate from the SDE. Note also that EVE Ref already publishes resolved dogma attributes for dynamic items in its twice-hourly public-contract dataset, which is a viable shortcut worth evaluating against doing our own resolution.
 
 ### 4.3 Region coverage
 
@@ -146,7 +164,7 @@ Sequenced shape (sizes are relative; a plan would firm these up):
 3. **Presentation / medium-large — the type-aware browse view.** Contract-type tabs with counts; type-specific summary rows per §3.1; courier columns (route, reward, collateral); BPC columns (ME/TE/runs); want-to-buy symmetry; `last_seen_at` surfaced. This is the actual "display the data" milestone and needs its own feature spec (an F008) reconciling the F002-vs-M1 conflicts.
 4. **Later / large — valuation.** Unchanged from the M5 direction doc, but §3.2's conventions become requirements, and Adam4EVE's per-(type, ME, TE, runs) BPC pricing plus MutaMarket's published-error-bars model are the reference implementations.
 
-Abyssal roll-stats (MutaMarket parity) are explicitly out: ESI public-contract data doesn't carry rolled attributes, so that's a different-data-source product decision, not a display gap.
+Abyssal modules were initially scoped out of this recommendation on the belief that their roll statistics aren't in public ESI. **That belief was wrong** (§4.5): the rolled attributes are one public, unauthenticated, permanently-cacheable call away, keyed on an `item_id` we already receive and simply don't persist. Since abyssals are the largest non-ship cluster, displaying them belongs in phase 3 rather than being deferred — with the caveat that MutaMarket's *comparative* layer (per-type best/worst roll ranges, quality tiers, value estimates) is derived data we'd build over time, not something ESI hands us.
 
 ## 7. MCP surface for Hangar Bay's final form
 
@@ -174,3 +192,5 @@ Full research in the companion doc `2026-08-01-mcp-surface-research.md` (prior a
 - *Changing the ships-only default*: not proposed — PRODUCT.md's default stands; this analysis argues for making the non-default view real, not for changing the default.
 
 **Things almost missed.** The `system_ids`/`is_bpc=false` dead filters surfaced only because the inventory lane checked filter columns against ingestion writes rather than trusting the API schema — the same defect class (silent filter no-op) then showed up independently in EVE Workbench's PLEX/region behavior, which is what promoted "empty-state-or-explain" from a bug fix to a proposed product invariant.
+
+**A claim this document got wrong, and how.** The first committed version of §6 stated that abyssal roll statistics are absent from public ESI and therefore out of scope. That came from a research lane's summary — "abyssal roll data lives in dogma attributes ESI's public contract endpoints don't expose" — which is *narrowly true of the contract-items payload* and which I generalized into "not available from ESI." Reading the actual OpenAPI spec (§4.5) took two minutes and showed a public, unauthenticated endpoint returning exactly that data, keyed on a field the contract payload already gives us. The lesson is the one already recorded in this project's practice: when about to write "X is impossible" or "X needs a different source" into a durable artifact, open the primary spec rather than trusting a summary — especially when the claim conveniently narrows scope. The same spec read simultaneously confirmed the `raw_quantity`/`is_singleton` columns can only ever be NULL, which no amount of reading our own code would have proven.
