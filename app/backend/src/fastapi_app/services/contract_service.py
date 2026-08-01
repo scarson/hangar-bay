@@ -53,6 +53,41 @@ def _needs_item_join(filters: ContractFilters) -> bool:
     # multiplying rows. See _has_blueprint_copy_item.
 
 
+def still_listed_by_esi():
+    """Is this contract still present in ESI's public list?
+
+    Expiry only catches contracts that ran out of time; a contract that was ACCEPTED
+    disappears from ESI's public list while keeping a future date_expired, so it survives
+    the expiry predicate and would go on being offered for up to two weeks. Ingestion
+    restamps last_seen_at on every sighting, so a contract is present when its stamp
+    equals the newest stamp IN ITS OWN REGION.
+
+    Per-region rather than global, deliberately: if one region's ESI fetch fails, nothing in
+    it is restamped, and judging it against another region's fresher watermark would erase
+    every contract that region holds in one go. A stalled region simply keeps its own
+    watermark. If ingestion stops entirely, no watermark advances and everything stays
+    visible — stale data with a staleness signal beats an empty site.
+
+    NULL is visible: rows predating this column have no stamp, and hiding them would blank
+    the site between the migration and the first run. The migration backfills them anyway.
+
+    Shared with the watchlist matcher so "still on offer" has one definition. The tradeoff
+    the shared definition accepts: a contract that momentarily drops out of an ESI page —
+    an ingestion gap, a partial fetch that still restamped part of its region — reads as
+    gone, so a watchlist alert for it can be missed. That is the better failure. The
+    alternative is alerting on a contract someone already bought for as long as two weeks,
+    which sends the reader to a dead listing over and over and teaches them the alerts are
+    noise; a missed alert costs one opportunity and leaves the feature trustworthy.
+    """
+    newest_in_region = (
+        select(func.max(_ContractWatermark.last_seen_at))
+        .where(_ContractWatermark.start_location_region_id == Contract.start_location_region_id)
+        .correlate(Contract)
+        .scalar_subquery()
+    )
+    return or_(Contract.last_seen_at.is_(None), Contract.last_seen_at >= newest_in_region)
+
+
 def _has_blueprint_copy_item():
     """Correlated EXISTS: does this contract carry an item that is a blueprint copy?
 
@@ -92,29 +127,10 @@ def _apply_contract_filters(query, filters: ContractFilters):
     # contract it points at, and 404-ing yesterday's link reads as a broken site.
     query = query.filter(Contract.date_expired > func.now())
 
-    # 0b. Delisted contracts. Expiry only catches contracts that ran out of time; a contract
-    # that was ACCEPTED disappears from ESI's public list while keeping a future date_expired,
-    # so it survives the expiry predicate and would go on being offered for up to two weeks.
-    # Ingestion restamps last_seen_at on every sighting, so a contract is present when its
-    # stamp equals the newest stamp IN ITS OWN REGION.
-    #
-    # Per-region rather than global, deliberately: if one region's ESI fetch fails, nothing in
-    # it is restamped, and judging it against another region's fresher watermark would erase
-    # every contract that region holds in one go. A stalled region simply keeps its own
-    # watermark. If ingestion stops entirely, no watermark advances and everything stays
-    # visible — stale data with a staleness signal beats an empty site.
-    #
-    # NULL is visible: rows predating this column have no stamp, and hiding them would blank
-    # the site between the migration and the first run. The migration backfills them anyway.
-    newest_in_region = (
-        select(func.max(_ContractWatermark.last_seen_at))
-        .where(_ContractWatermark.start_location_region_id == Contract.start_location_region_id)
-        .correlate(Contract)
-        .scalar_subquery()
-    )
-    query = query.filter(
-        or_(Contract.last_seen_at.is_(None), Contract.last_seen_at >= newest_in_region)
-    )
+    # 0b. Delisted contracts — a contract accepted or withdrawn keeps a future date_expired
+    # and survives the expiry predicate above. See still_listed_by_esi for the per-region
+    # watermark and why it is per-region.
+    query = query.filter(still_listed_by_esi())
 
     # 1. Text search (on contract title or item name)
     if filters.search:

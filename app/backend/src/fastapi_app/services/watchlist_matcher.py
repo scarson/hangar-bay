@@ -18,6 +18,7 @@ from ..core.logging import get_logger, log_key_event
 from ..models.account import Notification, WatchlistItem
 from ..models.contracts import Contract, ContractItem
 from ..models.user import User
+from .contract_service import still_listed_by_esi
 
 logger = logging.getLogger(__name__)
 slog = get_logger(__name__)
@@ -150,6 +151,19 @@ class WatchlistMatcherService:
                 Contract.type.in_(("item_exchange", "auction")),
                 Contract.date_expired > func.now(),
                 Contract.date_completed.is_(None),
+                # "Outstanding" is the same question the contracts list asks, so it gets
+                # the same answer: expiry catches only contracts that ran out of time,
+                # while a contract someone ACCEPTED vanishes from ESI's public list still
+                # carrying a future date_expired. Without the watermark that contract keeps
+                # generating alerts for as long as two weeks after it was bought — every
+                # one of them sending the reader to a listing that is gone. The tradeoff we
+                # take in exchange is stated in still_listed_by_esi: a contract that
+                # momentarily drops out of an ESI page reads as gone, so an alert for it can
+                # be missed. One missed opportunity beats a fortnight of alerts nobody can act
+                # on, which is what teaches a reader to ignore the feature entirely.
+                # date_completed above is inert against public-route data (ESI never sends
+                # it) and is kept for character/corp contracts, which do carry it.
+                still_listed_by_esi(),
                 or_(WatchlistItem.max_price.is_(None), Contract.price <= WatchlistItem.max_price),
             )
             .distinct()
@@ -194,10 +208,13 @@ class WatchlistMatcherService:
 
     async def _prune(self, db_session: AsyncSession) -> int:
         cutoff = self._now() - timedelta(days=self.settings.NOTIFICATION_RETENTION_DAYS)
+        # "Outstanding" here MUST mean what it means in _match_and_notify, or the prune
+        # deletes aged notifications the very next match run recreates.
         outstanding = select(Contract.contract_id).where(
             Contract.contract_id == Notification.contract_id,
             Contract.date_expired > func.now(),
             Contract.date_completed.is_(None),
+            still_listed_by_esi(),
         )
         # Delete only aged rows whose target contract is no longer outstanding (no-resurrection guard).
         stmt = delete(Notification).where(
