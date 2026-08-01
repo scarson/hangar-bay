@@ -1111,7 +1111,7 @@
             }
           },
           {
-            "description": "Minimum runs for BPCs (-1 for original).",
+            "description": "Minimum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
             "in": "query",
             "name": "min_runs",
             "required": false,
@@ -1125,12 +1125,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Minimum runs for BPCs (-1 for original).",
+              "description": "Minimum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
               "title": "Min Runs"
             }
           },
           {
-            "description": "Maximum runs for BPCs.",
+            "description": "Maximum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
             "in": "query",
             "name": "max_runs",
             "required": false,
@@ -1144,7 +1144,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Maximum runs for BPCs.",
+              "description": "Maximum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
               "title": "Max Runs"
             }
           },
@@ -1246,7 +1246,7 @@
             }
           },
           {
-            "description": "List of solar system IDs to filter by.",
+            "description": "List of solar system IDs to filter by. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
             "in": "query",
             "name": "system_ids",
             "required": false,
@@ -1262,7 +1262,7 @@
                   "type": "null"
                 }
               ],
-              "description": "List of solar system IDs to filter by.",
+              "description": "List of solar system IDs to filter by. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
               "title": "System Ids"
             }
           },
