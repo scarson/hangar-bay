@@ -1,0 +1,2259 @@
+{
+  "pinned_compatibility_date": "2020-01-01",
+  "readme": "Committed projection of https://esi.evetech.net/meta/openapi.json, narrowed to the endpoints and fields Hangar Bay consumes. Regenerate with `pdm run esi-spec-monitor --update` and review the diff; never update it to silence a failure you have not understood.",
+  "spec_url": "https://esi.evetech.net/meta/openapi.json",
+  "views": {
+    "newest_compatibility_date": {
+      "GET /contracts/public/items/{contract_id}": {
+        "call_path": "/v1/contracts/public/items/{contract_id}/",
+        "caller": "core/esi_client_class.py ESIClient.get_contract_items",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "is_blueprint_copy": "background_aggregation._fetch_item_rows -> ContractItem.is_blueprint_copy; contract_service._has_blueprint_copy_item backs the is_bpc filter",
+          "is_included": "background_aggregation._fetch_item_rows -> ContractItem.is_included; _enrich_items lets only included items set the ship flag",
+          "quantity": "background_aggregation._fetch_item_rows -> ContractItem.quantity",
+          "record_id": "background_aggregation._fetch_item_rows -> ContractItem.record_id (primary key)",
+          "type_id": "background_aggregation._fetch_item_rows -> ContractItem.type_id; drives the /universe/types enrichment fan-out"
+        },
+        "known_absent_fields": {
+          "is_singleton": {
+            "consequence": "defaults to False on every row \u2014 same authenticated-route confusion as raw_quantity",
+            "consumer": "background_aggregation._fetch_item_rows -> ContractItem.is_singleton (non-null column, exposed as ContractItemSchema.is_singleton)"
+          },
+          "raw_quantity": {
+            "consequence": "always NULL, so min_runs/max_runs match zero rows \u2014 this field is on the AUTHENTICATED character/corporation item routes only (ESI-3)",
+            "consumer": "background_aggregation._fetch_item_rows -> ContractItem.raw_quantity; read by the min_runs/max_runs filter in contract_service"
+          }
+        },
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetContractsPublicItemsContractId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:contract_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "query:page": {
+            "format": "int32",
+            "required": false,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "[].is_blueprint_copy": {
+            "required": false,
+            "type": "boolean"
+          },
+          "[].is_included": {
+            "required": true,
+            "type": "boolean"
+          },
+          "[].item_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].material_efficiency": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].quantity": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].record_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].runs": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].time_efficiency": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].type_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "204"
+        ],
+        "security": [],
+        "server_cache_mode": "ttl-based"
+      },
+      "GET /contracts/public/{region_id}": {
+        "call_path": "/v1/contracts/public/{region_id}/",
+        "caller": "core/esi_client_class.py ESIClient.get_public_contracts",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "collateral": "background_aggregation._build_contract_rows -> Contract.collateral",
+          "contract_id": "background_aggregation._build_contract_rows -> Contract.contract_id (primary key)",
+          "date_expired": "background_aggregation._build_contract_rows -> Contract.date_expired",
+          "date_issued": "background_aggregation._build_contract_rows -> Contract.date_issued",
+          "end_location_id": "background_aggregation._build_contract_rows -> Contract.end_location_id",
+          "for_corporation": "background_aggregation._build_contract_rows -> Contract.for_corporation",
+          "issuer_corporation_id": "background_aggregation._build_contract_rows -> Contract.issuer_corporation_id",
+          "issuer_id": "background_aggregation._build_contract_rows -> Contract.issuer_id, and name resolution",
+          "price": "background_aggregation._build_contract_rows -> Contract.price (sortable, filterable)",
+          "reward": "background_aggregation._build_contract_rows -> Contract.reward",
+          "start_location_id": "background_aggregation._build_contract_rows -> Contract.start_location_id, and name resolution",
+          "title": "background_aggregation._build_contract_rows -> Contract.title",
+          "type": "background_aggregation._build_contract_rows -> Contract.type; _fetch_item_rows gates item enrichment on item_exchange/auction",
+          "volume": "background_aggregation._build_contract_rows -> Contract.volume"
+        },
+        "known_absent_fields": {
+          "date_completed": {
+            "consequence": "always NULL \u2014 a public contract is by definition outstanding; dropped from ContractSchema in PR #115 and re-fills only under authenticated ingestion",
+            "consumer": "background_aggregation._build_contract_rows -> Contract.date_completed; no longer on the wire"
+          },
+          "status": {
+            "consequence": "defaults to the literal 'unknown' on every row, so the column and its index carry one constant value; dropped from ContractSchema in PR #115 and re-fills only when a user's own authenticated contracts are ingested",
+            "consumer": "background_aggregation._build_contract_rows -> Contract.status (non-null column, indexed by ix_contracts_type_status); no longer on the wire"
+          }
+        },
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetContractsPublicRegionId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:region_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "query:page": {
+            "format": "int32",
+            "required": false,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "[].buyout": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "[].collateral": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "[].contract_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].date_expired": {
+            "format": "date-time",
+            "required": true,
+            "type": "string"
+          },
+          "[].date_issued": {
+            "format": "date-time",
+            "required": true,
+            "type": "string"
+          },
+          "[].days_to_complete": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].end_location_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].for_corporation": {
+            "required": false,
+            "type": "boolean"
+          },
+          "[].issuer_corporation_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].issuer_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].price": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "[].reward": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "[].start_location_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].title": {
+            "required": false,
+            "type": "string"
+          },
+          "[].type": {
+            "enum": [
+              "auction",
+              "courier",
+              "item_exchange",
+              "loan",
+              "unknown"
+            ],
+            "required": true,
+            "type": "string"
+          },
+          "[].volume": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": "ttl-based"
+      },
+      "GET /universe/groups/{group_id}": {
+        "call_path": "/v1/universe/groups/{group_id}/",
+        "caller": "core/esi_client_class.py ESIClient.get_universe_group",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "category_id": "background_aggregation._enrich_items -> compared against SHIP_CATEGORY_ID; this single field decides whether a contract is a ship contract, which is the product's default view"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetUniverseGroupsGroupId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:group_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "category_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "group_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "name": {
+            "required": true,
+            "type": "string"
+          },
+          "published": {
+            "required": true,
+            "type": "boolean"
+          },
+          "types": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "required": true,
+            "type": "array"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "GET /universe/regions": {
+        "call_path": "/v1/universe/regions/",
+        "caller": "app/frontend/web/scripts/generate-regions.mjs (build-time codegen for the region filter)",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {},
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetUniverseRegions",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {},
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "GET /universe/regions/{region_id}": {
+        "call_path": "/v1/universe/regions/{region_id}/",
+        "caller": "app/frontend/web/scripts/generate-regions.mjs (build-time codegen for the region filter)",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "name": "generate-regions.mjs -> the label of each option in src/features/contracts/regions.ts",
+          "region_id": "generate-regions.mjs -> the value of each option in src/features/contracts/regions.ts"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetUniverseRegionsRegionId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:region_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "constellations": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "required": true,
+            "type": "array"
+          },
+          "description": {
+            "required": false,
+            "type": "string"
+          },
+          "name": {
+            "required": true,
+            "type": "string"
+          },
+          "region_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "GET /universe/stations/{station_id}": {
+        "call_path": "/v2/universe/stations/{station_id}/",
+        "caller": "core/esi_client_class.py ESIClient.get_universe_station",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "system_id": "background_aggregation._resolve_station_systems -> Contract.start_location_system_id, which backs the system_ids filter"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetUniverseStationsStationId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:station_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "max_dockable_ship_volume": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "name": {
+            "required": true,
+            "type": "string"
+          },
+          "office_rental_cost": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "owner": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "position": {
+            "required": true,
+            "type": "object"
+          },
+          "position.x": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "position.y": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "position.z": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "race_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "reprocessing_efficiency": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "reprocessing_stations_take": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "services": {
+            "items": {
+              "enum": [
+                "assasination-missions",
+                "black-market",
+                "bounty-missions",
+                "cloning",
+                "courier-missions",
+                "dna-therapy",
+                "docking",
+                "factory",
+                "fitting",
+                "gambling",
+                "insurance",
+                "interbus",
+                "jump-clone-facility",
+                "labratory",
+                "loyalty-point-store",
+                "market",
+                "navy-offices",
+                "news",
+                "office-rental",
+                "paintshop",
+                "refinery",
+                "repair-facilities",
+                "reprocessing-plant",
+                "security-offices",
+                "stock-exchange",
+                "storage",
+                "surgery"
+              ],
+              "type": "string"
+            },
+            "required": true,
+            "type": "array"
+          },
+          "station_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "system_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "type_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "GET /universe/types/{type_id}": {
+        "call_path": "/v3/universe/types/{type_id}/",
+        "caller": "core/esi_client_class.py ESIClient.get_universe_type",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "group_id": "background_aggregation._enrich_items -> the /universe/groups fan-out that decides the ship flag",
+          "market_group_id": "background_aggregation._enrich_items -> ContractItem.market_group_id",
+          "name": "background_aggregation._enrich_items -> ContractItem.type_name (the searchable ship name)"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetUniverseTypesTypeId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:type_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "capacity": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "description": {
+            "required": true,
+            "type": "string"
+          },
+          "dogma_attributes": {
+            "required": false,
+            "type": "array"
+          },
+          "dogma_attributes[].attribute_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "dogma_attributes[].value": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "dogma_effects": {
+            "required": false,
+            "type": "array"
+          },
+          "dogma_effects[].effect_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "dogma_effects[].is_default": {
+            "required": true,
+            "type": "boolean"
+          },
+          "graphic_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "group_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "icon_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "market_group_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "mass": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "name": {
+            "required": true,
+            "type": "string"
+          },
+          "packaged_volume": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "portion_size": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "published": {
+            "required": true,
+            "type": "boolean"
+          },
+          "radius": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "type_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "volume": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "POST /universe/ids": {
+        "call_path": "/v1/universe/ids/",
+        "caller": "core/esi_client_class.py ESIClient.resolve_names",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "inventory_types": "watchlist_service resolves a watched ship name to a type id through this category; an unmatched name yields 200 with the category absent"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "PostUniverseIds",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          }
+        },
+        "present": true,
+        "request_body": {
+          "required": true,
+          "schema": {
+            "items": {
+              "description": "name string",
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "response_fields": {
+          "agents": {
+            "required": false,
+            "type": "array"
+          },
+          "agents[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "agents[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "alliances": {
+            "required": false,
+            "type": "array"
+          },
+          "alliances[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "alliances[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "characters": {
+            "required": false,
+            "type": "array"
+          },
+          "characters[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "characters[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "constellations": {
+            "required": false,
+            "type": "array"
+          },
+          "constellations[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "constellations[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "corporations": {
+            "required": false,
+            "type": "array"
+          },
+          "corporations[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "corporations[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "factions": {
+            "required": false,
+            "type": "array"
+          },
+          "factions[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "factions[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "inventory_types": {
+            "required": false,
+            "type": "array"
+          },
+          "inventory_types[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "inventory_types[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "regions": {
+            "required": false,
+            "type": "array"
+          },
+          "regions[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "regions[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "stations": {
+            "required": false,
+            "type": "array"
+          },
+          "stations[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "stations[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "systems": {
+            "required": false,
+            "type": "array"
+          },
+          "systems[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "systems[].name": {
+            "required": false,
+            "type": "string"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "POST /universe/names": {
+        "call_path": "/v3/universe/names/",
+        "caller": "core/esi_client_class.py ESIClient.resolve_ids_to_names",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "id": "esi_client_class.resolve_ids_to_names -> the id->name map key",
+          "name": "esi_client_class.resolve_ids_to_names -> Contract.issuer_name / issuer_corporation_name / start_location_name"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "PostUniverseNames",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          }
+        },
+        "present": true,
+        "request_body": {
+          "required": true,
+          "schema": {
+            "items": {
+              "description": "id integer",
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "response_fields": {
+          "[].category": {
+            "enum": [
+              "alliance",
+              "character",
+              "constellation",
+              "corporation",
+              "faction",
+              "inventory_type",
+              "region",
+              "solar_system",
+              "station"
+            ],
+            "required": true,
+            "type": "string"
+          },
+          "[].id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].name": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      }
+    },
+    "pinned": {
+      "GET /contracts/public/items/{contract_id}": {
+        "call_path": "/v1/contracts/public/items/{contract_id}/",
+        "caller": "core/esi_client_class.py ESIClient.get_contract_items",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "is_blueprint_copy": "background_aggregation._fetch_item_rows -> ContractItem.is_blueprint_copy; contract_service._has_blueprint_copy_item backs the is_bpc filter",
+          "is_included": "background_aggregation._fetch_item_rows -> ContractItem.is_included; _enrich_items lets only included items set the ship flag",
+          "quantity": "background_aggregation._fetch_item_rows -> ContractItem.quantity",
+          "record_id": "background_aggregation._fetch_item_rows -> ContractItem.record_id (primary key)",
+          "type_id": "background_aggregation._fetch_item_rows -> ContractItem.type_id; drives the /universe/types enrichment fan-out"
+        },
+        "known_absent_fields": {
+          "is_singleton": {
+            "consequence": "defaults to False on every row \u2014 same authenticated-route confusion as raw_quantity",
+            "consumer": "background_aggregation._fetch_item_rows -> ContractItem.is_singleton (non-null column, exposed as ContractItemSchema.is_singleton)"
+          },
+          "raw_quantity": {
+            "consequence": "always NULL, so min_runs/max_runs match zero rows \u2014 this field is on the AUTHENTICATED character/corporation item routes only (ESI-3)",
+            "consumer": "background_aggregation._fetch_item_rows -> ContractItem.raw_quantity; read by the min_runs/max_runs filter in contract_service"
+          }
+        },
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetContractsPublicItemsContractId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:contract_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "query:page": {
+            "format": "int32",
+            "required": false,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "[].is_blueprint_copy": {
+            "required": false,
+            "type": "boolean"
+          },
+          "[].is_included": {
+            "required": true,
+            "type": "boolean"
+          },
+          "[].item_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].material_efficiency": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].quantity": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].record_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].runs": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].time_efficiency": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].type_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "204"
+        ],
+        "security": [],
+        "server_cache_mode": "ttl-based"
+      },
+      "GET /contracts/public/{region_id}": {
+        "call_path": "/v1/contracts/public/{region_id}/",
+        "caller": "core/esi_client_class.py ESIClient.get_public_contracts",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "collateral": "background_aggregation._build_contract_rows -> Contract.collateral",
+          "contract_id": "background_aggregation._build_contract_rows -> Contract.contract_id (primary key)",
+          "date_expired": "background_aggregation._build_contract_rows -> Contract.date_expired",
+          "date_issued": "background_aggregation._build_contract_rows -> Contract.date_issued",
+          "end_location_id": "background_aggregation._build_contract_rows -> Contract.end_location_id",
+          "for_corporation": "background_aggregation._build_contract_rows -> Contract.for_corporation",
+          "issuer_corporation_id": "background_aggregation._build_contract_rows -> Contract.issuer_corporation_id",
+          "issuer_id": "background_aggregation._build_contract_rows -> Contract.issuer_id, and name resolution",
+          "price": "background_aggregation._build_contract_rows -> Contract.price (sortable, filterable)",
+          "reward": "background_aggregation._build_contract_rows -> Contract.reward",
+          "start_location_id": "background_aggregation._build_contract_rows -> Contract.start_location_id, and name resolution",
+          "title": "background_aggregation._build_contract_rows -> Contract.title",
+          "type": "background_aggregation._build_contract_rows -> Contract.type; _fetch_item_rows gates item enrichment on item_exchange/auction",
+          "volume": "background_aggregation._build_contract_rows -> Contract.volume"
+        },
+        "known_absent_fields": {
+          "date_completed": {
+            "consequence": "always NULL \u2014 a public contract is by definition outstanding; dropped from ContractSchema in PR #115 and re-fills only under authenticated ingestion",
+            "consumer": "background_aggregation._build_contract_rows -> Contract.date_completed; no longer on the wire"
+          },
+          "status": {
+            "consequence": "defaults to the literal 'unknown' on every row, so the column and its index carry one constant value; dropped from ContractSchema in PR #115 and re-fills only when a user's own authenticated contracts are ingested",
+            "consumer": "background_aggregation._build_contract_rows -> Contract.status (non-null column, indexed by ix_contracts_type_status); no longer on the wire"
+          }
+        },
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetContractsPublicRegionId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:region_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "query:page": {
+            "format": "int32",
+            "required": false,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "[].buyout": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "[].collateral": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "[].contract_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].date_expired": {
+            "format": "date-time",
+            "required": true,
+            "type": "string"
+          },
+          "[].date_issued": {
+            "format": "date-time",
+            "required": true,
+            "type": "string"
+          },
+          "[].days_to_complete": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].end_location_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].for_corporation": {
+            "required": false,
+            "type": "boolean"
+          },
+          "[].issuer_corporation_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].issuer_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].price": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "[].reward": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "[].start_location_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "[].title": {
+            "required": false,
+            "type": "string"
+          },
+          "[].type": {
+            "enum": [
+              "auction",
+              "courier",
+              "item_exchange",
+              "loan",
+              "unknown"
+            ],
+            "required": true,
+            "type": "string"
+          },
+          "[].volume": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": "ttl-based"
+      },
+      "GET /universe/groups/{group_id}": {
+        "call_path": "/v1/universe/groups/{group_id}/",
+        "caller": "core/esi_client_class.py ESIClient.get_universe_group",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "category_id": "background_aggregation._enrich_items -> compared against SHIP_CATEGORY_ID; this single field decides whether a contract is a ship contract, which is the product's default view"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetUniverseGroupsGroupId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:group_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "category_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "group_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "name": {
+            "required": true,
+            "type": "string"
+          },
+          "published": {
+            "required": true,
+            "type": "boolean"
+          },
+          "types": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "required": true,
+            "type": "array"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "GET /universe/regions": {
+        "call_path": "/v1/universe/regions/",
+        "caller": "app/frontend/web/scripts/generate-regions.mjs (build-time codegen for the region filter)",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {},
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetUniverseRegions",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {},
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "GET /universe/regions/{region_id}": {
+        "call_path": "/v1/universe/regions/{region_id}/",
+        "caller": "app/frontend/web/scripts/generate-regions.mjs (build-time codegen for the region filter)",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "name": "generate-regions.mjs -> the label of each option in src/features/contracts/regions.ts",
+          "region_id": "generate-regions.mjs -> the value of each option in src/features/contracts/regions.ts"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetUniverseRegionsRegionId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:region_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "constellations": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "required": true,
+            "type": "array"
+          },
+          "description": {
+            "required": false,
+            "type": "string"
+          },
+          "name": {
+            "required": true,
+            "type": "string"
+          },
+          "region_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "GET /universe/stations/{station_id}": {
+        "call_path": "/v2/universe/stations/{station_id}/",
+        "caller": "core/esi_client_class.py ESIClient.get_universe_station",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "system_id": "background_aggregation._resolve_station_systems -> Contract.start_location_system_id, which backs the system_ids filter"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetUniverseStationsStationId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:station_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "max_dockable_ship_volume": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "name": {
+            "required": true,
+            "type": "string"
+          },
+          "office_rental_cost": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "owner": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "position": {
+            "required": true,
+            "type": "object"
+          },
+          "position.x": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "position.y": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "position.z": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "race_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "reprocessing_efficiency": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "reprocessing_stations_take": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "services": {
+            "items": {
+              "enum": [
+                "assasination-missions",
+                "black-market",
+                "bounty-missions",
+                "cloning",
+                "courier-missions",
+                "dna-therapy",
+                "docking",
+                "factory",
+                "fitting",
+                "gambling",
+                "insurance",
+                "interbus",
+                "jump-clone-facility",
+                "labratory",
+                "loyalty-point-store",
+                "market",
+                "navy-offices",
+                "news",
+                "office-rental",
+                "paintshop",
+                "refinery",
+                "repair-facilities",
+                "reprocessing-plant",
+                "security-offices",
+                "stock-exchange",
+                "storage",
+                "surgery"
+              ],
+              "type": "string"
+            },
+            "required": true,
+            "type": "array"
+          },
+          "station_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "system_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "type_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "GET /universe/types/{type_id}": {
+        "call_path": "/v3/universe/types/{type_id}/",
+        "caller": "core/esi_client_class.py ESIClient.get_universe_type",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "group_id": "background_aggregation._enrich_items -> the /universe/groups fan-out that decides the ship flag",
+          "market_group_id": "background_aggregation._enrich_items -> ContractItem.market_group_id",
+          "name": "background_aggregation._enrich_items -> ContractItem.type_name (the searchable ship name)"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "GetUniverseTypesTypeId",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          },
+          "path:type_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          }
+        },
+        "present": true,
+        "request_body": null,
+        "response_fields": {
+          "capacity": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "description": {
+            "required": true,
+            "type": "string"
+          },
+          "dogma_attributes": {
+            "required": false,
+            "type": "array"
+          },
+          "dogma_attributes[].attribute_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "dogma_attributes[].value": {
+            "format": "double",
+            "required": true,
+            "type": "number"
+          },
+          "dogma_effects": {
+            "required": false,
+            "type": "array"
+          },
+          "dogma_effects[].effect_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "dogma_effects[].is_default": {
+            "required": true,
+            "type": "boolean"
+          },
+          "graphic_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "group_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "icon_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "market_group_id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "mass": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "name": {
+            "required": true,
+            "type": "string"
+          },
+          "packaged_volume": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "portion_size": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "published": {
+            "required": true,
+            "type": "boolean"
+          },
+          "radius": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          },
+          "type_id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "volume": {
+            "format": "double",
+            "required": false,
+            "type": "number"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "POST /universe/ids": {
+        "call_path": "/v1/universe/ids/",
+        "caller": "core/esi_client_class.py ESIClient.resolve_names",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "inventory_types": "watchlist_service resolves a watched ship name to a type id through this category; an unmatched name yields 200 with the category absent"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "PostUniverseIds",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          }
+        },
+        "present": true,
+        "request_body": {
+          "required": true,
+          "schema": {
+            "items": {
+              "description": "name string",
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "response_fields": {
+          "agents": {
+            "required": false,
+            "type": "array"
+          },
+          "agents[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "agents[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "alliances": {
+            "required": false,
+            "type": "array"
+          },
+          "alliances[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "alliances[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "characters": {
+            "required": false,
+            "type": "array"
+          },
+          "characters[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "characters[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "constellations": {
+            "required": false,
+            "type": "array"
+          },
+          "constellations[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "constellations[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "corporations": {
+            "required": false,
+            "type": "array"
+          },
+          "corporations[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "corporations[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "factions": {
+            "required": false,
+            "type": "array"
+          },
+          "factions[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "factions[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "inventory_types": {
+            "required": false,
+            "type": "array"
+          },
+          "inventory_types[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "inventory_types[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "regions": {
+            "required": false,
+            "type": "array"
+          },
+          "regions[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "regions[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "stations": {
+            "required": false,
+            "type": "array"
+          },
+          "stations[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "stations[].name": {
+            "required": false,
+            "type": "string"
+          },
+          "systems": {
+            "required": false,
+            "type": "array"
+          },
+          "systems[].id": {
+            "format": "int64",
+            "required": false,
+            "type": "integer"
+          },
+          "systems[].name": {
+            "required": false,
+            "type": "string"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      },
+      "POST /universe/names": {
+        "call_path": "/v3/universe/names/",
+        "caller": "core/esi_client_class.py ESIClient.resolve_ids_to_names",
+        "consumed_fields_absent_from_spec": [],
+        "consumers": {
+          "id": "esi_client_class.resolve_ids_to_names -> the id->name map key",
+          "name": "esi_client_class.resolve_ids_to_names -> Contract.issuer_name / issuer_corporation_name / start_location_name"
+        },
+        "known_absent_fields": {},
+        "known_absent_fields_now_present": [],
+        "operation_compatibility_date": "2020-01-01",
+        "operation_id": "PostUniverseNames",
+        "parameters": {
+          "header:Accept-Language": {
+            "enum": [
+              "de",
+              "en",
+              "es",
+              "fr",
+              "ja",
+              "ko",
+              "ru",
+              "zh"
+            ],
+            "required": false,
+            "type": "string"
+          },
+          "header:If-Modified-Since": {
+            "required": false,
+            "type": "string"
+          },
+          "header:If-None-Match": {
+            "required": false,
+            "type": "string"
+          },
+          "header:X-Compatibility-Date": {
+            "format": "date",
+            "required": true,
+            "type": "string"
+          },
+          "header:X-Tenant": {
+            "required": false,
+            "type": "string"
+          }
+        },
+        "present": true,
+        "request_body": {
+          "required": true,
+          "schema": {
+            "items": {
+              "description": "id integer",
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "response_fields": {
+          "[].category": {
+            "enum": [
+              "alliance",
+              "character",
+              "constellation",
+              "corporation",
+              "faction",
+              "inventory_type",
+              "region",
+              "solar_system",
+              "station"
+            ],
+            "required": true,
+            "type": "string"
+          },
+          "[].id": {
+            "format": "int64",
+            "required": true,
+            "type": "integer"
+          },
+          "[].name": {
+            "required": true,
+            "type": "string"
+          }
+        },
+        "response_statuses": [
+          "200",
+          "default"
+        ],
+        "security": [],
+        "server_cache_mode": null
+      }
+    }
+  }
+}
