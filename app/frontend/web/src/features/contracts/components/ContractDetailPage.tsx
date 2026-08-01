@@ -3,7 +3,7 @@ import { Badge } from '../../../components/Badge'
 import { Button } from '../../../components/Button'
 import { ApiError } from '../../../lib/api/client'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
-import { formatIsk, primaryLabel, timeRemaining } from '../format'
+import { contractTypeLabel, formatIsk, locationLabel, primaryLabel, timeRemaining } from '../format'
 import { useContract } from '../hooks/useContract'
 import { WatchButton } from '../../watchlists/components/WatchButton'
 
@@ -109,7 +109,7 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
               ship, then first item, then the seller's title, then the id). */}
           <h1 className="text-h1 font-semibold">{primaryLabel(data)}</h1>
           <span className="inline-flex gap-1.5">
-            <Badge tone="neutral">{data.type === 'auction' ? 'Auction' : 'Exchange'}</Badge>
+            <Badge tone="neutral">{contractTypeLabel(data.type)}</Badge>
             {isBpc ? <Badge tone="copper">BPC</Badge> : null}
             {expiry === 'Expired' ? <Badge tone="neutral">Expired</Badge> : null}
           </span>
@@ -133,6 +133,12 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
             {data.reward != null && data.reward > 0 ? (
               <Field label="Reward">{formatIsk(data.reward)} ISK</Field>
             ) : null}
+            {/* What the hauler puts up against the cargo — on a courier this is the
+                headline number, since price is 0 and the reward alone says nothing
+                about the risk being taken on. */}
+            {data.collateral > 0 ? (
+              <Field label="Collateral">{formatIsk(data.collateral)} ISK</Field>
+            ) : null}
             <Field label="Volume">
               {data.volume != null ? `${data.volume.toLocaleString('en-US')} m³` : '—'}
             </Field>
@@ -154,7 +160,7 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
               {data.issuer_corporation_name ?? `Corporation ${data.issuer_corporation_id}`}
             </Field>
             <Field label="Location" mono={false}>
-              {data.start_location_name ?? `Location ${data.start_location_id}`}
+              {locationLabel(data)}
             </Field>
             <Field label="Issued">{DATETIME.format(new Date(data.date_issued))}</Field>
             <Field label="Expires">
