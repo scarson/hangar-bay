@@ -27,7 +27,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | § | Section | You're working on... | Entries | Checklist |
 |---|---------|---------------------|---------|-----------|
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, FASTAPI-3, PROXY-1 | §1.C |
-| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
+| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status | ESI-1, ESI-2, ESI-3 | §4.C |
 | 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4 | §5.C |
@@ -84,7 +84,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 **The Fix:** Read optionality as a three-link chain and check all of it whenever you touch any link: upstream `required` array → model `nullable=` → response schema `Optional[...]`. Each link MUST be at least as permissive as the one above it. Where a field is genuinely required for the UI to make sense, enforce it at INGESTION (reject or default the row) rather than at serialization, where the failure lands on a reader who did nothing wrong.
 
-**Where It Bit Us:** `ContractSchema.start_location_id` was a bare `int` over a nullable column fed by an ESI field absent from the public-contracts `required` array (2026-08-01). Pinned by `test_serializes_a_contract_esi_sent_without_a_start_location`, which 500s on the pre-fix schema. Pairs with ESI-2 and testing-pitfalls TEST-17.
+**Where It Bit Us:** `ContractSchema.start_location_id` was a bare `int` over a nullable column fed by an ESI field absent from the public-contracts `required` array (2026-08-01). Pinned by `test_serializes_a_contract_esi_sent_without_a_start_location`, which 500s on the pre-fix schema. Pairs with ESI-3 and testing-pitfalls TEST-18.
 
 ---
 
@@ -127,9 +127,34 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### SQLA-3: A per-row predicate over a one-to-many join cannot classify the parent
+
+**The Flaw:** A filter that classifies a PARENT entity ("is this a blueprint-copy contract?") applied as a predicate on a JOINED CHILD row. The join emits one row per child, so the predicate answers a question about *an item*, not *the contract*. Both a condition and its apparent negation are then satisfiable by the same parent — a contract bundling a copy with an ordinary item has one item matching each — so the two branches OVERLAP instead of partitioning.
+
+**Why It Matters:** The failure is quiet and only visible on mixed children. Single-item contracts behave perfectly, which is most fixture data and most casual testing. At scale the same contract appears under `is_bpc=true` AND `is_bpc=false`, the two totals sum to more than the corpus, and a user paging both filters sees duplicates with no error anywhere. A test built on single-item fixtures cannot detect it.
+
+**The Fix:** Express parent-level classification as a **correlated EXISTS over the children**, and derive the negative branch by negating that same expression rather than writing a second predicate:
+
+```python
+has_copy = (
+    select(ContractItem.record_id)
+    .where(ContractItem.contract_id == Contract.contract_id,
+           ContractItem.is_blueprint_copy.is_(True))
+    .correlate(Contract).exists()
+)
+query = query.filter(has_copy if filters.is_bpc else ~has_copy)
+```
+
+One expression negated makes the branches exact complements *by construction*, instead of two hand-written predicates that must be kept in agreement. It also drops the join for that filter entirely, so the SQLA-1 pagination hazard does not arise. Test it with a parent holding BOTH kinds of child and assert the two branch totals sum to the unfiltered total — a single-child fixture passes either way.
+
+**Where It Bit Us:** `is_bpc` (2026-08-01). A first fix corrected the NULL half (ESI-3) but kept the per-item form, so a contract bundling a BPC with a hull matched both filter values; caught in adversarial review of PR #98 before merge and re-fixed as a contract-level EXISTS. Pairs with SQLA-1 (both are "the join changed what the query is about") and testing-pitfalls TEST-19.
+
+---
+
 ### §2.C — Review Checklist
 
 - [ ] **Pagination over a one-to-many join paginates distinct parent IDs, not duplicated joined rows** — grouped subquery with aggregate-based ordering; page entities re-loaded and restored to the ID order (SQLA-1)
+- [ ] **Parent-level classification uses a correlated EXISTS, not a predicate on a joined child row** — the negative branch negates the same expression, and a mixed-child fixture proves the branches are complements (SQLA-3)
 - [ ] **`ON CONFLICT` against a partial unique index restates the index predicate** — `index_where=` matches the index's `WHERE`, and every indexed column is non-NULL on insert (Postgres NULLs never conflict) (SQLA-2)
 
 ---
@@ -289,11 +314,11 @@ This document serves three audiences. Start here, then go directly to the sectio
 **Why It Matters:** Both failures are *silent and total*. The filter returns HTTP 200 with an empty list, which reads as "no contracts match" rather than "this control is broken"; every layer above (schema, generated client, UI control) looks healthy. A filter reading an always-NULL column is worse still — it has no working branch at all, and a fixture that populates the column by hand makes the test suite agree that it works (testing-pitfalls TEST-18).
 
 **The Fix:**
-* Treat a nullable column fed by an optional ESI field as **tri-state**, and decide explicitly what NULL means. For a present-when-true flag, NULL means false: filter `or_(col.is_(False), col.is_(None))`, never `col == False`.
+* Treat a nullable column fed by an optional ESI field as **tri-state**, and decide explicitly what NULL means. For a present-when-true flag, NULL means false — so `col == False` is always wrong. Note that `or_(col.is_(False), col.is_(None))` fixes only the NULL half; when the flag classifies a PARENT entity across a one-to-many join, that per-row form is still wrong for a second reason, and SQLA-3 gives the correct shape.
 * Before filtering on any ingested column, confirm the route you actually call populates it. The public item route (`/v1/contracts/public/items/{id}/`) carries `is_blueprint_copy`, `runs`, `material_efficiency`, `time_efficiency`. The authenticated character/corporation item routes carry `raw_quantity` and `is_singleton` and **not** those four. `raw_quantity`'s documented `-1`/`-2` blueprint markers therefore do not exist on any data Hangar Bay ingests.
 * Verify against the retrieved spec plus a live sample, not from memory — the spec's prose is unreliable here (`collateral` is documented "for Couriers only" yet is present on every item_exchange contract, and `runs`'s documented `-1` for originals never occurs publicly; originals simply omit the field).
 
-**Where It Bit Us:** `is_bpc=false` returned `total: 0` in production for the entire life of the filter (fixed 2026-08-01: `contract_service._apply_item_filters`). The neighbouring `min_runs`/`max_runs` filter reads `ContractItem.raw_quantity`, a column no public payload can ever populate, and is inert for the same family of reasons. Verified against `https://esi.evetech.net/meta/openapi.json` and a live sample of 7,292 contracts / 1,658 item rows: `is_blueprint_copy` was `true` 1,396 times and absent 262 times — never once `false`.
+**Where It Bit Us:** `is_bpc=false` returned `total: 0` in production for the entire life of the filter (fixed 2026-08-01: `contract_service._has_blueprint_copy_item`, applied in `_apply_contract_filters`). The neighbouring `min_runs`/`max_runs` filter reads `ContractItem.raw_quantity`, a column no public payload can ever populate, and is inert for the same family of reasons. Verified against `https://esi.evetech.net/meta/openapi.json` and a live sample of 7,292 contracts / 1,658 item rows: `is_blueprint_copy` was `true` 1,396 times and absent 262 times — never once `false`.
 
 ### §4.C — Review Checklist
 
@@ -395,6 +420,12 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
+## 2026-08-01 — SQLA-3 added; ESI-3's prescribed fix corrected
+
+- Added SQLA-3 (a per-row predicate over a one-to-many join classifies the CHILD, not the parent, so a condition and its negation can both match the same parent). Found by adversarial review of PR #98: the first `is_bpc=false` fix corrected the NULL half but kept the per-item form, so a contract bundling a BPC with a hull matched `is_bpc=true` AND `is_bpc=false`. Re-fixed as a correlated EXISTS negated for the false branch, which also removes the filter's join and with it the SQLA-1 pagination hazard.
+- Corrected ESI-3's prescribed fix: it recommended `or_(col.is_(False), col.is_(None))`, which repairs only the NULL half and is still wrong for a parent-classifying flag. It now points at SQLA-3 for that case.
+- Added testing-pitfalls TEST-19 (single-child fixtures cannot detect parent-vs-child predicate errors).
+
 ## 2026-08-01 — ESI-2 added: `Expires` deprecated by event-driven invalidation
 
 - Added ESI-2 from CCP's 2026-01-27 caching dev blog: on converted routes `Expires` survives only for backward compatibility and `Cache-Control` is authoritative. `_cache_ttl_seconds` in `core/esi_client_class.py` now reads `max-age` (less `Age`) first and falls back to `Expires`, with `no-store` suppressing storage and `no-cache` deliberately not doing so.
@@ -471,6 +502,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | PROXY-1 | Trailing-slash 307 escapes a prefix-rewriting proxy | MEDIUM | VALIDATED | API & Request Binding |
 | SQLA-1 | Paginating a joined query paginates joined rows | HIGH | VALIDATED | Data & Persistence |
 | SQLA-2 | ON CONFLICT vs a partial unique index needs index_where | HIGH | VALIDATED | Data & Persistence |
+| SQLA-3 | A per-row predicate over a one-to-many join cannot classify the parent | HIGH | VALIDATED | Data & Persistence |
 | ENV-1 | pydantic-settings JSON-decodes complex env fields early | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-2 | Backend restart wipes and re-ingests all data | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-3 | --reload + ingestion + Valkey lock interact badly in dev | MEDIUM | VALIDATED | Environment & Dev Loop |

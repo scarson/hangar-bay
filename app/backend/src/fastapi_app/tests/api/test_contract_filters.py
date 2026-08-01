@@ -573,3 +573,109 @@ async def test_serializes_a_contract_esi_sent_without_a_start_location(
     detail = await client.get("/contracts/953001")
     assert detail.status_code == 200
     assert detail.json()["start_location_id"] is None
+
+
+async def test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """is_bpc partitions contracts: true means "contains a BPC", false its negation.
+
+    The filter is applied over a JOINED item row, so a per-item predicate makes a
+    contract bundling a BPC with an ordinary item satisfy BOTH values at once —
+    it has an item that is a copy AND an item that is not. The two branches must
+    be exact complements, or paging through is_bpc=true and is_bpc=false shows
+    the same contract twice and their totals overcount the corpus.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add_all(
+        [
+            # A BPC bundled with a plain hull — the case that satisfied both filters.
+            Contract(
+                contract_id=954001,
+                title="Blueprint And Hull Bundle",
+                price=3_000_000,
+                collateral=0,
+                status="outstanding",
+                type="item_exchange",
+                issuer_id=954,
+                issuer_corporation_id=954,
+                start_location_id=60003760,
+                start_location_region_id=99999954,
+                for_corporation=False,
+                date_issued=now,
+                date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=9540011,
+                        type_id=621,
+                        type_name="Caracal Blueprint",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=True,
+                        is_blueprint_copy=True,
+                    ),
+                    ContractItem(
+                        record_id=9540012,
+                        type_id=587,
+                        type_name="Tristan",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=False,
+                        is_blueprint_copy=None,
+                    ),
+                ],
+            ),
+            # A contract with no copy at all, to prove false is not simply empty.
+            Contract(
+                contract_id=954002,
+                title="Hulls Only",
+                price=1_000_000,
+                collateral=0,
+                status="outstanding",
+                type="item_exchange",
+                issuer_id=954,
+                issuer_corporation_id=954,
+                start_location_id=60003760,
+                start_location_region_id=99999954,
+                for_corporation=False,
+                date_issued=now,
+                date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=9540021,
+                        type_id=24698,
+                        type_name="Rokh",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=False,
+                        is_blueprint_copy=None,
+                    ),
+                    ContractItem(
+                        record_id=9540022,
+                        type_id=587,
+                        type_name="Tristan",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=False,
+                        is_blueprint_copy=None,
+                    ),
+                ],
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    copies = await client.get("/contracts/?region_ids=99999954&is_bpc=true")
+    assert copies.status_code == 200
+    assert [c["contract_id"] for c in copies.json()["items"]] == [954001]
+
+    non_copies = await client.get("/contracts/?region_ids=99999954&is_bpc=false")
+    assert non_copies.status_code == 200
+    # The bundle contains a copy, so it is NOT a non-copy contract.
+    assert [c["contract_id"] for c in non_copies.json()["items"]] == [954002]
+
+    # Exact complements: every contract lands in exactly one branch, and the two
+    # totals sum to the unfiltered total rather than double-counting the bundle.
+    unfiltered = await client.get("/contracts/?region_ids=99999954")
+    assert unfiltered.json()["total"] == 2
+    assert copies.json()["total"] + non_copies.json()["total"] == 2

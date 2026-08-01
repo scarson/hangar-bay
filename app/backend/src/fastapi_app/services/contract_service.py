@@ -43,11 +43,38 @@ def _needs_item_join(filters: ContractFilters) -> bool:
     return bool(
         filters.search
         or filters.type_ids
-        or filters.is_bpc is not None
         or filters.min_runs is not None
         or filters.max_runs is not None
         # Add sorting by ship name to the condition
         or filters.sort_by == SortableContractFields.ship_name
+    )
+    # is_bpc is deliberately absent: it asks a question about the contract as a
+    # whole ("does it contain a copy?"), which a correlated EXISTS answers without
+    # multiplying rows. See _has_blueprint_copy_item.
+
+
+def _has_blueprint_copy_item():
+    """Correlated EXISTS: does this contract carry an item that is a blueprint copy?
+
+    is_bpc classifies CONTRACTS, so it has to be evaluated per contract rather than
+    per joined item row. Applied to a joined row, "true" and "not true" are both
+    satisfiable by the same contract — a bundle holding a copy alongside an ordinary
+    item has an item matching each — so the two branches would overlap instead of
+    partitioning the corpus.
+
+    Expressed once and negated for the false branch, so the branches are exact
+    complements by construction rather than by two predicates kept in agreement.
+    """
+    return (
+        select(ContractItem.record_id)
+        .where(
+            ContractItem.contract_id == Contract.contract_id,
+            # ESI sends is_blueprint_copy only for actual copies, so the column is
+            # True-or-NULL and NULL means "not a copy" (pitfall ESI-3).
+            ContractItem.is_blueprint_copy.is_(True),
+        )
+        .correlate(Contract)
+        .exists()
     )
 
 
@@ -114,7 +141,28 @@ def _apply_contract_filters(query, filters: ContractFilters):
     if filters.is_ship_contract is not None:
         query = query.filter(Contract.is_ship_contract == filters.is_ship_contract)
 
+    # 2c. Blueprint-copy classification. "Contains a copy" and its negation, so a
+    # contract bundling a copy with ordinary items counts as a BPC contract and
+    # appears in exactly one of the two branches.
+    if filters.is_bpc is not None:
+        has_copy = _has_blueprint_copy_item()
+        query = query.filter(has_copy if filters.is_bpc else ~has_copy)
+
     # 3. Location filters
+    query = _apply_location_filters(query, filters)
+
+    return query
+
+
+def _apply_location_filters(query, filters: ContractFilters):
+    """Narrow to the requested regions, solar systems, and stations.
+
+    NOTE: system_ids is inert against real data — nothing populates
+    start_location_system_id, because ESI's public contracts carry a
+    station/structure id and no system id, and no enrichment resolves one.
+    The predicate itself is correct and pinned by tests; it filters an
+    always-NULL column until that resolution exists.
+    """
     if filters.region_ids:
         query = query.filter(Contract.start_location_region_id.in_(filters.region_ids))
     if filters.system_ids:
@@ -129,20 +177,6 @@ def _apply_item_filters(query, filters: ContractFilters):
     """Apply the Contract Item specific filters."""
     if filters.type_ids:
         query = query.filter(ContractItem.type_id.in_(filters.type_ids))
-    if filters.is_bpc is not None:
-        if filters.is_bpc:
-            query = query.filter(ContractItem.is_blueprint_copy.is_(True))
-        else:
-            # ESI's public item payload carries is_blueprint_copy only when the item
-            # IS a copy — it is never sent as false — so the column is True-or-NULL and
-            # NULL means "not a copy". `== False` therefore matched zero rows, and the
-            # false branch of this filter returned an empty list on all real data.
-            query = query.filter(
-                or_(
-                    ContractItem.is_blueprint_copy.is_(False),
-                    ContractItem.is_blueprint_copy.is_(None),
-                )
-            )
     # BPC Run filters (Note: ME/TE not implemented as data is not in model)
     if filters.min_runs is not None:
         query = query.filter(ContractItem.raw_quantity >= filters.min_runs)
