@@ -312,7 +312,10 @@ const COURIER = {
   title: 'Jita to Amarr rush',
   for_corporation: false,
   date_issued: '2026-07-01T00:00:00Z',
-  date_expired: '2026-07-08T00:00:00Z',
+  // Anchored to the clock like CONTRACT: a fixed expiry is a response the real
+  // API cannot produce (the list filters date_expired > now()) and silently
+  // repaints "Time left" as Expired once it passes (testing-pitfalls TEST-17).
+  date_expired: daysFromNow(7),
   price: 0,
   reward: 80_000_000,
   volume: 899_999,
