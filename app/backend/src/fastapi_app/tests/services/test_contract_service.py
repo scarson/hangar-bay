@@ -227,9 +227,15 @@ async def test_unmapped_sort_falls_back_to_date_issued(db_session: AsyncSession)
     independent datetime.now() calls (nondeterministic, possibly equal). These three
     contracts carry fixed, strictly distinct date_issued values in a region id no other
     fixture uses.
+
+    date_expired is relative to now while date_issued stays fixed: the ordering under
+    test needs stable, distinct issue dates, but the liveness filter needs the rows to
+    outlive the clock. A fixed expiry silently empties this result set once real time
+    passes it.
     """
     region_id = 99999901
     base_date = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    expiry_date = datetime.now(timezone.utc) + timedelta(days=30)
     db_session.add_all([
         Contract(
             contract_id=940000 + offset,
@@ -245,7 +251,7 @@ async def test_unmapped_sort_falls_back_to_date_issued(db_session: AsyncSession)
             start_location_region_id=region_id,
             for_corporation=False,
             date_issued=base_date + timedelta(days=offset - 1),
-            date_expired=base_date + timedelta(days=30),
+            date_expired=expiry_date,
         )
         for offset in (1, 2, 3)
     ])
