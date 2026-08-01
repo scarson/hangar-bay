@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { makeContract, makeShipItem, paginate, type WireContract } from './fixtures/contracts'
+import { expiryInDays, makeContract, makeShipItem, paginate, type WireContract } from './fixtures/contracts'
 import { interceptContractList, interceptCurrentUser, type ListResponder } from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
@@ -24,12 +24,17 @@ import { rowLinks } from './helpers/ui'
 // Five ship contracts with distinct hull names, prices, and issued dates,
 // chosen so date_issued-desc, price-asc, price-desc, and ship_name-asc are all
 // different permutations.
-const SHIPS: { name: string; price: number; issued: string; expired: string }[] = [
-  { name: 'Nyx', price: 5_000_000_000, issued: '2026-06-05T05:00:00Z', expired: '2026-07-05T05:00:00Z' },
-  { name: 'Rifter', price: 10_000_000, issued: '2026-06-01T01:00:00Z', expired: '2026-07-09T09:00:00Z' },
-  { name: 'Thorax', price: 250_000_000, issued: '2026-06-03T03:00:00Z', expired: '2026-07-07T07:00:00Z' },
-  { name: 'Osprey', price: 90_000_000, issued: '2026-06-04T04:00:00Z', expired: '2026-07-08T08:00:00Z' },
-  { name: 'Vexor', price: 400_000_000, issued: '2026-06-02T02:00:00Z', expired: '2026-07-06T06:00:00Z' },
+//
+// expiresInDays carries the SAME ordering the old date_expired literals encoded,
+// but anchored to the clock (testing-pitfalls TEST-17): 'Time left' sorts on
+// date_expired, so the offsets stay distinct and strictly ordered, while no row
+// can rot into the past and repaint every cell "Expired".
+const SHIPS: { name: string; price: number; issued: string; expiresInDays: number }[] = [
+  { name: 'Nyx', price: 5_000_000_000, issued: '2026-06-05T05:00:00Z', expiresInDays: 5 },
+  { name: 'Rifter', price: 10_000_000, issued: '2026-06-01T01:00:00Z', expiresInDays: 9 },
+  { name: 'Thorax', price: 250_000_000, issued: '2026-06-03T03:00:00Z', expiresInDays: 7 },
+  { name: 'Osprey', price: 90_000_000, issued: '2026-06-04T04:00:00Z', expiresInDays: 8 },
+  { name: 'Vexor', price: 400_000_000, issued: '2026-06-02T02:00:00Z', expiresInDays: 6 },
 ]
 
 const byName: Record<string, WireContract> = Object.fromEntries(
@@ -39,7 +44,7 @@ const byName: Record<string, WireContract> = Object.fromEntries(
       contract_id: 232_500_001 + i,
       price: s.price,
       date_issued: s.issued,
-      date_expired: s.expired,
+      date_expired: expiryInDays(s.expiresInDays),
       items: [makeShipItem(s.name)],
     }),
   ]),

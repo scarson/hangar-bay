@@ -5,6 +5,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
+import { daysFromNow } from '../../../test/dates'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -69,7 +70,7 @@ describe('SsoNotice', () => {
           title: 'Tristan for Sale',
           for_corporation: false,
           date_issued: '2026-07-01T00:00:00Z',
-          date_expired: '2026-07-08T00:00:00Z',
+          date_expired: daysFromNow(7),
           price: 1000000,
           is_ship_contract: true,
           items: [],

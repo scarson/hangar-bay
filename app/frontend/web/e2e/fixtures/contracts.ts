@@ -12,6 +12,25 @@
  * (testing-pitfalls TEST-3).
  */
 
+/**
+ * An expiry offset from the current clock, as a wire-format UTC timestamp.
+ *
+ * date_expired MUST outlive the clock in every fixture. Two things read it: the
+ * backend's contracts list excludes rows past date_expired, so a past value is a
+ * response the real API cannot produce; and the "Time left" column calls
+ * timeRemaining(), which reads the real Date.now() and repaints the cell
+ * "Expired". A fixed literal satisfies both the day it is written and neither
+ * one later, with nothing in the repo changing on the day it flips
+ * (testing-pitfalls TEST-17).
+ *
+ * date_issued stays a literal by design: it is a sort key, and ordering
+ * assertions need it stable and distinct. Callers keep expiry offsets distinct
+ * for the same reason.
+ */
+export function expiryInDays(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+}
+
 export interface WireContractItem {
   record_id: number
   type_id: number
@@ -101,7 +120,7 @@ export function makeContract(overrides: Partial<WireContract> = {}): WireContrac
     title: '',
     for_corporation: false,
     date_issued: '2026-06-14T23:36:29Z',
-    date_expired: '2026-07-20T23:36:29Z',
+    date_expired: expiryInDays(30),
     date_completed: null,
     price: 250_000_000,
     reward: 0,
@@ -147,7 +166,7 @@ export const SEVEN_SHIPS: WireContract[] = [
     price: price as number,
     // Later entries issued earlier: default sort (issued desc) matches array order.
     date_issued: `2026-06-2${8 - i}T0${i}:00:00Z`,
-    date_expired: `2026-07-2${8 - i}T0${i}:00:00Z`,
+    date_expired: expiryInDays(30 - i),
     items: [makeShipItem(name as string)],
   }),
 )
@@ -163,7 +182,7 @@ export const BPC_CONTRACTS: WireContract[] = [
     price: price as number,
     is_ship_contract: false,
     date_issued: `2026-06-1${5 - i}T0${i}:30:00Z`,
-    date_expired: `2026-07-1${9 - i}T0${i}:30:00Z`,
+    date_expired: expiryInDays(19 - i),
     items: [makeBpcItem(name as string)],
   }),
 )

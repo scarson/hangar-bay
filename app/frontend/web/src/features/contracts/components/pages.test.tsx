@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { anonymousMe, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
+import { daysFromNow } from '../../../test/dates'
 
 const CONTRACT = {
   contract_id: 101,
@@ -14,7 +15,7 @@ const CONTRACT = {
   title: 'Tristan for Sale',
   for_corporation: false,
   date_issued: '2026-07-01T00:00:00Z',
-  date_expired: '2026-07-08T00:00:00Z',
+  date_expired: daysFromNow(7),
   price: 1000000,
   start_location_name: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
   is_ship_contract: true,
@@ -56,6 +57,13 @@ describe('ContractsPage', () => {
     // Column headers are sticky so the labels/sort toggles survive a 50-row
     // scroll (JSDOM can't lay out `position: sticky`; guard the intent instead).
     expect(screen.getAllByRole('columnheader')[0].className).toContain('sticky')
+    // The Time left cell renders a live countdown, not "Expired". This is the only
+    // assertion that reads timeRemaining's output at a production call site, and it
+    // is what keeps CONTRACT.date_expired anchored to the clock: with a fixed literal
+    // the cell silently flips to "Expired" once the date passes, and nothing else
+    // here would notice (testing-pitfalls TEST-17).
+    expect(screen.getByText(/^\d+d \d+h$/)).toBeInTheDocument()
+    expect(screen.queryByText('Expired')).not.toBeInTheDocument()
   })
 
   it('announces the result count in a polite status region (WCAG 4.1.3)', async () => {

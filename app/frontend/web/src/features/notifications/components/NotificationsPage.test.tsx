@@ -5,11 +5,12 @@ import { screen, waitFor, waitForElementToBeRemoved } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
+import { minutesFromNow } from '../../../test/dates'
 
 const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
 const N = (over: Record<string, unknown> = {}) => ({
   id: 1, type: 'watchlist_match', message: 'Rifter available in an auction priced 900,000 ISK in Jita IV - Moon 4',
-  contract_id: 101, watch_type_id: 587, price: 900000, is_read: false, created_at: '2026-07-17T11:00:00Z', ...over,
+  contract_id: 101, watch_type_id: 587, price: 900000, is_read: false, created_at: minutesFromNow(-30), ...over,
 })
 
 interface Call { url: string; method?: string; body?: string }

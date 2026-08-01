@@ -6,6 +6,7 @@ import { axe } from 'vitest-axe'
 import * as matchers from 'vitest-axe/matchers'
 import { anonymousMe, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
+import { daysFromNow } from '../../../test/dates'
 
 expect.extend(matchers)
 
@@ -19,7 +20,7 @@ const CONTRACT = {
   title: 'Tristan for Sale',
   for_corporation: false,
   date_issued: '2026-07-01T00:00:00Z',
-  date_expired: '2030-07-08T00:00:00Z',
+  date_expired: daysFromNow(7),
   price: 1000000,
   start_location_name: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
   issuer_name: 'Test Pilot',
