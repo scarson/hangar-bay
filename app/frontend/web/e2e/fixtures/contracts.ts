@@ -36,9 +36,7 @@ export interface WireContractItem {
   type_id: number
   quantity: number
   is_included: boolean
-  is_singleton: boolean
   is_blueprint_copy: boolean | null
-  raw_quantity: number | null
   type_name: string | null
   category: 'ship' | null
   market_group_id: number | null
@@ -84,9 +82,7 @@ export function makeItem(overrides: Partial<WireContractItem> = {}): WireContrac
     type_id: 24694,
     quantity: 1,
     is_included: true,
-    is_singleton: false,
     is_blueprint_copy: null,
-    raw_quantity: null,
     type_name: 'Maelstrom',
     category: 'ship',
     market_group_id: 78,

@@ -464,6 +464,11 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
+## 2026-08-01 — ESI-3's response-schema rule applied at the item level
+
+- No new entry. `ContractItemSchema` still served `is_singleton` and `raw_quantity` after the contract-level pair (`status`, `date_completed`) was removed — the same always-empty wire fields one level down, violating the §4.C checklist bullet sitting beside them. Both are gone from the response schema; the columns and their model-level comments stay, per the keep-the-column-refuse-to-read-it decision in the ESI-3 fix.
+- Nothing read either field: no frontend component, only four unit-test mocks and the e2e wire fixture, all moved with the wire shape. `min_runs`/`max_runs` still filter on `ContractItem.raw_quantity` — a query concern, unaffected — so `test_filter_by_bpc_runs` now asserts the matched contract rather than a field the response no longer carries.
+
 ## 2026-08-01 — ENV-10 added: containers bind-mounted to reclaimed worktrees
 
 - Added ENV-10. The `alloy` telemetry container was created from the `grafana-cloud-migration-5a5464` worktree; reclaiming that worktree removed its bind-mount sources, and alloy exited 127 at its next restart and stayed dead ~11 days unnoticed. Exit 127 reads as "command not found"; the real cause is only in `docker inspect`'s `.State.Error`. Recovery is blocked on regenerating the gitignored `grafana-cloud.env` in the main checkout (ENV-8).

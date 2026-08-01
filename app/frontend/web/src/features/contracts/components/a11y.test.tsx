@@ -31,7 +31,6 @@ const CONTRACT = {
       type_id: 587,
       quantity: 1,
       is_included: true,
-      is_singleton: false,
       is_blueprint_copy: false,
       type_name: 'Tristan',
     },

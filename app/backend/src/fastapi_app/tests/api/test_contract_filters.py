@@ -73,8 +73,10 @@ async def test_filter_by_bpc_runs(client: AsyncClient, setup_contracts):
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) == 1
-    bpc_item = data["items"][0]["items"][0]
-    assert bpc_item["raw_quantity"] == 10
+    # raw_quantity is what the filter reads, but it is not served (ESI-3), so the
+    # matched contract itself is the only observable the response can carry.
+    assert data["items"][0]["contract_id"] == 102
+    assert any(i["is_blueprint_copy"] for i in data["items"][0]["items"])
 
 
 async def test_response_omits_fields_public_ingestion_cannot_populate(
@@ -103,6 +105,39 @@ async def test_detail_response_omits_fields_public_ingestion_cannot_populate(
     assert contract["contract_id"] == 101
     assert "status" not in contract
     assert "date_completed" not in contract
+
+
+async def test_item_response_omits_fields_public_ingestion_cannot_populate(
+    client: AsyncClient, setup_contracts
+):
+    """`is_singleton` and `raw_quantity` belong to ESI's authenticated character/corporation
+    contract-ITEM routes. The public item route carries neither, so under public ingestion
+    is_singleton is the mapping default on every row and raw_quantity is NULL on every row."""
+    response = await client.get("/contracts/")
+
+    assert response.status_code == 200
+    contracts = response.json()["items"]
+    assert contracts, "fixture must reach the endpoint for this to mean anything"
+    items = [item for contract in contracts for item in contract["items"]]
+    assert items, "contracts must carry items for this to mean anything"
+    for item in items:
+        assert "is_singleton" not in item
+        assert "raw_quantity" not in item
+
+
+async def test_detail_item_response_omits_fields_public_ingestion_cannot_populate(
+    client: AsyncClient, setup_contracts
+):
+    """The detail endpoint serializes the same item schema and must not drift from the list."""
+    response = await client.get("/contracts/101")
+
+    assert response.status_code == 200
+    contract = response.json()
+    assert contract["contract_id"] == 101
+    assert contract["items"], "fixture must carry items for this to mean anything"
+    for item in contract["items"]:
+        assert "is_singleton" not in item
+        assert "raw_quantity" not in item
 
 
 async def test_complex_filter_api(client: AsyncClient, setup_contracts):
