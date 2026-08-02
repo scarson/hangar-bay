@@ -9,13 +9,15 @@
 
 | | |
 |---|---|
-| `dev` | `7153ee7` — **78 commits ahead of `main`** |
-| `main` (production) | `7a95118`, unchanged this session |
-| Open PRs | none |
-| Merged this session | #122 (ESI-4), #123 (F008 spec), #124 (release-please) |
-| CI on `dev` | ✅ green at `7153ee7` (run for #124, the authoritative one — see §5) |
+| `dev` | `379048d` |
+| `main` (production) | **`fe43bda` — advanced this session for the first time since `7a95118`** |
+| Released | PR #126, 81 commits, merged |
+| Merged this session | #122 (ESI-4), #123 (F008 spec), #124 (release-please), #125 (handoff), #126 (release) |
+| CI on `dev` | ✅ green |
 
-**The next action is a `dev` → `main` publication PR. Nothing blocks it.**
+**The release shipped.** `main` moved from `7a95118` to `fe43bda`, which triggered CI → Deploy on the production path and fired Release Please for the first time.
+
+**One thing is blocked and needs a human:** Release Please did all its work correctly and then failed to open its PR, because the repository forbids GitHub Actions from creating pull requests. It is a one-checkbox settings change, not a config problem — §5 has the detail and the evidence that the config is sound.
 
 ## 2. What shipped
 
@@ -61,9 +63,14 @@ It also retroactively justifies keeping the four permanently-NULL columns (`stat
 
 ## 5. Seams — where this session's work meets something else
 
-*   **`dev` CI is green, but the run list looks alarming.** #123's run shows `cancelled` — that is the concurrency group being superseded by #124's push, **not** a failure. #124's run is the authoritative one and **completed successfully**. A future reader scanning `gh run list --branch dev` will see the cancellation first; it is not a problem.
-*   **release-please activates on the publication PR, not before.** Its first release PR covers 78 commits. The bootstrap version is `0.1.0`, so the first release lands at **`0.2.0`** (two `feat!` commits, minor-bumped under `bump-minor-pre-major`). Changing that to `1.0.0` is a one-line edit to `.release-please-manifest.json` and is effectively permanent once a tag exists.
-*   **Each release cycle now produces two deploys** — one from the publication PR (real code) and one from the release PR (changelog and version files only). Harmless; it does prove the tagged SHA deploys.
+*   **Two workflows now run on every push to `main`, and that is correct.** `gh run list --branch main` shows **CI** and **Release Please** starting at the same second on the same SHA. They are different workflows, not a duplicated CI run. Deploy then fires separately via `workflow_run` after CI completes. Anyone auditing for duplicate triggers should check `workflowName` before concluding anything — the run list alone looks like a double-fire.
+*   **Release Please ran on `fe43bda`, did all its work correctly, and then failed on the last step — a repo setting, not the config.** The run errors with `GitHub Actions is not permitted to create or approve pull requests`. Verified via `gh api repos/scarson/hangar-bay/actions/permissions/workflow`: `can_approve_pull_request_reviews` is `false`. **Fix: Settings → Actions → General → Workflow permissions → enable "Allow GitHub Actions to create and approve pull requests."** It is repo-wide, so any workflow gains the ability; acceptable on a single-owner repo. Leave `default_workflow_permissions` at `read` — the workflow declares its own `pull-requests: write`, which is why it got as far as it did.
+
+    **The config itself is proven working**, so do not "fix" it. The action created branch `release-please--branches--main` (commit `0152d61`) before failing, and diffing that branch against `main` shows exactly the intended result: `app/backend/pyproject.toml` `0.1.0` → `0.2.0` (the `x-release-please-version` annotation works), `app/frontend/web/package.json` `0.0.0` → `0.2.0` (the jsonpath works), a 459-line `CHANGELOG.md`, and a bumped manifest. Once the setting is enabled, re-run the workflow; the branch already exists and it will open the PR.
+
+    Two benign log lines that look like problems and are not: `⚠ file version.txt did not exist` (first run; the manifest is the source of truth) and `⚠ pullRequestTitlePattern miss the part of '${scope}'` (informational, about the default title template).
+*   **A cancelled run on `dev` is usually not a failure.** #123's run shows `cancelled` because #124's push superseded it via the `ci-${{ github.ref }}` concurrency group. The authoritative run is the latest one for the ref.
+*   **Each release cycle produces two deploys** — one from the publication PR (real code) and one from the release PR (changelog and version files only). Harmless; it does prove the tagged SHA deploys.
 *   **The ESI-4 pin constrains the courier follow-on.** `/route/{origin}/{destination}` is a hard cutover at compatibility date `2025-09-30`: `GET` with query params below it, **`POST`** with a JSON body, renamed preference values and an object envelope at or above. The old shape returns 404. We now send `2026-07-21`, so **any future `/route/` call must use the POST form.**
 *   **`min_me` is still lying in production.** `min_me=10` returns the full result set unchanged; `min_runs=5` returns zero. Six inert params in two failure modes. See §6.
 *   **Local `dev` is behind `origin/dev`.** The main checkout sits at `fd34148`. Realign with `git fetch origin dev && git reset --hard origin/dev` — never a merge or a GUI Sync.
@@ -92,11 +99,13 @@ It also retroactively justifies keeping the four permanently-NULL columns (`stat
 *   **codex times out on large prompts.** A 67 KB prompt stalled past 5.5 minutes; scoping to a single file and giving it a 15-minute background budget worked.
 *   **Fresh worktrees need `pdm install` *and* `app/backend/src/.env`.** The conftest imports `fastapi_app.main`, which constructs `Settings()` at module scope, so tests cannot even collect without it. Copy `app/backend/.env.example` to `src/.env` and fill the three required keys. **Never read the repo-root `.env`** — 1Password-managed, can hang past 120s.
 *   **Mutation-verify by file copy, never `git checkout --`.** The latter discards uncommitted work and yields fake evidence. Always end with a restore-and-rerun green check.
+*   **CI's trigger set is deliberate; read the comment before "fixing" it.** `push: [dev, main]` plus an *unfiltered* `pull_request` looks like a duplicate-trigger bug and is not. Feature PRs (`claude/*` → `dev`) run once, because pushes to `claude/*` do not match the push filter. The unfiltered `pull_request` exists so stacked PRs based on another `claude/*` branch get CI at all — a `branches: [dev, main]` filter matches the PR's **base**, which would leave stacked PRs with no run. The one real duplication is that a `dev` → `main` publication PR re-tests a tree that push-to-`dev` already tested: one extra run per release cycle, which is cheap insurance against the "no CI ran" ambiguity the merge-authority policy treats as failure. **Leave it.**
+*   **Push feature branches early.** The F008 spec branch went a full session unpushed and existed only in a worktree. Nothing enforces this; the habit is the safeguard.
 
 ## 8. Priority queue
 
-1. **Open the `dev` → `main` publication PR.** CI is green at `7153ee7`. 78 commits, including two `feat!` serialization changes and the ESI-4 pin. No migrations in the batch, so `alembic upgrade head` is a no-op on deploy.
-2. **Decide the release-please starting version** before merging its first release PR — `0.2.0` as configured, or `1.0.0` if production-live warrants it. Effectively permanent after.
+1. **Enable "Allow GitHub Actions to create and approve pull requests," then re-run the Release Please workflow** (§5). That single setting is all that blocks the first release PR; everything else is verified working. Merging the resulting PR tags `v0.2.0`, publishes a GitHub Release, and triggers a second (code-identical) deploy. `0.2.0` is the confirmed target — do not revisit it.
+2. **Confirm the production deploy of `fe43bda` succeeded** and the site is healthy. This release carried two `feat!` serialization changes, so the frontend is the thing to eyeball: contract list and detail rendering, not just an HTTP 200.
 3. **Read the user's reply** when it arrives. Q4 decides whether F008's blueprint surface has a validated user.
 4. **Write the F008 implementation plan** via `superpowers-plus:writing-plans-enhanced`, then `plan-review-cycle`. Start from §17 (API contract) and §7.1 (decomposition constraints) — those exist specifically to make the plan writable.
 5. **Decide the `min_me` question** (§6) — fold in, or stop the lie now.
