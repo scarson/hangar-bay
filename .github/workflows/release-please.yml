@@ -1,0 +1,35 @@
+# ABOUTME: Opens and maintains a release PR against main from Conventional Commit history,
+# ABOUTME: then tags and publishes a GitHub Release when that PR is merged.
+name: Release Please
+
+# main is the RELEASE branch, not the default branch — dev is. Without the explicit
+# target-branch below, the action would follow the repository default and cut releases
+# from integration history that has not been published yet.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write         # create tags, releases, and the release commit
+  pull-requests: write    # open and update the release PR
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false   # never kill a run that may be mid-tag
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # The default GITHUB_TOKEN is sufficient here, and deliberately so. The usual
+      # reason to swap in a PAT is that GITHUB_TOKEN-triggered events do not start
+      # further workflow runs — but nothing in this repo triggers on `release`.
+      # Deployment runs on `workflow_run` after CI completes on main, and that CI run
+      # is started by the human merge of the release PR, not by the token. Adding a PAT
+      # would widen the credential surface for no behavioral gain.
+      - uses: googleapis/release-please-action@v4
+        with:
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
