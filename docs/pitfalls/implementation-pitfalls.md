@@ -30,7 +30,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8, ENV-9, ENV-10 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status, spec drift | ESI-1, ESI-2, ESI-3, ESI-4 | §4.C |
-| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4 | §5.C |
+| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4, DEPLOY-5 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -433,12 +433,25 @@ One expression negated makes the branches exact complements *by construction*, i
 
 ---
 
+### DEPLOY-5: Two tasks each authoring a migration leave two heads, and `alembic upgrade head` refuses to run
+
+**The Flaw:** `alembic/versions/` is a **linear chain** — every revision names the `down_revision` it was generated against. Two branches that each add a migration against the same parent both claim that parent, so once both are merged the chain has two heads and `alembic upgrade head` aborts with `Multiple head revisions are present for given argument 'head'`.
+
+**Why It Matters:** This is a production failure, not a test failure, and it appears only *after* both branches are merged and green. `alembic upgrade head` is `render.yaml`'s `preDeployCommand`, so the next deploy aborts before the new code starts, leaving the old code serving. Neither branch's CI can catch it: each has exactly one head in isolation. The parallel decomposition that makes a feature fast to build is precisely what produces it.
+
+**The Fix:** **All schema changes for one body of work are ONE migration, authored once, up front** — before the tasks that depend on it are dispatched. Treat `alembic/versions/` as a single-writer resource in any plan that fans work out to parallel agents. If a second head does land, do not hand-edit `down_revision` on a revision that has already been applied anywhere; generate a merge revision (`alembic merge -m "<why>" <head1> <head2>`). Confirm `alembic heads` prints exactly one line before merging anything that touches the directory.
+
+**Where It Bit Us:** Not yet — recorded pre-emptively, which is the point: the first occurrence would be a failed production deploy. Identified while decomposing F008 Type-Aware Contract Browsing, whose natural four-way task split has each task writing its own migration; `design/features/F008-Type-Aware-Contract-Browsing.md` §7.1 ("Single-writer resources — constraints on how the plan may decompose") lists `alembic/versions/` first for this reason. The hazard is general to any multi-task schema work, which is why it belongs here and not only in that spec.
+
+---
+
 ### §5.C — Review Checklist
 
 - [ ] **`DATABASE_URL` reaches the engine driver-qualified** — the Settings validator normalizes `postgresql://`; no code assumes the platform sends `+asyncpg` (DEPLOY-1)
 - [ ] **Every production launch command pins `--workers 1`** — scaling proposals split the scheduler out instead of raising the worker count (DEPLOY-2)
 - [ ] **Nothing the app must retain lives in the evicting Valkey** — job stores and other silent-loss durable state stay out of `allkeys-lru` instances; every cross-run lock TTL derives from that job's own interval plus a margin (never equal to the interval, never a standalone constant) and is pinned by a test that reconfigures the interval and asserts the TTL follows (DEPLOY-3)
 - [ ] **Deploys are timed into the post-ingestion idle window, and same-commit redeploys go through the CD workflow's `workflow_dispatch` `sha` input** — a `pre_deploy_failed` ~38s in is the lock_timeout collision signature, not a migration bug (DEPLOY-4)
+- [ ] **`alembic heads` prints exactly one revision** — work split across parallel tasks authored its schema changes as a single migration up front, rather than one per task (DEPLOY-5)
 
 ---
 
@@ -465,6 +478,11 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 ---
 
 # Appendix A: Historical Changelog
+
+## 2026-08-02 — DEPLOY-5 added: parallel tasks each authoring a migration break the deploy
+
+- Added DEPLOY-5. Recorded pre-emptively rather than after an incident: the failure mode is a `preDeployCommand` abort in production, and the first occurrence would already be a failed deploy with the old code still serving.
+- Surfaced while decomposing F008, where the natural four-way task split has each task generating its own migration against the same parent. F008's decomposition-constraints section already listed `alembic/versions/` as a single-writer resource; the hazard is general to any multi-task schema work, so it is lifted here where a reviewer meets it on the normal path.
 
 ## 2026-08-01 — ESI-3's response-schema rule applied at the item level
 
@@ -587,6 +605,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | DEPLOY-2 | uvicorn stays --workers 1 (in-process scheduler) | MEDIUM | VALIDATED | Deployment & Platform |
 | DEPLOY-3 | Durable coordination state must not live in an evicting cache | HIGH | VALIDATED | Deployment & Platform |
 | DEPLOY-4 | Pre-deploy migrations collide with in-flight ingestion; redeploy via CD dispatch | MEDIUM | VALIDATED | Deployment & Platform |
+| DEPLOY-5 | Parallel tasks each authoring a migration leave two alembic heads; `upgrade head` aborts the deploy | HIGH | UNIMPLEMENTED | Deployment & Platform |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
 Severity levels: `CRITICAL` (production data loss / security), `HIGH` (correctness bug under predictable conditions), `MEDIUM` (correctness bug under edge cases), `LOW` (cleanliness / clarity / dev-loop hazard).
