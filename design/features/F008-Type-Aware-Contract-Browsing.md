@@ -14,7 +14,7 @@
 
 ## 1. Feature Overview (Required)
 
-Hangar Bay ingests, enriches, and stores the entire public-contract corpus of The Forge — approximately 34,000 live contracts — and displays roughly 1.2% of it. The remaining contracts are reachable only through an unlabelled `ships_only` checkbox that produces a table whose columns describe ships, applied to rows that are mostly not ships.
+Hangar Bay ingests, enriches, and stores the entire public-contract corpus of The Forge — approximately 34,000 live contracts — and displays roughly 1.2% of it. The remaining contracts are reachable only by clearing the "Ships only" checkbox, which yields the same six-column table (`Ship / Contract`, `Type`, `Price`, `Location`, `Time left`, `Issued`) applied to rows that are mostly not ships. The control is labelled; what is missing is any design for what it reveals.
 
 This feature makes the non-ship corpus a designed product surface rather than a shipped side effect. It covers the data work that makes the corpus describable (persisting a taxonomy and the per-type fields currently discarded at ingestion) and the presentation work that makes it browsable (contract-type segmentation and type-appropriate summary rows).
 
@@ -36,7 +36,8 @@ The motivating analysis, including competitive evidence and the measured composi
 ## 3. Acceptance Criteria (Required)
 
 **Story 1 — contract-type segmentation**
-*   Criterion 1.1: The contracts view presents contract-type segmentation with a live result count per segment.
+*   Criterion 1.1: The contracts view presents contract-type segmentation with a live result count per segment. **Counts are of distinct contracts**, not of joined item rows — a multi-item contract counts once. A fixture with at least one multi-item contract is required to make this assertion meaningful.
+*   Criterion 1.0: The accepted `contract_type` values are enumerated explicitly and cover **every** value ESI can emit, not only the three with designed row shapes. ESI's contract type includes `loan` and `unknown` alongside `item_exchange`, `auction`, and `courier`. A corpus contract whose type is outside the designed set MUST remain reachable and counted — silently dropping it would contradict §1's claim that this feature makes the whole corpus browsable. The plan states whether the extras get their own segment, fold into an "other" segment, or appear only when no type filter is active; it may not leave them unhandled.
 *   Criterion 1.2: Selecting a segment updates the list and is reflected in the URL, so the view is shareable and restorable.
 *   Criterion 1.3: The default view remains ships-only, consistent with F002 Criterion 1.1 and `PRODUCT.md`.
 *   Criterion 1.4: Courier contracts are excluded from the ships-only view by construction, because ESI returns no items for them and the ship flag is derived from items.
@@ -47,6 +48,7 @@ The motivating analysis, including competitive evidence and the measured composi
 *   Criterion 2.2: BPC rows display runs, ME, and TE.
 *   Criterion 2.3: The existing `min_runs`/`max_runs` filter family operates against `runs` rather than `raw_quantity`, which cannot be populated from public ESI and is why the filter currently matches nothing. **Verifiable form:** given a seeded contract whose item has `runs = 10`, a request with `min_runs=5&max_runs=15` returns that contract, and `min_runs=11` does not. A test asserting only HTTP 200 and an empty list satisfies neither and must not be accepted as evidence — that is precisely the assertion shape that passed against this bug for its entire lifetime.
 *   Criterion 2.4: A blueprint **original** is distinguishable from a copy. Per pitfall ESI-3, the public route omits `runs` entirely for originals rather than sending `-1`; absence must not be read as zero.
+*   Criterion 2.5: The `min_me` / `min_te` filter families operate against `material_efficiency` and `time_efficiency`. **These fail more dangerously than the runs filter and need the harsher test.** Measured against live production on 2026-08-01: `min_me=10` returns **15,592 contracts — the identical count to the same query with no ME filter at all**. The filter is not merely inert, it is invisible: it returns a large, plausible, wrong result set that reads as a successful answer, where `min_runs=5` at least returns zero and looks broken. **Verifiable form:** given seeded items at ME 0 and ME 10, `min_me=10` returns only the latter, and the result count is strictly less than the unfiltered count for the same query. A test that asserts only "returns some rows" passes against the current defect and must not be accepted.
 
 **Story 3 — taxonomy filtering**
 *   Criterion 3.1: Item `category_id` and `group_id` are persisted.
@@ -65,19 +67,20 @@ The motivating analysis, including competitive evidence and the measured composi
 *   Criterion 5.2: `end_location_name` is returned by the API. It is resolved at ingestion today but not served, so a destination currently reaches the client as a bare integer.
 *   Criterion 5.3: Courier rows display origin → destination, reward, collateral, volume, and deadline.
 *   Criterion 5.4: Reward per m³ is displayed and sortable.
-*   Criterion 5.5: Jump counts are computed for all three ESI route preferences and stored.
-*   Criterion 5.6: The user selects a route preference; the selection drives both the jumps column and the reward-per-jump sort.
-*   Criterion 5.7: No unqualified "Jumps" label is ever rendered. The active preference is always visible.
-*   Criterion 5.8: Contracts whose jump count cannot be determined are visibly distinct from contracts with a low reward-per-jump, in both display and sort order.
-*   Criterion 5.9: The courier view states its coverage: origins within The Forge only.
+*   Criterion 5.5: `end_location_system_id` is resolved and persisted, using the same station-resolution path that already handles start locations. **Nothing in this feature reads it.** It exists so that the reward-per-jump follow-on (§4.2) needs no second full-corpus resweep — the same reasoning that puts `item_id` in this feature for the abyssal follow-on.
+*   Criterion 5.6: Reward per m³ is the courier normalization metric in v1, and the view does not display or imply a distance-based metric it cannot yet compute.
+*   Criterion 5.7: The courier view states its coverage: origins within The Forge only.
 
 **Story 6 — multi-item composition**
-*   Criterion 6.1: A contract with more than one item displays a composition summary (counts by category) and total volume rather than a single item name.
+*   Criterion 6.1: A contract with more than one item displays a composition summary and total volume rather than a single item name. **"Counts by category" means the number of distinct item *rows* per dogma category, not distinct type IDs and not summed quantities** — these produce materially different summaries and the ambiguity must not survive into implementation. A contract of 100 identical drones in one row reads as `1 drone`, not `100 drones`; if summed quantity is wanted it is a separate, separately-labelled figure.
 *   Criterion 6.2: Single-item contracts continue to lead with the item.
+*   Criterion 6.4: Composition counts are computed over **offered** items only. Requested items (`is_included = false`) are summarized separately and never merged into the same figure, consistent with Criterion 8.1.
+*   Criterion 6.3: The detail response has a bounded worst case. Live production contains a single contract row measuring **55.7 KB** serialized, and multi-item contracts of 244 and 143 items are present in the corpus — so "render the item list" has a tail two orders of magnitude past the typical row. The list view must never inline full item lists (the composition summary in 6.1 is what makes this true), and the detail view must page or cap its item list rather than assuming it fits.
 
 **Story 7 — freshness and coverage honesty**
-*   Criterion 7.1: `last_seen_at` is surfaced in the UI.
+*   Criterion 7.1: `last_seen_at` is surfaced in the UI, which requires adding it to the response schema — it is computed today and returned by nothing.
 *   Criterion 7.2: A filter combination that cannot match — most importantly a region other than The Forge — produces an explanatory state distinguishing "not covered" from "nothing matched." This is the empty-state-or-explain invariant proposed in the gap analysis §2.2.
+*   Criterion 7.3: **Coverage is data, not a hard-coded constant.** The API exposes which regions are actually covered; the client does not embed "The Forge" as a literal. Without this the implementation must either hard-code the region (which silently becomes wrong the day coverage expands) or infer coverage from an empty result (which misclassifies a genuinely empty covered region as uncovered). Both failure modes are the defect Criterion 7.2 exists to prevent, reintroduced one layer down.
 
 **Story 8 — want-to-buy symmetry**
 *   Criterion 8.1: Items requested (`is_included = false`) and items offered are rendered distinctly and never merged into one list.
@@ -87,15 +90,15 @@ The motivating analysis, including competitive evidence and the measured composi
 ### 4.1. In Scope
 
 **Data layer**
-*   Persist item `category_id` and `group_id`. Both are already resolved during enrichment at `services/background_aggregation.py:783` and discarded at `:787`, where they are collapsed into a ship/not-ship string. This costs no additional ESI calls.
+*   Persist item `category_id` and `group_id`. **Both values are already in hand during enrichment and neither is stored.** `group_id` arrives on the type payload and is used at `background_aggregation.py:771-775` to fetch group records, then dropped by omission; `category_id` is read off that group record at `:783` purely to compare against `SHIP_CATEGORY_ID`, and `:787` stores only the derived `"ship"`-or-NULL string. Persisting them adds columns and assignments, **not** ESI calls.
 *   Persist item `runs`, `material_efficiency`, `time_efficiency`, and `item_id`.
 *   Persist contract `buyout` and `days_to_complete`.
-*   Persist `end_location_system_id`, and a `system_route_jumps` table keyed by (origin system, destination system, preference).
+*   Persist `end_location_system_id` (write-only in this feature; see Criterion 5.5).
 
 **API**
 *   A `contract_type` filter and per-type counts.
 *   Cascading `category_id` / `group_id` filters.
-*   Serve `end_location_name`, `buyout`, `days_to_complete`, `runs`, ME, TE, jumps, and the derived ratios.
+*   Serve `end_location_name`, `buyout`, `days_to_complete`, `runs`, ME, TE, and the derived ratios that need no route data.
 *   Make the `min_runs`/`max_runs`, ME, and TE filter families functional.
 
 **Presentation**
@@ -112,7 +115,13 @@ Each exclusion carries its reason, so that a later reader can tell a decision fr
 
 *   **Abyssal / mutated module display.** Committed near-future work with its own spec and plan. `item_id` is persisted in this feature specifically so that the follow-on requires no re-ingestion of the corpus. Abyssal items render as ordinary modules until then, which is honest; a partially-built roll-quality score would not be.
 *   **Valuation and appraisal.** Parked per [`2026-07-26-m5-direction-options.md`](../../docs/superpowers/specs/2026-07-26-m5-direction-options.md). The gap analysis §3.2 is its display contract when it lands. No row in this feature asserts whether a price is good.
-*   **"Jumps from my current location."** Requires a full solar-system route graph. The courier spike ([`2026-08-01-courier-route-jumps-spike.md`](../../docs/superpowers/specs/2026-08-01-courier-route-jumps-spike.md)) establishes that reward-per-jump does **not** need one, but this contextual column does — 8,490 possible origins rather than a bounded set of contract endpoints.
+*   **Courier reward-per-jump, and the jumps column it sorts on.** Committed near-future work with its own plan, alongside the abyssal follow-on. It is deferred *despite* being cheap in isolation — the courier spike ([`2026-08-01-courier-route-jumps-spike.md`](../../docs/superpowers/specs/2026-08-01-courier-route-jumps-spike.md)) measured the entire live Forge courier population at 161 ESI calls and 8.4 seconds cold, needing per-pair route lookups rather than a route graph.
+
+    Three reasons it is still not in v1. It is the largest block of net-new machinery in the feature (a route-cache table, a list-shaped ESI client helper that neither existing helper can substitute for, denormalized sort columns, and per-system security resolution for tier disclosure) while serving 115 contracts, 0.34% of the corpus. It is the **only** part of this feature that depends on the ESI compatibility date — `GET /route/` becomes a `POST` and the old shape 404s at `2025-09-30`, so keeping it here would force F008 and the open ESI-4 pinning decision to be sequenced against each other for no benefit. And its honesty requirements (per-row security-tier disclosure, an unqualified "Jumps" label being forbidden, ESI's `secure` being an upper bound rather than the true high-sec distance) are substantial enough to deserve their own review rather than riding in as a subsection.
+
+    **The seam is deliberate.** Everything ingestion-side stays in v1: `end_location_system_id` is resolved and stored now (Criterion 5.5), so the follow-on is purely route lookups plus presentation and needs no second full-corpus resweep. What the follow-on must additionally do — including adding `GET /route/` to the ESI drift-monitor manifest — is recorded in §15.2 and in the spike.
+
+*   **"Jumps from my current location."** A genuinely different problem from reward-per-jump, and out of scope for both this feature and its follow-on. It needs a full solar-system route graph: 8,490 possible origins rather than a bounded set of fixed contract endpoints.
 *   **Multi-region ingestion.** An explicit M5 non-goal. This feature states coverage honestly rather than lifting the limit.
 *   **Market-group navigation tree.** Not foreclosed. See §15 for the measurement that would justify revisiting it.
 *   **Changing the ships-only default.** `PRODUCT.md` stands.
@@ -139,20 +148,12 @@ New and changed columns. All new columns are nullable, because ESI omits most of
 |---|---|---|
 | `buyout` | numeric, nullable | Auctions only. |
 | `days_to_complete` | int, nullable | Couriers. Present on 115/115 sampled Forge couriers. |
-| `end_location_system_id` | bigint, nullable | Mirrors the existing start-location resolution. |
-| `jumps_shortest`, `jumps_secure`, `jumps_insecure` | int, nullable | Denormalized from `system_route_jumps` for sortability. NULL where an endpoint is a player structure. |
+| `end_location_name` | text, nullable | **Required by Criterion 5.2 and easy to miss.** `start_location_name` is a stored column (`models/contracts.py:67`) populated from the resolved-name map at `background_aggregation.py:200`; the end location is already *in* that map — `_npc_station_ids` collects `end_location_id` into the resolution set — but the name is never written anywhere. This is one column and one mapping line, not a new resolution path. |
+| `end_location_system_id` | bigint, nullable | Mirrors the existing start-location resolution. Written but unread in this feature (Criterion 5.5). NULL where the endpoint is a player structure — roughly 9–10% of couriers, structurally unresolvable without ACL-scoped tokens. |
 
-**`system_route_jumps`** (new)
+**A taxonomy name cache** (new, or `EsiMarketGroupCache` repurposed — the plan chooses and states which). Criterion 3.5 requires a served option list with display *names*, and §5's ID columns alone cannot produce them: group payloads are fetched transiently during enrichment and discarded, and no dogma category or group cache exists. Without a durable name source the companion endpoint in §6.2 has nothing to serve, which is exactly how F002's market-group filter died. Category names come from `/universe/categories/{id}`; group names from the group records enrichment already fetches.
 
-| Column | Type | Notes |
-|---|---|---|
-| `origin_system_id` | bigint | Composite PK with the two below. |
-| `destination_system_id` | bigint | |
-| `preference` | enum/text | `shortest` \| `secure` \| `insecure`. |
-| `jumps` | int | |
-| `computed_at` | timestamptz | Route geography is static; this exists for auditability, not expiry. |
-
-**Retained but unused columns.** `status`, `date_completed`, `raw_quantity`, and `is_singleton` remain, and this feature adds no filter or display that reads them. They can only ever be NULL under public ingestion, and are exactly what the authenticated character and corporation contract routes return. The reasoning is recorded in the gap analysis §4.2 and is not reopened here. Likewise `ContractItem.market_group_id` and `EsiMarketGroupCache` are retained but are not the taxonomy axis (§15).
+**Retained but unused columns.** `status`, `date_completed`, `raw_quantity`, and `is_singleton` remain, and this feature adds no filter or display that reads them. **They are not uniformly NULL, and the distinction matters for anyone writing a filter against them:** `status` is `nullable=False` and holds the placeholder `"unknown"`, and `is_singleton` is `nullable=False` and takes its mapping default of `False`. Only `date_completed` and `raw_quantity` are actually NULL. So two of the four hold *values that look real and are meaningless* — a worse trap than NULL, and the reason `is_bpc=false` and `min_runs` both silently matched nothing. All four are exactly what the authenticated character and corporation contract routes return. The reasoning is recorded in the gap analysis §4.2 and is not reopened here. Likewise `ContractItem.market_group_id` and `EsiMarketGroupCache` are retained but are not the taxonomy axis (§15).
 
 ## 6. API Endpoints Involved
 
@@ -164,64 +165,83 @@ New and changed columns. All new columns are nullable, because ESI omits most of
 | `GET /contracts/public/items/{contract_id}` | Existing | Source of `runs`, ME, TE, `item_id`. |
 | `GET /universe/groups/{group_id}` | Existing | Already called; `category_id` read and discarded. |
 | `GET /universe/categories/{category_id}` | New | For display names. Small, bounded, permanently cacheable. |
-| `GET /universe/stations/{station_id}` | Existing | Extended to end locations. |
-| `GET /route/{origin}/{destination}?flag=` | **New — see the compatibility-date constraint below** | Jump counts. |
+| `GET /universe/stations/{station_id}` | Existing | Extended to end locations, to populate `end_location_system_id`. |
 
-**`/route/` and ESI-4 — a hard constraint, not a note.**
-
-Hangar Bay sends no `X-Compatibility-Date` header and therefore receives the oldest published date, `2020-01-01` (pitfall ESI-4). At that date `/route/` is a `GET` returning a bare array. At compatibility date `2025-09-30` and later it becomes a **`POST`** with a JSON body, renamed preference values (`Shorter` / `Safer` / `LessSecure`), an object response envelope, and no server-side cache. The old shape returns **HTTP 404** at the newer date. This was verified live by the courier spike.
-
-Consequences this spec requires:
-1. This feature ships correctly today at the current floor, using the `GET` form. No header change is needed to build it.
-2. `/route/` **must** be added to the ESI drift-monitor manifest (`app/backend/tools/esi_spec_monitor/manifest.py`). This is not optional. Without it, the day the floor moves is the day couriers 404 in production.
-3. The separate ESI-4 pinning work and this feature are coupled. Whichever lands second must handle both `/route/` shapes or pin below `2025-09-30`. The implementation plan must state which.
-4. `security_penalty` (available only on the newer shape) must never be sent. Measured behaviour is non-monotonic — 0 → 45 jumps, 5–20 → 11, 25+ → 45 — and the spec documents it only as "strictness of the path preference." Pin to default; never expose it.
+**No new ESI endpoint is consumed by this feature.** `/route/` belongs to the deferred reward-per-jump work (§4.2), and moving it out is one of the reasons for that deferral: it is the only ESI dependency in the original scope whose *shape* depends on the compatibility date. At the current `2020-01-01` floor it is a `GET` returning a bare array; at `2025-09-30` and later it is a `POST` with a JSON body, renamed preference values, an object envelope, and no server-side cache, and the old shape returns **HTTP 404**. Verified live by the courier spike. Because this feature does not call it, F008 and the open ESI-4 pinning decision can proceed independently — see §15.2 for what the follow-on inherits.
 
 ### 6.2. Exposed Hangar Bay API Endpoints
 
 Extensions to `GET /contracts/`, not a new endpoint. Routers mount bare; the `/api/v1` prefix belongs to the proxy and edge (pitfall PROXY-1).
 
-New query parameters: `contract_type`, `category_id`, `group_id`, `route_preference`.
-New response fields: `end_location_name`, `buyout`, `days_to_complete`, `jumps` (resolved for the active preference), `reward_per_jump`, `reward_per_volume`, per-item `runs` / `material_efficiency` / `time_efficiency` / `category_id` / `group_id`.
-New sortable fields: `reward_per_jump`, `reward_per_volume`, `days_to_complete`, `buyout`.
+New query parameters: `contract_type`, `category_id`, `group_id`. **`contract_type` filters the existing `Contract.type` column** — the model already stores it and already indexes it via `ix_contracts_type_status`. No new column is added; the plan states the parameter-to-column mapping and whether that composite index serves the new access pattern or needs a companion.
+New response fields: `end_location_name`, `buyout`, `days_to_complete`, `reward_per_volume`, `last_seen_at`, per-item `runs` / `material_efficiency` / `time_efficiency` / `category_id` / `group_id`.
+New sortable fields: `reward_per_volume`, `days_to_complete`, `buyout`.
 
-**Per-type counts.** Segment labels carry counts, and those counts MUST reflect every other active filter — a count that ignores the search box or the price range is a lie in a numeral, worse than no count. The requirement is therefore: one round trip returns the page plus all segment counts under the active filter set, not one query per segment and not an unfiltered total. A grouped aggregate over the filtered set, returned in the list envelope, satisfies this; the plan may choose otherwise but must meet the same bar and must state the query shape it settled on.
+**Per-type counts.** Segment labels carry counts, and those counts MUST reflect every other active filter — a count that ignores the search box or the price range is a lie in a numeral, worse than no count.
 
-**Taxonomy option list.** A companion endpoint returns the categories and groups present in the corpus with their display names, for Criterion 3.5. Names come from `/universe/categories/{id}` and the group records already fetched during enrichment, cached rather than re-resolved per request.
+**The one exception is load-bearing: segment counts are computed with the `contract_type` predicate itself removed.** Reading "every active filter" literally would make every unselected segment read zero, which is both wrong and useless — the point of the counts is to tell the user what is behind the tabs they are *not* on. So: all other filters applied, type predicate lifted, grouped by type.
+
+Two further requirements that a naive implementation gets wrong: counts are of **distinct contracts** (a grouped aggregate over an item-joined rowset inflates every multi-item contract, and would still satisfy Criterion 1.1 read superficially), and all segment counts plus the page come back in **one round trip**, not one query per segment. The plan states the query shape it settled on.
+
+**Taxonomy option list.** A companion endpoint returns the categories and groups present in the corpus with their display names, for Criterion 3.5, served from the name cache in §5 rather than resolved per request.
+
+**Coverage metadata.** An endpoint or envelope field states which regions are actually ingested, for Criterion 7.3. The client must not hard-code this.
 
 After any change here: `pdm run export-openapi`, then `npm run generate:api`, both regenerated artifacts committed in the same PR.
 
 ## 7. Workflow / Logic Flow
 
-**Ingestion.** Unchanged in shape. Enrichment additionally writes the taxonomy and blueprint fields it already holds. Location resolution extends to end locations. A route-resolution step then runs over the distinct (origin system, destination system) pairs present in courier rows: pairs already in `system_route_jumps` are skipped, and only genuinely new pairs reach ESI. Measured, The Forge's 115 couriers collapse to 39 distinct system pairs — 117 route calls across three preferences, 8.4 seconds cold including station resolution, and zero calls in steady state.
+**Ingestion.** Unchanged in shape. Enrichment additionally writes the taxonomy and blueprint fields it already holds — no new ESI calls, because both were already resolved and thrown away. Location resolution extends to end locations, which does add station lookups: measured at 44 distinct NPC stations across The Forge's courier population, resolving in about 2 seconds cold and zero thereafter, since `_select_known_station_systems` reads already-resolved pairs off stored rows.
 
 **Backfill of existing rows.** New columns land NULL on the ~34,000 contracts already stored, and nothing in normal operation revisits an already-enriched contract. The mechanism for this exists and must be used: `ENRICHMENT_VERSION` in `background_aggregation.py` is documented as "bump to re-queue every contract for re-enrichment after an enrichment-logic fix." This feature MUST bump it, for a reason beyond tidiness — §4.2 promises that persisting `item_id` spares the abyssal follow-on a corpus re-ingest, and without a backfill that promise is false for every contract already in the database.
 
 The bump carries a documented operational cost, recorded here so it is planned rather than discovered: the next run becomes a one-off full-corpus resweep taking roughly 80 minutes at a ~46,000-contract corpus. That outlives the aggregation lock TTL, so the `Aggregation lock token mismatch on release` warning at its end is **expected on that run** and is not a concurrency incident. The runbook at the constant's definition governs; the deploy must not be repeated while the resweep is in flight.
 
+**Presentation is gated on backfill completion — this is a hard ordering requirement, not a preference.** Every new column lands NULL and stays NULL until the resweep reaches each contract. Shipping the UI before that finishes means type-aware rows rendering blank taxonomy, blank ME/TE, and empty composition summaries across most of the corpus, which is indistinguishable to a user from the feature being broken. The required order is:
+
+1. Migration applied (columns exist, all NULL).
+2. Ingestion changes deployed **and** `ENRICHMENT_VERSION` bumped.
+3. Full-corpus resweep observed to completion, with a verified non-NULL rate on the new columns — not merely "the job finished."
+4. Only then: API fields and UI exposed.
+
+The plan must make steps 3 and 4 separate, independently verifiable units. A single PR that migrates, ingests, and exposes cannot satisfy this, because step 3 takes roughly 80 minutes of production runtime and cannot be verified inside the deploy that triggers it.
+
 **Query.** `contract_type` and taxonomy filters compose with the existing filter set. Derived ratios are computed in SQL for sortability.
 
-**Render.** The active contract-type segment selects a column set; the row renderer is shared. Column definitions live in their own module rather than inside `ContractTable.tsx`, which today hard-codes a five-column array and would otherwise become the file that does too much.
+**Render.** The active contract-type segment selects a column set; the row renderer is shared. Column definitions live in their own module rather than inside `ContractTable.tsx`, which today hard-codes a six-column array and would otherwise become the file that does too much.
 
 ## 8. UI/UX Considerations
 
-*   **Type-aware rows, shared frame.** One table component, five column sets. Adding the abyssal shape later must not require touching the frame.
+*   **Type-aware rows, shared frame.** One table component, per-segment column sets. Adding the abyssal shape later must not require touching the frame.
+
+*   **The five "row shapes" are two orthogonal axes, not five mutually exclusive cases.** This has to be stated because the shapes visibly overlap — an auction can be multi-item and can contain several blueprint copies — and an implementer handed five overlapping labels will invent a precedence rule of their own.
+
+    **Axis 1, the segment, comes from `Contract.type`** and is disjoint by construction: item exchange, auction, courier. It selects the columns that describe the *contract* — price, or current bid and buyout, or route and reward.
+
+    **Axis 2, the row body, comes from item composition** and applies within any item-bearing segment: single item, or multi-item composition summary. Courier has no second axis because ESI returns it no items.
+
+    **Blueprint columns are a refinement of the single-item body, not a sixth shape.** Runs, ME, and TE appear when the contract's offered items comprise exactly one blueprint copy. A contract with several blueprint copies has no single ME/TE to report, so it renders as multi-item composition and defers per-blueprint detail to the detail view. This resolves the "which blueprint supplies ME/TE" ambiguity by removing the case rather than picking arbitrarily.
 *   **Cascading taxonomy filter.** Category first, then group scoped to that category with type-ahead. A flat group list is not viable: the Module category alone contains hundreds of groups.
-*   **Route preference is a visible control**, not a hidden default. The measured spread justifies this: Jita → Amarr is 11 / 45 / 40 jumps by preference, a 4.1× range; across real Forge couriers, 32% have `secure` at ≥ 2× `shortest`, and 3 of the top-10 reward-per-jump leaders reorder when the preference changes.
-*   **Label `secure` as "Prefer high-sec", never "Safe".** Verified: to a null-sec destination, `secure` returned an 81-jump route still crossing 23 low/null systems. "Safe" would be a false claim.
+*   **Disclose the tier per row; do not make the user pick a mode.** The measured spread makes some disclosure mandatory: Jita → Amarr is 11 / 45 / 40 jumps by preference, a 4.1× range; across real Forge couriers, 32% have `secure` at ≥ 2× `shortest`, and 3 of the top-10 reward-per-jump leaders reorder when the preference changes. The preference is not cosmetic — it reorders the exact list a hauler is reading.
+
+    The chosen pattern is Adam4EVE's, which is the only shipped precedent: pick the route automatically, then have each row's jump cell state which tier it actually got, colour-coded with a tooltip. On one live page load their column showed 142 high-sec, 110 low-sec, and 23 null-sec routes, disclosed per row, with no mode selector. A user-facing preference control may still be offered as a secondary refinement, but it is not how the honesty requirement is met — per-row disclosure is.
+
+*   **Never label a route "Safe".** Verified: to a null-security destination, `secure` returned an 81-jump route still crossing 23 low/null systems, with no error and no signal. The flag is a routing preference, not a guarantee, and cannot be used to answer "does a high-sec route exist?" We answer that ourselves from the returned system list.
+
+*   **Treat the stored `secure` count as an upper bound, not the true high-sec distance.** Verified divergence: for Jita → Amarr, ESI `secure` returns 45 jumps while a 34-jump route that is also entirely high-security exists (Dotlan finds it; minimum security 0.5). Amarr → Dodixie diverges 34 vs 25. Short routes agree exactly (Jita → Hek 19/19, Jita → Dodixie 15/15). ESI appears to apply a weighted penalty rather than a hard constraint, so it returns valid-but-suboptimal high-sec paths on long routes — inflating jumps and therefore deflating reward-per-jump by up to roughly a third. The UI must not present the figure as an exact distance, and this is a known limitation to state rather than silently absorb.
+
+*   **Reward-per-jump is a normalization, not a quote.** Real freight services bill per *warp* — PushX states "number of jumps + 1 in most cases" — with collateral multipliers and a floor (4.5M ISK). Reward-per-jump is the right comparison metric across contracts; it is not what a hauler would charge, and the UI must not imply otherwise.
 *   **Unknown is not zero.** Roughly 9–10% of couriers have a player-structure endpoint that cannot be resolved without ACL-scoped tokens. Those rows must read as "unknown" and must not silently sort as if they were poor value.
 *   **Full ISK figures and relative expiry are retained** — both are existing advantages over the surveyed competition.
 *   **Coverage statements over silent empty results.** Selecting an uningested region must explain, not return an empty table.
 
 ## 9. Error Handling & Edge Cases (Required)
 
-*   **Divide by zero on jumps.** A courier between two stations in the same system has zero jumps. Zero same-system couriers appeared across 250 sampled contracts, but nothing prevents one. Reward per jump must guard.
-*   **Divide by zero on volume.** Same guard for reward per m³.
+*   **Divide by zero on volume.** Reward per m³ must guard against a zero or missing `volume`.
 *   **Blueprint originals.** `runs` is absent, not `-1`, on the public route (ESI-3). Filters and display must treat absence as "not a copy," never as zero runs.
 *   **`is_blueprint_copy` absence.** ESI omits the flag for non-copies; the filter must treat NULL as not-a-copy. Fixed previously; the taxonomy work must not regress it.
-*   **Response-shape mismatch in the ESI client.** `_get_esi_object` raises on any non-dict response, and the legacy `GET /route/` returns a bare array. The paginated helper is also unusable — it flattens a dict into its keys. A third, list-shaped helper is required; neither existing helper can be reused.
-*   **Unresolvable locations.** Player structures stay NULL end-to-end and surface as "unknown."
-*   **Partial enrichment.** The existing `ENRICHMENT_INCOMPLETE` semantics extend to the new fields: a contract whose taxonomy failed to resolve must not be stamped `COMPLETED`.
+*   **Unresolvable locations.** Player structures cannot be resolved without ACL-scoped tokens, so `end_location_system_id` stays NULL for roughly 9–10% of couriers and the destination surfaces as "unknown" rather than blank or zero.
+*   **Partial enrichment, and a scope mismatch this feature creates.** The existing `ENRICHMENT_INCOMPLETE` semantics extend to the new fields: a contract whose taxonomy failed to resolve must not be stamped `COMPLETED`. **But today that check is deliberately narrowed to *included* items**, because the only thing it gated was the ship flag, which only offered items decide. Criterion 8.1 renders requested items too, and Criterion 6.4 summarizes them — so under this feature a contract whose *requested* item failed taxonomy resolution would be stamped `COMPLETED`, excluded from every future re-fetch, and display a permanently blank want-to-buy side with no route back. The completion predicate must widen to cover every item the feature displays, and the plan must state that it did.
 *   **Serialization strictness.** A non-optional schema field over a nullable column fails the entire page, not one row, because `PaginatedResponse` validates every item. Every new field is optional in the response schema unless it is provably non-null for every row.
 
 ## 10. Security Considerations
@@ -233,9 +253,10 @@ The bump carries a documented operational cost, recorded here so it is planned r
 
 ## 11. Performance Considerations
 
-*   Route resolution is bounded by distinct system pairs, not contract count, and is cached permanently. Steady state is zero ESI calls. The `/route/` rate limit is 3,600 per 15 minutes; the working set uses well under 1% of it.
-*   Jump counts are denormalized onto contract rows so that reward-per-jump sorts in SQL rather than in the application.
-*   New filter columns (`contract_type`, `category_id`, `group_id`) require indexes; the plan specifies which, informed by the existing index set.
+*   End-location station resolution is bounded by distinct stations, not contract count, and memoizes from stored rows — 44 distinct stations across the courier population, then zero.
+*   Derived ratios (reward per m³) are computed in SQL so they sort without loading the page into the application.
+*   Filtering on contract type reuses `Contract.type`, already covered by the composite `ix_contracts_type_status`. The plan verifies whether that composite serves a type-only predicate or whether a companion index is warranted — it does not assume either. New taxonomy columns (`category_id`, `group_id`) do need indexes; the plan specifies which, informed by the existing set.
+*   The `ENRICHMENT_VERSION` bump (§7) triggers a one-off full-corpus resweep of roughly 80 minutes. It is a planned deploy-time cost, not a steady-state one.
 *   Per-type counts must not degenerate into one query per segment.
 
 ## 12. Accessibility Considerations
@@ -282,10 +303,26 @@ No courier policy exists anywhere in the repository. Their exclusion from item f
 
 **Three limits are accepted deliberately:**
 1. **Coverage is stated, not hidden.** Only The Forge is ingested, so this is "couriers originating in The Forge" — 115 contracts. That is a thin tab, and it is a thin tab honestly labelled rather than an implied national market.
-2. **No unqualified jump count**, for the measured reasons in §8.
-3. **No "jumps from my location"**, which needs the route graph (§4.2).
+2. **No distance metric in v1.** Reward per m³ is the normalization; reward per jump follows in its own plan (§4.2). The view must not display or imply a distance figure it cannot compute.
+3. **No "jumps from my location"**, ever in this line of work — it needs the full route graph and is a different problem (§4.2).
 
-**Open question, non-blocking:** the recommended default route preference is `secure`, on the reasoning that couriers carry collateral the hauler forfeits on loss, so the risk-adjusted figure is the actionable one. The supporting evidence that established freight services quote ISK per jump *segmented by security band* comes from a web-search summary rather than a primary rate card, and is the weakest-sourced claim in the spike. It is a one-line default and does not block implementation; one confirming look at a live freight rate page before ship would settle it.
+**What the reward-per-jump follow-on inherits, recorded here so it is not re-derived.** The spike measured and verified all of the following; the follow-on plan starts from them rather than from scratch.
+
+*   **Cost is settled:** 39 distinct system pairs across The Forge's 115 couriers, 117 route calls for all three preferences, 161 ESI calls and 8.4 seconds cold including station resolution, zero in steady state. The rate limit is 3,600 per 15 minutes, so the working set uses well under 1%.
+*   **The default is high-security-preferred**, on stated convention rather than inference: EVE University's *Moving your items* — "The payment should assume a fully hisec route if one is available" — and EVE Courier, the only surveyed tool exposing the control, defaults the same way.
+*   **Disclosure beats a mode picker.** Adam4EVE is the only shipped precedent: auto-pick the route, then have each row state which security tier it actually achieved, colour-coded and tooltipped (142 high-sec / 110 low-sec / 23 null-sec on one live page load). Per-row disclosure is how the honesty requirement is met; a user-facing preference control is at most a secondary refinement.
+*   **Three correctness traps.** ESI's `secure` flag is an *upper bound*, not the shortest high-sec route — Jita → Amarr returns 45 jumps when a fully high-sec 34-jump route exists, diverging by up to about a third on long routes while agreeing exactly on short ones. `secure` is also never a guarantee and emits no signal when no high-sec route exists (Jita → 1DQ1-A: 81 jumps still crossing 23 low/null systems), so "does a high-sec route exist?" must be answered from the returned system list, not the flag. And `security_penalty` on the newer API shape is measurably non-monotonic (0 → 45 jumps, 5–20 → 11, 25+ → 45); pin it to default and never expose it.
+*   **Two implementation traps.** `_get_esi_object` raises on any non-dict response and the legacy `GET /route/` returns a bare array; the paginated helper is also unusable because it flattens a dict into its keys. A third, list-shaped helper is required. And reward-per-jump needs a divide-by-zero guard: no same-system couriers appeared across 250 sampled contracts, but nothing prevents one, and zero jumps must resolve to a defined display rather than an exception or an infinity.
+*   **Two display rules the follow-on must decide explicitly, because "visibly distinct" admits opposite implementations.** Where unknown-jump rows sort under ascending *and* descending reward-per-jump (they must not silently occupy the "best value" end in either direction), and what the jumps cell reads when the count is unknown versus when it is genuinely zero.
+*   **Two required steps.** Adding `GET /route/` to the ESI drift-monitor manifest is not optional — without it, the day the compatibility floor moves is the day couriers 404 in production. And the follow-on must resolve the ESI-4 interaction explicitly: either handle both `/route/` shapes, or pin below `2025-09-30`.
+*   **One framing constraint.** Reward per jump is a comparison metric, not a quote. Real services bill per *warp* ("jumps + 1 in most cases" — PushX), with collateral multipliers and a floor. The UI must not imply it is what a hauler would charge.
+*   **Worth knowing before investing:** no surveyed tool ships an ISK-per-jump column at all. The metric lives in rate cards and marketing copy, never in a shipped table. That is consistent with an unoccupied niche and is also a mild warning that the number may be harder to make honest than it looks.
+
+**The default-preference question is now settled** — it was the weakest-sourced claim in the spike and has since been confirmed against primary sources. EVE University's *Moving your items* states the convention verbatim: "The payment should assume a fully hisec route if one is available," and quotes the established services at roughly 900,000–1,000,000 ISK per jump for standard high-security work. Independently, EVE Courier — the only surveyed tool that exposes a route-preference control — defaults it to High-Sec. High-security-preferred is therefore the default on convention, not on inference.
+
+**What the same survey found that is worth recording.** No tool in the ecosystem ships an ISK-per-jump *column*; the metric appears in marketing copy and rate cards, never in a shipped table. That is consistent with this being an unoccupied niche, and it is also a mild warning worth naming rather than burying: it is possible nobody ships it because the number is harder to make honest than it looks — which is precisely why Criteria 5.7 and 5.8 are written as hard requirements rather than preferences.
+
+**A related distinction, since it is easy to conflate.** CCP declined to add distance sorting to the in-game contract browser, stating it is "a user-specific pathfinding search that is simply too expensive for the server." That constraint does not apply here and the difference is the whole reason this is feasible: our jump counts are between *fixed contract endpoints*, computed once and cached, not between a contract and wherever a given user happens to be standing. The user-relative version is exactly the "jumps from my location" case §4.2 puts out of scope.
 
 ### 15.3. On the evidence base
 
@@ -297,11 +334,11 @@ This is recorded rather than resolved. The instrumentation in §4.1 exists so th
 
 ### 16.1. Read before implementing
 
-`docs/pitfalls/implementation-pitfalls.md` and `docs/pitfalls/testing-pitfalls.md` in full. Directly load-bearing here: **ESI-3** (originals omit `runs`), **ESI-4** (compatibility date and `/route/`), **FASTAPI-1** (`Annotated[Model, Query()]`, never bare `Depends`, for GET filter models), **PROXY-1** (no `/api/v1` in FastAPI), **SQLA-1**, **ENV-2/ENV-3** (every backend `.py` save under reload wipes the database — batch edits), **TEST-14** (`tests/api/test_contracts.py` carries a file-level `pytest.mark.vcr`; new tests there replay cassettes and can pass with the behaviour deleted — use `test_contract_filters.py`).
+`docs/pitfalls/implementation-pitfalls.md` and `docs/pitfalls/testing-pitfalls.md` in full. Directly load-bearing here: **ESI-3** (originals omit `runs`), **ESI-4** (compatibility date; matters to the deferred route work, not to this feature's calls), **FASTAPI-1** (`Annotated[Model, Query()]`, never bare `Depends`, for GET filter models), **FASTAPI-2** (the inert ME/TE params — Criterion 2.5), **PROXY-1** (no `/api/v1` in FastAPI), **SQLA-1**, **ENV-2/ENV-3** (every backend `.py` save under reload wipes the database — batch edits), **TEST-14** (never pair `pytest.mark.vcr` with an app-client fixture), **TEST-20** (assertions inside `if data["items"]:` never run).
 
 ### 16.2. Critical logic points
 
-*   Taxonomy persistence is an eight-line change at the point where `category_id` is already in scope (`background_aggregation.py:783`). Resist the urge to add an ESI call.
+*   Taxonomy persistence happens where both values are already in scope: `group_id` at `background_aggregation.py:771-775`, `category_id` on the group record read at `:783`. Resist the urge to add an ESI call for either.
 *   The route-resolution step keys on distinct system pairs. Keying on contracts would multiply calls by roughly 3× for no benefit.
 *   A new list-shaped ESI helper is required for `/route/` (§9). Do not widen `_get_esi_object` to accept lists — its dict assertion protects every other caller.
 *   Every new response field is optional unless provably non-null for all rows (§9).
@@ -312,7 +349,7 @@ TDD is mandatory for all production code here. Specific traps this feature is pr
 
 *   **Fixtures must carry the production data shape.** Backend fixtures previously hand-wrote three columns ingestion never writes, which gave dead filters green tests. Any fixture asserting on `runs`, `is_blueprint_copy`, or taxonomy must reflect what ESI actually sends — including omitting `runs` on originals.
 *   **Assert the filters return rows.** The defect class this feature is fixing is filters that match nothing. A test asserting a 200 and an empty list would have passed against every one of those bugs.
-*   **Do not write new tests into `tests/api/test_contracts.py`** (TEST-14).
+*   **Both `tests/api/test_contracts.py` and `tests/api/test_contract_filters.py` are safe to write into.** Their `pytestmark` is `asyncio` only. The VCR markers and all five cassettes were removed on 2026-08-01 after the cassettes were found to have recorded the app talking to itself; `tests/marker_guards.py` now aborts collection if any test pairs the `vcr` marker with an app-client fixture. **Do not reinstate a `vcr` marker on either module** — that is what TEST-14 forbids, and it is enforced rather than merely documented.
 *   **No assertions inside `if data["items"]:`** without seeding a fixture — a previously shipped test never executed its assertion block.
 *   **Mutation-check the load-bearing tests.** Break the behaviour, confirm the test goes red, revert. A test that stays green under mutation is a finding, not a formality — restore from a file copy rather than `git checkout --`, which would discard uncommitted work and produce false evidence.
 *   Frontend fixtures must not carry absolute past expiry dates; the future-clock lane exists because an entire suite silently rendered "Expired" and nothing failed.
