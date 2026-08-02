@@ -17,7 +17,7 @@
 
 **The release shipped.** `main` moved from `7a95118` to `fe43bda`, which triggered CI → Deploy on the production path and fired Release Please for the first time.
 
-**One thing is blocked and needs a human:** Release Please did all its work correctly and then failed to open its PR, because the repository forbids GitHub Actions from creating pull requests. It is a one-checkbox settings change, not a config problem — §5 has the detail and the evidence that the config is sound.
+**Release Please is working.** Its first run failed to open a PR because the repository forbade Actions from creating pull requests; that setting was enabled and the workflow re-run, producing **PR #128 `chore: release main`** proposing `0.2.0`. Merging #128 is the next action — see §8 item 1, including one caveat about the published release notes.
 
 ## 2. What shipped
 
@@ -99,12 +99,20 @@ It also retroactively justifies keeping the four permanently-NULL columns (`stat
 *   **codex times out on large prompts.** A 67 KB prompt stalled past 5.5 minutes; scoping to a single file and giving it a 15-minute background budget worked.
 *   **Fresh worktrees need `pdm install` *and* `app/backend/src/.env`.** The conftest imports `fastapi_app.main`, which constructs `Settings()` at module scope, so tests cannot even collect without it. Copy `app/backend/.env.example` to `src/.env` and fill the three required keys. **Never read the repo-root `.env`** — 1Password-managed, can hang past 120s.
 *   **Mutation-verify by file copy, never `git checkout --`.** The latter discards uncommitted work and yields fake evidence. Always end with a restore-and-rerun green check.
+*   **Merge with `--body ""`, always.** GitHub writes the PR title into every merge commit's message and release-please parses merge commits, so each merged PR generated **two** changelog entries. Measured on the first release: **82 of 425 bullets (19%) came from merge commits.** Only 32 were visible text duplicates; the other 50 were merge commits whose PR title differed from any commit subject inside the PR, so they read as legitimate distinct entries while being redundant — the worse half, because nothing looks wrong.
+
+    **No repository setting can fix this.** GitHub permits exactly three merge title/message combinations — `PR_TITLE`/`PR_BODY`, `PR_TITLE`/`BLANK`, `MERGE_MESSAGE`/`PR_TITLE` — and all three place the PR title where release-please will parse it. Attempting `MERGE_MESSAGE`/`BLANK` returns HTTP 422. The fix is therefore at merge time and lives in `docs/git-strategy.md`: `gh pr merge <n> --merge --delete-branch --body ""`. **A merge performed through the GitHub UI will reintroduce the problem** unless the message box is cleared by hand.
+
+*   **`delete_branch_on_merge` is now enabled.** Merged head branches are removed automatically. `dev` is safe from this two ways: it is the default branch, and the active ruleset carries a `deletion` rule. Worktrees still need removing by hand — and never remove one with long-lived containers bound to it (ENV-10).
+
+*   **The active ruleset is named `main-branch-protections` but targets `~DEFAULT_BRANCH`, which is `dev`.** So the protections named for `main` are applied to `dev`, and **`main` — the release branch production deploys from — has none**. Not changed this session; flagged because the name actively misleads anyone auditing it.
+
 *   **CI's trigger set is deliberate; read the comment before "fixing" it.** `push: [dev, main]` plus an *unfiltered* `pull_request` looks like a duplicate-trigger bug and is not. Feature PRs (`claude/*` → `dev`) run once, because pushes to `claude/*` do not match the push filter. The unfiltered `pull_request` exists so stacked PRs based on another `claude/*` branch get CI at all — a `branches: [dev, main]` filter matches the PR's **base**, which would leave stacked PRs with no run. The one real duplication is that a `dev` → `main` publication PR re-tests a tree that push-to-`dev` already tested: one extra run per release cycle, which is cheap insurance against the "no CI ran" ambiguity the merge-authority policy treats as failure. **Leave it.**
 *   **Push feature branches early.** The F008 spec branch went a full session unpushed and existed only in a worktree. Nothing enforces this; the habit is the safeguard.
 
 ## 8. Priority queue
 
-1. **Enable "Allow GitHub Actions to create and approve pull requests," then re-run the Release Please workflow** (§5). That single setting is all that blocks the first release PR; everything else is verified working. Merging the resulting PR tags `v0.2.0`, publishes a GitHub Release, and triggers a second (code-identical) deploy. `0.2.0` is the confirmed target — do not revisit it.
+1. **Merge PR #128 (`chore: release main`)** — the `0.2.0` release. Its `CHANGELOG.md` has been hand-cleaned of the 82 merge-commit entries (§5), so merge it rather than letting release-please regenerate. Merging tags `v0.2.0`, publishes a GitHub Release, and triggers a second (code-identical) deploy. `0.2.0` is confirmed — do not revisit it. **Caveat: the GitHub Release body is generated from release-please's own notes branch, which was not cleaned, so the published release notes will still carry the 82 spurious entries.** Edit the release body after publishing if that matters; the committed `CHANGELOG.md` is the durable artifact and it is clean.
 2. **Confirm the production deploy of `fe43bda` succeeded** and the site is healthy. This release carried two `feat!` serialization changes, so the frontend is the thing to eyeball: contract list and detail rendering, not just an HTTP 200.
 3. **Read the user's reply** when it arrives. Q4 decides whether F008's blueprint surface has a validated user.
 4. **Write the F008 implementation plan** via `superpowers-plus:writing-plans-enhanced`, then `plan-review-cycle`. Start from §17 (API contract) and §7.1 (decomposition constraints) — those exist specifically to make the plan writable.
