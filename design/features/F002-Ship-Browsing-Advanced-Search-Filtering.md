@@ -64,6 +64,7 @@
     *   Criterion 4.3: Filtering options for broad ship market groups/categories (e.g., Frigate, Cruiser) are available, sourced from a cached list of EVE market groups.
     *   Criterion 4.4: Applying a ship category filter updates the contract list accordingly.
     *   Criterion 4.5: A backend endpoint (e.g., `/api/v1/ships/market_groups`) provides the list of filterable ship categories.
+    *   **Criteria 4.3–4.5 are superseded by [F008 — Type-Aware Contract Browsing](./F008-Type-Aware-Contract-Browsing.md).** The requirement stands (filter by Frigate, Cruiser, and the equivalent for other item classes); the mechanism changed. F008 §15.1 replaces the market-group axis and the `/ships/market_groups` endpoint with dogma category/group, which is already resolved during enrichment and covers item classes that have no market group at all. The market-group approach was never implemented — the M1 frontend design deferred it for lack of a backing API.
 *   **Story 9 (Additional Items Indicator/Filter) Criteria:**
     *   Criterion 9.1: Contracts in the list view display a visual indicator if `contracts.contains_additional_items` (from F001) is true.
     *   Criterion 9.2: A filtering option (e.g., checkbox 'Includes other items') is available to show only contracts with additional items, only contracts without them, or both.
@@ -218,7 +219,7 @@
         2.  **API Enhancements**: The `/api/v1/contracts/ships` endpoint will accept new filter parameters (e.g., `meta_level_eq`, `tech_level_eq`).
         3.  **Database Query**: The backend will join `contracts` with `contract_items` and `esi_type_cache`. Queries will use JSON functions to extract and compare values from the `dogma_attributes` field in `esi_type_cache` against the provided filter parameters.
         4.  **Performance**: Consider GIN indexes (PostgreSQL) or expression indexes on the JSON `dogma_attributes` field if query performance becomes a concern.
-*   **Filterable ship categories/groups**: This is now part of the MVP scope. The backend will periodically fetch ship market groups from ESI (`GET /v1/markets/groups/`), cache them, and provide them to the frontend via the `/api/v1/ships/market_groups` endpoint. Filtering will use the `ship_market_group_id` parameter against data in `esi_type_cache`.
+*   **Filterable ship categories/groups**: ~~This is now part of the MVP scope. The backend will periodically fetch ship market groups from ESI (`GET /v1/markets/groups/`), cache them, and provide them to the frontend via the `/api/v1/ships/market_groups` endpoint. Filtering will use the `ship_market_group_id` parameter against data in `esi_type_cache`.~~ **Superseded by [F008 §15.1](./F008-Type-Aware-Contract-Browsing.md)** — see the note on Criteria 4.3–4.5 above. The taxonomy axis is dogma category/group, not market groups.
 *   **Indicator/Filter for Contracts with Additional Items**: F001 will provide a `contains_additional_items` flag for each contract. Consider using this in F002's UI to:
     *   Display an icon/indicator on list items if a ship contract also includes other non-ship items.
     *   Potentially offer a filter option (e.g., "Show only contracts with additional items" or "Hide contracts with additional items"). This is a lower priority enhancement for now.
