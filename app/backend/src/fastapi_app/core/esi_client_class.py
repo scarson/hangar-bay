@@ -154,12 +154,26 @@ class ESIClient:
             )
         return client
 
+    @staticmethod
+    def default_headers(settings) -> Dict[str, str]:
+        """The headers every ESI request carries.
+
+        X-Compatibility-Date is not optional in practice. A request without it is served
+        the OLDEST published date rather than the newest, so omitting it pins the whole
+        application to a contract chosen by CCP rather than by us — one CCP can raise with
+        notice, changing response shapes with no commit on our side (pitfall ESI-4).
+        """
+        return {
+            "User-Agent": settings.ESI_USER_AGENT,
+            "X-Compatibility-Date": settings.ESI_COMPATIBILITY_DATE,
+        }
+
     async def __aenter__(self):
         """Initializes clients if they were not provided during instantiation."""
         if not self._http_client:
             self._managed_http_client = httpx.AsyncClient(
                 base_url=self.settings.ESI_BASE_URL,
-                headers={"User-Agent": self.settings.ESI_USER_AGENT},
+                headers=self.default_headers(self.settings),
                 timeout=self.settings.ESI_TIMEOUT,
             )
         if not self._redis_client:

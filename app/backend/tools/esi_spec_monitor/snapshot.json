@@ -1,5 +1,5 @@
 {
-  "pinned_compatibility_date": "2020-01-01",
+  "pinned_compatibility_date": "2026-07-21",
   "readme": "Committed projection of https://esi.evetech.net/meta/openapi.json, narrowed to the endpoints and fields Hangar Bay consumes. Regenerate with `pdm run esi-spec-monitor --update` and review the diff; never update it to silence a failure you have not understood.",
   "spec_url": "https://esi.evetech.net/meta/openapi.json",
   "views": {

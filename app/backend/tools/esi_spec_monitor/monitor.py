@@ -57,6 +57,15 @@ USER_AGENT = (
 PINNED_VIEW = "pinned"
 NEWEST_VIEW = "newest_compatibility_date"
 
+# The compatibility date Hangar Bay's ESIClient sends on every request. It is duplicated
+# here rather than imported because this tool is deliberately standard-library only, so
+# that an unrelated change to the backend's dependency tree cannot break the monitor.
+# The duplication is guarded: tests/core/test_esi_compatibility_date.py fails if this
+# constant and Settings.ESI_COMPATIBILITY_DATE ever disagree. Keep them in lockstep —
+# a monitor watching a date the application does not request reports a safety it cannot
+# actually see, which is worse than having no monitor at all.
+PINNED_COMPATIBILITY_DATE = "2026-07-21"
+
 BREAKING = "breaking"
 INFORMATIONAL = "informational"
 
@@ -637,7 +646,7 @@ def fetch_specs(get_json: Callable[..., dict] = _get_json) -> tuple[dict, dict, 
     Three requests to static meta documents, no data endpoints, so ESI's shared
     error budget is untouched.
     """
-    pinned = get_json(SPEC_URL)
+    pinned = get_json(SPEC_URL, compatibility_date=PINNED_COMPATIBILITY_DATE)
     dates = get_json(COMPATIBILITY_DATES_URL).get("compatibility_dates", [])
     if not dates:
         raise ValueError(f"{COMPATIBILITY_DATES_URL} listed no compatibility dates")
@@ -683,7 +692,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     current = build_snapshot(pinned_spec, newest_spec)
     print(f"newest published compatibility date: {newest_date}")
-    print(f"date served without the header:      {current['pinned_compatibility_date']}")
+    print(f"compatibility date Hangar Bay sends: {current['pinned_compatibility_date']}")
 
     if args.update:
         _write_snapshot(current, args.snapshot)
