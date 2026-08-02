@@ -13,9 +13,9 @@
 | `main` (production) | `7a95118`, unchanged this session |
 | Open PRs | none |
 | Merged this session | #122 (ESI-4), #123 (F008 spec), #124 (release-please) |
-| CI on `dev` | **must be confirmed green before the publication PR** — see §5 |
+| CI on `dev` | ✅ green at `7153ee7` (run for #124, the authoritative one — see §5) |
 
-**The next action is a `dev` → `main` publication PR.** Nothing blocks it except confirming CI.
+**The next action is a `dev` → `main` publication PR. Nothing blocks it.**
 
 ## 2. What shipped
 
@@ -61,7 +61,7 @@ It also retroactively justifies keeping the four permanently-NULL columns (`stat
 
 ## 5. Seams — where this session's work meets something else
 
-*   **`dev` CI needs confirming before the publication PR.** #123's run shows `cancelled`, which is the concurrency group being superseded by #124's push, **not** a failure. #124's run is the authoritative one and was still in progress at session close. Confirm green, then publish.
+*   **`dev` CI is green, but the run list looks alarming.** #123's run shows `cancelled` — that is the concurrency group being superseded by #124's push, **not** a failure. #124's run is the authoritative one and **completed successfully**. A future reader scanning `gh run list --branch dev` will see the cancellation first; it is not a problem.
 *   **release-please activates on the publication PR, not before.** Its first release PR covers 78 commits. The bootstrap version is `0.1.0`, so the first release lands at **`0.2.0`** (two `feat!` commits, minor-bumped under `bump-minor-pre-major`). Changing that to `1.0.0` is a one-line edit to `.release-please-manifest.json` and is effectively permanent once a tag exists.
 *   **Each release cycle now produces two deploys** — one from the publication PR (real code) and one from the release PR (changelog and version files only). Harmless; it does prove the tagged SHA deploys.
 *   **The ESI-4 pin constrains the courier follow-on.** `/route/{origin}/{destination}` is a hard cutover at compatibility date `2025-09-30`: `GET` with query params below it, **`POST`** with a JSON body, renamed preference values and an object envelope at or above. The old shape returns 404. We now send `2026-07-21`, so **any future `/route/` call must use the POST form.**
@@ -95,7 +95,7 @@ It also retroactively justifies keeping the four permanently-NULL columns (`stat
 
 ## 8. Priority queue
 
-1. **Confirm `dev` CI green** (§5), then open the **`dev` → `main` publication PR**. 78 commits, including two `feat!` serialization changes and the ESI-4 pin. No migrations in the batch, so `alembic upgrade head` is a no-op on deploy.
+1. **Open the `dev` → `main` publication PR.** CI is green at `7153ee7`. 78 commits, including two `feat!` serialization changes and the ESI-4 pin. No migrations in the batch, so `alembic upgrade head` is a no-op on deploy.
 2. **Decide the release-please starting version** before merging its first release PR — `0.2.0` as configured, or `1.0.0` if production-live warrants it. Effectively permanent after.
 3. **Read the user's reply** when it arrives. Q4 decides whether F008's blueprint surface has a validated user.
 4. **Write the F008 implementation plan** via `superpowers-plus:writing-plans-enhanced`, then `plan-review-cycle`. Start from §17 (API contract) and §7.1 (decomposition constraints) — those exist specifically to make the plan writable.
@@ -107,7 +107,7 @@ It also retroactively justifies keeping the four permanently-NULL columns (`stat
 
 > Pick up the Hangar Bay work. Read `docs/superpowers/handoffs/2026-08-02-f008-esi4-release-please-handoff.md` first, then `design/features/F008-Type-Aware-Contract-Browsing.md` — specifically §3.1, §5.1, §5.2 (canonical subsections that must not be restated elsewhere), §7.1 (decomposition constraints), and §17 (the normative API contract).
 >
-> State: `dev` is at `7153ee7`, 78 commits ahead of `main`; production is `7a95118` and untouched. No open PRs. First: confirm `dev` CI is green — #123's run shows `cancelled` because #124's push superseded it via the concurrency group, which is not a failure — then open the `dev` → `main` publication PR. That PR is what activates release-please, whose first release PR will cover all 78 commits at version `0.2.0` unless the manifest is changed to `1.0.0` first.
+> State: `dev` is at `7153ee7` with CI green, 78 commits ahead of `main`; production is `7a95118` and untouched. No open PRs except the handoff itself. First action: open the `dev` → `main` publication PR. (If you scan `gh run list --branch dev`, #123 shows `cancelled` — that is the concurrency group superseded by #124, not a failure; #124's run is the authoritative green one.) That PR is what activates release-please, whose first release PR will cover all 78 commits at version `0.2.0` unless the manifest is changed to `1.0.0` first.
 >
 > Do not re-derive: the F008 taxonomy axis (dogma category/group, decided on the abyssal follow-on), the courier reward-per-jump deferral and everything it inherits (§15.2), or the ESI compatibility date (`2026-07-21`, pinned in both the client and the spec monitor, guarded by a test). Do not restate the canonical subsections — point at them.
 >
