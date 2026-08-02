@@ -35,6 +35,38 @@ export function timeRemaining(dateExpired: string, now: number = Date.now()): st
   return `${Math.max(1, minutes)}m`
 }
 
+// ESI's public-contracts `type` is a closed enum, so every member gets a name.
+// Anything unrecognised keeps the historical "Exchange" reading rather than
+// surfacing a raw wire value.
+const TYPE_LABELS: Record<string, string> = {
+  item_exchange: 'Exchange',
+  auction: 'Auction',
+  courier: 'Courier',
+  loan: 'Loan',
+  unknown: 'Unknown',
+}
+
+/**
+ * Badge text for a contract's type. A courier is a hauling job rather than a
+ * sale — its price is 0 and its money lives in the reward and the collateral —
+ * so labelling it "Exchange" describes the one thing it is not.
+ */
+export function contractTypeLabel(type: string): string {
+  return TYPE_LABELS[type] ?? 'Exchange'
+}
+
+/**
+ * Human label for where a contract starts. ESI does not mark start_location_id
+ * required, so the id fallback has to survive its absence rather than
+ * interpolating a null into the page.
+ */
+export function locationLabel(contract: Contract): string {
+  if (contract.start_location_name) return contract.start_location_name
+  return contract.start_location_id != null
+    ? `Location ${contract.start_location_id}`
+    : 'Unknown location'
+}
+
 /**
  * Row/heading label. The hull is the headline on a ship marketplace: prefer
  * the included SHIP item (ingestion marks category === 'ship') over whatever

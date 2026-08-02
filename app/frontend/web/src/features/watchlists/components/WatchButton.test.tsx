@@ -4,15 +4,16 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { anonymousMe, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
+import { daysFromNow } from '../../../test/dates'
 
 const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
 const CONTRACT = {
   contract_id: 101, issuer_id: 1, issuer_corporation_id: 101, start_location_id: 60003760,
-  type: 'item_exchange', status: 'unknown', title: 'Rifter for sale', for_corporation: false,
-  date_issued: '2026-07-01T00:00:00Z', date_expired: '2030-07-08T00:00:00Z', date_completed: null,
+  type: 'item_exchange', title: 'Rifter for sale', for_corporation: false,
+  date_issued: '2026-07-01T00:00:00Z', date_expired: daysFromNow(7),
   price: 1000000, reward: 0, volume: 27, start_location_name: 'Jita IV - Moon 4', issuer_name: 'Sesta Hound',
   issuer_corporation_name: 'COB', is_ship_contract: true,
-  items: [{ record_id: 1011, type_id: 587, quantity: 1, is_included: true, is_singleton: false, is_blueprint_copy: false, raw_quantity: null, type_name: 'Rifter', category: 'ship', market_group_id: 61 }],
+  items: [{ record_id: 1011, type_id: 587, quantity: 1, is_included: true, is_blueprint_copy: false, type_name: 'Rifter', category: 'ship', market_group_id: 61 }],
 }
 
 interface Call { url: string; method?: string; body?: string }

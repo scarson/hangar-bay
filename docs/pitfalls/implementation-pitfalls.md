@@ -26,11 +26,11 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 | § | Section | You're working on... | Entries | Checklist |
 |---|---------|---------------------|---------|-----------|
-| 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, PROXY-1 | §1.C |
-| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2 | §2.C |
-| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8 | §3.C |
-| 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, upstream status | ESI-1 | §4.C |
-| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3 | §5.C |
+| 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, FASTAPI-3, PROXY-1 | §1.C |
+| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3 | §2.C |
+| 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8, ENV-9, ENV-10 | §3.C |
+| 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status, spec drift | ESI-1, ESI-2, ESI-3, ESI-4 | §4.C |
+| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -76,11 +76,24 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### FASTAPI-3: A response schema stricter than its own column 500s the whole page
+
+**The Flaw:** A Pydantic response field declared non-optional (`start_location_id: int`) sitting over a model column declared `nullable=True`. Nothing rejects the row on the way in; the mismatch fires only when a NULL actually reaches serialization.
+
+**Why It Matters:** The blast radius is the *page*, not the row. `PaginatedResponse` validates every item, so one NULL-bearing contract raises `ValidationError` inside the endpoint and returns 500 for a page that also held 49 perfectly good rows — and the same row 500s its detail endpoint. It stays invisible until real data supplies the NULL, which for an upstream-optional field can be long after the code ships.
+
+**The Fix:** Read optionality as a three-link chain and check all of it whenever you touch any link: upstream `required` array → model `nullable=` → response schema `Optional[...]`. Each link MUST be at least as permissive as the one above it. Where a field is genuinely required for the UI to make sense, enforce it at INGESTION (reject or default the row) rather than at serialization, where the failure lands on a reader who did nothing wrong.
+
+**Where It Bit Us:** `ContractSchema.start_location_id` was a bare `int` over a nullable column fed by an ESI field absent from the public-contracts `required` array (2026-08-01). Pinned by `test_serializes_a_contract_esi_sent_without_a_start_location`, which 500s on the pre-fix schema. Pairs with ESI-3 and testing-pitfalls TEST-18.
+
+---
+
 ### §1.C — Review Checklist
 
 - [ ] **Query-param models use `Annotated[Model, Query()]`, not `Depends(Model)`** — confirm non-scalar fields (e.g. `List[int]`) bind to query params, not the GET body (FASTAPI-1)
 - [ ] **Every filter param the schema accepts is actually applied by the service layer** — known-inert params are explicitly marked in the schema description (FASTAPI-2)
 - [ ] **Clients call schema paths verbatim, including trailing slashes** — the openapi-fetch `baseUrl` owns the `/api/v1` prefix; no bare-path request 307-escapes the proxy (PROXY-1)
+- [ ] **Response-schema optionality is at least as permissive as the column, which is at least as permissive as the upstream `required` array** — a stricter response field 500s the entire page a NULL lands on, not just its row (FASTAPI-3)
 
 ---
 
@@ -114,9 +127,34 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### SQLA-3: A per-row predicate over a one-to-many join cannot classify the parent
+
+**The Flaw:** A filter that classifies a PARENT entity ("is this a blueprint-copy contract?") applied as a predicate on a JOINED CHILD row. The join emits one row per child, so the predicate answers a question about *an item*, not *the contract*. Both a condition and its apparent negation are then satisfiable by the same parent — a contract bundling a copy with an ordinary item has one item matching each — so the two branches OVERLAP instead of partitioning.
+
+**Why It Matters:** The failure is quiet and only visible on mixed children. Single-item contracts behave perfectly, which is most fixture data and most casual testing. At scale the same contract appears under `is_bpc=true` AND `is_bpc=false`, the two totals sum to more than the corpus, and a user paging both filters sees duplicates with no error anywhere. A test built on single-item fixtures cannot detect it.
+
+**The Fix:** Express parent-level classification as a **correlated EXISTS over the children**, and derive the negative branch by negating that same expression rather than writing a second predicate:
+
+```python
+has_copy = (
+    select(ContractItem.record_id)
+    .where(ContractItem.contract_id == Contract.contract_id,
+           ContractItem.is_blueprint_copy.is_(True))
+    .correlate(Contract).exists()
+)
+query = query.filter(has_copy if filters.is_bpc else ~has_copy)
+```
+
+One expression negated makes the branches exact complements *by construction*, instead of two hand-written predicates that must be kept in agreement. It also drops the join for that filter entirely, so the SQLA-1 pagination hazard does not arise. Test it with a parent holding BOTH kinds of child and assert the two branch totals sum to the unfiltered total — a single-child fixture passes either way.
+
+**Where It Bit Us:** `is_bpc` (2026-08-01). A first fix corrected the NULL half (ESI-3) but kept the per-item form, so a contract bundling a BPC with a hull matched both filter values; caught in adversarial review of PR #98 before merge and re-fixed as a contract-level EXISTS. Pairs with SQLA-1 (both are "the join changed what the query is about") and testing-pitfalls TEST-19.
+
+---
+
 ### §2.C — Review Checklist
 
 - [ ] **Pagination over a one-to-many join paginates distinct parent IDs, not duplicated joined rows** — grouped subquery with aggregate-based ordering; page entities re-loaded and restored to the ID order (SQLA-1)
+- [ ] **Parent-level classification uses a correlated EXISTS, not a predicate on a joined child row** — the negative branch negates the same expression, and a mixed-child fixture proves the branches are complements (SQLA-3)
 - [ ] **`ON CONFLICT` against a partial unique index restates the index predicate** — `index_where=` matches the index's `WHERE`, and every indexed column is non-NULL on insert (Postgres NULLs never conflict) (SQLA-2)
 
 ---
@@ -209,9 +247,33 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 **Why It Matters:** The failure is silent and looks like an auth problem, not a file-location problem: the MCP answers `unauthorized`, `$RENDER_API_KEY` is empty in every Bash shell, and nothing points at the main checkout. It cost the M4 execution session its entire Phase 0 spike (2026-07-19).
 
-**The Fix:** For the MCP: launch Claude Code from a shell that exported the env first (e.g. `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` before `claude`). For curl/CLI use from ANY worktree: source the main checkout's file inside each Bash invocation that needs it (shell state does not persist across tool calls) — `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` — then reference `$RENDER_API_KEY`. NEVER cat/echo/print the file or the variable, never copy it into a worktree, never commit it.
+**The Fix:** For the MCP: launch Claude Code from a shell that exported the env first (e.g. `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` before `claude`). For curl/CLI use from ANY worktree: source the main checkout's file inside each Bash invocation that needs it (shell state does not persist across tool calls) — `set -a; . /Users/sam/Code/hangar-bay/.env; set +a` — then reference `$RENDER_API_KEY`. NEVER cat/echo/print the file or the variable, never copy it into a worktree, never commit it. **The 1Password-managed file can also transiently EMPTY mid-session and later repopulate** (observed 2026-07-27: a var that sourced fine minutes earlier came back length 0, then recovered): before concluding a key is gone, inspect names and value lengths only — `awk -F= '/^[A-Z]/ {print $1, length(substr($0, index($0,"=")+1))}' .env` — and retry after a minute.
 
 **Where It Bit Us:** M4 execution session (2026-07-18/19): the Phase 0 Render spike was blocked all session and substituted with a docs-based verification (plan Deviation D-1) because the session ran from a worktree with no launch-time export.
+
+---
+
+### ENV-9: Postgres 18 moved PGDATA — a volume at `/var/lib/postgresql/data` blocks startup
+
+**The Flaw:** Postgres 18 images store data in a major-version-specific subdirectory (`PGDATA=/var/lib/postgresql/18/docker`) and expect a single volume mounted one level up, at `/var/lib/postgresql`. The pre-18 convention — mounting at `/var/lib/postgresql/data` — is now actively rejected: the entrypoint treats a volume at that path as un-upgraded data from an older major and **refuses to start**, even when the volume is completely empty. Bumping the image pin without moving the mount is therefore a breaking change, not a version bump.
+
+**Why It Matters:** Two distinct failures, and the second is the dangerous one. First, the container crash-loops with an error that reads like a data-migration problem ("this is usually the result of upgrading the Docker image without upgrading the underlying database"), sending you toward `pg_upgrade` when the actual fix is a one-line mount path. Second — and silently — if the container *did* start, the image's own `VOLUME /var/lib/postgresql` declaration means PGDATA lands in an **anonymous** volume while your named volume sits unused at the old path: data would not persist across `docker compose down`, and nothing would say so. The named-volume mount looks correct in `compose.yml` the whole time.
+
+**The Fix:** Mount the parent: `- postgres_data:/var/lib/postgresql`. Verify with `docker inspect <container> --format '{{range .Mounts}}{{.Name}} -> {{.Destination}}{{"\n"}}{{end}}'` — the named volume must be the mount at `/var/lib/postgresql`, and `docker exec <container> sh -c 'echo $PGDATA; ls /var/lib/postgresql'` should show the major-version directory inside it. Existing data from an older major cannot be carried across by remounting; it needs `pg_upgrade` or, for disposable dev data, recreation (ENV-2 means the dev database is rebuilt on every backend start anyway).
+
+**Where It Bit Us:** `7dce47f build(deploy): unify postgres at 18` changed the dev compose pin from `postgres:16-alpine` to `postgres:18-alpine` without moving the mount. It went unnoticed because CI runs Postgres as an ephemeral GitHub Actions service container with no volume mount at all, so CI stayed green while local dev was broken for anyone who recreated the volume. It surfaced on 2026-08-01 when the crash-looping container blocked local backend tests for a whole multi-agent session; the pre-existing volume also held PG 16 data, which masked the mount bug behind a genuine major-version mismatch.
+
+---
+
+### ENV-10: A container created from a worktree dies when that worktree is removed
+
+**The Flaw:** `docker compose up` resolves relative bind-mount paths against the compose file's directory, so a container started from `.claude/worktrees/<slug>/app/backend/docker/` records **absolute** host paths into that worktree. Reclaiming the worktree after its PR merges — the normal, encouraged end of the workflow (see `docs/git-strategy.md`) — deletes the mount sources out from under a container that is still registered and still set to `restart: unless-stopped`.
+
+**Why It Matters:** The container does not fail where you would look for it. It exits **127**, which reads as "command not found" and sends you hunting for a broken image or entrypoint; the real message is buried in `docker inspect`'s `.State.Error`, naming a path that no longer exists. Worse, the failure is deferred: the container runs fine for days or weeks and only dies at the next restart — the Docker daemon restarting, a Colima stop/start, a machine reboot — long after the worktree removal that caused it, so the two events are never associated. If the mount was a **gitignored credential file** (ENV-8), removing the worktree also destroyed the only copy, and recreating the container is blocked until it is regenerated from 1Password.
+
+**The Fix:** Start long-lived dependency containers from the **main checkout**, never from a worktree — `docker compose -f /Users/sam/Code/hangar-bay/app/backend/docker/compose.yml ... up -d`. Before reclaiming a worktree, check nothing is bound to it: `docker ps -a --format '{{.Names}}' | xargs -I{} sh -c 'docker inspect {} --format "{{{{.Name}}}} {{{{range .Mounts}}}}{{{{.Source}}}} {{{{end}}}}"' | grep worktrees`. When you meet an exit-127 container, read `docker inspect <name> --format '{{.State.Error}}'` before anything else — it distinguishes a missing mount source from a genuinely missing binary.
+
+**Where It Bit Us:** The `alloy` telemetry container was created from `.claude/worktrees/grafana-cloud-migration-5a5464/` during the Grafana Cloud migration (2026-07-19). The worktree was reclaimed when that work merged; alloy kept running until its next restart, then exited 127 and stayed dead for ~11 days unnoticed, silently ending local telemetry shipping. Discovered 2026-08-01. Recovery is blocked on regenerating `app/backend/docker/grafana-cloud.env` in the main checkout, since that gitignored file existed only inside the deleted worktree.
 
 ---
 
@@ -225,6 +287,8 @@ This document serves three audiences. Start here, then go directly to the sectio
 - [ ] **Deleting a debug print/function also drops any module-level import it orphaned** — flake8 ignores F401 here so it won't catch it, but F811 will trip on an unrelated function (ENV-6)
 - [ ] **No repo-wide `pdm run format`** — the codebase is not black-formatted; format new files individually with `.venv/bin/black <file>` (ENV-7)
 - [ ] **Sessions needing platform credentials source the MAIN checkout's root `.env` per Bash call (worktrees lack it), and MCP servers with `${VAR}` config get the export at launch** — never print or copy the values (ENV-8)
+- [ ] **A Postgres major-version bump moves the volume mount too — 18+ mounts at `/var/lib/postgresql`, not `/var/lib/postgresql/data`** (ENV-9)
+- [ ] **Long-lived dependency containers are started from the MAIN checkout, and nothing is bind-mounted to a worktree before that worktree is reclaimed** (ENV-10)
 
 ---
 
@@ -250,11 +314,68 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 **Where It Stands:** The backend already complies — every data route pins `/v1`/`/v3` and JWTs are validated offline, so Hangar Bay was unaffected by the 24 March 2026 removals. The lone `/latest` usage, the `generate-regions.mjs` build script, was pinned to `/v1`. References: "Spring Cleaning: legacy routes removed 24 March 2026" (https://developers.eveonline.com/blog/spring-cleaning-legacy-routes-removed-24-march-2026) and "A better view on status: improving ESI health monitoring" (https://developers.eveonline.com/blog/a-better-view-on-status-improving-esi-health-monitoring).
 
+### ESI-2: `Expires` is being deprecated; read `Cache-Control` for cache lifetimes
+
+**The Flaw:** ESI is converting routes from time-based expiry to **event-driven invalidation**. On a converted route the cache no longer turns over on a clock, so `Expires` "is no longer meaningful" — it is still emitted, but only for backward compatibility. Code that derives a cache TTL or a poll schedule from `Expires` keeps parsing a header that has quietly stopped describing anything.
+
+**Why It Matters:** This fails silently and asymmetrically. Nothing errors; a wrong-but-plausible number comes out. Too long and we sit on a stale generation past the moment it changed; too short and we re-request needlessly, burning the error budget the 420 limiter meters. Worse, the failure arrives on **CCP's** schedule rather than ours — a route we already consume can convert between deploys, with no change on our side.
+
+**The Fix:**
+*   Prefer `Cache-Control: max-age` when the response states one; fall back to `Expires` only when it does not. This is both RFC 9111's precedence rule and ESI's stated direction.
+*   Subtract `Age` from `max-age` — `max-age` is the response's total lifetime, not its remaining one, and ESI serves these through a shared cache that can hand over a response most of the way through it.
+*   Treat an invalid `max-age` (unparseable, valueless, negative) as *absent* rather than as zero, so it falls back instead of collapsing the TTL.
+*   `no-store` means do not store. `no-cache` does **not** — it requires revalidation before reuse, which a conditional-request cache already does; dropping storage for it forfeits the 304 savings for nothing.
+*   Do not hard-code a TTL from a measured sample. The observed 1800 s on public contracts is one generation of one route, and the swagger documents up to 3600 s.
+
+**Where It Bit Us:** Not yet, and the live headers say why (probed 2026-08-01). The routes Hangar Bay consumes have **not** converted: `/v1/contracts/public/{region}/`, `/v3/universe/types/{id}/` and `/v1/universe/groups/{id}/` all send a bare `Cache-Control: public` carrying no lifetime at all, alongside a real `Expires`. So `Expires` is still authoritative there and their TTLs are unchanged. `/v1/sovereignty/map/` shows the shape we are heading for — `cache-control: public, max-age=3600, must-revalidate, stale-if-error=900`, with `Expires` merely restating `Date + max-age`. `core/esi_client_class.py` (`_cache_ttl_seconds`) now reads Cache-Control first and falls back to Expires, so the conversion is a no-op for us whenever it lands. Reference: "Smarter caching: when events drive invalidation" (https://developers.eveonline.com/blog/smarter-caching-when-events-drive-invalidation), 2026-01-27, which converted `/characters/{id}/skills` and `/characters/{id}/skillqueue` first and states more routes follow "over the next few months".
+
+> **Design consequence, unresolved:** the ingestion clean-sheet design (`docs/audits/m5-recon/ingestion-clean-sheet-design.md`) schedules discovery at each region's `Expires + ε`. That rests entirely on `Expires` staying meaningful on `/v1/contracts/public/{region}/`. It does today — that route is unconverted and regenerates lazily on a 1800 s cycle — but a conversion would remove the signal the scheduler is built on, not merely change its value. Re-check the live headers before implementing `Expires`-driven scheduling, and prefer deriving the poll instant from whichever header actually carries the lifetime.
+
+---
+
+### ESI-3: ESI omits fields instead of sending falsy values, so `== False` and range filters match nothing
+
+**The Flaw:** ESI's public routes express "no" by *leaving the key out*, not by sending `false`/`0`. `is_blueprint_copy` arrives `true` on copies and is absent on everything else — it is never `false`. `for_corporation` is likewise present-and-`true` or absent. A `.get()` mapping therefore writes True-or-NULL into a nullable column, and the natural filter `column == False` matches **zero rows**, because SQL `NULL = FALSE` is NULL, not TRUE. The same shape hides a second trap: the PUBLIC and AUTHENTICATED contract-item routes are near mirror images, so a field copied from the wrong one is silently always-NULL.
+
+**Why It Matters:** Both failures are *silent and total*. The filter returns HTTP 200 with an empty list, which reads as "no contracts match" rather than "this control is broken"; every layer above (schema, generated client, UI control) looks healthy. A filter reading an always-NULL column is worse still — it has no working branch at all, and a fixture that populates the column by hand makes the test suite agree that it works (testing-pitfalls TEST-18).
+
+**The Fix:**
+* Treat a nullable column fed by an optional ESI field as **tri-state**, and decide explicitly what NULL means. For a present-when-true flag, NULL means false — so `col == False` is always wrong. Note that `or_(col.is_(False), col.is_(None))` fixes only the NULL half; when the flag classifies a PARENT entity across a one-to-many join, that per-row form is still wrong for a second reason, and SQLA-3 gives the correct shape.
+* Before filtering on any ingested column, confirm the route you actually call populates it. The public item route (`/v1/contracts/public/items/{id}/`) carries `is_blueprint_copy`, `runs`, `material_efficiency`, `time_efficiency`. The authenticated character/corporation item routes carry `raw_quantity` and `is_singleton` and **not** those four. `raw_quantity`'s documented `-1`/`-2` blueprint markers therefore do not exist on any data Hangar Bay ingests. Four such columns are kept on purpose — `contracts.status`, `contracts.date_completed`, `contract_items.is_singleton`, `contract_items.raw_quantity`: the authenticated routes populate all four, so **keep the column, and refuse to read it** until the writer that fills it exists. Each carries a model-level comment saying so; `docs/superpowers/specs/2026-08-01-contract-coverage-gap-analysis.md` §4.2 ("Keep them, don't drop them") records why dropping them was approved and then reversed.
+* Verify against the retrieved spec plus a live sample, not from memory — the spec's prose is unreliable here (`collateral` is documented "for Couriers only" yet is present on every item_exchange contract, and `runs`'s documented `-1` for originals never occurs publicly; originals simply omit the field).
+
+**Where It Bit Us:** `is_bpc=false` returned `total: 0` in production for the entire life of the filter (fixed 2026-08-01: `contract_service._has_blueprint_copy_item`, applied in `_apply_contract_filters`). The neighbouring `min_runs`/`max_runs` filter reads `ContractItem.raw_quantity`, a column no public payload can ever populate, and is inert for the same family of reasons. Verified against `https://esi.evetech.net/meta/openapi.json` and a live sample of 7,292 contracts / 1,658 item rows: `is_blueprint_copy` was `true` 1,396 times and absent 262 times — never once `false`.
+
+### ESI-4: Omitting `X-Compatibility-Date` pins the client to the OLDEST published date
+
+**The Flaw:** ESI replaced route versioning with a date header. A request that omits `X-Compatibility-Date` is not served "the current shape" — it is served the **oldest** date ESI still publishes, today `2020-01-01`. Hangar Bay sends no such header, so every call the `ESIClient` makes is answered from a five-year-old contract, chosen for us by default rather than by decision. CCP can raise that floor with notice, and the day they do, our routes change shape with no commit on our side.
+
+**Why It Matters:** It is an unmanaged, invisible dependency in the exact shape of the traps this section already catalogues — nothing in the codebase names the date, nothing fails when it moves, and the effect lands at ingestion where a missing field becomes a NULL column rather than an error (ESI-3). It also silently withholds routes: `/meta/status`, which ESI-1 tells us to use for upstream health, **does not exist at `2020-01-01`**. It first appears at a later compatibility date, so adopting it requires sending the header, not just changing a URL. The same date range removes `/sovereignty/map` and renames `/route/{origin}/{destination}` — proof that the date dimension moves real routes, not just field descriptions.
+
+**The Fix:**
+*   **Send the header.** `Settings.ESI_COMPATIBILITY_DATE` is the one place the date is named, and `ESIClient.default_headers()` puts it on every request. Bumping it changes the shape of every ESI response, so treat a bump as its own reviewed change and read the monitor's diff first — never as a rider on unrelated work.
+*   **Keep the sender and the watcher in lockstep.** The monitor duplicates the date as `PINNED_COMPATIBILITY_DATE` in `tools/esi_spec_monitor/monitor.py`, because that tool is standard-library only by design and cannot import `Settings`. `tests/core/test_esi_compatibility_date.py` fails if the two disagree. **A monitor watching a date the application does not request reports a safety it cannot see, which is worse than no monitor** — that test is the only thing preventing it, so do not weaken it to make a bump easier.
+*   Treat the served date as a tracked value, not an accident. `app/backend/tools/esi_spec_monitor/` fetches `https://esi.evetech.net/meta/openapi.json` on a schedule, projects it down to the routes and fields we consume, and diffs that projection against a committed snapshot. The snapshot records the shape at the date we send and the shape at the newest published date, so "what changes if we adopt a newer date" is answerable without a spike — and a newly published date shows up as a diff in the newest view. Run it locally with `pdm run esi-spec-monitor` from `app/backend`; `--update` rewrites the snapshot, and that update belongs in a PR with a reason, like a lockfile bump.
+*   Before adopting a route that is absent from the spec you are reading, check `https://esi.evetech.net/meta/compatibility-dates` and re-fetch the spec with the header set. An "ESI does not have that route" conclusion drawn from a header-less fetch is a conclusion about 2020, not about ESI.
+*   Diff the **shape**, never the prose. The spec's `description` strings are unreliable (ESI-3: `collateral` is documented "for Couriers only" but ships on every item_exchange contract; `runs`'s documented `-1` for originals never occurs). The machine-readable `properties`, `required`, `security` and `x-server-cache-mode` fields have been accurate every time we have checked them against live payloads.
+*   Diff a **projection**, not the whole document. The spec is 182 paths and churns constantly in areas we never call; a whole-spec diff produces noise, noise gets ignored, and an ignored monitor rots. The manifest at `tools/esi_spec_monitor/manifest.py` names the nine operations we consume and the fields each one feeds, so a failure can say which function breaks.
+
+**Where It Stands:** **Resolved.** Hangar Bay sends `X-Compatibility-Date: 2026-07-21`, the newest published date, chosen deliberately rather than inherited. Nothing broke in the move: every route we consume was byte-identical from the old `2020-01-01` floor through `2026-07-21`, and all nine are unauthenticated. The pin unblocks `/meta/status`, which does not exist at the old floor and which ESI-1 wants for upstream health. One consequence to carry forward: `/route/{origin}/{destination}` is a hard cutover at `2025-09-30` — `GET` with query parameters below it, `POST` with a JSON body, renamed preference values and an object envelope at or above it, with the old shape returning 404. Any future work that calls `/route/` must use the POST form. The monitor exists so that the *next* date question does not require a spike. It replaces a set of VCR cassettes that were deleted in PR #110 — they had been intended to catch this class of drift and could not, because they recorded our own app talking to itself (testing-pitfalls TEST-14) and because a live sample can only reveal drift the sample happens to contain.
+
 ### §4.C — Review Checklist
 
 - [ ] **Every ESI request names an explicit version prefix** (`/v1`, `/v3`, …), not `/latest` (ESI-1)
 - [ ] **Upstream status checks target `/meta/status`, not the removed `/status.json`** (ESI-1)
 - [ ] **SSO JWT validation is offline against JWKS, not a `/verify` round-trip** (ESI-1)
+- [ ] **Cache lifetimes read `Cache-Control: max-age` first (less `Age`), with `Expires` only as fallback** (ESI-2)
+- [ ] **No cache TTL or poll interval is hard-coded from a measured sample** (ESI-2)
+- [ ] **Any new `Expires`-derived scheduling is checked against the live headers for that route first** (ESI-2)
+- [ ] **Filters over ESI-fed nullable columns treat NULL explicitly** — a present-when-true flag is never sent as false, so `col == False` matches zero rows (ESI-3)
+- [ ] **Every filtered column is actually populated by the route ingestion calls** — the public and authenticated contract-item routes carry disjoint field sets; `raw_quantity` is authenticated-only (ESI-3)
+- [ ] **No response field is served that the ingesting route cannot populate** — a wire field that is always NULL or always a placeholder publishes information the corpus does not have, and every client that reads it inherits the lie. Drop it from the response schema; keep the COLUMN when a known future ingestion path would fill it (ESI-3)
+- [ ] **A new or changed ESI dependency is added to `tools/esi_spec_monitor/manifest.py` in the same PR** — an endpoint or field outside the manifest is outside the drift monitor's lens (ESI-4)
+- [ ] **A conclusion about what ESI does or does not offer is drawn from a spec fetched with an explicit `X-Compatibility-Date`** — a header-less fetch answers for the oldest published date, currently 2020-01-01 (ESI-4)
+- [ ] **A snapshot update in `tools/esi_spec_monitor/snapshot.json` comes with a stated reason** — it is a lockfile-shaped artifact; re-generating it to silence a red run defeats the monitor (ESI-4)
 
 ---
 
@@ -300,11 +421,24 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 ---
 
+### DEPLOY-4: Pre-deploy migrations collide with in-flight ingestion; redeploy via the CD workflow, not a new commit
+
+**The Flaw:** Migrations run as Render's pre-deploy command while the outgoing instance may hold a long ingestion transaction on `contracts`. A deploy triggered mid-run fails `pre_deploy_failed` ~38s after `pre_deploy_started` — the migration's `SET lock_timeout = '30s'` firing plus overhead — and the deploy aborts with the old code still serving.
+
+**Why It Matters:** The failure looks alarming (a failed production deploy with `nonZeroExit: 1`) but is the *designed* outcome; the wrong responses are re-merging, reverting, or debugging the migration. The right response is pure timing. Conversely, a deploy that must not wait for a human needs a redeploy path that doesn't mint a new commit.
+
+**The Fix:** Time deploys into the post-run idle window: poll `/ready` and treat a fresh `last_ingest_age_seconds` (< ~10 min) as the window opening. To redeploy the SAME commit (retry or rollback), use the CD workflow's dispatch input — `gh workflow run deploy.yml --ref main -f sha=<full-sha>` — production deploys are triggered by `.github/workflows/deploy.yml` calling the Render API, not by Render autoDeploy. The ~38s failure signature distinguishes lock collision from a real migration bug (which fails in seconds or with a stack trace in the pre-deploy logs). Note the ingestion run can also lose: a deadlock may pick the run as victim, which is acceptable — it retries next tick.
+
+**Where It Bit Us:** Release PR #95 (2026-07-27): merged mid-run, `pre_deploy_failed` at 08:05:39Z (38s signature); the identical migrations applied cleanly on the idle-window redeploy at 08:26Z — confirming the mechanism empirically.
+
+---
+
 ### §5.C — Review Checklist
 
 - [ ] **`DATABASE_URL` reaches the engine driver-qualified** — the Settings validator normalizes `postgresql://`; no code assumes the platform sends `+asyncpg` (DEPLOY-1)
 - [ ] **Every production launch command pins `--workers 1`** — scaling proposals split the scheduler out instead of raising the worker count (DEPLOY-2)
 - [ ] **Nothing the app must retain lives in the evicting Valkey** — job stores and other silent-loss durable state stay out of `allkeys-lru` instances; every cross-run lock TTL derives from that job's own interval plus a margin (never equal to the interval, never a standalone constant) and is pinned by a test that reconfigures the interval and asserts the TTL follows (DEPLOY-3)
+- [ ] **Deploys are timed into the post-ingestion idle window, and same-commit redeploys go through the CD workflow's `workflow_dispatch` `sha` input** — a `pre_deploy_failed` ~38s in is the lock_timeout collision signature, not a migration bug (DEPLOY-4)
 
 ---
 
@@ -331,6 +465,50 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 ---
 
 # Appendix A: Historical Changelog
+
+## 2026-08-01 — ESI-3's response-schema rule applied at the item level
+
+- No new entry. `ContractItemSchema` still served `is_singleton` and `raw_quantity` after the contract-level pair (`status`, `date_completed`) was removed — the same always-empty wire fields one level down, violating the §4.C checklist bullet sitting beside them. Both are gone from the response schema; the columns and their model-level comments stay, per the keep-the-column-refuse-to-read-it decision in the ESI-3 fix.
+- Nothing read either field: no frontend component, only four unit-test mocks and the e2e wire fixture, all moved with the wire shape. `min_runs`/`max_runs` still filter on `ContractItem.raw_quantity` — a query concern, unaffected — so `test_filter_by_bpc_runs` now asserts the matched contract rather than a field the response no longer carries.
+
+## 2026-08-01 — ENV-10 added: containers bind-mounted to reclaimed worktrees
+
+- Added ENV-10. The `alloy` telemetry container was created from the `grafana-cloud-migration-5a5464` worktree; reclaiming that worktree removed its bind-mount sources, and alloy exited 127 at its next restart and stayed dead ~11 days unnoticed. Exit 127 reads as "command not found"; the real cause is only in `docker inspect`'s `.State.Error`. Recovery is blocked on regenerating the gitignored `grafana-cloud.env` in the main checkout (ENV-8).
+
+## 2026-08-01 — ENV-9 added: Postgres 18 volume mount path
+
+- Added ENV-9. `7dce47f` bumped the dev compose pin from `postgres:16-alpine` to `postgres:18-alpine` without moving the volume mount; Postgres 18 stores data at `PGDATA=/var/lib/postgresql/18/docker` and refuses to start when a volume is mounted at the pre-18 `/var/lib/postgresql/data`, even an empty one. `compose.dependencies.yml` now mounts the parent. CI was unaffected throughout (ephemeral service container, no volume), which is why it stayed green while local dev was broken.
+
+## 2026-08-01 — ESI-4 added: the compatibility-date floor, and a monitor for spec drift
+
+- Added ESI-4. Building a drift monitor surfaced that omitting `X-Compatibility-Date` is not "no opinion" — it pins the client to the OLDEST published date (`2020-01-01`), a floor CCP can raise with notice. It also explains a puzzle in ESI-1: `/meta/status` is absent from a header-less spec fetch and appears only at a later date, so adopting it needs the header, not just the URL.
+- Landed `app/backend/tools/esi_spec_monitor/` — a manifest of the nine operations we consume, a projection of the published spec down to those, a committed snapshot, and a daily GitHub Actions job that diffs them and files a self-closing issue. The comparison logic carries 35 unit tests against constructed fixture specs, mutation-verified.
+- Deliberately NOT a live-ESI test lane. The VCR cassettes deleted in PR #110 were the previous attempt at this and failed twice over (testing-pitfalls TEST-14); beyond that, detecting a spec lie live requires the sample to contain the case, which is inherently flaky, and flaky monitors get muted.
+- The monitor's manifest records five fields our ingestion reads that no public ESI route documents: `status` and `date_completed` on contracts, `raw_quantity` and `is_singleton` on contract items (`runs` remains unimplemented). Recorded as known-absent rather than fixed — see the ESI-3 note above on `raw_quantity`.
+
+## 2026-08-01 — SQLA-3 added; ESI-3's prescribed fix corrected
+
+- Added SQLA-3 (a per-row predicate over a one-to-many join classifies the CHILD, not the parent, so a condition and its negation can both match the same parent). Found by adversarial review of PR #98: the first `is_bpc=false` fix corrected the NULL half but kept the per-item form, so a contract bundling a BPC with a hull matched `is_bpc=true` AND `is_bpc=false`. Re-fixed as a correlated EXISTS negated for the false branch, which also removes the filter's join and with it the SQLA-1 pagination hazard.
+- Corrected ESI-3's prescribed fix: it recommended `or_(col.is_(False), col.is_(None))`, which repairs only the NULL half and is still wrong for a parent-classifying flag. It now points at SQLA-3 for that case.
+- Added testing-pitfalls TEST-19 (single-child fixtures cannot detect parent-vs-child predicate errors).
+
+## 2026-08-01 — ESI-2 added: `Expires` deprecated by event-driven invalidation
+
+- Added ESI-2 from CCP's 2026-01-27 caching dev blog: on converted routes `Expires` survives only for backward compatibility and `Cache-Control` is authoritative. `_cache_ttl_seconds` in `core/esi_client_class.py` now reads `max-age` (less `Age`) first and falls back to `Expires`, with `no-store` suppressing storage and `no-cache` deliberately not doing so.
+- Live header probe (2026-08-01) recorded in the entry: none of the routes we consume have converted — they send a bare `Cache-Control: public` with no lifetime — so the change is a no-op today and arms us for the conversion. `/v1/sovereignty/map/` already shows the post-conversion shape.
+- Flagged the consequence for the ingestion clean-sheet design, whose per-region discovery scheduling is built on `Expires` for `/v1/contracts/public/{region}/`.
+
+## 2026-08-01 — ESI-3 and FASTAPI-3 added: optional-field shapes and over-strict response schemas
+
+- Added ESI-3 (ESI omits fields instead of sending falsy values, so `col == False` matches zero rows; and the public vs authenticated contract-item routes carry disjoint field sets) after `is_bpc=false` was found returning `total: 0` in production for the whole life of the filter. Fixed in `services/contract_service.py`; verified against the retrieved `meta/openapi.json` plus a live sample of 7,292 contracts / 1,658 item rows in which `is_blueprint_copy` was never once `false`. Numbered ESI-3 because ESI-2 was concurrently taken by the Cache-Control migration (PR #101).
+- Added FASTAPI-3 (a response field stricter than its own nullable column 500s the entire page, not just the row) from `ContractSchema.start_location_id`, a bare `int` over a nullable column fed by an ESI field that is not in the public-contracts `required` array.
+- Recorded the same root cause on the verification side as testing-pitfalls TEST-18 (fixtures that write columns ingestion never writes). The absolute-future-date trap found alongside it was already recorded on dev as TEST-17, so it is not duplicated here.
+- Grepped for further instances of the ESI-3 shape: `min_runs`/`max_runs` read `ContractItem.raw_quantity`, which no public ESI payload can populate — left inert and reported rather than fixed, since populating it needs the `runs` field ingested (schema + migration).
+
+## 2026-07-27 — DEPLOY-4 added; ENV-8 extended with the transient-empty .env mode
+
+- Added DEPLOY-4 (pre-deploy migration vs in-flight ingestion collision; the ~38s `pre_deploy_failed` signature; same-commit redeploy via the CD workflow's `workflow_dispatch` `sha` input) from the PR #95 release: first attempt failed exactly as designed, idle-window redeploy applied the same migrations cleanly.
+- Extended ENV-8: the 1Password-managed root `.env` can transiently empty mid-session and repopulate — check names/value-lengths (never values) before concluding a credential is gone.
 
 ## 2026-07-26 — DEPLOY-3 added: jobstore keys evicted by the allkeys-lru Valkey
 
@@ -386,9 +564,11 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 |----|-------|----------|--------|--------|
 | FASTAPI-1 | `Depends(Model)` sends list fields to the GET body | HIGH | VALIDATED | API & Request Binding |
 | FASTAPI-2 | Declared-but-unimplemented filter params ship dead controls | MEDIUM | UNIMPLEMENTED | API & Request Binding |
+| FASTAPI-3 | Response schema stricter than its column 500s the whole page | HIGH | VALIDATED | API & Request Binding |
 | PROXY-1 | Trailing-slash 307 escapes a prefix-rewriting proxy | MEDIUM | VALIDATED | API & Request Binding |
 | SQLA-1 | Paginating a joined query paginates joined rows | HIGH | VALIDATED | Data & Persistence |
 | SQLA-2 | ON CONFLICT vs a partial unique index needs index_where | HIGH | VALIDATED | Data & Persistence |
+| SQLA-3 | A per-row predicate over a one-to-many join cannot classify the parent | HIGH | VALIDATED | Data & Persistence |
 | ENV-1 | pydantic-settings JSON-decodes complex env fields early | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-2 | Backend restart wipes and re-ingests all data | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-3 | --reload + ingestion + Valkey lock interact badly in dev | MEDIUM | VALIDATED | Environment & Dev Loop |
@@ -397,10 +577,16 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | ENV-6 | F811 cascade when removing debug prints/functions | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-7 | `pdm run format` is repo-wide black on a non-black codebase | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-8 | Gitignored credential files exist only in the main checkout | MEDIUM | VALIDATED | Environment & Dev Loop |
+| ENV-9 | Postgres 18 moved PGDATA; volume must mount at /var/lib/postgresql | MEDIUM | VALIDATED | Environment & Dev Loop |
+| ENV-10 | Container bind-mounted to a worktree dies (exit 127) when it is reclaimed | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ESI-1 | Pin ESI route versions; avoid removed legacy/meta routes | LOW | VALIDATED | External Integrations (ESI) |
+| ESI-2 | `Expires` deprecated by event-driven invalidation; read `Cache-Control` | MEDIUM | VALIDATED | External Integrations (ESI) |
+| ESI-3 | ESI omits fields rather than sending falsy values; `== False` matches nothing | HIGH | VALIDATED | External Integrations (ESI) |
+| ESI-4 | No `X-Compatibility-Date` pins the client to the oldest published date | MEDIUM | VALIDATED | External Integrations (ESI) |
 | DEPLOY-1 | Managed platforms inject postgresql:// URLs; async stack needs +asyncpg | HIGH | VALIDATED | Deployment & Platform |
 | DEPLOY-2 | uvicorn stays --workers 1 (in-process scheduler) | MEDIUM | VALIDATED | Deployment & Platform |
 | DEPLOY-3 | Durable coordination state must not live in an evicting cache | HIGH | VALIDATED | Deployment & Platform |
+| DEPLOY-4 | Pre-deploy migrations collide with in-flight ingestion; redeploy via CD dispatch | MEDIUM | VALIDATED | Deployment & Platform |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
 Severity levels: `CRITICAL` (production data loss / security), `HIGH` (correctness bug under predictable conditions), `MEDIUM` (correctness bug under edge cases), `LOW` (cleanliness / clarity / dev-loop hazard).

@@ -1,20 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { anonymousMe, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
+import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
 const CONTRACT = {
   contract_id: 101,
   issuer_id: 1,
   issuer_corporation_id: 101,
   start_location_id: 60003760,
+  collateral: 0,
   type: 'item_exchange',
-  status: 'outstanding',
   title: 'Tristan for Sale',
   for_corporation: false,
   date_issued: '2026-07-01T00:00:00Z',
-  date_expired: '2026-07-08T00:00:00Z',
+  date_expired: daysFromNow(7),
   price: 1000000,
   start_location_name: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
   is_ship_contract: true,
@@ -24,7 +25,6 @@ const CONTRACT = {
       type_id: 587,
       quantity: 1,
       is_included: true,
-      is_singleton: false,
       type_name: 'Tristan',
     },
   ],
@@ -56,6 +56,41 @@ describe('ContractsPage', () => {
     // Column headers are sticky so the labels/sort toggles survive a 50-row
     // scroll (JSDOM can't lay out `position: sticky`; guard the intent instead).
     expect(screen.getAllByRole('columnheader')[0].className).toContain('sticky')
+    // The Time left cell renders a live countdown, not "Expired". This is the only
+    // assertion that reads timeRemaining's output at a production call site, and it
+    // is what keeps CONTRACT.date_expired anchored to the clock: with a fixed literal
+    // the cell silently flips to "Expired" once the date passes, and nothing else
+    // here would notice (testing-pitfalls TEST-17).
+    expect(screen.getByText(/^\d+d \d+h$/)).toBeInTheDocument()
+    expect(screen.queryByText('Expired')).not.toBeInTheDocument()
+  })
+
+  it('renders each row its own countdown, across the day, hour, and minute buckets', async () => {
+    // Every offset carries a half-minute of padding so the truncating formatter
+    // lands on the same bucket however long the render takes — a bare
+    // minutesFromNow(20) is 20 minutes exactly and floors to "19m" the instant
+    // any time elapses. The offsets are clock-relative (TEST-17) and the
+    // expected strings are literal, so nothing here re-implements the formatter.
+    const rows = [
+      { name: 'Rifter', minutes: 3 * 1440 + 5 * 60 + 30, expected: '3d 5h' },
+      { name: 'Myrmidon', minutes: 6 * 60 + 12.5, expected: '6h 12m' },
+      { name: 'Dominix', minutes: 20.5, expected: '20m' },
+    ]
+    const items = rows.map((row, index) => ({
+      ...CONTRACT,
+      contract_id: 200 + index,
+      date_expired: minutesFromNow(row.minutes),
+      items: [{ ...CONTRACT.items[0], record_id: 200 + index, type_name: row.name }],
+    }))
+    stubFetch(anonymousMe(() => jsonResponse({ total: 3, page: 1, size: 50, items })))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Rifter')
+    for (const row of rows) {
+      const cells = within(screen.getByRole('row', { name: new RegExp(row.name) }))
+      expect(cells.getByText(row.expected)).toBeInTheDocument()
+    }
   })
 
   it('announces the result count in a polite status region (WCAG 4.1.3)', async () => {
@@ -218,6 +253,28 @@ describe('ContractDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'Contract 778' })).toBeInTheDocument()
   })
 
+  it('badges a contract past its expiry and drops the countdown, keeping both while it is live', async () => {
+    // The detail endpoint deliberately keeps serving contracts past
+    // date_expired even though the list endpoint filters them out, so a
+    // past-dated detail response is one the real API still produces. Both the
+    // badge and the parenthetical countdown hang off timeRemaining's 'Expired'
+    // sentinel, and neither branch had an assertion.
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, date_expired: daysFromNow(-1) })))
+    const expired = renderApp('/contracts/101')
+
+    expect(await screen.findByText('Expired')).toBeInTheDocument()
+    expect(screen.queryByText(/^\(.+\)$/)).not.toBeInTheDocument()
+    expired.unmount()
+    vi.unstubAllGlobals()
+
+    stubFetch(anonymousMe(() => jsonResponse(CONTRACT)))
+    renderApp('/contracts/101')
+
+    await screen.findByRole('heading', { name: 'Tristan' })
+    expect(screen.getByText(/^\(\d+d \d+h\)$/)).toBeInTheDocument()
+    expect(screen.queryByText('Expired')).not.toBeInTheDocument()
+  })
+
   it('shows not-found for a 404', async () => {
     stubFetch(anonymousMe(() => jsonResponse({ detail: 'Contract not found' }, 404)))
 
@@ -286,5 +343,65 @@ describe('ContractDetailPage', () => {
     await screen.findByRole('heading', { name: 'Tristan' })
     const back = screen.getByRole('link', { name: /all contracts/i })
     expect(back).toHaveAttribute('href', '/contracts')
+  })
+})
+
+
+// A courier carries no items, prices at 0, and puts its money in the reward and
+// the collateral. It reaches the UI whenever the ships-only default is turned off.
+const COURIER = {
+  contract_id: 505,
+  issuer_id: 9,
+  issuer_corporation_id: 99,
+  start_location_id: 60013288,
+  collateral: 8_000_000_000,
+  type: 'courier',
+  title: 'Jita to Amarr rush',
+  for_corporation: false,
+  date_issued: '2026-07-01T00:00:00Z',
+  // Anchored to the clock like CONTRACT: a fixed expiry is a response the real
+  // API cannot produce (the list filters date_expired > now()) and silently
+  // repaints "Time left" as Expired once it passes (testing-pitfalls TEST-17).
+  date_expired: daysFromNow(7),
+  price: 0,
+  reward: 80_000_000,
+  volume: 899_999,
+  start_location_name: 'Airaken V - Moon 6 - Impro Warehouse',
+  is_ship_contract: false,
+  items: [],
+}
+
+describe('courier contracts', () => {
+  it('labels a courier row "Courier", not "Exchange"', async () => {
+    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [COURIER] })))
+
+    renderApp('/contracts?ships_only=false')
+
+    expect(await screen.findByText('Courier')).toBeInTheDocument()
+    expect(screen.queryByText('Exchange')).not.toBeInTheDocument()
+  })
+
+  it('shows the courier badge and its collateral on the detail view', async () => {
+    stubFetch(anonymousMe(() => jsonResponse(COURIER)))
+
+    renderApp('/contracts/505')
+
+    expect(await screen.findByText('Courier')).toBeInTheDocument()
+    expect(screen.queryByText('Exchange')).not.toBeInTheDocument()
+    // Collateral is filterable and sortable, so it has to be readable too.
+    expect(screen.getByText('Collateral')).toBeInTheDocument()
+    expect(screen.getByText(/8,000,000,000/)).toBeInTheDocument()
+  })
+
+  it('renders a contract ESI sent without a start location without printing "null"', async () => {
+    // start_location_id is not required by ESI's schema; the id fallback must not
+    // interpolate a missing value into the page.
+    const nowhere = { ...COURIER, start_location_id: null, start_location_name: null }
+    stubFetch(anonymousMe(() => jsonResponse(nowhere)))
+
+    renderApp('/contracts/505')
+
+    expect(await screen.findByText('Unknown location')).toBeInTheDocument()
+    expect(screen.queryByText(/Location null/)).not.toBeInTheDocument()
   })
 })

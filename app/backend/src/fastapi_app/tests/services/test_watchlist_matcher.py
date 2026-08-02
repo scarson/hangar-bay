@@ -45,15 +45,16 @@ async def _user(db, *, enabled=True, cid=91000001):
 
 
 async def _contract(db, *, cid, price, ctype="auction", expired_in_days=7, completed=False,
-                    location="Jita IV - Moon 4"):
+                    location="Jita IV - Moon 4", region_id=10000002, last_seen_at=None):
     c = Contract(
         contract_id=cid, title="t", price=price, collateral=0, status="unknown", type=ctype,
         issuer_id=1, issuer_corporation_id=1, start_location_id=60003760,
-        start_location_region_id=10000002, for_corporation=False,
+        start_location_region_id=region_id, for_corporation=False,
         date_issued=datetime.now(timezone.utc) - timedelta(days=1),
         date_expired=datetime.now(timezone.utc) + timedelta(days=expired_in_days),
         date_completed=(datetime.now(timezone.utc) if completed else None),
         start_location_name=location,
+        last_seen_at=last_seen_at,
     )
     db.add(c)
     await db.flush()
@@ -202,6 +203,58 @@ async def test_completed_contract_excluded(db_session: AsyncSession):
     assert created == 0
 
 
+async def test_delisted_contract_excluded(db_session: AsyncSession):
+    """A contract that stopped appearing in ESI's public list — accepted, sold, or
+    withdrawn — keeps a future date_expired, so expiry alone still matches it. It is
+    told apart by its last_seen_at trailing the newest stamp in its own region."""
+    u = await _user(db_session)
+    await _watch(db_session, u, type_id=621, max_price=None)
+    fresh = datetime.now(timezone.utc)
+    # The region's watermark: some other contract was restamped by the latest run.
+    await _contract(db_session, cid=6310, price=1, last_seen_at=fresh)
+    await _item(db_session, cid=6310, type_id=34, record_id=63100)
+    # Watched hull, unexpired, but last observed a run ago.
+    await _contract(db_session, cid=6311, price=1, last_seen_at=fresh - timedelta(hours=1))
+    await _item(db_session, cid=6311, type_id=621, record_id=63110)
+    _, created = await _service()._match_and_notify(db_session)
+    assert created == 0
+
+
+async def test_contract_at_its_region_watermark_notifies(db_session: AsyncSession):
+    """The positive half of the delisting gate: a contract restamped by the latest run
+    carries the region's newest stamp and must still match."""
+    u = await _user(db_session)
+    await _watch(db_session, u, type_id=621, max_price=None)
+    fresh = datetime.now(timezone.utc)
+    await _contract(db_session, cid=6320, price=1, last_seen_at=fresh - timedelta(hours=1))
+    await _item(db_session, cid=6320, type_id=34, record_id=63200)
+    await _contract(db_session, cid=6321, price=1, last_seen_at=fresh)
+    await _item(db_session, cid=6321, type_id=621, record_id=63210)
+    _, created = await _service()._match_and_notify(db_session)
+    assert created == 1
+    note = (await db_session.execute(select(Notification))).scalar_one()
+    assert note.contract_id == 6321
+
+
+async def test_stalled_region_is_judged_against_its_own_watermark(db_session: AsyncSession):
+    """The watermark is per-region so a region whose ESI fetch failed keeps its own,
+    older stamp. Judged against a fresher region's stamp, every contract the stalled
+    region holds would be silenced at once."""
+    u = await _user(db_session)
+    await _watch(db_session, u, type_id=621, max_price=None)
+    fresh = datetime.now(timezone.utc)
+    # Region 10000002 was restamped by the latest run.
+    await _contract(db_session, cid=6330, price=1, region_id=10000002, last_seen_at=fresh)
+    await _item(db_session, cid=6330, type_id=34, record_id=63300)
+    # Region 10000043's fetch failed, so nothing in it was restamped — but the watched
+    # hull is still the newest thing its own region has seen.
+    await _contract(db_session, cid=6331, price=1, region_id=10000043,
+                    last_seen_at=fresh - timedelta(hours=6))
+    await _item(db_session, cid=6331, type_id=621, record_id=63310)
+    _, created = await _service()._match_and_notify(db_session)
+    assert created == 1
+
+
 async def test_requested_item_excluded(db_session: AsyncSession):
     u = await _user(db_session)
     await _watch(db_session, u, type_id=621, max_price=None)
@@ -246,6 +299,22 @@ async def test_prune_keeps_old_when_contract_outstanding(db_session: AsyncSessio
     pruned = await _service(now=NOW)._prune(db_session)
     assert pruned == 0
     assert (await db_session.scalar(select(func.count()).select_from(Notification))) == 1
+
+
+async def test_prune_deletes_old_when_contract_delisted(db_session: AsyncSession):
+    """The prune's no-resurrection guard keeps aged notifications whose contract is still
+    outstanding. It has to read "outstanding" exactly as the match query does — a contract
+    that is unexpired but gone from ESI no longer matches, so nothing recreates its
+    notification and holding the row back serves nobody."""
+    u = await _user(db_session)
+    fresh = datetime.now(timezone.utc)
+    await _contract(db_session, cid=7250, price=1, last_seen_at=fresh)
+    await _contract(db_session, cid=7251, price=1, expired_in_days=7,
+                    last_seen_at=fresh - timedelta(hours=1))
+    await _note(db_session, u, cid=7251, created_at=NOW - timedelta(days=100))
+    pruned = await _service(now=NOW)._prune(db_session)
+    assert pruned == 1
+    assert (await db_session.scalar(select(func.count()).select_from(Notification))) == 0
 
 
 async def test_prune_keeps_recent(db_session: AsyncSession):

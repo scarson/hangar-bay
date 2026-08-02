@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
+    "test:future-clock": "vitest run --config vitest.future-clock.config.ts",
     "generate:api": "openapi-typescript openapi.json -o src/lib/api/schema.d.ts",
     "e2e": "playwright test"
   },

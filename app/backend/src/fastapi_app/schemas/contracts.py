@@ -4,17 +4,25 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .common import PaginatedResponse
+
 
 class ContractItemSchema(BaseModel):
-    """Schema for an item within a contract."""
+    """Schema for an item within a contract.
+
+    `is_singleton` and `raw_quantity` are deliberately absent. Both are fields of ESI's
+    AUTHENTICATED character/corporation contract-item routes; the public item route
+    Hangar Bay reads carries neither, so `is_singleton` is the mapping default and
+    `raw_quantity` is NULL for every item in the corpus today. The columns stay — they
+    fill in the moment a user's own contracts are ingested — but a wire field that can
+    only misinform is worse than no wire field (ESI-3).
+    """
 
     record_id: int
     type_id: int
     quantity: int
     is_included: bool
-    is_singleton: bool
     is_blueprint_copy: Optional[bool] = None
-    raw_quantity: Optional[int] = None
     type_name: Optional[str] = None
     category: Optional[str] = None
     market_group_id: Optional[int] = None
@@ -23,21 +31,39 @@ class ContractItemSchema(BaseModel):
 
 
 class ContractSchema(BaseModel):
-    """Schema for a public contract."""
+    """Schema for a public contract.
+
+    `status` and `date_completed` are deliberately absent. Both are fields of ESI's
+    AUTHENTICATED character/corporation contract routes; the public route Hangar Bay
+    reads carries neither, so the columns behind them hold a placeholder and a NULL for
+    every contract in the corpus today. The columns stay — they fill in the moment a
+    user's own contracts are ingested — but a wire field that can only misinform is
+    worse than no wire field (ESI-3).
+    """
 
     contract_id: int
     issuer_id: int
     issuer_corporation_id: int
-    start_location_id: int
+    # ESI's public-contracts schema does not list start_location_id as required, and the
+    # column is nullable to match. Declaring it a bare int made a spec-conformant row fail
+    # response validation, which 500s the whole page that row lands on.
+    start_location_id: Optional[int] = None
+    # Resolved from the start location during ingestion. NULL for player-owned
+    # structures, whose /universe/structures/ route needs an ACL-scoped token — so a
+    # client can show the system where one is known and say "system unknown" where it
+    # is not, rather than being unable to tell the two apart.
+    start_location_system_id: Optional[int] = None
     end_location_id: Optional[int] = None
     type: str
-    status: str
     title: Optional[str] = None
     for_corporation: bool
     date_issued: datetime
     date_expired: datetime
-    date_completed: Optional[datetime] = None
     price: Optional[float] = None
+    # Courier collateral: what the hauler puts up against the cargo. Filterable
+    # (min_collateral/max_collateral) and sortable, so clients must be able to read
+    # the value they are sorting and filtering on.
+    collateral: float
     reward: Optional[float] = None
     volume: Optional[float] = None
     start_location_name: Optional[str] = None
@@ -47,6 +73,29 @@ class ContractSchema(BaseModel):
     items: List[ContractItemSchema] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ContractListResponse(PaginatedResponse[ContractSchema]):
+    """A page of contracts plus the coverage figure the system_ids filter needs.
+
+    A bare total hides that system_ids can only ever match the locations we resolved:
+    a search returning 3 results reads as "there are 3" when it may mean "there are 3
+    we can place, and 40 more we cannot". Publishing the residual next to the number
+    is the convention the EVE tooling ecosystem already uses for partial data —
+    Adam4EVE prints a NoP (number of participants) column beside its aggregates,
+    EVE Tycoon labels each row with the appraisal method behind it.
+    """
+
+    unknown_system_excluded: Optional[int] = Field(
+        default=None,
+        description=(
+            "How many contracts matched every other filter but were excluded because "
+            "their start location has no known solar system (player-owned structures, "
+            "which need an ACL-scoped token to resolve). Null when system_ids was not "
+            "applied — no results were dropped for that reason, which is different from "
+            "none having been."
+        ),
+    )
 
 
 class SortableContractFields(str, Enum):
@@ -90,10 +139,29 @@ class ContractFilters(BaseModel):
     max_collateral: Optional[float] = Field(
         default=None, ge=0, description="Maximum collateral."
     )
+    # NOTE (ESI-3): min_runs/max_runs are applied, but against ContractItem.raw_quantity —
+    # a field ESI returns only on the AUTHENTICATED contract-item routes, not on the public
+    # one this ingestion reads. The column is NULL under public ingestion, so both bounds
+    # match zero rows until a user's own contracts are ingested.
+    # Making them work for PUBLIC contracts requires ingesting the public `runs` field; note
+    # that on that route an original OMITS `runs` rather than sending -1, so the documented
+    # sentinel never appears.
     min_runs: Optional[int] = Field(
-        default=None, ge=-1, description="Minimum runs for BPCs (-1 for original)."
+        default=None,
+        ge=-1,
+        description=(
+            "Minimum runs for BPCs. "
+            "(NO MATCHES — filters an always-NULL column; do not expose in clients)"
+        ),
     )
-    max_runs: Optional[int] = Field(default=None, ge=-1, description="Maximum runs for BPCs.")
+    max_runs: Optional[int] = Field(
+        default=None,
+        ge=-1,
+        description=(
+            "Maximum runs for BPCs. "
+            "(NO MATCHES — filters an always-NULL column; do not expose in clients)"
+        ),
+    )
     # NOTE (FASTAPI-2): min_me/max_me/min_te/max_te are accepted but never applied
     # by the service (ME/TE data is not in the model). The descriptions flag them as
     # inert so generated clients (openapi.json → frontend codegen) do not surface them
@@ -135,8 +203,21 @@ class ContractFilters(BaseModel):
     region_ids: Optional[List[int]] = Field(
         default=None, description="List of region IDs to filter by."
     )
+    # NOTE: system_ids has PARTIAL coverage. Ingestion resolves start locations through
+    # the public /universe/stations/ route, which answers for NPC stations only; a
+    # contract in a player-owned Upwell structure keeps a NULL system and can never
+    # match. A 5.9% sample of production (2026-08-01) put NPC stations at 99.80% of The
+    # Forge's contracts, but that ratio is a property of THIS region — structure-based
+    # trade dominates null/lowsec, so the unresolvable share rises sharply with coverage.
+    # The list response's unknown_system_excluded field publishes the residual per query.
     system_ids: Optional[List[int]] = Field(
-        default=None, description="List of solar system IDs to filter by."
+        default=None,
+        description=(
+            "List of solar system IDs to filter by. Partial coverage: contracts in NPC "
+            "stations carry a resolved system, contracts in player-owned structures do "
+            "not and never match. The response's unknown_system_excluded field reports "
+            "how many results were dropped for that reason."
+        ),
     )
     station_ids: Optional[List[int]] = Field(
         default=None, description="List of station IDs to filter by."

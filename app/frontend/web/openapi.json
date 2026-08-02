@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "ContractItemSchema": {
-        "description": "Schema for an item within a contract.",
+        "description": "Schema for an item within a contract.\n\n`is_singleton` and `raw_quantity` are deliberately absent. Both are fields of ESI's\nAUTHENTICATED character/corporation contract-item routes; the public item route\nHangar Bay reads carries neither, so `is_singleton` is the mapping default and\n`raw_quantity` is NULL for every item in the corpus today. The columns stay \u2014 they\nfill in the moment a user's own contracts are ingested \u2014 but a wire field that can\nonly misinform is worse than no wire field (ESI-3).",
         "properties": {
           "category": {
             "anyOf": [
@@ -30,10 +30,6 @@
             "title": "Is Included",
             "type": "boolean"
           },
-          "is_singleton": {
-            "title": "Is Singleton",
-            "type": "boolean"
-          },
           "market_group_id": {
             "anyOf": [
               {
@@ -48,17 +44,6 @@
           "quantity": {
             "title": "Quantity",
             "type": "integer"
-          },
-          "raw_quantity": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Raw Quantity"
           },
           "record_id": {
             "title": "Record Id",
@@ -84,30 +69,69 @@
           "record_id",
           "type_id",
           "quantity",
-          "is_included",
-          "is_singleton"
+          "is_included"
         ],
         "title": "ContractItemSchema",
         "type": "object"
       },
-      "ContractSchema": {
-        "description": "Schema for a public contract.",
+      "ContractListResponse": {
+        "description": "A page of contracts plus the coverage figure the system_ids filter needs.\n\nA bare total hides that system_ids can only ever match the locations we resolved:\na search returning 3 results reads as \"there are 3\" when it may mean \"there are 3\nwe can place, and 40 more we cannot\". Publishing the residual next to the number\nis the convention the EVE tooling ecosystem already uses for partial data \u2014\nAdam4EVE prints a NoP (number of participants) column beside its aggregates,\nEVE Tycoon labels each row with the appraisal method behind it.",
         "properties": {
-          "contract_id": {
-            "title": "Contract Id",
+          "items": {
+            "description": "List of items for the current page",
+            "items": {
+              "$ref": "#/components/schemas/ContractSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "description": "Current page number",
+            "title": "Page",
             "type": "integer"
           },
-          "date_completed": {
+          "size": {
+            "description": "Number of items per page",
+            "title": "Size",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items",
+            "title": "Total",
+            "type": "integer"
+          },
+          "unknown_system_excluded": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Date Completed"
+            "description": "How many contracts matched every other filter but were excluded because their start location has no known solar system (player-owned structures, which need an ACL-scoped token to resolve). Null when system_ids was not applied \u2014 no results were dropped for that reason, which is different from none having been.",
+            "title": "Unknown System Excluded"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "size",
+          "items"
+        ],
+        "title": "ContractListResponse",
+        "type": "object"
+      },
+      "ContractSchema": {
+        "description": "Schema for a public contract.\n\n`status` and `date_completed` are deliberately absent. Both are fields of ESI's\nAUTHENTICATED character/corporation contract routes; the public route Hangar Bay\nreads carries neither, so the columns behind them hold a placeholder and a NULL for\nevery contract in the corpus today. The columns stay \u2014 they fill in the moment a\nuser's own contracts are ingested \u2014 but a wire field that can only misinform is\nworse than no wire field (ESI-3).",
+        "properties": {
+          "collateral": {
+            "title": "Collateral",
+            "type": "number"
+          },
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
           },
           "date_expired": {
             "format": "date-time",
@@ -199,8 +223,15 @@
             "title": "Reward"
           },
           "start_location_id": {
-            "title": "Start Location Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Location Id"
           },
           "start_location_name": {
             "anyOf": [
@@ -213,9 +244,16 @@
             ],
             "title": "Start Location Name"
           },
-          "status": {
-            "title": "Status",
-            "type": "string"
+          "start_location_system_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Location System Id"
           },
           "title": {
             "anyOf": [
@@ -248,12 +286,11 @@
           "contract_id",
           "issuer_id",
           "issuer_corporation_id",
-          "start_location_id",
           "type",
-          "status",
           "for_corporation",
           "date_issued",
           "date_expired",
+          "collateral",
           "is_ship_contract"
         ],
         "title": "ContractSchema",
@@ -382,41 +419,6 @@
           "watchlist_alerts_enabled"
         ],
         "title": "NotificationSettingsSchema",
-        "type": "object"
-      },
-      "PaginatedResponse_ContractSchema_": {
-        "properties": {
-          "items": {
-            "description": "List of items for the current page",
-            "items": {
-              "$ref": "#/components/schemas/ContractSchema"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "page": {
-            "description": "Current page number",
-            "title": "Page",
-            "type": "integer"
-          },
-          "size": {
-            "description": "Number of items per page",
-            "title": "Size",
-            "type": "integer"
-          },
-          "total": {
-            "description": "Total number of items",
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total",
-          "page",
-          "size",
-          "items"
-        ],
-        "title": "PaginatedResponse[ContractSchema]",
         "type": "object"
       },
       "PaginatedResponse_NotificationSchema_": {
@@ -1100,7 +1102,7 @@
             }
           },
           {
-            "description": "Minimum runs for BPCs (-1 for original).",
+            "description": "Minimum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
             "in": "query",
             "name": "min_runs",
             "required": false,
@@ -1114,12 +1116,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Minimum runs for BPCs (-1 for original).",
+              "description": "Minimum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
               "title": "Min Runs"
             }
           },
           {
-            "description": "Maximum runs for BPCs.",
+            "description": "Maximum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
             "in": "query",
             "name": "max_runs",
             "required": false,
@@ -1133,7 +1135,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Maximum runs for BPCs.",
+              "description": "Maximum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
               "title": "Max Runs"
             }
           },
@@ -1235,7 +1237,7 @@
             }
           },
           {
-            "description": "List of solar system IDs to filter by.",
+            "description": "List of solar system IDs to filter by. Partial coverage: contracts in NPC stations carry a resolved system, contracts in player-owned structures do not and never match. The response's unknown_system_excluded field reports how many results were dropped for that reason.",
             "in": "query",
             "name": "system_ids",
             "required": false,
@@ -1251,7 +1253,7 @@
                   "type": "null"
                 }
               ],
-              "description": "List of solar system IDs to filter by.",
+              "description": "List of solar system IDs to filter by. Partial coverage: contracts in NPC stations carry a resolved system, contracts in player-owned structures do not and never match. The response's unknown_system_excluded field reports how many results were dropped for that reason.",
               "title": "System Ids"
             }
           },
@@ -1388,7 +1390,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaginatedResponse_ContractSchema_"
+                  "$ref": "#/components/schemas/ContractListResponse"
                 }
               }
             },

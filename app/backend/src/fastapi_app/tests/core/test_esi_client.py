@@ -373,6 +373,152 @@ async def test_past_expires_falls_back_to_600():
     client.redis_client.set.assert_any_await(ETAG_KEY_PAGE_1, "etag-v1", ex=600)
 
 
+def _ttl_of(client) -> int:
+    """The single TTL both cache keys were written under.
+
+    Asserting the etag and body share one TTL is part of the contract: a split
+    would let the validator outlive its body (or vice versa), which is the
+    evicted-body shape `test_etag_304_with_missing_cache_returns_empty` pins.
+    """
+    ttls = {call.kwargs["ex"] for call in client.redis_client.set.await_args_list}
+    assert len(ttls) == 1, f"etag and body must share one TTL, got {ttls}"
+    return ttls.pop()
+
+
+async def _store_with_headers(headers: dict) -> ESIClient:
+    response = _etag_response(
+        json_data=[{"contract_id": 1}],
+        content=b'[{"contract_id": 1}]',
+        headers={"ETag": "etag-v1", **headers},
+    )
+    client = _etag_client(AsyncMock(return_value=response))
+    await client.get_esi_data_with_etag_caching(ETAG_PATH)
+    return client
+
+
+def _in_seconds(seconds: int) -> str:
+    return format_datetime(datetime.now(timezone.utc) + timedelta(seconds=seconds), usegmt=True)
+
+
+async def test_cache_control_max_age_wins_over_expires():
+    """Both headers present: max-age decides, per RFC 9111 and ESI's own guidance.
+
+    ESI is converting routes to event-driven invalidation, after which Expires is
+    emitted for back-compat only and no longer describes the cache's lifetime.
+    """
+    client = await _store_with_headers(
+        {"Cache-Control": "public, max-age=120", "Expires": _in_seconds(90)}
+    )
+
+    assert _ttl_of(client) == 120
+
+
+async def test_cache_control_max_age_alone_sets_ttl():
+    client = await _store_with_headers({"Cache-Control": "public, max-age=300"})
+
+    assert _ttl_of(client) == 300
+
+
+async def test_cache_control_without_max_age_leaves_expires_in_charge():
+    """Today's ESI shape on the routes we consume: a bare `Cache-Control: public`.
+
+    It carries no freshness lifetime, so it must not displace Expires — otherwise
+    every contracts page silently drops to the 600s default.
+    """
+    client = await _store_with_headers(
+        {"Cache-Control": "public", "Expires": _in_seconds(90)}
+    )
+
+    # HTTP dates are whole seconds, so the derived delta truncates just under 90.
+    assert 85 <= _ttl_of(client) <= 90
+
+
+async def test_max_age_directive_name_is_case_insensitive():
+    client = await _store_with_headers({"Cache-Control": "Public, Max-Age=300"})
+
+    assert _ttl_of(client) == 300
+
+
+async def test_no_store_prevents_caching():
+    client = await _store_with_headers(
+        {"Cache-Control": "no-store", "Expires": _in_seconds(90)}
+    )
+
+    client.redis_client.set.assert_not_awaited()
+
+
+async def test_no_cache_still_stores():
+    """`no-cache` requires revalidation before reuse, not refusal to store.
+
+    Every read here is already a conditional request and the stored body is only
+    served on a 304 — the origin's own confirmation that it is still current — so
+    storing satisfies the directive. Dropping storage would forfeit the 304
+    savings for nothing.
+    """
+    client = await _store_with_headers({"Cache-Control": "no-cache, max-age=300"})
+
+    assert _ttl_of(client) == 300
+
+
+async def test_zero_max_age_prevents_caching():
+    client = await _store_with_headers(
+        {"Cache-Control": "max-age=0", "Expires": _in_seconds(90)}
+    )
+
+    client.redis_client.set.assert_not_awaited()
+
+
+async def test_malformed_max_age_falls_back_to_expires():
+    client = await _store_with_headers(
+        {"Cache-Control": "public, max-age=soon", "Expires": _in_seconds(90)}
+    )
+
+    assert 85 <= _ttl_of(client) <= 90
+
+
+async def test_valueless_max_age_falls_back_to_expires():
+    client = await _store_with_headers(
+        {"Cache-Control": "public, max-age", "Expires": _in_seconds(90)}
+    )
+
+    assert 85 <= _ttl_of(client) <= 90
+
+
+async def test_negative_max_age_falls_back_to_expires():
+    """delta-seconds cannot be negative; an invalid directive is ignored, not obeyed."""
+    client = await _store_with_headers(
+        {"Cache-Control": "public, max-age=-30", "Expires": _in_seconds(90)}
+    )
+
+    assert 85 <= _ttl_of(client) <= 90
+
+
+async def test_malformed_max_age_without_expires_falls_back_to_default():
+    client = await _store_with_headers({"Cache-Control": "public, max-age=soon"})
+
+    assert _ttl_of(client) == 600
+
+
+async def test_age_reduces_the_max_age_ttl():
+    """Remaining freshness is max-age minus Age — a shared upstream cache can hand
+    us a response most of the way through its lifetime."""
+    client = await _store_with_headers({"Cache-Control": "max-age=300", "Age": "100"})
+
+    assert _ttl_of(client) == 200
+
+
+async def test_age_exceeding_max_age_prevents_caching():
+    client = await _store_with_headers({"Cache-Control": "max-age=300", "Age": "400"})
+
+    client.redis_client.set.assert_not_awaited()
+
+
+async def test_malformed_age_is_ignored():
+    client = await _store_with_headers({"Cache-Control": "max-age=300", "Age": "old"})
+
+    assert _ttl_of(client) == 300
+
+
 async def test_pagination_follows_x_pages():
     page_1 = _etag_response(
         json_data=[{"contract_id": 1}],

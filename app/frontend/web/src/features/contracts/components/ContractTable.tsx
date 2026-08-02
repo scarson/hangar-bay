@@ -1,7 +1,14 @@
 import { Link } from '@tanstack/react-router'
 import type { Contract } from '../../../lib/api/client'
 import { Badge } from '../../../components/Badge'
-import { formatDate, formatIsk, primaryLabel, timeRemaining } from '../format'
+import {
+  contractTypeLabel,
+  formatDate,
+  formatIsk,
+  locationLabel,
+  primaryLabel,
+  timeRemaining,
+} from '../format'
 import type { ContractSearch, SortField } from '../filters'
 
 const COLUMNS: {
@@ -118,9 +125,7 @@ export function ContractTable({
                 </td>
                 <td className="px-3 py-2">
                   <span className="inline-flex gap-1">
-                    <Badge tone="neutral">
-                      {contract.type === 'auction' ? 'Auction' : 'Exchange'}
-                    </Badge>
+                    <Badge tone="neutral">{contractTypeLabel(contract.type)}</Badge>
                     {contractIsBpc(contract) ? <Badge tone="copper">BPC</Badge> : null}
                   </span>
                 </td>
@@ -132,9 +137,7 @@ export function ContractTable({
                       does not cap a nowrap string's min-content width, so long
                       Upwell structure names would stretch the column and shove
                       the price/time-left protagonists into horizontal scroll. */}
-                  <div className="max-w-64 truncate">
-                    {contract.start_location_name ?? `Location ${contract.start_location_id}`}
-                  </div>
+                  <div className="max-w-64 truncate">{locationLabel(contract)}</div>
                 </td>
                 <td
                   className={`text-data px-3 py-2 text-right ${

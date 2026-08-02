@@ -57,7 +57,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** 🚧 In progress — claimed 2026-07-27T02:58Z on branch `claude/m5-plan-a-ingestion` (subagent-driven execution). All six tasks implemented and review-clean; branch rebased onto post-#93 dev (SHAs in this table are post-rebase); final verification passed (486 green pristine after the codex-driven ship-flag/category fixes, backend flake8 clean, combined migration cycle verified on a seeded scratch DB). PR: [#94](https://github.com/scarson/hangar-bay/pull/94) — Merge classification: Review (schema migration and data integrity); codex adversarial review done (disposition on the PR; one new finding fixed in-branch plus the deeper category-resolution gap it exposed); awaiting CI + Sam's merge.
+**Overall:** ✅ EXECUTED AND RELEASED. All six tasks + two codex-driven fixes; 486 tests green pristine; codex adversarial review dispositioned on the PR. **[#94](https://github.com/scarson/hangar-bay/pull/94) merged to dev `56dc96f`** (Sam, 2026-07-27). **Published to production in [#95](https://github.com/scarson/hangar-bay/pull/95), merge `7a95118`, LIVE 2026-07-27 08:26Z** — first deploy attempt (08:05Z) failed pre-deploy exactly as designed (`lock_timeout='30s'` against an in-flight ingestion run); redeployed via the CD workflow's `workflow_dispatch` path in the post-run idle window; all three migrations applied cleanly, smoke green. Boot-time ingestion run died on a transient Valkey connection refusal (self-heals; scheduler's next tick runs it). Post-deploy acceptance (run duration + fetch counts) recorded in the 2026-07-27 Plan B handoff when the first successful run lands; the two unticked Verification items below are its checklist.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
@@ -825,7 +825,7 @@ If round 3 still finds issues, keep going until clean.
 - [x] `flake8` clean on every touched file
 - [x] Both migrations verified up → down → up on a scratch database
 - [x] Every new test mutation-verified, with the failure output recorded in the PR
-- [ ] After deploy: a run completes in **under ~5 minutes**, and — the real proof of
+- [x] After deploy: a run completes in **under ~5 minutes**, and — the real proof of
       mechanism — **item fetches per run are in the hundreds (churn-sized), not ~46,000**.
       Not "seconds": steady state still performs the 34-page discovery sweep, name
       resolution, a ~46k-row upsert and ~100–250 sequential churn fetches. The fetch-count
@@ -839,7 +839,9 @@ If round 3 still finds issues, keep going until clean.
       counts at deploy time and the per-run zero-item warning are the evidence that
       separates the two. Read the new "Fetched items for N contracts (M skipped)" log line
       for the direct number.
-- [ ] `/ready`'s freshness advances within one cycle
+- [x] `/ready`'s freshness advances within one cycle
+
+**Post-deploy acceptance result (2026-07-27 09:27Z):** first run on new code completed in **2m29s**; `Fetched items for 408 contracts (33020 skipped as already enriched).`; no zero-item warning; `/ready` success and not stale. Details in `docs/superpowers/handoffs/2026-07-27-plan-b-handoff.md` §Headline.
 
 ## Out of scope (deliberately)
 

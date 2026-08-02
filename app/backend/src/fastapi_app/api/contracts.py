@@ -7,9 +7,9 @@ from sqlalchemy.orm import selectinload
 
 from ..db import get_db
 from ..models.contracts import Contract
-from ..schemas.common import PaginatedResponse
 from ..schemas.contracts import (
     ContractFilters,
+    ContractListResponse,
     ContractSchema,
 )
 from ..services.contract_service import get_contracts
@@ -24,7 +24,7 @@ router = APIRouter(
 # FastAPI matches routes in order, so a request to /ships would otherwise
 # be incorrectly captured by the /{contract_id} route, leading to a
 # validation error trying to parse "ships" as an integer.
-@router.get("/", response_model=PaginatedResponse[ContractSchema])
+@router.get("/", response_model=ContractListResponse)
 async def list_public_contracts(
     filters: Annotated[ContractFilters, Query()],
     db: AsyncSession = Depends(get_db),

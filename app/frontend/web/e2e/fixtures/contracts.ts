@@ -12,14 +12,31 @@
  * (testing-pitfalls TEST-3).
  */
 
+/**
+ * An expiry offset from the current clock, as a wire-format UTC timestamp.
+ *
+ * date_expired MUST outlive the clock in every fixture. Two things read it: the
+ * backend's contracts list excludes rows past date_expired, so a past value is a
+ * response the real API cannot produce; and the "Time left" column calls
+ * timeRemaining(), which reads the real Date.now() and repaints the cell
+ * "Expired". A fixed literal satisfies both the day it is written and neither
+ * one later, with nothing in the repo changing on the day it flips
+ * (testing-pitfalls TEST-17).
+ *
+ * date_issued stays a literal by design: it is a sort key, and ordering
+ * assertions need it stable and distinct. Callers keep expiry offsets distinct
+ * for the same reason.
+ */
+export function expiryInDays(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+}
+
 export interface WireContractItem {
   record_id: number
   type_id: number
   quantity: number
   is_included: boolean
-  is_singleton: boolean
   is_blueprint_copy: boolean | null
-  raw_quantity: number | null
   type_name: string | null
   category: 'ship' | null
   market_group_id: number | null
@@ -29,16 +46,17 @@ export interface WireContract {
   contract_id: number
   issuer_id: number
   issuer_corporation_id: number
-  start_location_id: number
+  // Nullable to match ESI: the public-contracts schema does not mark
+  // start_location_id required.
+  start_location_id: number | null
   end_location_id: number
-  type: 'item_exchange' | 'auction'
-  status: string
+  type: 'item_exchange' | 'auction' | 'courier'
   title: string
   for_corporation: boolean
   date_issued: string
   date_expired: string
-  date_completed: string | null
   price: number
+  collateral: number
   reward: number
   volume: number
   start_location_name: string | null
@@ -64,9 +82,7 @@ export function makeItem(overrides: Partial<WireContractItem> = {}): WireContrac
     type_id: 24694,
     quantity: 1,
     is_included: true,
-    is_singleton: false,
     is_blueprint_copy: null,
-    raw_quantity: null,
     type_name: 'Maelstrom',
     category: 'ship',
     market_group_id: 78,
@@ -97,13 +113,12 @@ export function makeContract(overrides: Partial<WireContract> = {}): WireContrac
     start_location_id: 60_003_760,
     end_location_id: 60_003_760,
     type: 'item_exchange',
-    status: 'unknown',
     title: '',
     for_corporation: false,
     date_issued: '2026-06-14T23:36:29Z',
-    date_expired: '2026-07-20T23:36:29Z',
-    date_completed: null,
+    date_expired: expiryInDays(30),
     price: 250_000_000,
+    collateral: 0,
     reward: 0,
     volume: 470_000,
     start_location_name: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
@@ -147,7 +162,7 @@ export const SEVEN_SHIPS: WireContract[] = [
     price: price as number,
     // Later entries issued earlier: default sort (issued desc) matches array order.
     date_issued: `2026-06-2${8 - i}T0${i}:00:00Z`,
-    date_expired: `2026-07-2${8 - i}T0${i}:00:00Z`,
+    date_expired: expiryInDays(30 - i),
     items: [makeShipItem(name as string)],
   }),
 )
@@ -163,7 +178,7 @@ export const BPC_CONTRACTS: WireContract[] = [
     price: price as number,
     is_ship_contract: false,
     date_issued: `2026-06-1${5 - i}T0${i}:30:00Z`,
-    date_expired: `2026-07-1${9 - i}T0${i}:30:00Z`,
+    date_expired: expiryInDays(19 - i),
     items: [makeBpcItem(name as string)],
   }),
 )

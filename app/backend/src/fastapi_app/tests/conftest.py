@@ -26,6 +26,7 @@ from fastapi_app.core.config import settings
 from fastapi_app.core import session as sess
 from fastapi_app.models import User
 from fastapi_app.models.contracts import Contract, ContractItem
+from fastapi_app.tests.marker_guards import forbid_vcr_on_app_client_tests
 
 # Use a separate, real Postgres database for testing to match production.
 # This ensures that tests run against the same database engine as the live application.
@@ -34,6 +35,13 @@ if not settings.DATABASE_URL_TESTS:
     raise ValueError("DATABASE_URL_TESTS environment variable must be set for testing")
 
 TEST_DATABASE_URL = str(settings.DATABASE_URL_TESTS)
+
+
+# --- Collection Guards ---
+
+
+def pytest_collection_modifyitems(items):
+    forbid_vcr_on_app_client_tests(items)
 
 
 # --- Database Fixtures ---
@@ -115,7 +123,24 @@ async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 
 @pytest_asyncio.fixture(scope="function")
 async def setup_contracts(db_session: AsyncSession):
-    """Fixture to populate the DB with a diverse set of contracts for testing."""
+    """Fixture to populate the DB with a diverse set of contracts for testing.
+
+    WARNING — one column below holds a value ingestion never writes, so a test that
+    depends on it proves the QUERY binds, not that the feature works on real data:
+
+    * ``raw_quantity`` does not exist on ESI's public contract-items route at all
+      (it belongs to the authenticated character/corporation routes), so ingestion
+      leaves it NULL for every real row. The min_runs/max_runs filter reads it.
+
+    ``start_location_system_id`` is populated here and matches production: ingestion
+    resolves NPC stations through /universe/stations/, and 60003760 really does sit in
+    30000142. Contracts in player-owned structures still carry NULL — the shape these
+    fixtures do not exercise.
+
+    ``is_blueprint_copy`` is deliberately None rather than False on the non-copy
+    items: ESI sends the flag only when an item IS a copy, so True-or-NULL is the
+    real production shape and False is a shape that cannot occur.
+    """
     contracts_data = [
         # Contract 1: Standard ship sale (Tristan)
         Contract(
@@ -123,7 +148,7 @@ async def setup_contracts(db_session: AsyncSession):
             issuer_id=1, issuer_corporation_id=101, start_location_id=60003760, start_location_system_id=30000142, start_location_region_id=10000002,
             for_corporation=False, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=7),
             items=[
-                ContractItem(record_id=1011, type_id=587, type_name="Tristan", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=False)
+                ContractItem(record_id=1011, type_id=587, type_name="Tristan", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=None)
             ]
         ),
         # Contract 2: BPC auction (Caracal) with specific runs for testing
@@ -141,8 +166,8 @@ async def setup_contracts(db_session: AsyncSession):
             issuer_id=3, issuer_corporation_id=103, start_location_id=60008494, start_location_system_id=30002187, start_location_region_id=10000020,
             for_corporation=False, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=14),
             items=[
-                ContractItem(record_id=1031, type_id=17480, type_name="Venture", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=False),
-                ContractItem(record_id=1032, type_id=587, type_name="Tristan", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=False)
+                ContractItem(record_id=1031, type_id=17480, type_name="Venture", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=None),
+                ContractItem(record_id=1032, type_id=587, type_name="Tristan", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=None)
             ]
         ),
         # Contract 4: High-price, high-collateral contract (Rokh)
@@ -151,7 +176,7 @@ async def setup_contracts(db_session: AsyncSession):
             issuer_id=4, issuer_corporation_id=104, start_location_id=60003760, start_location_system_id=30000142, start_location_region_id=10000002,
             for_corporation=False, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=7),
             items=[
-                ContractItem(record_id=1041, type_id=24698, type_name="Rokh", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=False)
+                ContractItem(record_id=1041, type_id=24698, type_name="Rokh", quantity=1, is_included=True, is_singleton=False, is_blueprint_copy=None)
             ]
         ),
     ]

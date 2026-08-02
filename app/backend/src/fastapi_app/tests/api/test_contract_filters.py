@@ -73,8 +73,71 @@ async def test_filter_by_bpc_runs(client: AsyncClient, setup_contracts):
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) == 1
-    bpc_item = data["items"][0]["items"][0]
-    assert bpc_item["raw_quantity"] == 10
+    # raw_quantity is what the filter reads, but it is not served (ESI-3), so the
+    # matched contract itself is the only observable the response can carry.
+    assert data["items"][0]["contract_id"] == 102
+    assert any(i["is_blueprint_copy"] for i in data["items"][0]["items"])
+
+
+async def test_response_omits_fields_public_ingestion_cannot_populate(
+    client: AsyncClient, setup_contracts
+):
+    """`status` and `date_completed` belong to ESI's authenticated character/corporation
+    contract routes. Under public ingestion the columns behind them hold a placeholder and
+    a NULL, so serving them published a value the corpus does not have."""
+    response = await client.get("/contracts/")
+
+    assert response.status_code == 200
+    assert response.json()["items"], "fixture must reach the endpoint for this to mean anything"
+    for contract in response.json()["items"]:
+        assert "status" not in contract
+        assert "date_completed" not in contract
+
+
+async def test_detail_response_omits_fields_public_ingestion_cannot_populate(
+    client: AsyncClient, setup_contracts
+):
+    """The detail endpoint serializes the same schema and must not drift from the list."""
+    response = await client.get("/contracts/101")
+
+    assert response.status_code == 200
+    contract = response.json()
+    assert contract["contract_id"] == 101
+    assert "status" not in contract
+    assert "date_completed" not in contract
+
+
+async def test_item_response_omits_fields_public_ingestion_cannot_populate(
+    client: AsyncClient, setup_contracts
+):
+    """`is_singleton` and `raw_quantity` belong to ESI's authenticated character/corporation
+    contract-ITEM routes. The public item route carries neither, so under public ingestion
+    is_singleton is the mapping default on every row and raw_quantity is NULL on every row."""
+    response = await client.get("/contracts/")
+
+    assert response.status_code == 200
+    contracts = response.json()["items"]
+    assert contracts, "fixture must reach the endpoint for this to mean anything"
+    items = [item for contract in contracts for item in contract["items"]]
+    assert items, "contracts must carry items for this to mean anything"
+    for item in items:
+        assert "is_singleton" not in item
+        assert "raw_quantity" not in item
+
+
+async def test_detail_item_response_omits_fields_public_ingestion_cannot_populate(
+    client: AsyncClient, setup_contracts
+):
+    """The detail endpoint serializes the same item schema and must not drift from the list."""
+    response = await client.get("/contracts/101")
+
+    assert response.status_code == 200
+    contract = response.json()
+    assert contract["contract_id"] == 101
+    assert contract["items"], "fixture must carry items for this to mean anything"
+    for item in contract["items"]:
+        assert "is_singleton" not in item
+        assert "raw_quantity" not in item
 
 
 async def test_complex_filter_api(client: AsyncClient, setup_contracts):
@@ -357,11 +420,6 @@ async def test_detail_still_serves_an_expired_contract(
 ):
     """The LIST endpoint hides expired contracts; the DETAIL endpoint must not.
 
-    Deliberately NOT in test_contracts.py: that module carries a file-level
-    pytest.mark.vcr, and vcrpy intercepts ahead of ASGITransport — so this test
-    replayed a cassette and passed even with the expiry predicate deleted. It has to
-    live somewhere that actually reaches the app.
-
     A link pasted into chat routinely outlives the contract it points at, and 404-ing
     yesterday's link reads as a broken site rather than an expired deal. This pins the
     asymmetry deliberately, so a later change that "consistently" filters both does not
@@ -397,3 +455,360 @@ async def test_detail_still_serves_an_expired_contract(
     detail = await client.get("/contracts/942001")
     assert detail.status_code == 200            # but still reachable by direct link
     assert detail.json()["contract_id"] == 942001
+
+
+# --- ESI shape fidelity -----------------------------------------------------
+#
+# The tests below pin behaviour against the shapes ESI's PUBLIC contract routes
+# actually emit, which differ from the shapes the shared `setup_contracts`
+# fixture writes. Verified 2026-08-01 against
+# https://esi.evetech.net/meta/openapi.json plus a live sample of 7,292
+# contracts / 1,658 item rows:
+#
+#   * `is_blueprint_copy` is a present-when-true flag. It was `true` on 1,396
+#     item rows and ABSENT on the other 262 — never once `false`. So the column
+#     is True-or-NULL in production, and NULL means "not a copy".
+#   * `start_location_id` is NOT in the response schema's `required` array, so a
+#     spec-conformant payload may omit it and the column is nullable.
+#
+# Any test that relies on `setup_contracts` writing `is_blueprint_copy=False`
+# is therefore testing a shape production never produces (see the fixture note
+# in conftest.py).
+
+
+async def test_is_bpc_false_matches_items_esi_left_unmarked(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """is_bpc=false must treat a NULL is_blueprint_copy as "not a copy".
+
+    ESI never sends is_blueprint_copy=false, so `== False` matches zero rows in
+    production and the false branch of the filter returns an empty list.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add_all(
+        [
+            Contract(
+                contract_id=951001,
+                title="Plain Hull",
+                price=1_000_000,
+                collateral=0,
+                status="outstanding",
+                type="item_exchange",
+                issuer_id=951,
+                issuer_corporation_id=951,
+                start_location_id=60003760,
+                start_location_region_id=99999951,
+                for_corporation=False,
+                date_issued=now,
+                date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=9510011,
+                        type_id=587,
+                        type_name="Tristan",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=False,
+                        # ESI omitted the flag; ingestion writes NULL, not False.
+                        is_blueprint_copy=None,
+                    )
+                ],
+            ),
+            Contract(
+                contract_id=951002,
+                title="Copy Only",
+                price=2_000_000,
+                collateral=0,
+                status="outstanding",
+                type="item_exchange",
+                issuer_id=951,
+                issuer_corporation_id=951,
+                start_location_id=60003760,
+                start_location_region_id=99999951,
+                for_corporation=False,
+                date_issued=now,
+                date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=9510021,
+                        type_id=621,
+                        type_name="Caracal Blueprint",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=True,
+                        is_blueprint_copy=True,
+                    )
+                ],
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    non_copies = await client.get("/contracts/?region_ids=99999951&is_bpc=false")
+    assert non_copies.status_code == 200
+    assert [c["contract_id"] for c in non_copies.json()["items"]] == [951001]
+
+    # The true branch must stay exact — a fix that widens `false` must not also
+    # start matching unmarked items as copies.
+    copies = await client.get("/contracts/?region_ids=99999951&is_bpc=true")
+    assert copies.status_code == 200
+    assert [c["contract_id"] for c in copies.json()["items"]] == [951002]
+
+
+async def test_contract_response_exposes_collateral(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """collateral is filterable and sortable, so it must be readable in the payload.
+
+    Without it a client can sort by a number it cannot show, and a courier's
+    single most important term is invisible.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        Contract(
+            contract_id=952001,
+            title="Hauling Job",
+            price=0,
+            collateral=8_000_000_000,
+            status="outstanding",
+            type="courier",
+            issuer_id=952,
+            issuer_corporation_id=952,
+            start_location_id=60013288,
+            end_location_id=60003145,
+            start_location_region_id=99999952,
+            for_corporation=False,
+            date_issued=now,
+            date_expired=now + timedelta(days=7),
+            reward=80_000_000,
+            volume=899_999.97,
+        )
+    )
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999952")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["collateral"] == 8_000_000_000
+
+    detail = await client.get("/contracts/952001")
+    assert detail.status_code == 200
+    assert detail.json()["collateral"] == 8_000_000_000
+
+
+async def test_serializes_a_contract_esi_sent_without_a_start_location(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """A NULL start_location_id must serialize, not 500.
+
+    ESI's public-contracts schema does not list start_location_id as required, and
+    the column is nullable — but the response schema declared it a bare `int`, so
+    such a row fails response validation and takes down the whole page it lands on.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        Contract(
+            contract_id=953001,
+            title="Locationless Courier",
+            price=0,
+            collateral=1_000_000,
+            status="outstanding",
+            type="courier",
+            issuer_id=953,
+            issuer_corporation_id=953,
+            start_location_id=None,
+            start_location_region_id=99999953,
+            for_corporation=False,
+            date_issued=now,
+            date_expired=now + timedelta(days=7),
+        )
+    )
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999953")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["start_location_id"] is None
+
+    detail = await client.get("/contracts/953001")
+    assert detail.status_code == 200
+    assert detail.json()["start_location_id"] is None
+
+
+async def test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """is_bpc partitions contracts: true means "contains a BPC", false its negation.
+
+    The filter is applied over a JOINED item row, so a per-item predicate makes a
+    contract bundling a BPC with an ordinary item satisfy BOTH values at once —
+    it has an item that is a copy AND an item that is not. The two branches must
+    be exact complements, or paging through is_bpc=true and is_bpc=false shows
+    the same contract twice and their totals overcount the corpus.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add_all(
+        [
+            # A BPC bundled with a plain hull — the case that satisfied both filters.
+            Contract(
+                contract_id=954001,
+                title="Blueprint And Hull Bundle",
+                price=3_000_000,
+                collateral=0,
+                status="outstanding",
+                type="item_exchange",
+                issuer_id=954,
+                issuer_corporation_id=954,
+                start_location_id=60003760,
+                start_location_region_id=99999954,
+                for_corporation=False,
+                date_issued=now,
+                date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=9540011,
+                        type_id=621,
+                        type_name="Caracal Blueprint",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=True,
+                        is_blueprint_copy=True,
+                    ),
+                    ContractItem(
+                        record_id=9540012,
+                        type_id=587,
+                        type_name="Tristan",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=False,
+                        is_blueprint_copy=None,
+                    ),
+                ],
+            ),
+            # A contract with no copy at all, to prove false is not simply empty.
+            Contract(
+                contract_id=954002,
+                title="Hulls Only",
+                price=1_000_000,
+                collateral=0,
+                status="outstanding",
+                type="item_exchange",
+                issuer_id=954,
+                issuer_corporation_id=954,
+                start_location_id=60003760,
+                start_location_region_id=99999954,
+                for_corporation=False,
+                date_issued=now,
+                date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=9540021,
+                        type_id=24698,
+                        type_name="Rokh",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=False,
+                        is_blueprint_copy=None,
+                    ),
+                    ContractItem(
+                        record_id=9540022,
+                        type_id=587,
+                        type_name="Tristan",
+                        quantity=1,
+                        is_included=True,
+                        is_singleton=False,
+                        is_blueprint_copy=None,
+                    ),
+                ],
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    copies = await client.get("/contracts/?region_ids=99999954&is_bpc=true")
+    assert copies.status_code == 200
+    assert [c["contract_id"] for c in copies.json()["items"]] == [954001]
+
+    non_copies = await client.get("/contracts/?region_ids=99999954&is_bpc=false")
+    assert non_copies.status_code == 200
+    # The bundle contains a copy, so it is NOT a non-copy contract.
+    assert [c["contract_id"] for c in non_copies.json()["items"]] == [954002]
+
+    # Exact complements: every contract lands in exactly one branch, and the two
+    # totals sum to the unfiltered total rather than double-counting the bundle.
+    unfiltered = await client.get("/contracts/?region_ids=99999954")
+    assert unfiltered.json()["total"] == 2
+    assert copies.json()["total"] + non_copies.json()["total"] == 2
+
+
+# --- Location system exposure over the wire ---------------------------------
+
+
+async def test_the_wire_carries_the_start_location_system(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """A client that can filter by system must be able to read the system on a row.
+
+    The API accepted region_ids and system_ids while returning neither on the
+    contract, so a UI had no way to show what it had filtered on — or to mark the
+    rows whose system is unknown.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add_all([
+        Contract(
+            contract_id=952001, title="Resolved Location", price=1_000_000, collateral=0,
+            status="outstanding", type="item_exchange", issuer_id=952,
+            issuer_corporation_id=952, start_location_id=60003760,
+            start_location_system_id=30000142, start_location_region_id=99999904,
+            for_corporation=False, date_issued=now - timedelta(days=1),
+            date_expired=now + timedelta(days=5),
+        ),
+        Contract(
+            contract_id=952002, title="Structure Location", price=1_000_000, collateral=0,
+            status="outstanding", type="item_exchange", issuer_id=952,
+            issuer_corporation_id=952, start_location_id=1_035_466_617_946,
+            start_location_system_id=None, start_location_region_id=99999904,
+            for_corporation=False, date_issued=now - timedelta(days=2),
+            date_expired=now + timedelta(days=5),
+        ),
+    ])
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999904")
+    assert listed.status_code == 200
+    body = listed.json()
+    systems = {
+        item["contract_id"]: item["start_location_system_id"] for item in body["items"]
+    }
+    assert systems == {952001: 30000142, 952002: None}
+    # No system filter was applied, so there is no coverage figure to publish.
+    assert body["unknown_system_excluded"] is None
+
+    filtered = await client.get(
+        "/contracts/?region_ids=99999904&system_ids=30000142"
+    )
+    assert filtered.status_code == 200
+    filtered_body = filtered.json()
+    assert [item["contract_id"] for item in filtered_body["items"]] == [952001]
+    assert filtered_body["unknown_system_excluded"] == 1
+
+
+async def test_the_detail_endpoint_carries_the_start_location_system(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The detail page renders the same location block as the list row, so it needs
+    the same field — the two views share one schema and must not drift."""
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        Contract(
+            contract_id=952011, title="Detail Location", price=1_000_000, collateral=0,
+            status="outstanding", type="item_exchange", issuer_id=952,
+            issuer_corporation_id=952, start_location_id=60008494,
+            start_location_system_id=30002187, start_location_region_id=99999905,
+            for_corporation=False, date_issued=now - timedelta(days=1),
+            date_expired=now + timedelta(days=5),
+        )
+    )
+    await db_session.flush()
+
+    detail = await client.get("/contracts/952011")
+    assert detail.status_code == 200
+    assert detail.json()["start_location_system_id"] == 30002187

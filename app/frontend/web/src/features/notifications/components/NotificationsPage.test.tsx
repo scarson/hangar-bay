@@ -1,15 +1,16 @@
 // ABOUTME: NotificationsPage tests over the real /notifications route — auth branches, mark-read on click, pagination, mark-all-read, settings toggle.
 // ABOUTME: Asserts mark-read/mark-all-read/settings wire calls (TEST-5); TEST-8 skeleton-unmount sync before list assertions.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
+import { screen, waitFor, waitForElementToBeRemoved, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
+import { minutesFromNow } from '../../../test/dates'
 
 const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
 const N = (over: Record<string, unknown> = {}) => ({
   id: 1, type: 'watchlist_match', message: 'Rifter available in an auction priced 900,000 ISK in Jita IV - Moon 4',
-  contract_id: 101, watch_type_id: 587, price: 900000, is_read: false, created_at: '2026-07-17T11:00:00Z', ...over,
+  contract_id: 101, watch_type_id: 587, price: 900000, is_read: false, created_at: minutesFromNow(-30), ...over,
 })
 
 interface Call { url: string; method?: string; body?: string }
@@ -56,6 +57,24 @@ describe('NotificationsPage', () => {
     await waitForElementToBeRemoved(skeleton)
     expect(screen.getByText(/rifter available/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /rifter available/i })).toHaveAttribute('href', '/contracts/101')
+  })
+
+  it('stamps each row with its own age', async () => {
+    // Past offsets need no padding: elapsed render time only makes a past span
+    // longer, and the formatter floors, so "-30 minutes" reads as "30m ago" for
+    // the next full minute. created_at is clock-relative (TEST-17) and the
+    // expected strings are literal.
+    const handle = notificationsHandler([
+      N({ id: 1, message: 'Half-hour alert', created_at: minutesFromNow(-30) }),
+      N({ id: 2, message: 'Three-hour alert', created_at: minutesFromNow(-180) }),
+      N({ id: 3, message: 'Fresh alert', created_at: minutesFromNow(0) }),
+    ])
+    stubFetch((url) => (/\/api\/v1\/me$/.test(url) ? jsonResponse(AUTHED) : (handle(url) ?? jsonResponse({}, 404))))
+    renderApp('/notifications')
+    await screen.findByText('Half-hour alert')
+    expect(within(screen.getByRole('link', { name: /Half-hour alert/ })).getByText('30m ago')).toBeInTheDocument()
+    expect(within(screen.getByRole('link', { name: /Three-hour alert/ })).getByText('3h ago')).toBeInTheDocument()
+    expect(within(screen.getByRole('link', { name: /Fresh alert/ })).getByText('just now')).toBeInTheDocument()
   })
 
   it('marks a notification read on click', async () => {

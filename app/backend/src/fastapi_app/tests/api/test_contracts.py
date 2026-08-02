@@ -34,41 +34,52 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi_app.models import Contract, ContractItem
 
-# Fixture contracts must stay LIVE. The contracts list endpoint now excludes anything past
+# Fixture contracts must stay LIVE. The contracts list endpoint excludes anything past
 # date_expired, so a hardcoded past expiry makes a fixture invisible to the very endpoint
-# these tests exercise. They pass today only because vcrpy replays recorded responses; the
-# first re-record would fail them all with a baffling total==0.
+# these tests exercise, and the failure reads as a baffling total==0 (TEST-17).
+# Keep date_issued fixed where ordering is asserted; only the expiry tracks the clock.
 LIVE_EXPIRY = datetime.now(timezone.utc) + timedelta(days=7)
 
-# Mark all tests in this file for VCR, our custom live marker, and asyncio
-pytestmark = [
-    pytest.mark.vcr,
-    pytest.mark.esi_live,
-    pytest.mark.asyncio,
-]
+# Asyncio only. These tests drive our OWN endpoints and database through ASGITransport, so
+# `pytest.mark.vcr` must never be applied here: vcrpy intercepts below httpx and ahead of
+# ASGITransport, which turns every request into a cassette replay that asserts nothing about
+# the application (TEST-14). Per `design/fastapi/guides/09-testing-strategies.md` §5, the
+# vcr/esi_live pair belongs only on tests of the client-to-ESI interaction — never on tests
+# of our own database or internal endpoints. `tests/api/conftest.py` enforces this at
+# collection time.
+pytestmark = [pytest.mark.asyncio]
 
 
-async def test_get_contracts_live(client: AsyncClient):
-    """
-    Tests the /contracts/ endpoint against a recorded live ESI response.
-    This test will fail if the ESI API changes its contract data structure in a
-    way that breaks our models.
-    """
+async def test_list_contracts_returns_paginated_envelope(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The list endpoint wraps results in a page envelope carrying the core contract fields."""
+    # Arrange
+    db_session.add_all([
+        Contract(contract_id=1, title="Envelope Probe", price=100, collateral=0.0, is_ship_contract=True, type="item_exchange", status="outstanding", issuer_id=7, issuer_corporation_id=9, for_corporation=False, date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"), date_expired=LIVE_EXPIRY, start_location_id=60003760),
+        ContractItem(contract_id=1, type_id=101, type_name="Test Ship Alpha", quantity=1, is_included=True, is_singleton=True),
+    ])
+    await db_session.flush()
+
+    # Act
     response = await client.get("/contracts/")
+
+    # Assert
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
-    assert "items" in data
-    assert "total" in data
-    assert "page" in data
-    assert "size" in data
+    assert data["total"] == 1
+    assert data["page"] == 1
+    assert data["size"] == 50
     assert isinstance(data["items"], list)
-    if data["items"]:
-        first_contract = data["items"][0]
-        assert "contract_id" in first_contract
-        assert "issuer_id" in first_contract
-        assert "status" in first_contract
-        assert "type" in first_contract
+
+    # Unconditional on purpose: an `if data["items"]:` guard skips the entire point of the
+    # test the moment the fixture stops reaching the endpoint, and reports that as a pass.
+    first_contract = data["items"][0]
+    assert first_contract["contract_id"] == 1
+    assert first_contract["issuer_id"] == 7
+    assert first_contract["title"] == "Envelope Probe"
+    assert first_contract["type"] == "item_exchange"
 
 
 @pytest.mark.asyncio

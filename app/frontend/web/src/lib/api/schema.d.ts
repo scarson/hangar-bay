@@ -314,6 +314,13 @@ export interface components {
         /**
          * ContractItemSchema
          * @description Schema for an item within a contract.
+         *
+         *     `is_singleton` and `raw_quantity` are deliberately absent. Both are fields of ESI's
+         *     AUTHENTICATED character/corporation contract-item routes; the public item route
+         *     Hangar Bay reads carries neither, so `is_singleton` is the mapping default and
+         *     `raw_quantity` is NULL for every item in the corpus today. The columns stay — they
+         *     fill in the moment a user's own contracts are ingested — but a wire field that can
+         *     only misinform is worse than no wire field (ESI-3).
          */
         ContractItemSchema: {
             /** Category */
@@ -322,14 +329,10 @@ export interface components {
             is_blueprint_copy?: boolean | null;
             /** Is Included */
             is_included: boolean;
-            /** Is Singleton */
-            is_singleton: boolean;
             /** Market Group Id */
             market_group_id?: number | null;
             /** Quantity */
             quantity: number;
-            /** Raw Quantity */
-            raw_quantity?: number | null;
             /** Record Id */
             record_id: number;
             /** Type Id */
@@ -338,14 +341,59 @@ export interface components {
             type_name?: string | null;
         };
         /**
+         * ContractListResponse
+         * @description A page of contracts plus the coverage figure the system_ids filter needs.
+         *
+         *     A bare total hides that system_ids can only ever match the locations we resolved:
+         *     a search returning 3 results reads as "there are 3" when it may mean "there are 3
+         *     we can place, and 40 more we cannot". Publishing the residual next to the number
+         *     is the convention the EVE tooling ecosystem already uses for partial data —
+         *     Adam4EVE prints a NoP (number of participants) column beside its aggregates,
+         *     EVE Tycoon labels each row with the appraisal method behind it.
+         */
+        ContractListResponse: {
+            /**
+             * Items
+             * @description List of items for the current page
+             */
+            items: components["schemas"]["ContractSchema"][];
+            /**
+             * Page
+             * @description Current page number
+             */
+            page: number;
+            /**
+             * Size
+             * @description Number of items per page
+             */
+            size: number;
+            /**
+             * Total
+             * @description Total number of items
+             */
+            total: number;
+            /**
+             * Unknown System Excluded
+             * @description How many contracts matched every other filter but were excluded because their start location has no known solar system (player-owned structures, which need an ACL-scoped token to resolve). Null when system_ids was not applied — no results were dropped for that reason, which is different from none having been.
+             */
+            unknown_system_excluded?: number | null;
+        };
+        /**
          * ContractSchema
          * @description Schema for a public contract.
+         *
+         *     `status` and `date_completed` are deliberately absent. Both are fields of ESI's
+         *     AUTHENTICATED character/corporation contract routes; the public route Hangar Bay
+         *     reads carries neither, so the columns behind them hold a placeholder and a NULL for
+         *     every contract in the corpus today. The columns stay — they fill in the moment a
+         *     user's own contracts are ingested — but a wire field that can only misinform is
+         *     worse than no wire field (ESI-3).
          */
         ContractSchema: {
+            /** Collateral */
+            collateral: number;
             /** Contract Id */
             contract_id: number;
-            /** Date Completed */
-            date_completed?: string | null;
             /**
              * Date Expired
              * Format: date-time
@@ -380,11 +428,11 @@ export interface components {
             /** Reward */
             reward?: number | null;
             /** Start Location Id */
-            start_location_id: number;
+            start_location_id?: number | null;
             /** Start Location Name */
             start_location_name?: string | null;
-            /** Status */
-            status: string;
+            /** Start Location System Id */
+            start_location_system_id?: number | null;
             /** Title */
             title?: string | null;
             /** Type */
@@ -440,29 +488,6 @@ export interface components {
         NotificationSettingsSchema: {
             /** Watchlist Alerts Enabled */
             watchlist_alerts_enabled: boolean;
-        };
-        /** PaginatedResponse[ContractSchema] */
-        PaginatedResponse_ContractSchema_: {
-            /**
-             * Items
-             * @description List of items for the current page
-             */
-            items: components["schemas"]["ContractSchema"][];
-            /**
-             * Page
-             * @description Current page number
-             */
-            page: number;
-            /**
-             * Size
-             * @description Number of items per page
-             */
-            size: number;
-            /**
-             * Total
-             * @description Total number of items
-             */
-            total: number;
         };
         /** PaginatedResponse[NotificationSchema] */
         PaginatedResponse_NotificationSchema_: {
@@ -769,9 +794,9 @@ export interface operations {
                 min_collateral?: number | null;
                 /** @description Maximum collateral. */
                 max_collateral?: number | null;
-                /** @description Minimum runs for BPCs (-1 for original). */
+                /** @description Minimum runs for BPCs. (NO MATCHES — filters an always-NULL column; do not expose in clients) */
                 min_runs?: number | null;
-                /** @description Maximum runs for BPCs. */
+                /** @description Maximum runs for BPCs. (NO MATCHES — filters an always-NULL column; do not expose in clients) */
                 max_runs?: number | null;
                 /** @description Minimum Material Efficiency for BPCs. (NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients) */
                 min_me?: number | null;
@@ -783,7 +808,7 @@ export interface operations {
                 max_te?: number | null;
                 /** @description List of region IDs to filter by. */
                 region_ids?: number[] | null;
-                /** @description List of solar system IDs to filter by. */
+                /** @description List of solar system IDs to filter by. Partial coverage: contracts in NPC stations carry a resolved system, contracts in player-owned structures do not and never match. The response's unknown_system_excluded field reports how many results were dropped for that reason. */
                 system_ids?: number[] | null;
                 /** @description List of station IDs to filter by. */
                 station_ids?: number[] | null;
@@ -814,7 +839,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponse_ContractSchema_"];
+                    "application/json": components["schemas"]["ContractListResponse"];
                 };
             };
             /** @description Validation Error */

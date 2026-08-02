@@ -1,6 +1,6 @@
 [project]
 name = "hangar-bay-backend"
-version = "0.1.0"
+version = "0.1.0" # x-release-please-version
 description = "Default template for PDM package"
 authors = [
     {name = "Samuel Carson", email = "samuel.carson@gmail.com"},
@@ -27,9 +27,16 @@ dev = [
 distribution = false
 
 [tool.pytest.ini_options]
-testpaths = ["src/fastapi_app/tests"]
-pythonpath = ["src"]
+# tools/ holds operational scripts rather than application code. Its tests are pure
+# unit tests — no database, no network — so they run in the ordinary backend lane and
+# the drift detector's own comparison logic is covered on every PR, not only when the
+# scheduled monitor happens to fire.
+testpaths = ["src/fastapi_app/tests", "tools"]
+pythonpath = ["src", "tools"]
 markers = [
+    # No test carries this marker. Detecting ESI schema drift is the job of
+    # tools/esi_spec_monitor, which diffs the published spec on a schedule; a live
+    # test lane can only see drift its sample happens to contain.
     "esi_live: marks tests that hit the live ESI API (to be used with VCR)",
 ]
 asyncio_mode = "strict"
@@ -43,3 +50,4 @@ migrate = {shell = "cd src && python -m alembic upgrade head"}
 makemigration = {shell = "cd src && python -m alembic revision --autogenerate -m {args}"}
 migrate-check = {shell = "cd src && python -m alembic current"}
 provision-dashboards = "python observability/provision_dashboards.py"
+esi-spec-monitor = {cmd = "python -m esi_spec_monitor.monitor", env = {PYTHONPATH = "tools"}}
