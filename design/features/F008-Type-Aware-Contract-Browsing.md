@@ -38,23 +38,24 @@ The motivating analysis, including competitive evidence and the measured composi
 ## 3. Acceptance Criteria (Required)
 
 **Story 1 — contract-type segmentation**
-*   Criterion 1.1: The accepted `contract_type` values are enumerated explicitly and cover **every** value ESI can emit, not only the three with designed row shapes. The full set, confirmed against the committed ESI spec snapshot, is `item_exchange`, `auction`, `courier`, `loan`, `unknown`. A corpus contract whose type is outside the designed set MUST remain reachable and counted — silently dropping it would contradict §1's claim that this feature makes the whole corpus browsable. The plan states whether the extras get their own segment, fold into an "other" segment, or appear only when no type filter is active; it may not leave them unhandled.
+*   Criterion 1.1: The accepted `contract_type` values are enumerated explicitly and cover **every** value ESI can emit, not only the three with designed row shapes. The full set, confirmed against the committed ESI spec snapshot, is `item_exchange`, `auction`, `courier`, `loan`, `unknown`. A corpus contract whose type is outside the designed set MUST remain reachable and counted — silently dropping it would contradict §1's claim that this feature makes the whole corpus browsable. **Decided: `loan` and `unknown` are valid `contract_type` values and appear in `segment_counts` (§17.5), but get no segment control of their own.** They are reachable by URL and counted honestly; they do not occupy screen space for a population that is empty or near-empty in The Forge. If a later region makes them common, promoting them to segments is additive and breaks nothing.
 *   Criterion 1.2: `loan` and `unknown` contracts are **item-less by construction, exactly like couriers**, and inherit the same handling. Ingestion skips item fetching for every type outside `item_exchange` and `auction` (`background_aggregation.py:637`), so these contracts never enter `processed_contract_ids`, remain `PENDING_ITEMS`, and keep `enrichment_version = 0` indefinitely. Two consequences the plan must handle rather than trip over: they are excluded from the ships-only view by the same construction as couriers (Criterion 1.6), and §7 step 4's "verified non-NULL rate on item-level columns" can never cover them, so the verification query must scope to types that actually receive items.
 *   Criterion 1.3: The contracts view presents contract-type segmentation with a live result count per segment. **Counts are of distinct contracts**, not of joined item rows — a multi-item contract counts once. A fixture with at least one multi-item contract is required to make this assertion meaningful.
 *   Criterion 1.4: Selecting a segment updates the list and is reflected in the URL, so the view is shareable and restorable.
 *   Criterion 1.5: The default view remains ships-only, consistent with F002 Criterion 1.1 and `PRODUCT.md`.
 *   Criterion 1.6: Courier contracts — and `loan` and `unknown` contracts, per Criterion 1.2 — are excluded from the ships-only view by construction, because ESI returns no items for them and the ship flag is derived from items.
 *   Criterion 1.7: `ships_only` and contract-type selection MUST NOT be independently settable into a combination that can never match. This applies to **every item-less segment** — courier, and `loan` and `unknown` if Criterion 1.1 gives them a segment — not to courier alone; each is empty under ships-only by the same construction (Criterion 1.6). Selecting any such segment clears `ships_only`, visibly rather than silently. A guaranteed-empty result reachable by ordinary interaction is the same silent-filter-no-op defect Criterion 7.2 prohibits; this feature must not ship the defect it forbids.
-*   Criterion 1.8: **What an item-less segment's count reads while `ships_only` is active is specified, not left to the implementer.** For courier and any other item-less segment, that count is either 0 (the filter honestly applied) or the segment's unfiltered total (the count answering "what is behind this tab"). Both are defensible and they are visibly different; two implementers will otherwise ship opposite behavior. The plan picks one and applies it uniformly across item-less segments. Given Criterion 1.7 makes the combined state unreachable anyway, the count's job here is to advertise what switching would reveal.
+*   Criterion 1.8: **Decided: while `ships_only` is active, an item-less segment's count is computed with `ships_only` lifted as well as `contract_type`.** The courier tab reads its true total, not 0. Criterion 1.7 makes the combined state unreachable, so the count's only job is to advertise what switching would reveal — and a `Courier (0)` label that becomes `Courier (115)` the instant you click it is the silent-no-op defect wearing a numeral.
+*   Criterion 1.9: **Returning from an item-less segment restores `ships_only` to its default (on).** Criterion 1.7 clears it on the way in; without a stated rule for the way back, two implementers ship opposite behavior — the same defect 1.8 exists to prevent, one interaction later. Because `filters.ts:77` reads `ships_only: raw.ships_only !== false`, "cleared" is written into the URL as an explicit `false`, and restoring means removing that parameter rather than setting it true.
 
 **Story 2 — blueprint copy display and filtering**
 *   Criterion 2.1: `runs`, `material_efficiency`, and `time_efficiency` are persisted from the ESI items payload.
 *   Criterion 2.2: BPC rows display runs, ME, and TE.
 *   Criterion 2.3: The existing `min_runs`/`max_runs` filter family operates against `runs` rather than `raw_quantity`, which cannot be populated from public ESI and is why the filter currently matches nothing.
 
-    **Verifiable form — and it must use a mixed-child contract, because this is an SQLA-3 filter.** `min_runs` is applied today as a per-row predicate on the joined `ContractItem` (`contract_service.py:197-200`), which is the identical shape to the `is_bpc` defect. A single-item fixture proves nothing: seed a contract holding **both** a 5-run blueprint copy and a 50-run blueprint copy, then assert it appears under exactly one branch of a partitioning pair (`max_runs=10` and `min_runs=11`), and that the two branch totals sum to the unfiltered total. A contract must never match a filter and its own negation. Asserting HTTP 200 and a non-empty list satisfies none of this and must not be accepted as evidence.
+    **Semantics and verifiable form: see §3.1**, which defines the contract-level predicate for every item-level range filter and the correct three-way assertion. Do not reason about this criterion without it — the obvious reading produces a test that cannot pass.
 *   Criterion 2.4: A blueprint **original** is distinguishable from a copy. Per pitfall ESI-3, the public route omits `runs` entirely for originals rather than sending `-1`; absence must not be read as zero.
-*   Criterion 2.5: The `min_me` / `max_me` / `min_te` / `max_te` filter families operate against `material_efficiency` and `time_efficiency`. All four are inert today (`schemas/contracts.py:165-200`), not only the minimums. **These fail more dangerously than the runs filter and need the harsher test.** Measured against live production on 2026-08-01: `min_me=10` returns **15,592 contracts — the identical count to the same query with no ME filter at all**. The filter is not merely inert, it is invisible: it returns a large, plausible, wrong result set that reads as a successful answer, where `min_runs=5` at least returns zero and looks broken. **Verifiable form — same SQLA-3 shape as 2.3, same mixed-child requirement.** Seed a contract holding **both** an ME-0 item and an ME-20 item. Under a naive per-row predicate that contract matches `min_me=10` *and* `max_me=5` simultaneously; the test must assert it appears under exactly one, and that the two branch totals sum to the unfiltered total. Additionally assert the filtered count is strictly less than the unfiltered count for the same query, which is what catches the current defect where `min_me=10` returns the entire result set unchanged. A test asserting only "returns some rows" passes against that defect and must not be accepted.
+*   Criterion 2.5: The `min_me` / `max_me` / `min_te` / `max_te` filter families operate against `material_efficiency` and `time_efficiency`. All four are inert today (`schemas/contracts.py:165-200`), not only the minimums. **These fail more dangerously than the runs filter and need the harsher test.** Measured against live production on 2026-08-01: `min_me=10` returns **15,592 contracts — the identical count to the same query with no ME filter at all**. The filter is not merely inert, it is invisible: it returns a large, plausible, wrong result set that reads as a successful answer, where `min_runs=5` at least returns zero and looks broken. **Semantics and verifiable form: see §3.1.** Additionally, and specific to this criterion: assert the filtered count is **strictly less** than the unfiltered count for the same query. That single assertion is what catches the live defect, where `min_me=10` returns the entire result set unchanged. A test asserting only "returns some rows" passes against the defect and must not be accepted.
 
 **Story 3 — taxonomy filtering**
 *   Criterion 3.1: Item `category_id` and `group_id` are persisted.
@@ -91,10 +92,28 @@ The motivating analysis, including competitive evidence and the measured composi
 *   Criterion 7.1: `last_seen_at` is surfaced in the UI, which requires adding it to the response schema — it is computed today and returned by nothing.
 *   Criterion 7.2: A filter combination that cannot match — most importantly a region other than The Forge — produces an explanatory state distinguishing "not covered" from "nothing matched." This is the empty-state-or-explain invariant proposed in the gap analysis §2.2.
 *   Criterion 7.3: **Coverage is data, not a hard-coded constant.** The API exposes which regions are actually covered; the client does not embed "The Forge" as a literal. Without this the implementation must either hard-code the region (which silently becomes wrong the day coverage expands) or infer coverage from an empty result (which misclassifies a genuinely empty covered region as uncovered). Both failure modes are the defect Criterion 7.2 exists to prevent, reintroduced one layer down.
-*   Criterion 7.4: The coverage source is named explicitly, because the two candidates disagree exactly when it matters. `Settings.AGGREGATION_REGION_IDS` (`core/config.py:61`, default `[10000002]`) states **intent**; `SELECT DISTINCT start_location_region_id` states **reality**. They diverge for the entire ingestion window after a coverage change — which is precisely the situation Criterion 7.3 exists for. The plan picks one, or reports both with distinct meanings ("configured" versus "has data"), and must also name a source for region *display names*, which neither candidate provides.
+*   Criterion 7.4: **Decided: coverage reports observed reality, not configured intent.** `Settings.AGGREGATION_REGION_IDS` (`core/config.py:61`) states what we mean to ingest; `SELECT DISTINCT start_location_region_id` states what we actually have. They diverge for the whole ingestion window after a coverage change, and during that window the configured value would tell a user a region is covered when it holds nothing — the exact failure Criterion 7.3 exists to prevent. Region display names come from the static `regions.ts` map the frontend already ships. Wire shape in §17.7.
 
 **Story 8 — want-to-buy symmetry**
 *   Criterion 8.1: Items requested (`is_included = false`) and items offered are rendered distinctly and never merged into one list.
+
+### 3.1. Item-level filter semantics — canonical statement
+
+**Every filter over an item column needs a contract-level predicate, and this subsection defines it once for all of them.** Criteria 2.3, 2.5, and 3.2 all refer here. The list endpoint returns contracts, but `runs`, `material_efficiency`, `time_efficiency`, `category_id`, and `group_id` live on items, and a contract may hold many items with different values. Without a stated rule, three readings are equally consistent with "filter by ME ≥ 10" and they return different result sets.
+
+**The rule: existential over offered items.** A contract matches an item-level filter when **at least one item with `is_included = true` satisfies the predicate**. Requested items never make a contract match — they are the counterparty's side of the trade, and Criterion 8.1 exists because conflating them misleads. This is the same rule the `is_bpc` fix settled on, extended to ranges.
+
+**Range filters compose per item, not per contract.** `min_me=10&max_me=20` matches a contract holding one item with ME 15. It does **not** match a contract holding an ME-5 item and an ME-25 item, because no single item satisfies both bounds. Bounds within a family apply to the same item; that is what a range means.
+
+**The assertion is a three-way identity, not a two-way partition.** Two complementary bounds do **not** sum to the unfiltered total, for two independent reasons: range bounds leave gaps (`max_me=5` and `min_me=10` exclude ME 6–9), and NULL-valued items fall outside both (blueprint originals omit `runs` entirely per ESI-3, and non-blueprint items have no ME at all). A test demanding a two-way sum cannot pass under any correct implementation. Assert instead:
+
+```
+count(branch_a) + count(branch_b) + count(neither) == count(unfiltered)
+```
+
+where **`neither`** is contracts with no offered item satisfying either bound — including every contract holding no blueprint at all. Choose the two branches to be genuinely complementary over the *non-NULL* population (`max_runs=10` and `min_runs=11`), and state the expected `neither` count explicitly in the fixture rather than deriving it.
+
+**The mixed-child fixture is still required** (TEST-19, SQLA-3). Seed a contract holding two offered items with different values in the same family. Under a naive per-row predicate it matches a bound and its complement simultaneously; the test must assert it lands in exactly one branch. A single-item fixture cannot distinguish the contract-level rule from the per-row one and proves nothing.
 
 ## 4. Scope (Required)
 
@@ -105,8 +124,8 @@ The motivating analysis, including competitive evidence and the measured composi
 *   Persist item `runs`, `material_efficiency`, `time_efficiency`, and `item_id`.
 *   Persist contract `buyout` and `days_to_complete`.
 *   Persist `end_location_name` (required by Criterion 5.2; the name is already resolved and discarded).
-*   Persist `end_location_system_id` (write-only in this feature; see Criterion 5.5). This one requires widening `_npc_station_ids` to collect end locations — it reads only start locations today.
-*   Serve a contract-level blueprint-copy flag and a primary display label, so the list response no longer has to inline every item (Criterion 6.4). **The plan must decide and state whether these are stored columns or computed per query**, because that choice moves them across the §7 phase gate: denormalized onto `Contract` they are written during item enrichment and land behind the resweep; computed in SQL from the item rows they are available as soon as the items are. Either is defensible; leaving it open produces two incompatible implementations and two different release orders.
+*   Persist `end_location_system_id` (write-only in this feature; see Criterion 5.5). Requires widening two of the three location-resolution paths — **§5.1 is the canonical statement of which and why; do not re-derive it here or anywhere else.**
+*   Serve a contract-level blueprint-copy flag and a primary display label, so the list response no longer has to inline every item (Criterion 6.4). **Decided: both are computed per query, not stored columns.** Storing them would put the single largest change in this feature behind the 80-minute resweep in §7 step 4 for no benefit, since both derive from item rows that are present as soon as enrichment writes them. Computed keeps §7's phase assignment stable and avoids two denormalized columns that would need their own invalidation story.
 
 **API**
 *   A `contract_type` filter and per-type counts.
@@ -121,6 +140,7 @@ The motivating analysis, including competitive evidence and the measured composi
 
 **Instrumentation**
 *   Server-side logging of filter dimensions (contract type, category, group) on the existing contracts endpoint, via the structlog pipeline already shipping to Grafana Cloud. Dimensions only; no PII.
+*   **Remove the raw search string from those logs.** `contract_service.py` emits `"search": filters.search` — the user's own query text — at four sites (`:317`, `:365`, `:412`, `:436`). §10 forbids that, and a task told only to "add dimensions, no PII" would satisfy the letter of its instruction while leaving the violation in place. Log a boolean or a length instead, at all four.
 
 ### 4.2. Out of Scope
 
@@ -162,19 +182,36 @@ New and changed columns. All new columns are nullable, because ESI omits most of
 | `buyout` | numeric, nullable | Auctions only. |
 | `days_to_complete` | int, nullable | Couriers. Present on 115/115 sampled Forge couriers. |
 | `end_location_name` | text, nullable | **Genuinely cheap — one column and one mapping line.** `start_location_name` is a stored column (`models/contracts.py:67`) populated from the resolved-name map at `background_aggregation.py:200`, and the end location is already in that map: `_collect_resolvable_ids` unions `end_location_ids` into the name-resolution set at `background_aggregation.py:97`. The name is resolved today and simply never written. |
-| `end_location_system_id` | int, nullable | **Not cheap in the same way, and start-vs-end conflation here has already caused three separate errors in this spec's own review history. Read the note below the table.** Typed `Integer` to match its sibling `start_location_system_id` (`models/contracts.py:56`); solar system IDs fit int32. Written but unread in this feature (Criterion 5.5). NULL where the endpoint is a player structure — measured at **6 of 115 Forge couriers (~5%)** for the end location specifically; the ~9–10% figure in the spike is the *both-endpoints* rate and does not apply to this column alone. |
+| `end_location_system_id` | int, nullable | Typed `Integer` to match its sibling `start_location_system_id` (`models/contracts.py:56`); solar system IDs fit int32. Written but unread in this feature (Criterion 5.5). NULL where the endpoint is a player structure — measured at **6 of 115 Forge couriers (~5%)** for the end location specifically; the ~9–10% figure in the spike is the *both-endpoints* rate and does not apply to this column alone. Population requires the widening in §5.1. |
 
-**Location resolution: three start-only code paths, and all three must be widened.** Name resolution and system resolution are separate pipelines, and within system resolution the fetch and the cache are separate functions. Getting `end_location_system_id` populated *and* keeping it cheap requires touching all of the following:
+### 5.1. Location resolution — canonical statement
 
-| Path | Current scope | Needed |
+**This subsection is the single source of truth for how location data is resolved. Every other section refers here rather than restating it.** Name resolution and system resolution are separate pipelines, and within system resolution the fetch set and the cache read are separate functions. Of the three paths, one already handles end locations and two do not:
+
+| Path | Current scope | Needed for this feature |
 |---|---|---|
-| `_collect_resolvable_ids` (`background_aggregation.py:97`) | Already unions `end_location_ids` | **No change.** This is why `end_location_name` is nearly free. |
-| `_npc_station_ids` (`:150-158`) | `start_location_id` only — the docstring says "The distinct start locations" | Widen to collect end locations, or the column is never populated. |
-| `_select_known_station_systems` (`:575-598`) | Selects `Contract.start_location_id` / `start_location_system_id` only | **Widen, or the memoization silently fails for end stations.** A station that only ever appears as a *destination* is absent from `known` on every run and gets re-fetched from ESI forever — so "steady state costs zero station requests," which that function's own docstring promises, becomes false for exactly the locations this feature adds. |
+| `_collect_resolvable_ids` (`background_aggregation.py:97`) | Already unions `end_location_ids` into the **name** set | **No change.** This is why `end_location_name` is nearly free. |
+| `_npc_station_ids` (`:150-157`) | `start_location_id` only — its docstring reads "The distinct start locations" | **Widen** to collect end locations, or `end_location_system_id` is never populated. |
+| `_select_known_station_systems` (`:575-599`) | Selects `Contract.start_location_id` / `start_location_system_id` only | **Widen.** Skipping this does not fail loudly: a station that only ever appears as a *destination* is absent from `known` on every run and is re-fetched from ESI forever, so the "steady state costs zero station requests" its docstring promises silently becomes false for exactly the locations this feature adds. |
 
-That function's docstring also records a hazard worth preserving: the upsert copies every supplied column on conflict, so a run that re-resolved from scratch and returned empty would write NULL over systems the site already knew. Whatever widening happens must not weaken that property.
+Two consequences that follow from the table and are not restated elsewhere:
 
-**A taxonomy name cache** (new, or `EsiMarketGroupCache` repurposed — the plan chooses and states which). Criterion 3.5 requires a served option list with display *names*, and §5's ID columns alone cannot produce them: group payloads are fetched transiently during enrichment and discarded, and no dogma category or group cache exists. Without a durable name source the companion endpoint in §6.2 has nothing to serve, which is exactly how F002's market-group filter died. Category names come from `/universe/categories/{id}`; group names from the group records enrichment already fetches.
+*   **Cost.** The marginal cold cost is the end-only stations, which is smaller than the spike's 44-station / 2.2-second figure because that covers start and end together and production already resolves all starts. Steady state returns to zero **only if both widenings land**.
+*   **A hazard to preserve.** `_select_known_station_systems`'s docstring records that the upsert copies every supplied column on conflict, so a run that re-resolved from scratch and came back empty would write NULL over systems the site already knew. Neither widening may weaken that property.
+
+### 5.2. Taxonomy name cache
+
+Criterion 3.5 requires a served option list with display *names*, and the ID columns above cannot produce them: group payloads are fetched transiently during enrichment and discarded, and no dogma category or group cache exists. Without a durable name source the companion endpoint in §6.2 has nothing to serve, which is exactly how F002's market-group filter died.
+
+**Decided: a new table, `esi_taxonomy_cache`. Do not repurpose `EsiMarketGroupCache`.** That model's primary key is `market_group_id` and its `raw_esi_response` is `nullable=False` (`models/contracts.py:22-32`); dogma category IDs and market group IDs share an integer space with no discriminator, so reusing it would need a migration and a new key column anyway. Reuse buys nothing and costs a confusing table.
+
+Shape: `(kind, esi_id)` as the composite key where `kind` is `category` or `group`, plus `name`, `parent_category_id` (NULL for categories), and `fetched_at`.
+
+**Population, which is the part the ID-column work does not cover:**
+
+*   **Group names are free.** They ride the group payloads enrichment already fetches at `background_aggregation.py:774-776`.
+*   **Category names are not.** They need `GET /universe/categories/{id}`, which means a new `ESIClient` method and a fan-out through the existing `_resolve_esi_objects` helper. This is the **one** ESI call this feature adds, and it is why §4.1's "adds columns and assignments, not ESI calls" is scoped to the ID columns. The set is tiny — a few dozen categories, immutable — so it resolves once and is cached permanently.
+*   **Cold-cache behavior is a requirement, not an accident.** The cache fills as enrichment runs, so between the migration and the completion of the resweep the option list is partial. The taxonomy filter is therefore gated with the rest of the item-level surface in §7 step 4, and the option endpoint must report an empty or partial list honestly rather than presenting it as the complete taxonomy.
 
 **Retained but unused columns.** `status`, `date_completed`, `raw_quantity`, and `is_singleton` remain, and this feature adds no filter or display that reads them. **They are not uniformly NULL, and the distinction matters for anyone writing a filter against them:** `status` is `nullable=False` and holds the placeholder `"unknown"`, and `is_singleton` is `nullable=False` and receives `False` from ingestion (`background_aggregation.py:654` supplies `i.get("is_singleton", False)`; the column declares no default of its own). Only `date_completed` and `raw_quantity` are actually NULL. So two of the four hold *values that look real and are meaningless* — a worse trap than NULL, and the reason `is_bpc=false` and `min_runs` both silently matched nothing. All four are exactly what the authenticated character and corporation contract routes return. The reasoning is recorded in the gap analysis §4.2 and is not reopened here. Likewise `ContractItem.market_group_id` and `EsiMarketGroupCache` are retained but are not the taxonomy axis (§15).
 
@@ -190,9 +227,13 @@ That function's docstring also records a hazard worth preserving: the upsert cop
 | `GET /universe/categories/{category_id}` | New | For display names. Small, bounded, permanently cacheable. |
 | `GET /universe/stations/{station_id}` | Existing | Extended to end locations, to populate `end_location_system_id`. |
 
-**The ESI drift-monitor manifest MUST be updated in this feature.** `app/backend/tools/esi_spec_monitor/manifest.py` records, per endpoint, every field Hangar Bay consumes and who consumes it — that is what makes upstream drift visible before it breaks production. This feature adds one consumed endpoint (`/universe/categories/{id}`) and newly consumes eight fields that are currently unmonitored: contract `buyout` and `days_to_complete`, and item `runs`, `material_efficiency`, `time_efficiency`, `item_id`, `group_id`, `category_id`. Omitting this is the same defect §15.2 calls "not optional" for the deferred route work, and it fails silently: the monitor stays green while watching a field set that no longer matches what we read.
+**The ESI drift-monitor manifest MUST be updated in this feature**, in three distinct ways. `app/backend/tools/esi_spec_monitor/manifest.py` records, per endpoint, every field Hangar Bay consumes and who consumes it; that is what makes upstream drift visible before it breaks production. Omitting any of these fails silently — the monitor stays green while watching a field set that no longer matches what we read.
 
-**One existing manifest entry becomes false and must be corrected in the same change.** `manifest.py:113-118` records `raw_quantity` as "read by the min_runs/max_runs filter in contract_service," with the consequence "always NULL, so min_runs/max_runs match zero rows." Criterion 2.3 rewires that filter to `runs`, so both the consumer note and the consequence stop being true. Leaving them is how a monitor turns into a source of confident misinformation.
+1. **Six genuinely new fields to add:** contract `buyout` and `days_to_complete`; item `runs`, `material_efficiency`, `time_efficiency`, and `item_id`. Verified absent from the `/contracts/public/{region_id}` and `/contracts/public/items/{contract_id}` blocks.
+2. **Two existing entries to amend, not add.** `group_id` (`manifest.py:133`) and `category_id` (`:143`) are **already monitored** — consistent with §4.1, which says both are read during enrichment today. Their consumer notes describe them as feeding the ship-flag decision only; both will now also populate `ContractItem` columns, so the notes need widening.
+3. **One entry that becomes false.** `manifest.py:114-118` records `raw_quantity` as "read by the min_runs/max_runs filter in contract_service," with the consequence "always NULL, so min_runs/max_runs match zero rows." Criterion 2.3 rewires that filter to `runs`, so both the consumer note and the consequence stop being true. Leaving them turns the monitor into a source of confident misinformation.
+
+Plus one new endpoint block for `/universe/categories/{id}` (§5.2).
 
 **No new ESI endpoint beyond `/universe/categories/{id}` is consumed.** `/route/` belongs to the deferred reward-per-jump work (§4.2), and moving it out is one of the reasons for that deferral: it is the only ESI dependency in the original scope whose *shape* depends on the compatibility date. At the current `2020-01-01` floor it is a `GET` returning a bare array; at `2025-09-30` and later it is a `POST` with a JSON body, renamed preference values, an object envelope, and no server-side cache, and the old shape returns **HTTP 404**. Verified live by the courier spike. Because this feature does not call it, F008 and the open ESI-4 pinning decision can proceed independently — see §15.2 for what the follow-on inherits.
 
@@ -218,7 +259,7 @@ After any change here: `pdm run export-openapi`, then `npm run generate:api`, bo
 
 ## 7. Workflow / Logic Flow
 
-**Ingestion.** Unchanged in shape. Enrichment additionally writes the taxonomy and blueprint fields it already holds — no new ESI calls, because both were already resolved and thrown away. Location resolution extends to end locations, which requires widening both the fetch set and the cache read (§5). The spike measured 44 distinct NPC stations resolving in ~2.2 seconds cold across The Forge's courier population, but that figure covers **start and end stations together** and production already resolves all start locations, so the marginal cold cost is smaller than that. Treat the spike number as a ceiling, not the increment. **Steady state returns to zero only if `_select_known_station_systems` is widened alongside `_npc_station_ids`** — widening the fetch without the cache leaves every destination-only station re-fetched on every run, forever.
+**Ingestion.** Unchanged in shape. Enrichment additionally writes the taxonomy and blueprint fields it already holds, adding no ESI calls for the ID columns because both were already resolved and thrown away. Location resolution extends to end locations per **§5.1**. Category *names* for the taxonomy cache do need a new ESI call — see §5.2, which is the one place §4.1's "not ESI calls" claim does not reach.
 
 **Backfill of existing rows — and the two halves backfill differently.** This distinction decides the phase boundary, so it must not be glossed.
 
@@ -236,6 +277,17 @@ The required order is:
 2. Ingestion changes deployed, `ENRICHMENT_VERSION` bumped.
 3. **Unblocked immediately after the next ordinary run:** auction and courier presentation — `buyout`, `days_to_complete`, `end_location_name`, reward per m³ — verified against a non-NULL rate on the contract-level columns.
 4. **Blocked until the resweep is observed to completion**, with a verified non-NULL rate on the *item-level* columns and not merely "the job finished": taxonomy filters, blueprint columns, composition summaries.
+
+### 7.1. Single-writer resources — constraints on how the plan may decompose
+
+The phase gate above orders the work in time. These four resources constrain how it may be split *across parallel tasks*, and violating any of them fails in a way the offending task will not see.
+
+*   **One migration task, front-loaded.** `app/backend/src/alembic/versions/` is a linear chain. The ten new columns split naturally across taxonomy, blueprint, auction, and courier work — and four tasks each writing a migration off the same `down_revision` produce `Multiple head revisions`, which fails `alembic upgrade head`. That command is `render.yaml`'s `preDeployCommand`, so the failure lands on the **production deploy**, not the test run. All schema changes belong to a single migration authored once, before any task that depends on them.
+*   **One `ENRICHMENT_VERSION` bump, in the last ingestion task.** Two tasks each writing item-level fields will each bump it. The second bump triggers a second 80-minute production resweep and invalidates the first bump's step-4 verification mid-flight.
+*   **Codegen is re-run after rebase, never merged.** Every schema-touching task regenerates `openapi.json` and `schema.d.ts` wholesale, so concurrent branches conflict in generated files that CLAUDE.md forbids hand-editing. The resolution is always `pdm run export-openapi` then `npm run generate:api` on the rebased branch, never a manual merge of the artifacts.
+*   **`ContractTable.tsx` is restructured once, before the segments that need it.** Both step 3 (auction, courier) and step 4 (blueprint, composition) edit the same hard-coded `<td>` block at `:112-151`. The per-column cell-renderer refactor is its own task and lands first.
+
+**And the step-3/step-4 boundary needs a mechanism, not just an instruction.** Step 4's entry condition is an ~80-minute production resweep that no subagent can produce or observe, on a repo whose release path is a `dev` → `main` publication PR. The plan must name how step 4 waits: merged to `dev` but held from the release PR, or behind a flag, or a separate release train. "Verify before exposing" is not executable without one.
 
 **State the denominator when verifying those rates.** The stored table includes contracts no longer present in ESI's public list, and both `_build_contract_rows` and `_fetch_item_rows` iterate only the freshly fetched batch — so neither backfill ever revisits a delisted contract and neither rate can approach 100% of the table. Measure against contracts seen in a recent ingestion run, not against `SELECT count(*) FROM contracts`, or the check fails for a reason that has nothing to do with this feature. The same population-mixing warning as §1.
 
@@ -257,7 +309,13 @@ The plan must make step 4 an independently verifiable unit separate from step 2.
 
     **Axis 2, the row body, comes from item composition** and applies within any item-bearing segment: single item, or multi-item composition summary. Courier has no second axis because ESI returns it no items.
 
-    **Blueprint columns are a refinement of the single-item body, not a sixth shape.** Runs, ME, and TE appear when the contract's offered items comprise exactly one blueprint copy. A contract with several blueprint copies has no single ME/TE to report, so it renders as multi-item composition and defers per-blueprint detail to the detail view. This resolves the "which blueprint supplies ME/TE" ambiguity by removing the case rather than picking arbitrarily.
+    **Blueprint columns are per-row cell content within the item-exchange and auction segments, not a segment of their own.** The columns are always present in those segments; what varies is whether a given row has values to put in them.
+
+    **The discriminator, stated so it admits one reading:** runs, ME, and TE render when the contract has **exactly one offered item that is a blueprint copy**. Other offered items may be present — a contract holding one BPC and one hull still shows that BPC's values, because there is no ambiguity about which blueprint they describe. A contract holding *two or more* offered blueprint copies has no single ME/TE to report, so those cells read as a count ("3 BPCs") linking to the detail view rather than showing one arbitrary blueprint's numbers. Non-blueprint rows leave the cells empty.
+
+    This satisfies Story 2's "first-class columns" (they are real columns in the segment's column set, sortable and filterable) without inventing a blueprint segment that would fragment the type-based segmentation.
+
+*   **One live semantic disagreement must be resolved, not inherited.** Two blueprint-copy predicates already exist in the codebase and they disagree: the backend's `_has_blueprint_copy_item()` ignores `is_included` (`contract_service.py:91-112`), while the frontend's `contractIsBpc` requires it (`ContractTable.tsx:36`). §3.1 settles it — **offered items only** — and the contract-level flag §4.1 adds must use that rule. Left unreconciled, the served flag would silently disagree with the `is_bpc` filter that selected the rows it appears on, and it would disagree specifically on want-to-buy contracts, which is what Story 8 is about. The backend predicate is the one that changes.
 *   **Cascading taxonomy filter.** Category first, then group scoped to that category with type-ahead. A flat group list is not viable: the Module category alone contains hundreds of groups.
 *   **No distance figure of any kind on the courier row in this feature.** Reward per m³ is the normalization; jumps, reward per jump, and route-security tiers all belong to the deferred work (§4.2), and the design rules that govern them are recorded in §15.2 so they are not re-derived. A row must not imply a distance it cannot compute — an unlabelled "route" column reading `Jita → Amarr` is fine; anything that reads as *near* or *far* is not.
 *   **Unknown is not blank.** Player structures cannot be resolved without ACL-scoped tokens, so some courier endpoints have no name. Measured across 115 Forge couriers: about **9–10% have at least one** unresolvable endpoint, of which **~5% (6 of 115) are the destination** and ~3% the origin. Those cells must read as "unknown structure" — not blank, not an ID, and not a fabricated placeholder that reads like a real station. This is the same honesty rule §2.2 of the gap analysis criticized a competitor for breaking by rendering `Unknown Structure` at a fake security rating.
@@ -276,13 +334,13 @@ The plan must make step 4 an independently verifiable unit separate from step 2.
 ## 10. Security Considerations
 
 *   No new authentication surface. All consumed endpoints are public and unauthenticated.
-*   No PII in instrumentation. Filter dimensions only — no user identifiers, no free-text search contents.
+*   No PII in instrumentation. Filter dimensions only — no user identifiers, no free-text search contents. **This is currently violated by code this feature extends** (`contract_service.py:314-326`, `:405`, `:429` log `filters.search` verbatim); §4.1 makes fixing it part of the instrumentation work rather than leaving a task to add clean fields next to dirty ones.
 *   New filter parameters are typed and bounded by Pydantic, reaching the database only through the ORM.
 *   End-location resolution reuses the existing bounded-concurrency helper and the NPC-station-ID guard that avoids spending ESI error budget on requests guaranteed to 401.
 
 ## 11. Performance Considerations
 
-*   End-location station resolution is bounded by distinct stations, not contract count. It memoizes from stored rows and returns to zero steady-state cost **only if both the fetch set and the cache read are widened** (§5); widening only the fetch converts a one-off cost into a permanent per-run one.
+*   End-location station resolution is bounded by distinct stations, not contract count, and its steady-state cost depends on the widening in §5.1.
 *   Derived ratios (reward per m³) are computed in SQL so they sort without loading the page into the application.
 *   Filtering on contract type reuses `Contract.type`, already covered by the composite `ix_contracts_type_status`. The plan verifies whether that composite serves a type-only predicate or whether a companion index is warranted — it does not assume either. New taxonomy columns (`category_id`, `group_id`) do need indexes; the plan specifies which, informed by the existing set.
 *   **Adding a sortable field touches five places, not one.** `reward_per_volume` needs a `SORT_MAP` entry (`contract_service.py:27-34`), a new `SortableContractFields` member — which `SavedSearchParameters.sort_by` also consumes (§14) — a matching entry in the frontend's duplicated `SORT_FIELDS` (`features/contracts/filters.ts:1-9`), regenerated client types, and it must work through the grouped-subquery pagination path that SQLA-1 governs. A sort on a computed ratio is not a one-line addition.
@@ -381,14 +439,15 @@ This is recorded rather than resolved. The instrumentation in §4.1 exists so th
 
 `docs/pitfalls/implementation-pitfalls.md` and `docs/pitfalls/testing-pitfalls.md` in full.
 
-**Read SQLA-3 and TEST-19 first, before anything else.** SQLA-3 — "a per-row predicate over a one-to-many join cannot classify the parent" — is not a general caution here, it describes **every item-level filter this feature touches**: the category/group filter (Criterion 3.2), the runs filter (2.3), the ME/TE filters (2.5), the offered-only composition counts (6.3), and the want-to-buy split (8.1). The runs filter is *already written* in this shape (`contract_service.py:197-200`), so making it functional without changing its shape ports the `is_bpc` defect onto a new column rather than fixing it. The only prior instance of this bug in the repo was `is_bpc`, found in adversarial review **earlier in the same session that produced this spec**: a contract bundling a blueprint copy with a hull matched both `is_bpc=true` *and* `is_bpc=false`, returning under a filter and its own negation with totals quietly exceeding the corpus. Every filter listed above is the same shape and will fail the same way unless written deliberately.
+**Read SQLA-3 and TEST-19 first, before anything else.** SQLA-3 — "a per-row predicate over a one-to-many join cannot classify the parent" — is not a general caution here, it describes **every item-level filter this feature touches**: the category/group filter (Criterion 3.2), the runs filter (2.3), the ME/TE filters (2.5), the offered-only composition counts (6.3), and the want-to-buy split (8.1). The runs filter is *already written* in this shape (`contract_service.py:197-200`), so making it functional without changing its shape ports the `is_bpc` defect onto a new column rather than fixing it. The `is_bpc` filter is the worked example: a contract bundling a blueprint copy with a hull matched both `is_bpc=true` *and* `is_bpc=false`, returning under a filter and its own negation, with totals quietly exceeding the corpus. Every filter listed above is the same shape and will fail the same way unless written against **§3.1**, which defines the contract-level predicate they all share.
 
 Also directly load-bearing: **ESI-3** (originals omit `runs`), **FASTAPI-1** (`Annotated[Model, Query()]`, never bare `Depends`, for GET filter models), **FASTAPI-2** (the inert ME/TE params — Criterion 2.5), **FASTAPI-3** (a response field stricter than its column 500s the whole page, not one row — governs every new optional field in §9), **PROXY-1** (no `/api/v1` in FastAPI), **SQLA-1** (pagination over joins, which the new sort field must pass through), **SQLA-2**, **ENV-2/ENV-3** (every backend `.py` save under reload wipes the database — batch edits), **TEST-14** (never pair `pytest.mark.vcr` with an app-client fixture), **TEST-19**, **TEST-20** (assertions inside `if data["items"]:` never run). **ESI-4** matters to the deferred route work, not to any call this feature makes.
 
 ### 16.2. Critical logic points
 
 *   Taxonomy persistence happens where both values are already in scope: `group_id` at `background_aggregation.py:771-775`, `category_id` on the group record read at `:783`. Resist the urge to add an ESI call for either.
-*   Widening `_npc_station_ids` to collect end locations is required for `end_location_system_id` and is easy to miss, because the *name* map already covers end locations through a different function. Resolving the name and resolving the system are two separate paths.
+*   Location resolution: follow **§5.1** exactly. Two of three paths need widening, and the one that is easy to miss is the cache read, not the fetch — skipping it costs nothing at first and then costs an ESI call per destination station on every run forever.
+*   The response-model split in Criterion 6.4 is the change most likely to be done wrong. Dropping the eager-load without splitting the model leaves a schema that advertises a field it no longer sends.
 *   Every new response field is optional unless provably non-null for all rows (§9).
 *   Nothing in this feature calls `/route/`. If you find yourself needing an ESI route call, you have wandered into the deferred work in §4.2.
 
@@ -396,10 +455,104 @@ Also directly load-bearing: **ESI-3** (originals omit `runs`), **FASTAPI-1** (`A
 
 TDD is mandatory for all production code here. Specific traps this feature is prone to:
 
-*   **Every item-level filter test needs a mixed-child parent (TEST-19)** — taxonomy, runs, ME, and TE alike, not taxonomy alone. A fixture whose contract holds exactly one item passes identically whether the query classifies the *contract* or the *row*; the readings diverge only when one contract holds children of both kinds. So for each filter: seed a contract holding both a matching and a non-matching item, assert it appears under exactly one branch of a partitioning pair, and assert the two branch totals sum to the unfiltered total. **"These two branches partition the set" is the property under test, and it is not implied by either branch being individually correct.** Coverage built from single-item contracts says nothing about the semantics that matter.
+*   **Every item-level filter test needs a mixed-child parent (TEST-19)** — taxonomy, runs, ME, and TE alike, not taxonomy alone. A fixture whose contract holds exactly one item passes identically whether the query classifies the *contract* or the *row*; the readings diverge only when one contract holds children of both kinds. So for each filter: seed a contract holding both a matching and a non-matching offered item, and assert it appears under exactly one branch. **The assertion form is §3.1's three-way identity — `branch_a + branch_b + neither == unfiltered`, with the expected `neither` count stated in the fixture.** A two-way sum is wrong for every filter in this feature except the boolean `is_bpc`. Coverage built from single-item contracts says nothing about the semantics that matter.
 *   **Fixtures must carry the production data shape.** Backend fixtures previously hand-wrote three columns ingestion never writes, which gave dead filters green tests. Any fixture asserting on `runs`, `is_blueprint_copy`, or taxonomy must reflect what ESI actually sends — including omitting `runs` on originals, and leaving `status` at its `"unknown"` placeholder rather than inventing a value.
 *   **Assert the filters return rows.** The defect class this feature is fixing is filters that match nothing. A test asserting a 200 and an empty list would have passed against every one of those bugs.
 *   **Both `tests/api/test_contracts.py` and `tests/api/test_contract_filters.py` are safe to write into.** Their `pytestmark` is `asyncio` only. The VCR markers and all five cassettes were removed on 2026-08-01 after the cassettes were found to have recorded the app talking to itself; `tests/marker_guards.py` now aborts collection if any test pairs the `vcr` marker with an app-client fixture. **Do not reinstate a `vcr` marker on either module** — that is what TEST-14 forbids, and it is enforced rather than merely documented.
 *   **No assertions inside `if data["items"]:`** without seeding a fixture — a previously shipped test never executed its assertion block.
 *   **Mutation-check the load-bearing tests.** Break the behaviour, confirm the test goes red, revert. A test that stays green under mutation is a finding, not a formality — restore from a file copy rather than `git checkout --`, which would discard uncommitted work and produce false evidence.
 *   Frontend fixtures must not carry absolute past expiry dates; the future-clock lane exists because an entire suite silently rendered "Expired" and nothing failed.
+
+## 17. Normative API contract
+
+Everything in this section is binding. It exists because the backend and frontend halves of this feature will be built by different tasks, and without named models and exact field lists each side invents its own contract. Field names below are the field names; where a shape is given, it is the shape.
+
+### 17.1. Response models
+
+Criterion 6.4 splits the single `ContractSchema` that today serves both endpoints. Two models replace it:
+
+**`ContractListItemSchema`** — the list row. Carries **no** `items` array.
+
+| Field | Type | Notes |
+|---|---|---|
+| `contract_id`, `type`, `title`, `price`, `collateral`, `reward`, `volume`, `date_issued`, `date_expired`, `issuer_id`, `for_corporation`, `start_location_id`, `end_location_id` | as today | Unchanged from the current `ContractSchema`. |
+| `start_location_name`, `end_location_name` | `str \| None` | `end_location_name` is new. |
+| `buyout`, `days_to_complete` | `float \| None`, `int \| None` | New. |
+| `reward_per_volume` | `float \| None` | Computed. NULL when `volume` is 0 or NULL (§9). |
+| `last_seen_at` | `datetime \| None` | New; Criterion 7.1. |
+| `is_blueprint_copy_contract` | `bool` | Contract-level flag, computed, offered items only (§3.1). |
+| `primary_label` | `str` | Server-computed; see §17.4. |
+| `composition` | `CompositionSummary \| None` | NULL for single-item and item-less contracts; see §17.2. |
+| `blueprint_summary` | `BlueprintSummary \| None` | NULL unless exactly one offered BPC; see §17.3. |
+
+**`ContractDetailSchema`** — everything in `ContractListItemSchema`, plus `items: list[ContractItemSchema]`. `ContractItemSchema` gains `runs`, `material_efficiency`, `time_efficiency`, `category_id`, `group_id` (all optional).
+
+`ContractListResponse` becomes `PaginatedResponse[ContractListItemSchema]`.
+
+**The generated TypeScript type changes name**, so every frontend consumer of `Contract = components['schemas']['ContractSchema']` (`lib/api/client.ts:5`, used by `ContractTable.tsx` and `ContractDetailPage.tsx`) moves in the same change. This is a single mechanical rename, but it must be planned as one unit rather than discovered.
+
+### 17.2. `CompositionSummary`
+
+Structured, not a pre-rendered string — the client formats it, so pluralization and truncation stay with the presentation layer.
+
+```
+{ "categories": [ { "category_id": 7, "name": "Module", "item_row_count": 3 }, ... ],
+  "total_item_rows": 6,
+  "total_volume": 12000.0 }
+```
+
+`categories` is sorted by `item_row_count` descending, then `name` ascending for stability. Counts are **item rows**, not summed quantities (Criterion 6.1), and cover **offered items only** (Criterion 6.3). The server does not truncate; the client decides how many to show and buckets the rest as "other".
+
+### 17.3. `BlueprintSummary`
+
+```
+{ "runs": 10, "material_efficiency": 8, "time_efficiency": 14, "copy_count": 1 }
+```
+
+Present only when the contract has one or more offered blueprint copies. When `copy_count > 1` the three value fields are NULL and the client renders the count instead (§8).
+
+### 17.4. `primary_label`
+
+Server-computed, replacing the client-side `primaryLabel` in `format.ts:77-83`, which is deleted rather than kept as a fallback. The chain, in order:
+
+1. The `type_name` of the first offered item in the Ship category, if any offered item is a ship. (This preserves the existing client-side preference; it is a move, not a redesign.)
+2. The first offered item's `type_name`.
+3. The contract's `title`, trimmed, if non-empty.
+4. `"Courier to {end_location_name}"` for couriers, or `"Courier"` when the destination is unresolved.
+5. `"Contract {contract_id}"`.
+
+### 17.5. Segment counts
+
+An envelope field on the list response, following the `unknown_system_excluded` precedent already on `ContractListResponse`:
+
+```
+"segment_counts": { "item_exchange": 402, "auction": 27, "courier": 115, "loan": 0, "unknown": 0 }
+```
+
+Every ESI contract type appears as a key, including zero-valued ones, so the client renders a stable set of segments. Counts are distinct contracts, computed with the `contract_type` predicate lifted and all other filters applied (§6.2). **"One round trip" means one HTTP response, not one SQL statement** — a separate grouped query alongside the existing count and page queries is correct and expected.
+
+### 17.6. Taxonomy options endpoint
+
+`GET /contracts/taxonomy` — flat, not nested, so the client filters the group list locally without a refetch on category change.
+
+```
+{ "categories": [ { "category_id": 6, "name": "Ship" }, ... ],
+  "groups": [ { "group_id": 25, "category_id": 6, "name": "Frigate" }, ... ],
+  "coverage": "partial" | "complete" }
+```
+
+`coverage` is `"partial"` while the taxonomy cache is still filling (§5.2), and the client must surface that rather than presenting a partial list as the whole taxonomy.
+
+### 17.7. Coverage metadata
+
+An envelope field on the list response, not a second endpoint — it is needed on every render of the filter rail and a separate query would double the request count for no benefit.
+
+```
+"coverage": { "ingested_region_ids": [10000002], "as_of": "2026-08-02T11:04:00Z" }
+```
+
+Sourced from **observed reality** (`SELECT DISTINCT start_location_region_id`), not from `Settings.AGGREGATION_REGION_IDS`, per Criterion 7.4 — configured-but-not-yet-ingested is exactly the state that would mislead. Region display names come from the static `regions.ts` map the frontend already ships.
+
+### 17.8. `contract_type` parameter shape
+
+`Optional[List[str]]` bound via `Annotated[ContractFilters, Query()]` per FASTAPI-1, matching the existing `region_ids` pattern, and **typed as an enum so an unknown value returns 422** rather than silently matching nothing. A bare `str` would reintroduce the exact defect class this feature exists to remove. The segmentation UI sends a single value; the list shape leaves multi-select available without an API change.
