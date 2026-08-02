@@ -3,7 +3,9 @@
 
 # The unfiltered contract list takes 6 seconds (2026-08-02)
 
-**Status:** root cause confirmed against production; design chosen; awaiting review.
+**Status:** root cause confirmed against production; **first design proposed here was rejected
+by review and replaced** (§5); replacement implemented and measured. See §8 for what the
+reviews changed, and §9 for what remains open.
 
 **Symptom that surfaced it:** the post-deploy live smoke against production failed on
 `e2e/live-smoke.spec.ts:71` — "pagination crosses a real page boundary when the dataset has
@@ -33,7 +35,7 @@ SubPlan 2 -> ... Index Only Scan Backward using ix_contracts_region_last_seen
              Index Searches: 61874
 ```
 
-61,874 executions × 0.081 ms ≈ **5.0 s of the 6.0 s**. That subplan is the per-region
+61,874 executions × 0.075 ms ≈ **4.6 s of the 6.0 s**. That subplan is the per-region
 watermark in `still_listed_by_esi()` — `last_seen_at >= (SELECT max(last_seen_at) FROM
 contracts WHERE region = outer.region)` — which PostgreSQL evaluates once per candidate
 row because it is correlated.
@@ -59,14 +61,18 @@ Three plausible explanations were tested and eliminated, each with direct eviden
   and `contract_items`, a 34 MB heap, and an autovacuum at 06:30:25Z. The count plan shows
   227,590 shared **hits** and zero reads — the working set is entirely in cache. This was
   the leading hypothesis (ingestion restamps `last_seen_at` on every row every few minutes,
-  which looks like a bloat generator) and it is wrong.
+  which looks like a bloat generator) and the evidence does not support it. Stated
+  precisely, since review pushed back on the original wording: `n_dead_tup` is an estimate
+  of *currently* dead tuples and buffer hits prove residency rather than compactness, so
+  this rules bloat out as the *dominant* cost — which the third bullet establishes
+  independently — rather than proving the heap is perfectly compact.
 - **Not scan cost.** Two queries filtering the *unindexed* `start_location_id` force the
   same scan but differ in how many rows survive to the watermark predicate:
   `station_ids=1` (matches nothing) returns in **0.6 s**; `station_ids=60003760` (Jita 4-4,
   30,867 rows) takes **6.1 s**. Same scan, 10× the time, and the only variable is how many
   rows reach the subplan.
 
-## 3. It is a regression, and it crossed the test's threshold today
+## 3. It got worse over time and crossed the test's threshold today
 
 `still_listed_by_esi()` arrived in `4b9957f` ("fix(api): stop watchlist alerts outliving a
 contract's purchase"), which was **not** in the previous production release (`7a95118`) and
@@ -79,13 +85,19 @@ production logs:
 | 2026-08-02 06:07 | `fe43bda` (watermark predicate) | 3,182 ms / 3,045 ms |
 | 2026-08-02 06:35+ | `0edea19` (code-identical to `fe43bda`) | 5,338–10,007 ms |
 
-Two things are true at once and both matter:
+**Do not read that table as proof the release caused it.** Review was right to flag the
+original wording here. The predicate-bearing code logged 3.0–3.2 s at 06:07 and the
+*code-identical* commit logged 5.3–10.0 s half an hour later, so something other than the
+predicate moved between those rows — corpus growth and a 06:30:25Z autovacuum/analyze are
+both candidates, and no controlled with/without comparison on one snapshot was ever run. The
+honest claims are narrower:
 
 1. **The unfiltered path was already slow before this release** — 3–4 s — so the watermark
-   predicate did not create the problem, it enlarged one that was already one bad day away
-   from the 5 s assertion budget.
-2. **The corpus grew.** 76,599 rows now, of which 34,116 are live. The predicate's cost is
-   linear in rows examined, so this gets worse on its own schedule regardless of releases.
+   predicate did not create the problem.
+2. **The predicate is nonetheless the dominant cost now**, which §1 and §2 establish
+   directly from the plan rather than from the history.
+3. **The cost is linear in rows examined**, and the corpus is at 76,599 rows / 34,116 live,
+   so it worsens on its own schedule regardless of releases.
 
 The smoke test passed on 2026-07-27 at 8.4 s of test time and on 2026-08-02 06:07 at 7.2 s.
 It is not a flake that started failing; it is a threshold that was always going to be
@@ -94,9 +106,13 @@ crossed. Raising the timeout would hide the next crossing rather than the curren
 ## 4. Candidates measured against production
 
 Every candidate below was run against the live database with `EXPLAIN (ANALYZE)` and
-checked for set equality against the current predicate. **All candidates that returned
-selected identically** (34,109–34,111 contracts, varying only because ingestion ran between
-measurements).
+checked for set equality against the current predicate. All of them selected identically
+(34,101–34,111 contracts, varying between runs only because ingestion kept committing).
+
+**Those equality checks are weaker evidence than they look**, and review said so: they are
+two counts taken seconds apart on a moving dataset, not a set comparison. Only the chosen
+design (§5) is backed by a both-way `EXCEPT` inside a single snapshot. Treat this table as
+a *performance* comparison; the correctness argument lives in §5.
 
 | Candidate | Unfiltered COUNT | Unfiltered PAGE | Ships COUNT | Ships PAGE |
 |---|---|---|---|---|
@@ -127,78 +143,104 @@ SELECT max(last_seen_at) FROM contracts WHERE start_location_region_id = 1000000
 ```
 
 So the whole problem reduces to one question: **how do we learn the region ids without
-scanning the contracts table?** Everything expensive above is expensive only because it
-answers that question by scanning.
+scanning the contracts table?** Every *candidate rewrite* above is expensive only because it
+answers that question by scanning. (Note the precise claim: the **current** query is slow
+because it repeats a cheap one-row probe 61,874 times, not because anything scans to
+discover regions. Those are two different costs and an earlier draft of this document
+conflated them.)
 
 The `NOT EXISTS` anti-join deserves its own note: it reads as the most natural rewrite
 ("no contract in my region carries a newer stamp"), it is semantically identical, and it is
 catastrophic — the inequality join defeats hashing and the planner produced something that
 had not finished after five minutes. It is recorded here so nobody re-proposes it.
 
-## 5. The design: a maintained per-region watermark
+## 5. The design: configured regions as an optimization hint
 
-Ingestion already knows the answer. `_build_contract_rows` stamps **one `seen_at` for the
-whole run** (its docstring says so explicitly: "a contract is judged present by matching the
-newest stamp in its region, which only works if one run writes one value"), and
-`_fetch_regions` already tracks which regions succeeded. The read path is recomputing, at
-1,000× the cost, a value the write path had in hand.
+**This replaces an earlier proposal in this document — a maintained `contract_region_watermarks`
+table written by ingestion — which two independent reviews rejected and a measurement
+confirmed was also slower. §8 records why, because the reasons generalize.**
 
-**Add a `contract_region_watermarks` table** — one row per region, `region_id` primary key,
-`last_seen_at` — upserted by the aggregation run inside the same transaction as the contract
-upsert, for each region it successfully fetched.
+The shipped change keeps `still_listed_by_esi()` a standalone boolean expression and changes
+nothing about what it means. It only changes *how PostgreSQL is asked to compute it*:
 
-`still_listed_by_esi()` keeps its exact shape and stays a single boolean expression usable
-from both call sites (the contract service and the watchlist matcher). Only the source of
-the watermark changes: a correlated lookup against a table of ≤5 rows resolved by primary
-key, instead of an aggregate over 76,599 rows.
+```python
+case(
+    (Contract.start_location_region_id.in_(ingested_region_ids),
+     # fast path: one UNCORRELATED subquery per configured region, hoisted to an
+     # InitPlan and evaluated once for the whole query
+     or_(*[and_(Contract.start_location_region_id == r,
+                Contract.last_seen_at >= _newest_in(r)) for r in ingested_region_ids])),
+    # fallback: exactly today's correlated predicate, for any other region
+    else_=Contract.last_seen_at >= newest_in_region,
+)
+```
 
-Why this and not the alternatives:
+`AGGREGATION_REGION_IDS` is an **optimization hint, never a semantic input.** The `case`
+guarantees that a row whose region is not configured is judged by precisely the predicate
+that judges it today. Configuration drift changes which rows take the fast path; it cannot
+change which rows are visible.
 
-- **vs. any query-time derivation** — it is the only option that is fast on *both* the
-  selective and the broad path, because it removes the scan rather than relocating it.
-- **vs. reading `AGGREGATION_REGION_IDS` from settings** — that also gives a cheap region
-  list, but it couples the read path to a config value that can drift from the data. A
-  region dropped from the config leaves its contracts in the table with no watermark; a
-  maintained table simply keeps the last one it wrote.
-- **vs. caching the watermark in Valkey** — no schema change, but it puts a TTL between the
-  data and a *visibility* predicate. Contracts already sold would keep being offered for the
-  length of the TTL, and the cache becomes a correctness dependency for a path that has none
-  today.
-- **vs. upsizing the database** — `basic_256mb` is genuinely small and this would get
-  cheaper on a bigger plan, but 61,874 redundant evaluations of a constant is a defect at
-  any instance size, and the corpus grows.
+That property is the whole point, and it is what makes this safe to ship without a
+behaviour decision. It was verified against the production corpus, not argued:
 
-### Failure behaviour, chosen deliberately
+```
+-- both-way EXCEPT, single snapshot, correct config
+current_rows | new_rows | lost | gained
+      34,100 |   34,100 |    0 |      0
 
-- **No watermark row for a region ⇒ its contracts are visible.** The predicate must treat a
-  missing watermark as "show it", matching the existing rule that a NULL `last_seen_at` is
-  visible. The opposite default would blank the site in the window between deploying the
-  migration and the first ingestion run.
-- **The watermark write shares the contract upsert's transaction**, so the table can never
-  be ahead of the rows it describes. A watermark ahead of its contracts would hide every
-  contract in the region at once; a watermark behind them merely keeps sold contracts
-  visible a little longer, which is the failure this codebase already prefers (see
-  `still_listed_by_esi`'s docstring on missed alerts vs. dead listings).
-- **The migration backfills** from `SELECT region, max(last_seen_at) ... GROUP BY region` so
-  there is no window with an empty table. That backfill costs ~600 ms, once.
+-- same, with a DELIBERATELY WRONG config (the real region omitted)
+drift_hidden | drift_shown
+           0 |           0
+```
+
+### Measured on production
+
+| Path | Before | After |
+|---|---|---|
+| Unfiltered COUNT | 6,022 ms | **1,565 ms** |
+| Unfiltered PAGE | 0.5 ms | **0.155 ms** |
+| Ships-only COUNT | 8.4 ms | 64 ms |
+| Ships-only PAGE | 60.6 ms | ~63 ms |
+
+The unfiltered list — the path that failed the smoke test and the path F008 turns into the
+main one — goes from ~6.0 s to ~1.6 s, roughly a quarter of the 5 s assertion budget. The
+page query keeps its early exit, which every "compute once" candidate in §4 destroyed
+(0.5 ms → 264–372 ms). The default ships-only view moves by tens of milliseconds inside a
+request that is ~400 ms end to end; the numbers on this instance vary by more than that
+between runs.
+
+### Why not the alternatives
+
+- **vs. the rejected watermark table** — measured *slower* (1,270 ms vs 1,565 ms is within
+  noise, but the table's correlated PK lookup still re-executes ~61,874 times, which is the
+  very mechanism being fixed), and it costs a migration, an ingestion write, a second source
+  of truth, and the failure modes in §8.
+- **vs. using the uncorrelated form only for the broad count** (codex's first suggestion) —
+  it works, but it makes the liveness rule two expressions that must be kept in agreement.
+  The hint-with-fallback shape gets the same win with one expression.
+- **vs. "unconfigured region ⇒ visible"** — a simpler predicate, measured at 861 ms, but it
+  makes configuration a *semantic* input: dropping a region from the config would change
+  visibility. Rejected for that reason alone, despite being the faster option.
+- **vs. upsizing the database** — `basic_256mb` is genuinely small and everything here would
+  get cheaper on a bigger plan. Still worth considering (§9), but 61,874 redundant
+  evaluations of a constant is a defect at any instance size.
 
 ### What this does not fix
 
-Even with the predicate free, the unfiltered count still scans and de-duplicates ~34,000
-rows, which measured **663 ms** in the closest equivalent shape. That is acceptable and
-under the assertion budget, but it is not fast, and it is the number that will grow with the
-corpus. Two follow-ups are worth their own decisions, neither taken here:
+The unfiltered count still scans and de-duplicates ~34,000 rows. Two follow-ups, neither
+taken here:
 
-1. **The `DISTINCT` wrapper in `_count_distinct_contracts` is a no-op on the no-join path**
-   and measurably expensive (1,304 ms → 663 ms in the tuple-`IN` shape; ~100 ms in the
-   current shape). `contract_id` is the primary key, so without an item join no duplicates
-   are possible. Removing it conditionally is safe but is a separate change with its own
-   test obligations.
-2. **F008 makes this the main path.** Type-aware browsing is precisely about making the
-   ~98.8% of contracts that are not ships a designed surface, which turns today's secondary
-   6-second path into the primary one. Whatever is decided about exact counts at corpus
-   scale — cached totals, approximate counts above a threshold, or keyset pagination —
-   belongs in the F008 plan rather than here.
+1. **The `DISTINCT` wrapper in `_count_distinct_contracts` is a no-op on the no-join path.**
+   `contract_id` is the primary key, so without an item join no duplicates are possible.
+   Both reviews independently said to do it, and one argued for doing it in this change.
+   It is deferred only to keep this diff to a single mechanism; it needs its own test that
+   the joined path still de-duplicates (SQLA-1).
+2. **`_count_unknown_system_excluded` applies the same predicate a third time.** When
+   `system_ids` is set, the endpoint pays the count twice — once for the user's filter and
+   once for a residual over an *unindexed* column — and it runs before the `total == 0`
+   short-circuit. Neither review's author nor this document's original draft spotted this;
+   it means "All Contracts + a system filter" was roughly double the headline 6 s. The fast
+   path helps it equally, but it deserves its own look.
 
 ## 6. Reproduction
 
@@ -224,3 +266,69 @@ literal after seeding.
 - Predicate introduced in `4b9957f`; first reached production in the `0.2.0` release.
 - Production plans, equivalence checks, and per-candidate timings: §1 and §4 above, all from
   `EXPLAIN (ANALYZE)` against `dpg-d9fj14btqb8s73d71r10-a` on 2026-08-02.
+
+## 8. What the reviews changed
+
+The design in §5 is the second one. The first — a `contract_region_watermarks` table
+(`region_id` PK, `last_seen_at`) upserted by ingestion in the contract-upsert transaction and
+read through a correlated primary-key lookup — was reviewed independently by an Opus agent
+and by codex, and both rejected it. Recorded because the failure modes generalize to any
+"denormalize a derived value into a side table" proposal in this codebase.
+
+**Two ways it would have taken the site down.**
+
+1. **"Write a watermark for each region successfully fetched" is not the same set as
+   "regions whose contracts were restamped."** `get_public_contracts` returns an empty list
+   *without raising* for a 404, a 204, and — the reachable one — a 304 whose cached body has
+   been evicted from Valkey. That cache is `allkeys-lru` by design (DEPLOY-3), so eviction is
+   expected. `_fetch_regions` counts all of those as `regions_ok`. Advancing a watermark for
+   a region where nothing was restamped hides **every contract in that region**; with a
+   single configured region, that is the whole site, silently.
+2. **"The predicate keeps its exact shape" contradicts "a missing watermark row means
+   visible."** A correlated scalar subquery over a table with no matching row returns SQL
+   NULL, and `last_seen_at >= NULL` is NULL, which `WHERE` rejects. Missing watermark would
+   have meant *hidden* — the exact inverse of the stated intent, and reachable on every dev
+   boot, since the dev startup path drops and recreates all tables (ENV-2/ENV-3).
+
+**A claim in the first draft was simply false.** It asserted `_fetch_regions` "already tracks
+which regions succeeded"; it returns `tuple[List[dict], int, int]` — a flattened contract
+list and two counters. Both reviewers caught it independently. The lesson is the one already
+in this repo's memory: open the function before writing "X already does Y" into a durable
+artifact.
+
+**And the proposal was never measured.** Both reviews noted the projected win was
+extrapolated from a *different* plan shape. Measuring it (`C5` in the working notes) put the
+correlated PK lookup at **1,270 ms** — no better than the far simpler §5 change, because it
+still re-executes ~61,874 times. The mechanism being fixed is the repetition, not the cost of
+each probe, and a smaller table does not remove repetition.
+
+**The chosen design came out of the reviews, not the original analysis.** Both independently
+proposed some form of "use the configured regions without letting configuration decide
+visibility"; codex's phrasing — configured region ids as an optimization hint with the
+existing predicate as the `ELSE` fallback — is what shipped. The original document had
+dismissed the config-based option in a single line about coupling; that dismissal was wrong,
+because the coupling it feared is exactly what the `case` fallback removes.
+
+**Other findings applied to this document:** the equality checks in §4 were counts on a
+moving dataset rather than set comparisons (§4 now says so, and §5 carries a real `EXCEPT`);
+the release-regression claim was overstated (§3 rewritten); the `n_dead_tup` argument proved
+less than claimed (§2 narrowed); the arithmetic used 0.081 ms where the plan says 0.075 ms
+(§1 corrected); and `_count_unknown_system_excluded` is a third application of the predicate
+that nothing in the original draft mentioned (§5, "What this does not fix").
+
+## 9. Open items
+
+- **Remove the temporary IP allow rule** on `hangar-bay-db` — `198.37.143.189/32`,
+  described "temp troubleshooting 2026-08-02 - REMOVE". It was added with explicit
+  authorization to run the production `EXPLAIN`s above, and the Render API key stopped
+  authenticating before it could be reverted. The allow list was empty before.
+- **Drop the `DISTINCT` wrapper on the no-join count path** (§5). Safe, measured, and both
+  reviews asked for it.
+- **Look at `_count_unknown_system_excluded`** — a third execution of the predicate, over an
+  unindexed column, ahead of the `total == 0` short-circuit.
+- **Decide whether `basic_256mb` is the right plan.** A per-execution cost of 0.075 ms for a
+  fully-cached three-level index probe is CPU starvation, not a query defect. Everything here
+  is ~100× slower than the same shapes on a laptop.
+- **Exact counts at corpus scale belong to the F008 plan.** F008 makes the unfiltered list
+  the primary surface, so cached totals, approximate counts above a threshold, or keyset
+  pagination should be decided there rather than bolted on here.

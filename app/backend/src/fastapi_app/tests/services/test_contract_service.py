@@ -500,6 +500,24 @@ DELISTED_REGION_A = 99999911
 DELISTED_REGION_B = 99999912
 
 
+# The predicate has two branches that must agree. A region named in
+# AGGREGATION_REGION_IDS is judged by an UNCORRELATED per-region watermark, evaluated
+# once per query; any other region falls back to the correlated form. Configuration is an
+# optimization hint, so every delisting case below runs under both branches and must give
+# the same answer. Without this parametrisation the fast branch has no coverage at all —
+# the default config names only The Forge, and these fixtures use two private region ids.
+@pytest.fixture(params=["region-configured", "region-not-configured"])
+def liveness_branch(request, monkeypatch):
+    """Run a delisting case under the fast branch and the fallback branch alike."""
+    configured = (
+        [DELISTED_REGION_A, DELISTED_REGION_B] if request.param == "region-configured" else []
+    )
+    monkeypatch.setattr(
+        contract_service.get_settings(), "AGGREGATION_REGION_IDS", configured
+    )
+    return request.param
+
+
 def _seen_contract(contract_id: int, *, region: int, seen: datetime | None) -> Contract:
     now = datetime.now(timezone.utc)
     return Contract(
@@ -521,7 +539,7 @@ def _seen_contract(contract_id: int, *, region: int, seen: datetime | None) -> C
     )
 
 
-async def test_contracts_missing_from_the_latest_run_are_excluded(db_session: AsyncSession):
+async def test_contracts_missing_from_the_latest_run_are_excluded(db_session: AsyncSession, liveness_branch):
     """A contract not restamped by the most recent run for its region was not in ESI's
     public list any more — sold or withdrawn — so it must stop being offered."""
     latest = datetime.now(timezone.utc)
@@ -539,7 +557,7 @@ async def test_contracts_missing_from_the_latest_run_are_excluded(db_session: As
     assert result.total == 2
 
 
-async def test_a_region_whose_run_failed_keeps_all_its_contracts(db_session: AsyncSession):
+async def test_a_region_whose_run_failed_keeps_all_its_contracts(db_session: AsyncSession, liveness_branch):
     """THE case that can take the site down. Region A refreshed; region B's fetch failed,
     so nothing in B was restamped. B's contracts must all remain visible — judging them
     against A's newer watermark would erase an entire region at once."""
@@ -560,7 +578,7 @@ async def test_a_region_whose_run_failed_keeps_all_its_contracts(db_session: Asy
     assert result.total == 3
 
 
-async def test_never_stamped_contracts_stay_visible(db_session: AsyncSession):
+async def test_never_stamped_contracts_stay_visible(db_session: AsyncSession, liveness_branch):
     """Rows predating the last_seen_at column carry NULL. Treating NULL as 'not in the
     latest run' would blank the entire site between the migration and the first run —
     the migration backfills, and this pins the belt-and-braces behaviour besides."""

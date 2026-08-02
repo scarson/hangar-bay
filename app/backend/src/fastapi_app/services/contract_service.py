@@ -1,10 +1,11 @@
 import asyncio
 import time
-from sqlalchemy import func, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import aliased, selectinload
 
+from ..core.config import get_settings
 from ..core.logging import get_logger, log_key_event
 from ..models.contracts import Contract, ContractItem
 from ..schemas.contracts import (
@@ -78,6 +79,20 @@ def still_listed_by_esi():
     alternative is alerting on a contract someone already bought for as long as two weeks,
     which sends the reader to a dead listing over and over and teaches them the alerts are
     noise; a missed alert costs one opportunity and leaves the feature trustworthy.
+
+    The watermark written correlated to each row is the same value for every row of a
+    region, and PostgreSQL re-derives it once per candidate row: 61,874 index probes for
+    one unfiltered list request, ~5s of a 6s query on the production instance. Since the
+    regions ingestion refreshes are known up front, their watermarks are emitted as
+    UNCORRELATED subqueries — one index probe each, evaluated once for the whole query —
+    and the correlated form is kept as the fallback for any other region.
+
+    AGGREGATION_REGION_IDS is therefore an OPTIMIZATION HINT, never a semantic input: the
+    `case` guarantees a row whose region is not configured is judged by exactly the
+    predicate it is judged by today. Config drift changes which rows take the fast path,
+    never which rows are visible — verified against the production corpus by a both-way
+    EXCEPT under a deliberately wrong configuration. See
+    docs/perf-audits/2026-08-02-contract-list-watermark-subquery.md.
     """
     newest_in_region = (
         select(func.max(_ContractWatermark.last_seen_at))
@@ -85,7 +100,48 @@ def still_listed_by_esi():
         .correlate(Contract)
         .scalar_subquery()
     )
-    return or_(Contract.last_seen_at.is_(None), Contract.last_seen_at >= newest_in_region)
+    unstamped_or_current = or_(
+        Contract.last_seen_at.is_(None), Contract.last_seen_at >= newest_in_region
+    )
+
+    ingested_region_ids = get_settings().AGGREGATION_REGION_IDS
+    if not ingested_region_ids:
+        return unstamped_or_current
+
+    at_a_known_regions_watermark = or_(
+        *[
+            and_(
+                Contract.start_location_region_id == region_id,
+                Contract.last_seen_at >= _newest_in(region_id),
+            )
+            for region_id in ingested_region_ids
+        ]
+    )
+    return or_(
+        Contract.last_seen_at.is_(None),
+        case(
+            (
+                Contract.start_location_region_id.in_(ingested_region_ids),
+                at_a_known_regions_watermark,
+            ),
+            else_=Contract.last_seen_at >= newest_in_region,
+        ),
+    )
+
+
+def _newest_in(region_id: int):
+    """The newest ingestion stamp in one named region, as an uncorrelated subquery.
+
+    Uncorrelated is the whole point: with the region a literal rather than a reference to
+    the outer row, PostgreSQL hoists this to an InitPlan and runs it once per query — an
+    index-only probe on ix_contracts_region_last_seen — instead of once per candidate row.
+    """
+    watermark_source = aliased(Contract)
+    return (
+        select(func.max(watermark_source.last_seen_at))
+        .where(watermark_source.start_location_region_id == region_id)
+        .scalar_subquery()
+    )
 
 
 def _has_blueprint_copy_item():
