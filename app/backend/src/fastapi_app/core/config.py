@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     # ESI data API
     ESI_BASE_URL: str = "https://esi.evetech.net"
     ESI_USER_AGENT: str = Field(..., description="User-Agent header for ESI requests.")
+    # Sent as X-Compatibility-Date on every ESI request. Omitting the header does NOT
+    # mean "give me current" — ESI answers at the OLDEST published date, so a header-less
+    # client is pinned to a contract CCP chose for it and can raise with notice (ESI-4).
+    # Changing this changes the shape of every ESI response, so treat a bump as its own
+    # reviewed change and read the spec monitor's diff first. The monitor pins the same
+    # date in tools/esi_spec_monitor/monitor.py; a test fails if the two drift apart.
+    ESI_COMPATIBILITY_DATE: str = Field(
+        default="2026-07-21",
+        description="X-Compatibility-Date sent to ESI. Must match the spec monitor's pin.",
+    )
     ESI_TIMEOUT: float = 20.0
 
     # EVE SSO (OAuth) — empty client id / cipher keys ⇒ SSO routes 503 "not configured"
