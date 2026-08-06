@@ -437,7 +437,14 @@ Therefore: **confirm all checks have concluded successfully, then merge explicit
 # ALWAYS --merge. NEVER --squash. NEVER --rebase.
 # Full history preserved on dev; squash destroys the per-commit trail
 # agents and users both rely on for bisecting.
-gh pr merge <number> --merge --delete-branch
+#
+# --body "" is REQUIRED, and is not cosmetic. GitHub writes the PR title into
+# every merge commit's message, release-please parses merge commits, and the
+# result is two changelog entries per PR — the real commit and its merge
+# commit. Clearing the body makes the merge commit non-conventional so it is
+# skipped. No repository setting can fix this: GitHub allows only three
+# title/message combinations and all three carry the PR title.
+gh pr merge <number> --merge --delete-branch --body ""
 
 # Then in the root checkout:
 cd <repo-root>
@@ -598,11 +605,16 @@ gh pr create --base main --head dev \
     --body  "<publication-quality body>"
 
 # Wait for CI; merge with the standard mechanic:
-gh pr merge <number> --merge --delete-branch=false
+gh pr merge <number> --merge --delete-branch=false --body ""
 #   --delete-branch=false: dev is the persistent integration branch,
 #   NOT ephemeral. The dev → main PR merges integration
 #   history into release but does NOT delete dev — work continues on
-#   dev for the next publication cycle.
+#   dev for the next publication cycle. The repository now has
+#   delete_branch_on_merge enabled, so this flag is what makes the
+#   intent explicit; dev is additionally protected as the default
+#   branch and by a deletion rule, so it cannot be removed either way.
+#   --body "": same reason as §Mechanics — keeps the merge commit out
+#   of the generated changelog.
 ```
 
 The `--delete-branch=false` flag is the one explicit deviation from §Mechanics for auto-merge. The rest of the merge discipline (always `--merge`, never `--squash` or `--rebase`; preserve full per-commit history; `gh pr merge` rather than the GitHub UI) applies identically.
