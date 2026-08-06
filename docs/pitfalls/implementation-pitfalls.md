@@ -30,7 +30,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8, ENV-9, ENV-10 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status, spec drift | ESI-1, ESI-2, ESI-3, ESI-4 | §4.C |
-| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4, DEPLOY-5 | §5.C |
+| 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4, DEPLOY-5, DEPLOY-6 | §5.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -445,6 +445,12 @@ One expression negated makes the branches exact complements *by construction*, i
 
 ---
 
+### DEPLOY-6: Dependabot does not index `pdm.lock` — zero backend alerts is silence, not health
+
+GitHub's Dependabot alerts cover `app/frontend/web/package-lock.json` but not the backend's `pdm.lock`, so the repo's security tab can show zero Python alerts while the lock holds vulnerable pins. On 2026-08-06 a direct OSV audit found nine vulnerable locked versions — four in production scope, including the `cryptography` build backing pyjwt's EVE SSO token validation — none of them surfaced by GitHub. When triaging security posture, audit the backend lock directly: `pdm export -f requirements --without-hashes -o reqs.txt`, then batch-query the OSV API (or run `pip-audit -r`) against the pins. Treat "no Dependabot alerts" as a statement about the npm tree only.
+
+---
+
 ### §5.C — Review Checklist
 
 - [ ] **`DATABASE_URL` reaches the engine driver-qualified** — the Settings validator normalizes `postgresql://`; no code assumes the platform sends `+asyncpg` (DEPLOY-1)
@@ -452,6 +458,7 @@ One expression negated makes the branches exact complements *by construction*, i
 - [ ] **Nothing the app must retain lives in the evicting Valkey** — job stores and other silent-loss durable state stay out of `allkeys-lru` instances; every cross-run lock TTL derives from that job's own interval plus a margin (never equal to the interval, never a standalone constant) and is pinned by a test that reconfigures the interval and asserts the TTL follows (DEPLOY-3)
 - [ ] **Deploys are timed into the post-ingestion idle window, and same-commit redeploys go through the CD workflow's `workflow_dispatch` `sha` input** — a `pre_deploy_failed` ~38s in is the lock_timeout collision signature, not a migration bug (DEPLOY-4)
 - [ ] **`alembic heads` prints exactly one revision** — work split across parallel tasks authored its schema changes as a single migration up front, rather than one per task (DEPLOY-5)
+- [ ] **The backend lock was audited directly (OSV or pip-audit over a `pdm export`), not inferred clean from Dependabot** — Dependabot does not index `pdm.lock`, so its silence covers only the npm tree (DEPLOY-6)
 
 ---
 
@@ -478,6 +485,10 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 ---
 
 # Appendix A: Historical Changelog
+
+## 2026-08-06 — DEPLOY-6 added: Dependabot does not index pdm.lock
+
+- Added DEPLOY-6. Triage of five open Dependabot alerts (all npm, all undici) included a due-diligence OSV audit of the backend lock, which found nine vulnerable pins Dependabot had never surfaced — four in production scope, including the cryptography build backing EVE SSO token validation. All but a plugin-capped pytest advisory were fixed in the same PR; the entry records the blind spot so future triage never reads GitHub's zero as a backend result.
 
 ## 2026-08-02 — DEPLOY-5 added: parallel tasks each authoring a migration break the deploy
 
@@ -606,6 +617,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | DEPLOY-3 | Durable coordination state must not live in an evicting cache | HIGH | VALIDATED | Deployment & Platform |
 | DEPLOY-4 | Pre-deploy migrations collide with in-flight ingestion; redeploy via CD dispatch | MEDIUM | VALIDATED | Deployment & Platform |
 | DEPLOY-5 | Parallel tasks each authoring a migration leave two alembic heads; `upgrade head` aborts the deploy | HIGH | UNIMPLEMENTED | Deployment & Platform |
+| DEPLOY-6 | Dependabot does not index pdm.lock; backend deps need a direct OSV/pip-audit pass | MEDIUM | VALIDATED | Deployment & Platform |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
 Severity levels: `CRITICAL` (production data loss / security), `HIGH` (correctness bug under predictable conditions), `MEDIUM` (correctness bug under edge cases), `LOW` (cleanliness / clarity / dev-loop hazard).
