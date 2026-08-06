@@ -1,11 +1,11 @@
 <!-- ABOUTME: The only direct user feedback Hangar Bay has received — an EVE capital-ship builder describing a -->
-<!-- ABOUTME: build-to-order workflow, with technical assessment of his suggestions and the questions sent back. -->
+<!-- ABOUTME: build-to-order workflow, with technical assessment, the questions sent back, and his answers. -->
 
 # User feedback: a capital-ship builder
 
 **Received:** before 2026-08-01 (relayed 2026-08-01)
 **Source:** direct conversation, in response to Sam asking "would anyone even plausibly use this?"
-**Status:** follow-up questions sent 2026-08-02; awaiting reply
+**Status:** answers received 2026-08-06; recorded and assessed below
 
 ## Why this document exists
 
@@ -87,6 +87,31 @@ Two things he did not mention:
 
 **Q2 and Q3 test whether the pain is real.** Three orders a month in a spreadsheet does not need a web application.
 
+## Answers received (2026-08-06)
+
+Relayed by Sam; his words verbatim apart from bolded question summaries.
+
+1. **Still building and selling caps? Alliance still who'd be ordering?** — "No and yes, respectively."
+2. **How an order works today; which part annoys most?** — "Someone pings us on discord and says 'I want an X please'. We convey price, they agree and send a deposit, we build it and contract it to them when done. Could easily be turned into an order form interface with zero discussion."
+3. **Orders per month, people placing them?** — "In our hayday we were probably doing 30-40/mo across 15-20 people."
+4. **Would you use a ME/TE/runs-filtered contract browser to source capital component BPCs?** — "It would be handy but is a nice to have. We own BPOs for virtually all hulls and only need to buy BPCs for select supercaps or faction caps."
+5. **Corp-wallet deposit tracking needs an Accountant sign-off — realistic?** — "Completely fine, realistic."
+6. **Handover at station or citadel?** — "For our immediate need, low sec NPC station. For a holistic solution it should support citadels too. Null sec groups live out of citadels almost exclusively."
+
+### What the answers change
+
+**Q4 came back "nice to have" — the directions do not converge.** By this document's own decision rule, that is the no branch: the order system and F008's blueprint surface are two products competing for the same time, and the choice must now be made deliberately. His reason generalizes beyond one alliance: an established builder owns BPOs for virtually every hull and buys BPCs only for select supercaps or faction caps. If that holds broadly, the audience for a BPC-sourcing surface is newer or occasional builders — a segment nobody has spoken to — not established shops.
+
+**The demand evidence is now retrospective, with one contradiction worth resolving.** Q1 says he is no longer building and selling caps, and Q3's volume figures are explicitly peak-era ("in our hayday") — 30-40 orders a month across 15-20 buyers. At peak, that volume across that many buyers comfortably clears the does-this-need-a-web-application bar this document set. But it describes a dormant operation — except that Q6 answers in the present tense about "our immediate need," which reads like a live plan. Whether the operation is restarting, and whether tooling matters to that decision, is the open follow-up.
+
+**The product shape is validated in his own words.** Today's flow — Discord ping, price conveyed, agreement, deposit, build, contract on completion — maps step-for-step onto the order-form flow sketched above, and his unprompted conclusion was that it "could easily be turned into an order form interface with zero discussion." The pain is the manual negotiation loop, not any individual step.
+
+**Q5 clears the design-killer.** Corp-wallet read access with an Accountant/Director authorization is "completely fine, realistic." Automatic deposit verification via the wallet journal survives.
+
+**Q6 bounds an MVP.** Immediate need is handover at a low-sec NPC station: public ESI resolves it, no structure ACLs involved. Citadel support — `esi-universe.read_structures.v1`, docking ACLs, and the ~9–10% unresolvable-structure rate measured in the [courier spike](../../docs/superpowers/specs/2026-08-01-courier-route-jumps-spike.md) — is required for a general product because null-sec groups live almost exclusively in citadels, but it is not on the critical path for this alliance.
+
 ## What this does not establish
 
 One player in one alliance is not product-market fit, and this feedback predates its relay by an unknown interval. It is recorded because it is the only signal of its kind, not because it settles anything.
+
+The answers sharpen rather than soften that caution: the one prospective user's operation is currently dormant, so even the order-system direction rests on a workflow that worked in the past plus a stated intent, not on active present-day pain.
