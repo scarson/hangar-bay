@@ -1595,3 +1595,86 @@ async def test_station_id_range_boundaries_decide_what_is_requested(
         call.args[0] for call in service.esi_client.get_universe_station.await_args_list
     }
     assert requested == {60_000_000, 63_999_999}
+
+
+# --- End-location system resolution -----------------------------------------
+#
+# A courier contract's destination is a location id exactly like its origin, and
+# /universe/stations/ answers for it on the same terms. Both halves of the
+# station path — the fetch set and the contracts-table read-back — carry the end
+# role alongside the start role, because the upsert copies every supplied column
+# on conflict: a read-back that covered only starts would let one ESI outage
+# write NULL over every known destination corpus-wide.
+
+
+async def test_courier_end_station_resolves_to_its_solar_system(db_session: AsyncSession):
+    """end_location_system_id persists via the same station path as starts."""
+    service = _make_service()
+    contract = _ship_contract_dict(811)
+    contract["type"] = "courier"  # skips item fetching entirely
+    contract["end_location_id"] = 60008494
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: {
+            60003760: {"system_id": 30000142},
+            60008494: {"system_id": 30002187},
+        }[sid]
+    )
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 811))
+    ).scalar_one()
+    assert row.start_location_system_id == 30000142
+    assert row.end_location_system_id == 30002187
+
+
+async def test_structure_end_location_keeps_null_system_and_is_never_requested(
+    db_session: AsyncSession,
+):
+    """Player-structure destinations stay NULL and never spend ESI error budget."""
+    service = _make_service()
+    contract = _ship_contract_dict(812)
+    contract["type"] = "courier"
+    contract["end_location_id"] = 1_040_000_000_000  # Upwell structure id range
+    calls = []
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: calls.append(sid) or {"system_id": 30000142}
+    )
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 812))
+    ).scalar_one()
+    assert row.end_location_system_id is None
+    assert 1_040_000_000_000 not in calls
+
+
+async def test_a_known_end_station_survives_an_esi_outage(db_session: AsyncSession):
+    """The DB read-back covers END pairs too — without it, an outage run would
+    re-resolve from scratch, get nothing, and bulk_upsert would write NULL over
+    every known destination (the start-side hazard, end-column edition)."""
+    service = _make_service()
+    first = _ship_contract_dict(813)
+    first["type"] = "courier"
+    first["end_location_id"] = 60008494
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: {
+            60003760: {"system_id": 30000142},
+            60008494: {"system_id": 30002187},
+        }[sid]
+    )
+    await service._process_contracts(db_session, [first])
+
+    # Second sighting: ESI down for stations. The pair must come from the table.
+    service.esi_client.get_universe_station = AsyncMock(side_effect=Exception("ESI down"))
+    again = _ship_contract_dict(813)
+    again["type"] = "courier"
+    again["end_location_id"] = 60008494
+    await service._process_contracts(db_session, [again])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 813))
+    ).scalar_one()
+    assert row.end_location_system_id == 30002187

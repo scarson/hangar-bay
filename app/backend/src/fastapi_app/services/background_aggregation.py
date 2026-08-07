@@ -148,11 +148,12 @@ async def _resolve_esi_objects(
 
 
 def _npc_station_ids(contracts: List[dict]) -> set[int]:
-    """The distinct start locations that /universe/stations/ can answer for."""
+    """The distinct start and end locations /universe/stations/ can answer for."""
     return {
         location_id
         for contract in contracts
-        if (location_id := contract.get("start_location_id")) is not None
+        for location_id in (contract.get("start_location_id"), contract.get("end_location_id"))
+        if location_id is not None
         and NPC_STATION_ID_MIN <= location_id < NPC_STATION_ID_MAX
     }
 
@@ -184,6 +185,7 @@ def _build_contract_rows(
             "start_location_system_id": station_to_system.get(c.get("start_location_id")),
             "start_location_region_id": c.get("_hb_region_id"),
             "end_location_id": c.get("end_location_id"),
+            "end_location_system_id": station_to_system.get(c.get("end_location_id")),
             "type": c["type"],  # Direct mapping - field names now match
             "status": c.get("status", "unknown"),
             "title": c.get("title"),
@@ -539,7 +541,7 @@ class ContractAggregationService:
     async def _resolve_station_systems(
         self, db_session: AsyncSession, contracts: List[dict]
     ) -> dict[int, int]:
-        """Map the batch's NPC start stations to their solar system ids.
+        """Map the batch's NPC stations — start and end alike — to their solar system ids.
 
         ESI's public contract payload carries a location id and no system id, so
         without this the system_ids filter has nothing to match. Station→system is
@@ -578,26 +580,32 @@ class ContractAggregationService:
     async def _select_known_station_systems(
         self, db_session: AsyncSession, station_ids: set[int]
     ) -> dict[int, int]:
-        """Station→system pairs already recorded on stored contracts.
+        """Station→system pairs already recorded on stored contracts, in either role.
 
         Makes the contracts table its own durable cache for a lookup whose answer never
         changes, so steady state costs zero station requests. It is also what keeps an
         ESI outage from blanking the filter: the upsert copies every supplied column on
         conflict, so a run that re-resolved from scratch and came back empty would write
         NULL over every system the site already knew — the same decay that ETag-304s once
-        inflicted on is_ship_contract.
+        inflicted on is_ship_contract. Both the start and the end column pair are read
+        back for exactly that reason: a station known only as some contract's destination
+        would otherwise be re-fetched forever, and blanked whenever the fetch failed.
         """
         known: dict[int, int] = {}
         for chunk in _chunk_ids(station_ids):
-            rows = await db_session.execute(
-                select(Contract.start_location_id, Contract.start_location_system_id)
-                .where(
-                    Contract.start_location_id.in_(chunk),
-                    Contract.start_location_system_id.is_not(None),
+            for location_column, system_column in (
+                (Contract.start_location_id, Contract.start_location_system_id),
+                (Contract.end_location_id, Contract.end_location_system_id),
+            ):
+                rows = await db_session.execute(
+                    select(location_column, system_column)
+                    .where(
+                        location_column.in_(chunk),
+                        system_column.is_not(None),
+                    )
+                    .distinct()
                 )
-                .distinct()
-            )
-            known.update({station_id: system_id for station_id, system_id in rows})
+                known.update({station_id: system_id for station_id, system_id in rows})
         return known
 
     async def _select_already_enriched(
