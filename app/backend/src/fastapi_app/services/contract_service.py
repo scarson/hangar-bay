@@ -54,10 +54,11 @@ def _needs_item_join(filters: ContractFilters) -> bool:
         # Add sorting by ship name to the condition
         or filters.sort_by == SortableContractFields.ship_name
     )
-    # is_bpc and the runs/ME/TE ranges are deliberately absent: each asks a question
-    # about the contract as a whole ("does it hold an item like this?"), which a
-    # correlated EXISTS answers without multiplying rows. See
-    # _has_blueprint_copy_item and _offered_item_range_exists.
+    # is_bpc, the runs/ME/TE ranges, and the category/group family are deliberately
+    # absent: each asks a question about the contract as a whole ("does it hold an
+    # item like this?"), which a correlated EXISTS answers without multiplying rows.
+    # See _has_blueprint_copy_item, _offered_item_range_exists, and the taxonomy
+    # clause in _apply_item_filters.
 
 
 def still_listed_by_esi():
@@ -322,6 +323,28 @@ def _apply_item_filters(query, filters: ContractFilters):
             _offered_item_range_exists(
                 ContractItem.time_efficiency, filters.min_te, filters.max_te
             )
+        )
+
+    # Taxonomy. ONE family holding both predicates, so a single offered item must
+    # satisfy both: a group belongs to a category, and "Ship" paired with
+    # "Propulsion Module" describes nothing a contract can hold. Two separate
+    # EXISTS would hand that pairing back a contract offering a frigate and an
+    # unrelated afterburner. It is also the only pairing the cascading
+    # category -> group rail can send.
+    if filters.category_id or filters.group_id:
+        conditions = [
+            ContractItem.contract_id == Contract.contract_id,
+            ContractItem.is_included.is_(True),
+        ]
+        if filters.category_id:
+            conditions.append(ContractItem.category_id.in_(filters.category_id))
+        if filters.group_id:
+            conditions.append(ContractItem.group_id.in_(filters.group_id))
+        query = query.filter(
+            select(ContractItem.record_id)
+            .where(*conditions)
+            .correlate(Contract)
+            .exists()
         )
 
     return query

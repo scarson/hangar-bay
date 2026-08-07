@@ -246,7 +246,8 @@ async def test_id_list_filters_are_query_params_in_openapi_schema():
     assert "requestBody" not in operation
     param_names = {p["name"] for p in operation["parameters"]}
     assert {
-        "region_ids", "system_ids", "station_ids", "type_ids", "contract_type"
+        "region_ids", "system_ids", "station_ids", "type_ids", "contract_type",
+        "category_id", "group_id",
     } <= param_names
 
 
@@ -1698,3 +1699,150 @@ async def test_range_families_are_independent_of_each_other(
 
     assert both.status_code == 200
     assert [c["contract_id"] for c in both.json()["items"]] == [964201]
+
+
+# --- Taxonomy filters: category_id and group_id (region 99999965) ---
+#
+# One EXISTS holding BOTH predicates, not two: a group belongs to a category, so
+# "category 6 and group 60" asks for a single offered item that is both, which is
+# also the only pair a cascading category -> group UI can produce. Two separate
+# EXISTS would answer yes to a contract offering a frigate and an unrelated
+# propulsion module, which holds nothing the buyer asked for.
+#
+# Real ids throughout so the fixture reads the way production data does:
+# category 6 Ship / 7 Module, group 25 Frigate / 26 Cruiser / 60 Propulsion Module.
+
+SHIP_CATEGORY = 6
+MODULE_CATEGORY = 7
+FRIGATE_GROUP = 25
+CRUISER_GROUP = 26
+PROPULSION_GROUP = 60
+
+
+@pytest_asyncio.fixture
+async def taxonomy_corpus(db_session: AsyncSession):
+    """Four contracts in region 99999965, spanning every taxonomy reading.
+
+    965001 is the mixed-child parent TEST-19 requires: one offered frigate
+    (Ship/Frigate) and one offered afterburner (Module/Propulsion). It is also the
+    fixture that separates same-item composition from two independent EXISTS —
+    it holds a category-6 item and a group-60 item, but no item that is both.
+    """
+    now = datetime.now(timezone.utc)
+
+    def _c(cid, items):
+        return Contract(
+            contract_id=cid, title=f"t{cid}", price=1_000_000, collateral=0,
+            status="unknown", type="item_exchange", issuer_id=1,
+            issuer_corporation_id=1, start_location_id=60003760,
+            start_location_region_id=99999965, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7), items=items,
+        )
+
+    db_session.add_all([
+        _c(965001, [
+            ContractItem(record_id=9650011, type_id=587, type_name="Rifter",
+                         quantity=1, is_included=True, is_singleton=False,
+                         category_id=SHIP_CATEGORY, group_id=FRIGATE_GROUP),
+            ContractItem(record_id=9650012, type_id=12056, type_name="Afterburner II",
+                         quantity=1, is_included=True, is_singleton=False,
+                         category_id=MODULE_CATEGORY, group_id=PROPULSION_GROUP),
+        ]),
+        # Module only — must never answer a Ship-category query.
+        _c(965002, [ContractItem(record_id=9650021, type_id=12058, type_name="1MN Afterburner I",
+                                 quantity=1, is_included=True, is_singleton=False,
+                                 category_id=MODULE_CATEGORY, group_id=PROPULSION_GROUP)]),
+        # Frigate on the REQUESTED side only → never matches (offered-only, §3.1/8.1).
+        _c(965003, [ContractItem(record_id=9650031, type_id=588, type_name="WTB Rifter",
+                                 quantity=1, is_included=False, is_singleton=False,
+                                 category_id=SHIP_CATEGORY, group_id=FRIGATE_GROUP)]),
+        # A second ship, one group over, so repeated group_id params have something
+        # to combine that a single-group query does not already return.
+        _c(965004, [ContractItem(record_id=9650041, type_id=622, type_name="Stabber",
+                                 quantity=1, is_included=True, is_singleton=False,
+                                 category_id=SHIP_CATEGORY, group_id=CRUISER_GROUP)]),
+    ])
+    await db_session.flush()
+
+
+TAXONOMY_BASE = "/contracts/?region_ids=99999965"
+
+
+async def _ids(client: AsyncClient, query: str) -> set[int]:
+    response = await client.get(f"{TAXONOMY_BASE}{query}")
+    assert response.status_code == 200
+    return {c["contract_id"] for c in response.json()["items"]}
+
+
+async def test_category_filter_is_a_contract_level_predicate_on_a_mixed_bundle(
+    client: AsyncClient, taxonomy_corpus
+):
+    """category_id classifies contracts by their OFFERED items (§3.1, SQLA-3).
+
+    The mixed bundle answers yes to BOTH category queries — there is no negation
+    branch for taxonomy, so a contract offering a ship and a module genuinely is
+    both a ship contract and a module contract. What it must not do is drag the
+    module-only contract into the ship answer.
+    """
+    unfiltered = await client.get(TAXONOMY_BASE)
+    assert unfiltered.json()["total"] == 4
+
+    ships = await _ids(client, f"&category_id={SHIP_CATEGORY}")
+    modules = await _ids(client, f"&category_id={MODULE_CATEGORY}")
+
+    assert ships == {965001, 965004}
+    assert modules == {965001, 965002}
+    # The requested-only frigate never makes its contract a ship contract.
+    assert 965003 not in ships
+    assert 965003 not in modules
+
+
+async def test_category_and_group_must_be_satisfied_by_the_same_offered_item(
+    client: AsyncClient, taxonomy_corpus
+):
+    """A group belongs to a category, so both predicates land on ONE item.
+
+    965001 offers a category-6 item and a group-60 item and would match under two
+    independent EXISTS. It holds no propulsion module that is a ship, so it must
+    not come back — that pairing describes nothing in the contract.
+    """
+    scoped = await client.get(
+        f"{TAXONOMY_BASE}&category_id={SHIP_CATEGORY}&group_id={PROPULSION_GROUP}"
+    )
+
+    assert scoped.status_code == 200
+    assert scoped.json()["total"] == 0
+    assert scoped.json()["items"] == []
+
+    # The pairing that DOES describe one of its items still matches.
+    assert await _ids(
+        client, f"&category_id={SHIP_CATEGORY}&group_id={FRIGATE_GROUP}"
+    ) == {965001}
+
+
+async def test_group_filter_stands_alone_and_repeats(
+    client: AsyncClient, taxonomy_corpus
+):
+    """group_id filters without a category, and repeated params union (FASTAPI-1)."""
+    assert await _ids(client, f"&group_id={PROPULSION_GROUP}") == {965001, 965002}
+    assert await _ids(client, f"&group_id={FRIGATE_GROUP}") == {965001}
+    assert await _ids(
+        client, f"&group_id={FRIGATE_GROUP}&group_id={CRUISER_GROUP}"
+    ) == {965001, 965004}
+    # Repeated categories union the same way.
+    assert await _ids(
+        client, f"&category_id={SHIP_CATEGORY}&category_id={MODULE_CATEGORY}"
+    ) == {965001, 965002, 965004}
+
+
+async def test_a_category_absent_from_the_corpus_returns_an_empty_page(
+    client: AsyncClient, taxonomy_corpus
+):
+    """An unrepresented category is an empty answer, not an error — the cascading
+    UI can send any id the taxonomy endpoint serves, including one whose contracts
+    have all expired since."""
+    empty = await client.get(f"{TAXONOMY_BASE}&category_id=87")
+
+    assert empty.status_code == 200
+    assert empty.json()["total"] == 0
+    assert empty.json()["items"] == []

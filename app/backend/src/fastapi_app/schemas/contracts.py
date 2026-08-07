@@ -361,6 +361,23 @@ class ContractFilters(BaseModel):
     contract_type: Optional[List[ContractType]] = Field(
         default=None, description="Contract types to include (repeatable)."
     )
+    # Taxonomy. One family, not two: a group belongs to a category, so both
+    # predicates land on the SAME offered item (§3.1), which is also the only
+    # pairing the cascading category -> group filter rail can produce.
+    category_id: Optional[List[int]] = Field(
+        default=None,
+        description=(
+            "Dogma category ids; matches contracts with at least one offered "
+            "item in any of them."
+        ),
+    )
+    group_id: Optional[List[int]] = Field(
+        default=None,
+        description=(
+            "Dogma group ids, scoped within category_id when both are set (same "
+            "offered item satisfies both)."
+        ),
+    )
     # Boolean
     is_bpc: Optional[bool] = Field(
         default=None, description="Filter for contracts containing blueprints (BPCs)."
