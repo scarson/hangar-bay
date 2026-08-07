@@ -775,7 +775,7 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
 
 **Binding semantics (from spec — restated so a subagent cannot drift):**
 - `is_blueprint_copy_contract` and every composition/blueprint figure count **offered items only** (`is_included = true`, §3.1). This task also adds `ContractItem.is_included.is_(True)` to `_has_blueprint_copy_item()`'s WHERE — the backend predicate is the one that changes (§8), so the served flag and the `is_bpc` filter agree by construction.
-- `composition` is non-NULL only when the contract has **two or more offered item rows**; counts are item **rows**, not quantities (Criterion 6.1); categories sorted by `item_row_count` desc then `name` asc; rows with NULL `category_id` aggregate into one `{category_id: null, name: null}` entry sorted last (the client buckets it as "other"); `total_volume` sums offered rows' `quantity`-independent contract `volume`? **No** — total_volume is the contract's own `volume` field (there is no per-item volume in the model; §17.2's `total_volume` maps to `Contract.volume`).
+- `composition` is non-NULL only when the contract has **two or more offered item rows**; counts are item **rows**, not quantities (Criterion 6.1); categories sorted by `item_row_count` desc then `name` asc; rows with NULL `category_id` aggregate into one `{category_id: null, name: null}` entry sorted last (the client buckets it as "other"). `total_volume` is the contract's own `volume` column — there is no per-item volume in the model, so §17.2's `total_volume` maps to `Contract.volume`, stated here so no implementer invents a per-item sum.
 - `blueprint_summary` present iff ≥1 offered BPC; `copy_count > 1` ⇒ the three value fields are `None` (§17.3/§8).
 - `primary_label` chain exactly §17.4: (1) `type_name` of the first offered item with `category == "ship"`; (2) first offered item's `type_name`; (3) trimmed non-empty `title`; (4) couriers: `f"Courier to {end_location_name}"` or `"Courier"` when unresolved; (5) `f"Contract {contract_id}"`. ("First" = lowest `record_id`, stated here so two implementers can't order differently.)
 - `reward_per_volume = reward / volume`, `None` when either is NULL or `volume == 0` (§9).
@@ -789,7 +789,7 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
   - a contract holding **two** offered BPCs serves `blueprint_summary == {"runs": None, "material_efficiency": None, "time_efficiency": None, "copy_count": 2}`.
   In `test_contract_service.py`: extend the existing mixed-bundle partition test's fixture family with a **requested-only BPC** contract and assert it matches `is_bpc=false` (offered-only semantics — the Story 8 disagreement, resolved).
 - [ ] **Step 2: FAIL.**
-- [ ] **Step 3: Implement** — schemas first (all new response fields `Optional` per FASTAPI-3 except `is_blueprint_copy_contract`/`primary_label`, which the builder always supplies), then the service builder (explicit keyword construction, no `model_validate` on ORM for the split models), then rewire both `ContractListResponse` constructors, then the detail route. `ContractListResponse` becomes `PaginatedResponse[ContractListItemSchema]` keeping `unknown_system_excluded`.
+- [ ] **Step 3: Implement** — schemas first (all new response fields `Optional` per FASTAPI-3 except `is_blueprint_copy_contract`/`primary_label`, which the builder always supplies), then the service builder (explicit keyword construction, no `model_validate` on ORM for the split models), then rewire both `ContractListResponse` constructors, then the detail route. `ContractListResponse` becomes `PaginatedResponse[ContractListItemSchema]` keeping `unknown_system_excluded`. **The detail route needs the category-names lookup too** — composition on the detail response reads the same `EsiTaxonomyCache` SELECT the list path uses; extract it as `_category_names(db) -> dict[int, str]` and call it from both `get_contracts` and the detail handler, or detail composition serves `name: null` for every category and looks broken.
 - [ ] **Step 4: Green.** Then run the FULL backend suite — this task breaks every test that read `items` off list rows; fix each by moving it to the detail endpoint or the new fields (that migration of assertions is in-scope here, and any test whose meaning evaporates gets flagged in the PR body, never silently deleted).
 - [ ] **Step 5: Update `tests/test_export_openapi.py:30-33`** envelope assertion (still `{"total","page","size","items","unknown_system_excluded"}` here; B3/B4 extend it).
 - [ ] **Step 6: Commit** — `feat(api)!: split the contract list row from the detail response and serve derived summaries`
@@ -803,7 +803,7 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
 
 **Interfaces — Produces:** envelope field `segment_counts: Dict[str, int]` on `ContractListResponse` (every `ContractType` value as a key, zero-filled); internal `_segment_counts_and_total(db, filters, needs_item_join) -> tuple[dict[str, int], int]`.
 
-**The query shape (binding):** build the same filtered query as the list, but from `filters.model_copy(update={"contract_type": None, "is_ship_contract": None})`; then
+**The query shape (binding):** rebuild the query exactly the way `_count_unknown_system_excluded` rebuilds its residual — `select(Contract)`, `outerjoin(ContractItem)` iff `needs_item_join` (computed from the ORIGINAL filters; lifting `contract_type`/`is_ship_contract` cannot change join need since both are contract-level), then `_apply_contract_filters` + `_apply_item_filters` with `filters.model_copy(update={"contract_type": None, "is_ship_contract": None})`; then
 ```python
 grouped = (
     query.with_only_columns(
@@ -819,7 +819,7 @@ grouped = (
 Python then: zero-fills over `ContractType`; picks per-type counts for `segment_counts` per Criterion 1.8 (while `is_ship_contract=True` is active: item-bearing types use the ships aggregate, item-less types — courier/loan/unknown — use the lifted aggregate; `is_ship_contract=False`: `all - ships` for item-bearing; inactive: the lifted aggregate); derives `total` as the sum over the *selected* types (all five when no `contract_type` filter) of the aggregate matching the actual `is_ship_contract` filter. The flat `_count_distinct_contracts` call disappears from `get_contracts` (it remains for the residual count). One corpus-scale aggregate per request — same as today, not one more (D2). `count(DISTINCT ...)` is required because the item join inflates rows (SQLA-1); when `needs_item_join` is false the DISTINCT is unnecessary but harmless — keep the single shape, and note the perf-audit's DISTINCT-wrapper follow-up is absorbed by this rewrite.
 
 - [ ] **Step 1: Failing tests:**
-  - **Equivalence property (the load-bearing one):** in `test_contract_service.py`, seed a corpus in two private regions with mixed types, multi-item contracts, ships and non-ships; for each filter combination in a parametrized matrix (`search`, `is_bpc`, `type_ids` joined path, `is_ship_contract` both values, `contract_type` single + multi, price bounds), assert `response.total == await _count_distinct_contracts(db, <the same fully-filtered query built the old way>)`. Run under **both** `liveness_branch` params (the fixture at `:509` — the watermark fast/fallback branches must agree).
+  - **Equivalence property (the load-bearing one):** in `test_contract_service.py`, seed a corpus in two private regions with mixed types, multi-item contracts, ships and non-ships; for each filter combination in a parametrized matrix (`search`, `is_bpc`, `type_ids` joined path, `is_ship_contract` both values, `contract_type` single + multi, price bounds), assert `response.total == await _count_distinct_contracts(db, reference_query)` where `reference_query` is built independently inside the test the pre-B3 way: `select(Contract)` + `outerjoin(ContractItem)` iff `_needs_item_join(filters)` + `_apply_contract_filters(query, filters)` + `_apply_item_filters(query, filters)` with the ORIGINAL (unlifted) filters. Run under **both** `liveness_branch` params (the fixture at `:509` — the watermark fast/fallback branches must agree).
   - **Zero-fill:** every response's `segment_counts` has exactly the five keys, zeros included (`assert set(data["segment_counts"]) == {"item_exchange","auction","courier","loan","unknown"}` even against an empty region).
   - **Criterion 1.8 (HTTP-level, region 99999962):** seed 2 ship item_exchanges, 1 non-ship item_exchange, 1 courier. With `is_ship_contract=true`: `segment_counts["item_exchange"] == 2` (respects ships-only) but `segment_counts["courier"] == 1` (lifted — not 0). `total == 2`.
   - **Counts respect other filters (§6.2):** with a `min_price` excluding one ship, `segment_counts["item_exchange"]` drops accordingly.
@@ -912,7 +912,9 @@ def _offered_item_range_exists(column, minimum, maximum):
 ```
 **`_needs_item_join` drops `min_runs`/`max_runs`** (EXISTS needs no join — the inverse rule its own comment documents). Schema descriptions for all six fields lose their "NO MATCHES"/"NOT IMPLEMENTED — do not expose" warnings and gain the §3.1 semantics one-liner ("matches contracts with at least one offered item satisfying every bound in this family"). Manifest: rewrite the `raw_quantity` `KnownAbsentField` consumer/consequence — it is no longer read by any filter; it is kept-but-unread for the authenticated routes (spec §6.1 point 3); regenerate the snapshot if the monitor output changes.
 
-- [ ] **Step 1: Failing tests** — for EACH family, the §3.1 three-way identity with a mixed-child fixture (template: `test_contract_filters.py:636`). The ME one in full (runs and TE are the same shape over their columns; write all three, no "similar to above"):
+**Spec-interpretation note (binding; decision-log D8):** §3.1's "the test must assert it lands in exactly one branch" holds for the **boolean** `is_bpc` family, whose false branch is the *negation* of the true branch — negation-derived complements partition by construction. Range families have no negation branch: under §3.1's own existential rule, a contract holding offered items on BOTH sides of complementary bounds (ME 5 and ME 15 against `max_me=9` / `min_me=10`) **legitimately matches both branches** — each bound is satisfied by a different offered item, which is exactly what "at least one offered item satisfies the predicate" means. The mixed-child fixture's discriminating assertions for ranges are therefore: (a) the straddling contract appears in BOTH single-bound branches (pins existential semantics), (b) the **window** test — no single item inside both bounds ⇒ no match (pins §3.1's "bounds within a family apply to the same item", the reading that kills the two-separate-EXISTS misimplementation), and (c) the three-way identity computed with the overlap named explicitly. A naive reading of "exactly one branch" applied to ranges would reject a correct implementation.
+
+- [ ] **Step 1: Failing tests** — for EACH family, the §3.1 three-way identity with a mixed-child fixture (template: `test_contract_filters.py:636`, adjusted per the note above). The ME one in full (runs and TE are the same shape over their columns; write all three, no "similar to above"):
   ```python
   async def test_me_filter_is_a_contract_level_predicate_with_a_three_way_identity(
       client, db_session
@@ -961,16 +963,22 @@ def _offered_item_range_exists(column, minimum, maximum):
       low = await client.get(f"{base}&max_me=9")          # branch_a: ME ≤ 9
       high = await client.get(f"{base}&min_me=10")        # branch_b: ME ≥ 10
       unfiltered = await client.get(base)
-      assert {c["contract_id"] for c in low.json()["items"]} == {964001}
-      assert {c["contract_id"] for c in high.json()["items"]} == {964001, 964002}
-      # Three-way identity with the mixed contract counted once per branch it
-      # genuinely has an item in, and neither == 2 as stated above.
+      low_ids = {c["contract_id"] for c in low.json()["items"]}
+      high_ids = {c["contract_id"] for c in high.json()["items"]}
+      # The straddler appears in BOTH branches — existential semantics (D8):
+      # each bound is satisfied by a different offered item.
+      assert low_ids == {964001}
+      assert high_ids == {964001, 964002}
+      # Three-way identity with the overlap named: |A| + |B| - |A∩B| + neither
+      # == unfiltered. neither == 2 as stated in the docstring (964003, 964004).
+      overlap = len(low_ids & high_ids)
+      assert overlap == 1
+      neither = 2
       assert unfiltered.json()["total"] == 4
-      neither = unfiltered.json()["total"] - len(
-          {964001} | {964001, 964002}
+      assert (
+          low.json()["total"] + high.json()["total"] - overlap + neither
+          == unfiltered.json()["total"]
       )
-      assert neither == 2
-      assert low.json()["total"] + high.json()["total"] - 1 + neither == unfiltered.json()["total"]
 
       # Range composes per item: no single item sits in [10, 12].
       window = await client.get(f"{base}&min_me=10&max_me=12")
@@ -1129,7 +1137,7 @@ The six existing columns move into renderers with their exact current JSX (link 
 3. `contractIsBpc` (`ContractTable.tsx:35-37`) and the detail page's independent copy (`ContractDetailPage.tsx:100`) both become reads of `is_blueprint_copy_contract`.
 4. The "+N more" suffix reads `composition` (`composition && composition.total_item_rows > 1 → +{total_item_rows - 1} more`); list rows have no `items`.
 5. `SORT_FIELDS` gains `'reward_per_volume', 'days_to_complete', 'buyout'` (mirror of the widened enum — the duplicated-list touchpoint §11 names).
-6. `ContractSearch`/`parseContractSearch`/`toApiQuery` gain `contract_type?: ContractTypeValue[]` (an `as const` list + `.includes()` guard, the closed-enum client mirror), `category_id?: number[]`, `group_id?: number[]`, `min_runs/max_runs/min_me/max_me/min_te/max_te?: number` (via `toNonNegativeNumber`; min_runs via `toNumber` — `ge=-1` upstream). Wire-through in `toApiQuery` is pass-through (no renames beyond the existing `ships_only`→`is_ship_contract`).
+6. `ContractSearch`/`parseContractSearch`/`toApiQuery` gain `contract_type?: ContractTypeValue[]` (an `as const` list + `.includes()` guard, the closed-enum client mirror), `category_id?: number[]`, `group_id?: number[]` (both via `toIdArray`), and `min_runs/max_runs/min_me/max_me/min_te/max_te?: number` — **all six via `toNonNegativeNumber`**: the backend allows `min_runs=-1` (a documented ESI sentinel that never occurs on public data), but the UI never produces negatives, so URL junk below 0 falls back to undefined exactly like the price bounds. Wire-through in `toApiQuery` is pass-through (no renames beyond the existing `ships_only`→`is_ship_contract`).
 7. `e2e/fixtures/contracts.ts`: `WireContract` loses `items` and gains `end_location_name`, `buyout`, `days_to_complete`, `reward_per_volume`, `last_seen_at`, `is_blueprint_copy_contract`, `primary_label`, `composition`, `blueprint_summary`; `type` union gains `'loan' | 'unknown'`; `WirePage` gains `segment_counts` (all five keys) and `coverage`; `WireContractDetail` (new) carries `items` for detail intercepts; builders updated so every existing dataset compiles with honest values (`primary_label` derived in the builder from the same inputs it previously buried in items). Add canned `AUCTION_CONTRACTS` and `COURIER_CONTRACTS` datasets (distinct sortable values, TEST-3).
 - [ ] **Step 1:** Make the changes test-first where behavior exists (`filters.test.ts` cases for each new param's parse/serialize junk-tolerance; `pages.test.tsx` fixtures to the new shape) — then chase the compiler (`npx tsc -b`) to every remaining consumer.
 - [ ] **Step 2:** All four verification lanes green + e2e fixture lane green.
@@ -1222,7 +1230,11 @@ Everything gated on the taxonomy readiness signal (decision-log D1): the cascadi
 ### Task D5: Phase D gate + feature-level verification
 
 - [ ] All five frontend lanes green; e2e fixture lane covers: segments, taxonomy cascade, ME window filter, BPC column states, WTB split.
-- [ ] **Full-stack local verification** (the one end-to-end proof before the morning report): start deps (already up), run the backend (`pdm run dev` — this worktree does not wipe; expect the dev-limit 100-contract ingest incl. the taxonomy cache fill), `npm run dev`, then drive the real UI against real ESI-ingested data via the browser tools: default view unchanged; segments show counts; a courier row shows a route; after enrichment completes, taxonomy controls appear (dev corpus is small so coverage flips quickly). Screenshot the segmented views for the morning report.
+- [ ] **Full-stack local verification** (the one end-to-end proof before the morning report). Order matters:
+  1. Deps are up (postgres/valkey containers, started from the main checkout — ENV-10).
+  2. **Migrate the dev database first**: this worktree runs with `DB_RECREATE_ON_STARTUP` unset (no wipe), so `hangar_bay_dev` still has the old schema — `pdm run migrate` with the same env exports as tests (`ESI_USER_AGENT` at minimum; `Settings` requires it and this worktree's `.env` lacks it), or startup errors on missing columns.
+  3. `pdm run dev` with the exports (expect the dev-limit 100-contract ingest incl. the taxonomy cache fill; ENV-3: batch edits, one clean cycle; clear the Valkey aggregation lock first if a prior run was interrupted).
+  4. `npm run dev`, then drive the real UI against real ESI-ingested data via the browser tools: default view unchanged; segments show counts; a courier row shows a route; after enrichment completes, taxonomy controls appear (dev corpus is small so coverage flips quickly). Screenshot the segmented views for the morning report.
 - [ ] Three review rounds (lenses: spec §3 acceptance criteria checklist item by item; §8 rendering rules; interaction coverage), codex review, address, merge, update banners.
 
 ---

@@ -104,6 +104,20 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 
 ---
 
+## D8 — Range families under §3.1: straddling mixed-child contracts match both single-bound branches
+
+**Background.** Spec §3.1 / §16.3 say the mixed-child fixture "must assert it lands in exactly one branch." During plan review (round 1) this turned out to be internally consistent only for the boolean `is_bpc` family, whose false branch is the *negation* of the true branch. Range families (runs/ME/TE) have no negation branch, and §3.1's own existential rule ("at least one offered item satisfies the predicate") means a contract holding ME-5 and ME-15 offered items genuinely matches BOTH `max_me=9` and `min_me=10` — each bound satisfied by a different item.
+
+**Alternatives considered.** (1) Force "exactly one branch" onto ranges — would reject a *correct* implementation and effectively demand contract-level (not item-level) bound evaluation, contradicting §3.1's window rule. (2) Read §3.1's identity as requiring non-straddling fixtures only — loses the most informative fixture. (3) **Chosen:** keep the straddling fixture, assert both-branch membership explicitly as a *feature* of existential semantics, pin same-item range composition via the window test (`min_me=10&max_me=12` excludes the straddler), and compute the three-way identity with the overlap named (`|A| + |B| − |A∩B| + neither == unfiltered`).
+
+**Decision.** Alternative 3 (plan Task B5). The spec sentence is treated as boolean-family-specific rather than amended mid-build; flagged for Sam to fold back into §3.1's wording later.
+
+**Reversibility: cheap** (test-shape decision; no wire or schema impact).
+
+**Codex review:** yes — explicitly called out in the round-2 prompt.
+
+---
+
 ## D7 — `min_me` handoff question resolved by construction
 
 **Background.** Handoff queue item 6 asked whether the four inert ME/TE params should hard-error now or fold into F008's item-level migration. **Decision:** folded — F008 makes them functional (Criterion 2.5), which supersedes the hard-error option; no separate change needed. **Reversibility:** n/a (the question dissolves).
