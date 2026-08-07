@@ -234,7 +234,8 @@ function derivePrimaryLabel(
 /**
  * What a multi-item contract is made of. One offered row is not a breakdown, so
  * composition is NULL below two. Counts are item ROWS, not summed quantities.
- * The unknown-category bucket sorts last; the rest by share, then name.
+ * Every entry sorts by share — the unknown-category bucket included — then by
+ * name, with unnamed entries after named ones at equal counts (§17.2).
  */
 function deriveComposition(volume: number, offered: WireContractItem[]): WireComposition | null {
   if (offered.length < 2) return null
@@ -250,7 +251,6 @@ function deriveComposition(volume: number, offered: WireContractItem[]): WireCom
   }))
   categories.sort(
     (a, b) =>
-      Number(a.category_id === null) - Number(b.category_id === null) ||
       b.item_row_count - a.item_row_count ||
       Number(a.name === null) - Number(b.name === null) ||
       (a.name ?? '').localeCompare(b.name ?? ''),

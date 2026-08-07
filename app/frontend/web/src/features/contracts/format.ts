@@ -52,7 +52,9 @@ const TYPE_LABELS: Record<string, string> = {
  * so labelling it "Exchange" describes the one thing it is not.
  */
 export function contractTypeLabel(type: string): string {
-  return TYPE_LABELS[type] ?? 'Exchange'
+  // A stored type outside the map is served under the unknown segment, so the
+  // label must say so rather than masquerade as an exchange.
+  return TYPE_LABELS[type] ?? 'Unknown'
 }
 
 /**

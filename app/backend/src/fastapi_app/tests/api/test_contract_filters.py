@@ -1141,12 +1141,13 @@ async def test_auction_row_carries_its_buyout_and_counts_its_copies(
     }
 
 
-async def test_composition_orders_named_categories_first_and_unknowns_last(
+async def test_composition_orders_every_entry_by_share_then_name(
     client: AsyncClient, derived_field_contracts
 ):
-    """Sort is item_row_count desc, then name asc; a category with no cached name
-    serves a null name rather than a fabricated one, and the rows whose category
-    is unknown aggregate into one trailing bucket the client renders as "other"."""
+    """Sort is item_row_count desc for EVERY entry — the NULL-category bucket
+    included, so a dominant "other" cannot hide at the end (§17.2). At equal
+    counts, named entries sort by name and unnamed ones after them; a category
+    with no cached name serves a null name rather than a fabricated one."""
     listed = await client.get("/contracts/?region_ids=99999961")
 
     rows = {c["contract_id"]: c for c in listed.json()["items"]}
@@ -1154,10 +1155,10 @@ async def test_composition_orders_named_categories_first_and_unknowns_last(
 
     assert composition["total_item_rows"] == 5
     assert composition["categories"] == [
+        {"category_id": None, "name": None, "item_row_count": 2},
         {"category_id": 7, "name": "Module", "item_row_count": 1},
         {"category_id": 6, "name": "Ship", "item_row_count": 1},
         {"category_id": 42, "name": None, "item_row_count": 1},
-        {"category_id": None, "name": None, "item_row_count": 2},
     ]
 
 
@@ -1420,6 +1421,55 @@ async def test_a_contract_type_outside_the_enum_stays_counted_and_reachable(
     assert data["segment_counts"]["unknown"] == 2
     assert data["total"] == 3
     assert 962301 in {row["contract_id"] for row in data["items"]}
+
+    # Selecting the segment returns everything its numeral advertised: the
+    # literal "unknown" row AND the folded out-of-enum row (a count of 2 that
+    # yields 1 row is the silent-no-op defect wearing a numeral).
+    selected = await client.get(
+        "/contracts/?region_ids=99999962&contract_type=unknown"
+    )
+    assert selected.status_code == 200
+    assert selected.json()["total"] == 2
+    assert {row["contract_id"] for row in selected.json()["items"]} == {962301, 962302}
+
+
+async def test_a_dominant_uncategorized_bucket_leads_the_composition(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """§17.2 orders composition entries by item_row_count descending for EVERY
+    entry — the NULL-category bucket included. Three unresolved rows must not
+    hide behind a one-row named category."""
+    now = datetime.now(timezone.utc)
+    db_session.add(Contract(
+        contract_id=962401, title="Mystery Lot", price=1_000_000, collateral=0,
+        status="unknown", type="item_exchange", issuer_id=1,
+        issuer_corporation_id=1, start_location_id=60003760,
+        start_location_region_id=99999962, for_corporation=False,
+        date_issued=now, date_expired=now + timedelta(days=7), volume=900.0,
+        items=[
+            ContractItem(record_id=9624011, type_id=587, type_name="Tristan",
+                         quantity=1, is_included=True, is_singleton=False,
+                         is_blueprint_copy=None, category_id=6),
+            ContractItem(record_id=9624012, type_id=701, type_name="Widget A",
+                         quantity=1, is_included=True, is_singleton=False,
+                         is_blueprint_copy=None),
+            ContractItem(record_id=9624013, type_id=702, type_name="Widget B",
+                         quantity=1, is_included=True, is_singleton=False,
+                         is_blueprint_copy=None),
+            ContractItem(record_id=9624014, type_id=703, type_name="Widget C",
+                         quantity=1, is_included=True, is_singleton=False,
+                         is_blueprint_copy=None),
+        ],
+    ))
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999962")
+    row = {c["contract_id"]: c for c in listed.json()["items"]}[962401]
+    counts = [
+        (entry["category_id"], entry["item_row_count"])
+        for entry in row["composition"]["categories"]
+    ]
+    assert counts == [(None, 3), (6, 1)]
 
 
 # --- Item-level range families (runs / ME / TE) ------------------------------

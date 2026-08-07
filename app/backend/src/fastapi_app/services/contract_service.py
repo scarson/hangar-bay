@@ -293,9 +293,17 @@ def _apply_contract_filters(query, filters: ContractFilters):
     # Contract.type leads ix_contracts_type_status, so the composite serves a
     # type-only predicate as a prefix; no companion index is needed.
     if filters.contract_type:
-        query = query.filter(
-            Contract.type.in_([t.value for t in filters.contract_type])
-        )
+        selected = [t.value for t in filters.contract_type]
+        type_predicate = Contract.type.in_(selected)
+        if ContractType.unknown.value in selected:
+            # The unknown segment owns every stored value outside the enum, so
+            # its count (which folds those in) and its rows agree — a segment
+            # must show what its numeral advertised.
+            known = [
+                t.value for t in ContractType if t is not ContractType.unknown
+            ]
+            type_predicate = or_(type_predicate, Contract.type.not_in(known))
+        query = query.filter(type_predicate)
 
     # 2c. Blueprint-copy classification. "Contains a copy" and its negation, so a
     # contract bundling a copy with ordinary items counts as a BPC contract and
@@ -503,9 +511,10 @@ async def _segment_counts_and_total(
         for segment in all_by_segment
     }
 
-    # Summed over the raw stored types, not the folded segments: the page query
-    # matches contract_type against the stored string, so a type outside the enum is
-    # included when nothing was selected and excluded when "unknown" was.
+    # Membership is judged on the FOLDED segment so the total matches the page
+    # predicate exactly: selecting "unknown" also matches every stored type
+    # outside the enum, and a numeral that advertises rows the page then
+    # withholds is the silent-no-op defect in envelope form.
     selected = (
         {contract_type.value for contract_type in filters.contract_type}
         if filters.contract_type
@@ -514,7 +523,10 @@ async def _segment_counts_and_total(
     total = sum(
         _count_under_ships_filter(all_matching, ships_matching, filters.is_ship_contract)
         for stored_type, all_matching, ships_matching in rows
-        if selected is None or stored_type in selected
+        if selected is None
+        or (
+            stored_type if stored_type in all_by_segment else ContractType.unknown.value
+        ) in selected
     )
 
     return segment_counts, total
@@ -737,12 +749,12 @@ def _composition(
         )
         for category_id, count in row_counts.items()
     ]
-    # Rows whose category could not be determined are the "other" bucket and sit
-    # last however many there are; the rest sort by share, then name, with unnamed
-    # categories after named ones so the order is total rather than merely stable.
+    # Share governs the order for every entry — including the NULL-category
+    # bucket, which must not hide at the end when it dominates the lot (§17.2:
+    # item_row_count descending, then name ascending; unnamed entries sort after
+    # named ones at equal counts so the order is total rather than merely stable).
     categories.sort(
         key=lambda entry: (
-            entry.category_id is None,
             -entry.item_row_count,
             entry.name is None,
             entry.name or "",

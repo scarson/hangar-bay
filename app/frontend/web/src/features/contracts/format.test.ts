@@ -102,6 +102,12 @@ describe('contractTypeLabel', () => {
     expect(contractTypeLabel('loan')).toBe('Loan')
     expect(contractTypeLabel('unknown')).toBe('Unknown')
   })
+
+  it('labels a type outside the map as Unknown, never as an exchange', () => {
+    // The server folds out-of-enum stored types into the unknown segment, so a
+    // future ESI type must read as what the segment says it is.
+    expect(contractTypeLabel('somenewtype')).toBe('Unknown')
+  })
 })
 
 describe('locationLabel', () => {
