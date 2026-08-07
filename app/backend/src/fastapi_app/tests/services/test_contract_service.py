@@ -22,12 +22,15 @@
 # transaction lifecycle.
 
 import pytest
+import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 from datetime import datetime, timedelta, timezone
 from fastapi_app.models.contracts import Contract, ContractItem
 from fastapi_app.schemas.contracts import (
     ContractFilters,
+    ContractType,
     SortableContractFields,
     SortDirection,
 )
@@ -750,3 +753,250 @@ async def test_the_residual_holds_on_the_item_joined_path(db_session: AsyncSessi
 
     assert result.total == 1
     assert result.unknown_system_excluded == 1
+
+
+# --- Segment counts and the derived total -----------------------------------
+#
+# The list envelope publishes a per-type count, and `total` is derived from the
+# same grouped statement rather than from a second corpus-scale aggregate. That
+# makes the total a computation instead of a query result, so the property that
+# matters is equivalence: whatever the caller asked for, the derived total must
+# equal the count the pre-existing flat count query would have produced for the
+# very same filters.
+#
+# The corpus deliberately sits in DELISTED_REGION_A/DELISTED_REGION_B — the two
+# regions `liveness_branch` names in AGGREGATION_REGION_IDS. Seeding it anywhere
+# else makes the parametrisation vacuous: rows outside the configured set take
+# the correlated fallback under BOTH params, so the fast branch would never be
+# exercised and an equivalence break confined to it would pass unnoticed.
+
+_SEGMENT_KEYS = {"item_exchange", "auction", "courier", "loan", "unknown"}
+
+
+def _segment_item(
+    record_id: int, type_id: int, type_name: str, *, is_copy: bool = False
+) -> ContractItem:
+    return ContractItem(
+        record_id=record_id,
+        type_id=type_id,
+        type_name=type_name,
+        quantity=1,
+        is_included=True,
+        is_singleton=False,
+        # ESI sends is_blueprint_copy only for actual copies, so non-copies carry
+        # NULL rather than False (the shape production really has).
+        is_blueprint_copy=True if is_copy else None,
+    )
+
+
+@pytest_asyncio.fixture(scope="function")
+async def segment_corpus(db_session: AsyncSession):
+    """Mixed types, ships and non-ships, multi-item contracts, one stale row.
+
+    Every live row shares one `last_seen_at` value so it sits exactly at its
+    region's watermark under either liveness branch; 962007 is stamped earlier and
+    is therefore delisted, which keeps the liveness predicate load-bearing rather
+    than trivially true for the whole corpus.
+    """
+    now = datetime.now(timezone.utc)
+    stale = now - timedelta(hours=2)
+
+    def _contract(
+        contract_id: int,
+        *,
+        region: int,
+        contract_type: str,
+        is_ship: bool,
+        price: float,
+        seen: datetime | None = None,
+        items: list[ContractItem] | None = None,
+    ) -> Contract:
+        return Contract(
+            contract_id=contract_id,
+            title=f"Segment Case {contract_id}",
+            price=price,
+            collateral=0,
+            status="outstanding",
+            type=contract_type,
+            issuer_id=962,
+            issuer_corporation_id=962,
+            start_location_id=60003760,
+            start_location_system_id=30000142,
+            start_location_region_id=region,
+            for_corporation=False,
+            date_issued=now - timedelta(days=1),
+            date_expired=now + timedelta(days=7),
+            last_seen_at=seen if seen is not None else now,
+            is_ship_contract=is_ship,
+            items=items or [],
+        )
+
+    db_session.add_all([
+        # Two matching items, so a joined-path filter duplicates this contract's
+        # rows and a count without DISTINCT over the join reports it twice.
+        _contract(
+            962001, region=DELISTED_REGION_A, contract_type="item_exchange",
+            is_ship=True, price=1_500_000,
+            items=[
+                _segment_item(9620011, 587, "Rifter"),
+                _segment_item(9620012, 588, "Rifter"),
+            ],
+        ),
+        _contract(
+            962002, region=DELISTED_REGION_A, contract_type="item_exchange",
+            is_ship=False, price=2_000_000,
+            items=[_segment_item(9620021, 448, "Warp Scrambler II")],
+        ),
+        _contract(
+            962003, region=DELISTED_REGION_A, contract_type="auction",
+            is_ship=True, price=5_000_000,
+            items=[
+                _segment_item(9620031, 587, "Rifter"),
+                _segment_item(9620032, 621, "Caracal Blueprint", is_copy=True),
+            ],
+        ),
+        _contract(
+            962004, region=DELISTED_REGION_A, contract_type="courier",
+            is_ship=False, price=0,
+        ),
+        _contract(
+            962005, region=DELISTED_REGION_A, contract_type="loan",
+            is_ship=False, price=0,
+        ),
+        _contract(
+            962006, region=DELISTED_REGION_A, contract_type="item_exchange",
+            is_ship=True, price=200_000_000,
+            items=[_segment_item(9620061, 587, "Rifter")],
+        ),
+        # Delisted: not restamped by its region's latest run.
+        _contract(
+            962007, region=DELISTED_REGION_A, contract_type="item_exchange",
+            is_ship=True, price=3_000_000, seen=stale,
+            items=[_segment_item(9620071, 587, "Rifter")],
+        ),
+        _contract(
+            962011, region=DELISTED_REGION_B, contract_type="auction",
+            is_ship=True, price=4_000_000,
+            items=[
+                _segment_item(9620111, 587, "Rifter"),
+                _segment_item(9620112, 448, "Warp Scrambler II"),
+                _segment_item(9620113, 621, "Caracal Blueprint", is_copy=True),
+            ],
+        ),
+        _contract(
+            962012, region=DELISTED_REGION_B, contract_type="courier",
+            is_ship=False, price=0,
+        ),
+        _contract(
+            962013, region=DELISTED_REGION_B, contract_type="item_exchange",
+            is_ship=False, price=800_000,
+            items=[_segment_item(9620131, 621, "Caracal Blueprint", is_copy=True)],
+        ),
+        _contract(
+            962014, region=DELISTED_REGION_B, contract_type="unknown",
+            is_ship=False, price=1_000_000,
+        ),
+        # A type ESI could add after this enum was written. Contract.type is an
+        # unconstrained string, so the row is storable and must stay counted.
+        _contract(
+            962015, region=DELISTED_REGION_B, contract_type="somenewtype",
+            is_ship=False, price=1_000_000,
+        ),
+    ])
+    await db_session.flush()
+
+
+# Each case is the filter set a caller could actually send. They cover the
+# unjoined path, both joined paths (search and type_ids), the EXISTS path
+# (is_bpc), both values of the ships-only flag, contract_type alone and combined,
+# and a value outside the corpus's designed types.
+_EQUIVALENCE_CASES = {
+    "unfiltered": {},
+    "search-joins-items": {"search": "Rifter"},
+    "type-ids-joins-items": {"type_ids": [587]},
+    "is-bpc-true": {"is_bpc": True},
+    "is-bpc-false": {"is_bpc": False},
+    "ships-only": {"is_ship_contract": True},
+    "ships-excluded": {"is_ship_contract": False},
+    "one-contract-type": {"contract_type": [ContractType.courier]},
+    "several-contract-types": {
+        "contract_type": [ContractType.item_exchange, ContractType.auction]
+    },
+    "unknown-contract-type": {"contract_type": [ContractType.unknown]},
+    "contract-type-with-ships-only": {
+        "contract_type": [ContractType.item_exchange],
+        "is_ship_contract": True,
+    },
+    "price-bounds": {"min_price": 1_000_000, "max_price": 50_000_000},
+    "search-with-ships-only": {"search": "Rifter", "is_ship_contract": True},
+}
+
+
+@pytest.mark.parametrize("case", sorted(_EQUIVALENCE_CASES), ids=sorted(_EQUIVALENCE_CASES))
+async def test_the_derived_total_equals_the_flat_count_for_the_same_filters(
+    db_session: AsyncSession, segment_corpus, liveness_branch, case
+):
+    """`total` is now derived from the grouped statement, so it must still agree
+    with counting the filtered query directly.
+
+    The reference is built here rather than borrowed from the service, the way the
+    list path built it before this change: base select, the item join iff the
+    filters need one, both filter helpers, count DISTINCT contract ids. A
+    derivation that lifts the wrong predicate, folds the wrong bucket, or picks the
+    wrong aggregate under the ships-only flag disagrees with it.
+    """
+    overrides = _EQUIVALENCE_CASES[case]
+    filters = ContractFilters(
+        region_ids=[DELISTED_REGION_A, DELISTED_REGION_B], **overrides
+    )
+
+    reference = select(Contract)
+    if contract_service._needs_item_join(filters):
+        reference = reference.outerjoin(ContractItem)
+    reference = contract_service._apply_contract_filters(reference, filters)
+    reference = contract_service._apply_item_filters(reference, filters)
+    expected = await contract_service._count_distinct_contracts(db_session, reference)
+
+    # A case matching nothing would satisfy the equality vacuously.
+    assert expected > 0, f"{case} selects no contracts; the corpus no longer covers it"
+
+    result = await get_contracts(db_session, filters)
+
+    assert result.total == expected, f"{case} ({liveness_branch})"
+    assert set(result.segment_counts) == _SEGMENT_KEYS
+
+
+async def test_segment_counts_are_zero_filled_over_every_contract_type(
+    db_session: AsyncSession,
+):
+    """SQL emits no group for a type nothing matched, and a client rendering a
+    stable set of segments needs the key anyway — so the zeros are filled in here
+    rather than guessed at by each consumer."""
+    result = await get_contracts(db_session, ContractFilters(region_ids=[99999963]))
+
+    assert result.total == 0
+    assert result.segment_counts == {
+        "item_exchange": 0,
+        "auction": 0,
+        "courier": 0,
+        "loan": 0,
+        "unknown": 0,
+    }
+
+
+async def test_a_stored_type_outside_the_enum_is_counted_under_unknown(
+    db_session: AsyncSession, segment_corpus
+):
+    """Contract.type is written straight from ESI with no constraint, so a type
+    added after this enum was written must stay counted and reachable rather than
+    dropping out of the sum — a total short of the corpus would also fire the
+    empty-page short-circuit while rows exist."""
+    filters = ContractFilters(region_ids=[DELISTED_REGION_A, DELISTED_REGION_B], size=100)
+
+    result = await get_contracts(db_session, filters)
+
+    # 962014 is a stored "unknown"; 962015 is the unrecognised string folded in
+    # beside it.
+    assert result.segment_counts["unknown"] == 2
+    assert 962015 in {item.contract_id for item in result.items}
+    assert sum(result.segment_counts.values()) == result.total

@@ -1225,3 +1225,175 @@ async def test_reward_per_volume_is_null_when_the_division_is_undefined(
     assert rows[961101]["reward_per_volume"] is None
     assert rows[961102]["reward_per_volume"] is None
     assert rows[961103]["reward_per_volume"] is None
+
+
+# --- Segment counts on the list envelope -----------------------------------
+#
+# Region 99999962. The envelope carries a count per contract type, computed with
+# contract_type lifted so the segment a reader is NOT on still reads its own
+# total. Criterion 1.8 governs how the ships-only flag interacts with that: an
+# item-less type has no ships by construction, so it reports the count the reader
+# would see after switching rather than the 0 the combined filter would give.
+
+SEGMENT_KEYS = {"item_exchange", "auction", "courier", "loan", "unknown"}
+
+
+def _segment_contract(
+    cid: int,
+    *,
+    contract_type: str,
+    is_ship: bool,
+    price: float,
+    items: list[ContractItem] | None = None,
+) -> Contract:
+    now = datetime.now(timezone.utc)
+    return Contract(
+        contract_id=cid, title=f"Segment {cid}", price=price, collateral=0,
+        status="outstanding", type=contract_type, issuer_id=962,
+        issuer_corporation_id=962, start_location_id=60003760,
+        start_location_region_id=99999962, for_corporation=False,
+        date_issued=now, date_expired=now + timedelta(days=7),
+        is_ship_contract=is_ship, items=items or [],
+    )
+
+
+@pytest_asyncio.fixture(scope="function")
+async def segment_count_contracts(db_session: AsyncSession):
+    """Two ship item exchanges, one non-ship item exchange, one courier."""
+    db_session.add_all([
+        _segment_contract(962101, contract_type="item_exchange", is_ship=True,
+                          price=1_000_000),
+        _segment_contract(962102, contract_type="item_exchange", is_ship=True,
+                          price=50_000_000),
+        _segment_contract(962103, contract_type="item_exchange", is_ship=False,
+                          price=2_000_000),
+        _segment_contract(962104, contract_type="courier", is_ship=False, price=0),
+    ])
+    await db_session.flush()
+
+
+async def test_an_item_less_segment_reports_its_true_count_under_ships_only(
+    client: AsyncClient, segment_count_contracts
+):
+    """Criterion 1.8. ESI returns no items for couriers and the ship flag is
+    derived from items, so a courier can never be a ship contract — a `Courier (0)`
+    label that turns into `Courier (1)` the instant it is clicked is the
+    silent-filter-no-op defect wearing a numeral. The item-bearing segments still
+    respect the flag; only the item-less ones read it lifted."""
+    listed = await client.get("/contracts/?region_ids=99999962&is_ship_contract=true")
+
+    assert listed.status_code == 200
+    data = listed.json()
+    assert set(data["segment_counts"]) == SEGMENT_KEYS
+    assert data["segment_counts"]["item_exchange"] == 2
+    assert data["segment_counts"]["courier"] == 1
+    # The total answers the query that was actually made, so it is NOT lifted.
+    assert data["total"] == 2
+    assert {row["contract_id"] for row in data["items"]} == {962101, 962102}
+
+
+async def test_segment_counts_read_every_type_with_the_type_filter_lifted(
+    client: AsyncClient, segment_count_contracts
+):
+    """Selecting one segment must not blank the others' labels: the counts are
+    computed with contract_type lifted, so the reader can see what switching costs
+    while `total` stays the count of what they asked for."""
+    listed = await client.get("/contracts/?region_ids=99999962&contract_type=courier")
+
+    assert listed.status_code == 200
+    data = listed.json()
+    assert data["total"] == 1
+    assert data["segment_counts"]["item_exchange"] == 3
+    assert data["segment_counts"]["courier"] == 1
+    assert data["segment_counts"]["auction"] == 0
+
+
+async def test_segment_counts_respect_the_other_filters(
+    client: AsyncClient, segment_count_contracts
+):
+    """Only contract_type and the ships-only flag are lifted (spec §6.2). A price
+    bound the reader set still narrows every segment's count, or the labels
+    advertise results the list cannot show."""
+    listed = await client.get(
+        "/contracts/?region_ids=99999962&is_ship_contract=true&max_price=10000000"
+    )
+
+    assert listed.status_code == 200
+    data = listed.json()
+    assert data["segment_counts"]["item_exchange"] == 1   # 962102 costs too much
+    assert data["segment_counts"]["courier"] == 1         # free, so it survives
+    assert data["total"] == 1
+
+
+async def test_segment_counts_count_contracts_not_joined_item_rows(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Criterion 1.3. `search` outer-joins the items table, so a contract with two
+    matching items contributes two rows to the grouped statement — counting them
+    reports one contract as two."""
+    def _item(record_id: int, type_id: int) -> ContractItem:
+        return ContractItem(
+            record_id=record_id, type_id=type_id, type_name="Rifter", quantity=1,
+            is_included=True, is_singleton=False,
+        )
+
+    db_session.add_all([
+        _segment_contract(
+            962201, contract_type="item_exchange", is_ship=True, price=1_000_000,
+            items=[_item(9622011, 587), _item(9622012, 588)],
+        ),
+        _segment_contract(
+            962202, contract_type="auction", is_ship=True, price=1_000_000,
+            items=[_item(9622021, 587)],
+        ),
+    ])
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999962&search=Rifter")
+
+    assert listed.status_code == 200
+    data = listed.json()
+    assert data["segment_counts"]["item_exchange"] == 1
+    assert data["segment_counts"]["auction"] == 1
+    assert data["total"] == 2
+
+
+async def test_the_empty_page_still_carries_the_full_segment_counts(
+    client: AsyncClient, segment_count_contracts
+):
+    """The empty result is where the counts matter most: they are the only thing
+    telling a reader who filtered themselves into an empty segment that the corpus
+    is not empty. The short-circuit that skips the page query must not skip them."""
+    listed = await client.get("/contracts/?region_ids=99999962&contract_type=loan")
+
+    assert listed.status_code == 200
+    data = listed.json()
+    assert data["total"] == 0
+    assert data["items"] == []
+    assert set(data["segment_counts"]) == SEGMENT_KEYS
+    assert data["segment_counts"]["loan"] == 0
+    assert data["segment_counts"]["item_exchange"] == 3
+    assert data["segment_counts"]["courier"] == 1
+
+
+async def test_a_contract_type_outside_the_enum_stays_counted_and_reachable(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Criterion 1.1. `contracts.type` is an unconstrained string written straight
+    from ESI, so a type added after this enum was written is storable. It folds
+    into the `unknown` segment instead of vanishing from the sum — a total short of
+    the corpus would also fire the empty-page short-circuit while rows exist."""
+    db_session.add_all([
+        _segment_contract(962301, contract_type="somenewtype", is_ship=False, price=1),
+        _segment_contract(962302, contract_type="unknown", is_ship=False, price=1),
+        _segment_contract(962303, contract_type="item_exchange", is_ship=True, price=1),
+    ])
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999962")
+
+    assert listed.status_code == 200
+    data = listed.json()
+    assert data["segment_counts"]["unknown"] == 2
+    assert data["total"] == 3
+    assert 962301 in {row["contract_id"] for row in data["items"]}

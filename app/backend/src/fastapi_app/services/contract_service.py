@@ -290,6 +290,120 @@ async def _count_distinct_contracts(db: AsyncSession, query) -> int:
     return total_result.scalar_one()
 
 
+# Contract types ESI never returns items for. The ship flag is derived from items,
+# so a contract of one of these types is never a ship contract — which is why their
+# segment counts are read with the ships-only filter lifted (Criterion 1.8).
+_ITEMLESS_CONTRACT_TYPES = frozenset({
+    ContractType.courier.value,
+    ContractType.loan.value,
+    ContractType.unknown.value,
+})
+
+
+def _count_under_ships_filter(
+    all_matching: int, ships_matching: int, is_ship_contract: bool | None
+) -> int:
+    """Pick the aggregate the ships-only filter selects.
+
+    is_ship_contract is NOT NULL on the model, so the two aggregates partition the
+    group and the false branch is the complement rather than a third count.
+    """
+    if is_ship_contract is None:
+        return all_matching
+    if is_ship_contract:
+        return ships_matching
+    return all_matching - ships_matching
+
+
+async def _segment_counts_and_total(
+    db: AsyncSession, filters: ContractFilters, needs_item_join: bool
+) -> tuple[dict[str, int], int]:
+    """Per-type contract counts and the page total, from one grouped statement.
+
+    The counts label the segment controls, so they answer a different question from
+    the page: "how many would I see over there", not "how many am I seeing". That
+    means contract_type is lifted (a segment must report its own population while
+    the reader stands on another one) and, per Criterion 1.8, so is the ships-only
+    flag for the types ESI returns no items for — a Courier (0) that becomes
+    Courier (115) the instant it is clicked is the silent-filter-no-op defect
+    wearing a numeral. Every OTHER filter still applies (§6.2), or the labels
+    advertise results the list cannot show.
+
+    `total` is derived from the same rows rather than fetched by a second aggregate:
+    at corpus scale the flat count is the expensive part of a list request, and
+    running it alongside a grouped count would double the worst path. It sums only
+    the types the caller actually selected, under the aggregate their actual
+    ships-only filter selects — the total is never lifted.
+
+    The query is rebuilt from scratch the way _count_unknown_system_excluded rebuilds
+    its residual, so every filter reaches it through _apply_contract_filters /
+    _apply_item_filters and a filter added to neither cannot silently desynchronize
+    the counts from the page. The join need is computed from the ORIGINAL filters;
+    lifting two contract-level predicates cannot change it.
+    """
+    lifted = filters.model_copy(
+        update={"contract_type": None, "is_ship_contract": None}
+    )
+    query = select(Contract)
+    if needs_item_join:
+        query = query.outerjoin(ContractItem)
+    query = _apply_contract_filters(query, lifted)
+    query = _apply_item_filters(query, lifted)
+
+    # DISTINCT only where the join can spread one contract over several rows
+    # (SQLA-1). Without it the primary key already gives one row per contract, and
+    # the DISTINCT sort is pure cost on the unjoined path every default request takes.
+    matched = (
+        func.count(func.distinct(Contract.contract_id))
+        if needs_item_join
+        else func.count(Contract.contract_id)
+    )
+    grouped = query.with_only_columns(
+        Contract.type,
+        matched,
+        matched.filter(Contract.is_ship_contract.is_(True)),
+    ).group_by(Contract.type)
+
+    rows = (await db.execute(grouped)).all()
+
+    all_by_segment = {contract_type.value: 0 for contract_type in ContractType}
+    ships_by_segment = dict.fromkeys(all_by_segment, 0)
+    for stored_type, all_matching, ships_matching in rows:
+        # Contract.type is an unconstrained string written straight from ESI, so a
+        # type added after this enum was written is storable. It folds into
+        # "unknown" rather than dropping out of the sum: Criterion 1.1 requires such
+        # a contract to stay counted and reachable, and a total short of the corpus
+        # would also fire the empty-page short-circuit while rows exist.
+        segment = stored_type if stored_type in all_by_segment else ContractType.unknown.value
+        all_by_segment[segment] += all_matching
+        ships_by_segment[segment] += ships_matching
+
+    segment_counts = {
+        segment: _count_under_ships_filter(
+            all_by_segment[segment],
+            ships_by_segment[segment],
+            None if segment in _ITEMLESS_CONTRACT_TYPES else filters.is_ship_contract,
+        )
+        for segment in all_by_segment
+    }
+
+    # Summed over the raw stored types, not the folded segments: the page query
+    # matches contract_type against the stored string, so a type outside the enum is
+    # included when nothing was selected and excluded when "unknown" was.
+    selected = (
+        {contract_type.value for contract_type in filters.contract_type}
+        if filters.contract_type
+        else None
+    )
+    total = sum(
+        _count_under_ships_filter(all_matching, ships_matching, filters.is_ship_contract)
+        for stored_type, all_matching, ships_matching in rows
+        if selected is None or stored_type in selected
+    )
+
+    return segment_counts, total
+
+
 async def _count_unknown_system_excluded(
     db: AsyncSession, filters: ContractFilters, needs_item_join: bool
 ) -> int:
@@ -612,7 +726,11 @@ async def get_contracts(
         query = _apply_item_filters(query, filters)
 
         # --- Count Query ---
-        total = await _count_distinct_contracts(db, query)
+        # One grouped aggregate serves both the segment labels and the page total,
+        # so a request costs the same one corpus-scale count it always did.
+        segment_counts, total = await _segment_counts_and_total(
+            db, filters, needs_item_join
+        )
 
         # Measured before the empty-result short-circuit: an empty page is where the
         # figure matters most, since a system holding only structure-hosted contracts
@@ -644,6 +762,10 @@ async def get_contracts(
                 size=filters.size,
                 items=[],
                 unknown_system_excluded=unknown_system_excluded,
+                # Carried onto the empty page deliberately: the counts are the only
+                # thing telling a reader who filtered into an empty segment that the
+                # corpus around it is not empty.
+                segment_counts=segment_counts,
             )
 
         # --- Data Query ---
@@ -671,6 +793,7 @@ async def get_contracts(
             size=filters.size,
             items=[_list_item(c, names) for c in contracts],
             unknown_system_excluded=unknown_system_excluded,
+            segment_counts=segment_counts,
         )
 
         # Log successful contract search with key event schema

@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -155,7 +155,7 @@ class ContractDetailSchema(ContractListItemSchema):
 
 
 class ContractListResponse(PaginatedResponse[ContractListItemSchema]):
-    """A page of contracts plus the coverage figure the system_ids filter needs.
+    """A page of contracts plus the figures that make the page readable in context.
 
     A bare total hides that system_ids can only ever match the locations we resolved:
     a search returning 3 results reads as "there are 3" when it may mean "there are 3
@@ -173,6 +173,17 @@ class ContractListResponse(PaginatedResponse[ContractListItemSchema]):
             "which need an ACL-scoped token to resolve). Null when system_ids was not "
             "applied — no results were dropped for that reason, which is different from "
             "none having been."
+        ),
+    )
+    segment_counts: Dict[str, int] = Field(
+        ...,
+        description=(
+            "Matching contracts per contract type, keyed by every ContractType value "
+            "including the ones nothing matched, so a client renders a stable set of "
+            "segments. Counts are of distinct contracts and are computed with the "
+            "contract_type filter lifted and every other filter applied, so a segment "
+            "the reader is not on still reports what selecting it would show. A stored "
+            "type outside the enum is counted under 'unknown'."
         ),
     )
 
