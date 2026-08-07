@@ -1,11 +1,11 @@
 # ABOUTME: Pydantic schemas for M3 saved searches — the extra="forbid" search_parameters model + CRUD request/response shapes.
-# ABOUTME: search_parameters mirrors the frontend ContractSearch minus page; ME/TE and unknown keys are rejected at the boundary (FASTAPI-2).
+# ABOUTME: search_parameters mirrors the frontend ContractSearch minus page; unknown keys are rejected at the boundary.
 from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator, model_validator
 
-from .contracts import SortableContractFields, SortDirection
+from .contracts import ContractType, SortableContractFields, SortDirection
 
 # Upper bound for ISK price fields: 1e15, far above any real EVE price and well inside the
 # NUMERIC(20,2) storage width, so a schema-valid price can never fail numeric persistence.
@@ -15,8 +15,10 @@ PRICE_CEILING = 1_000_000_000_000_000
 
 class SavedSearchParameters(BaseModel):
     """Server-side validation model for a saved search's stored filter blob. Mirrors the
-    frontend ContractSearch shape minus `page`; extra="forbid" rejects the inert ME/TE params
-    (FASTAPI-2), the wire-only `is_ship_contract`, `page`, and arbitrary junk (design §4.5)."""
+    frontend ContractSearch shape minus `page`; extra="forbid" rejects the wire-only
+    `is_ship_contract`, `page`, and arbitrary junk (design §4.5). The type, taxonomy, and
+    blueprint-attribute filters are held here because the contracts query honours them; their
+    bounds match ContractFilters so a saved blob can never replay into a 422."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -24,6 +26,16 @@ class SavedSearchParameters(BaseModel):
     min_price: Optional[float] = Field(default=None, ge=0, le=PRICE_CEILING, allow_inf_nan=False)
     max_price: Optional[float] = Field(default=None, ge=0, le=PRICE_CEILING, allow_inf_nan=False)
     region_ids: Optional[List[PositiveInt]] = Field(default=None)
+    contract_type: Optional[List[ContractType]] = Field(default=None)
+    category_id: Optional[List[PositiveInt]] = Field(default=None)
+    group_id: Optional[List[PositiveInt]] = Field(default=None)
+    # -1 is ESI's absent-runs sentinel, so it is a legal bound rather than an underflow.
+    min_runs: Optional[int] = Field(default=None, ge=-1)
+    max_runs: Optional[int] = Field(default=None, ge=-1)
+    min_me: Optional[int] = Field(default=None, ge=0)
+    max_me: Optional[int] = Field(default=None, ge=0)
+    min_te: Optional[int] = Field(default=None, ge=0)
+    max_te: Optional[int] = Field(default=None, ge=0)
     is_bpc: Optional[bool] = Field(default=None)
     ships_only: bool = Field(default=True)
     size: int = Field(default=50, ge=1, le=100)

@@ -6,15 +6,16 @@ import { axe } from 'vitest-axe'
 import * as matchers from 'vitest-axe/matchers'
 import { anonymousMe, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
-import { daysFromNow } from '../../../test/dates'
+import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
 expect.extend(matchers)
 
-const CONTRACT = {
+const ROW = {
   contract_id: 101,
   issuer_id: 1,
   issuer_corporation_id: 101,
   start_location_id: 60003760,
+  collateral: 0,
   type: 'item_exchange',
   title: 'Tristan for Sale',
   for_corporation: false,
@@ -25,6 +26,13 @@ const CONTRACT = {
   issuer_name: 'Test Pilot',
   issuer_corporation_name: 'Test Corp',
   is_ship_contract: true,
+  is_blueprint_copy_contract: false,
+  primary_label: 'Tristan',
+  composition: null,
+}
+
+const CONTRACT = {
+  ...ROW,
   items: [
     {
       record_id: 1011,
@@ -35,6 +43,26 @@ const CONTRACT = {
       type_name: 'Tristan',
     },
   ],
+}
+
+/** The list envelope, with the segment counts and coverage every response carries. */
+function listPage(rows: { type: string }[]) {
+  const segment_counts: Record<string, number> = {
+    item_exchange: 0,
+    auction: 0,
+    courier: 0,
+    loan: 0,
+    unknown: 0,
+  }
+  for (const row of rows) segment_counts[row.type] += 1
+  return {
+    total: rows.length,
+    page: 1,
+    size: 50,
+    items: rows,
+    segment_counts,
+    coverage: { ingested_region_ids: [10000002], as_of: minutesFromNow(-5) },
+  }
 }
 
 function stubFetch(handler: (url: string) => Response) {
@@ -49,7 +77,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('accessibility (axe)', () => {
   it('contract list view has no violations', async () => {
-    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] })))
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
     const { container } = renderApp('/contracts')
     await screen.findByText('Tristan')
 
@@ -65,7 +93,7 @@ describe('accessibility (axe)', () => {
   })
 
   it('empty and error states have no violations', async () => {
-    stubFetch(anonymousMe(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] })))
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
     const empty = renderApp('/contracts')
     await screen.findByText(/no contracts match/i)
     expect(await axe(empty.container)).toHaveNoViolations()

@@ -17,6 +17,11 @@ const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
   collateral: 'asc',
   ship_name: 'asc',
   volume: 'desc',
+  // Hauling figures read best-offer-first: the most ISK per m³ and the most
+  // days to deliver in. Buyout follows the price convention, cheap-first.
+  reward_per_volume: 'desc',
+  days_to_complete: 'desc',
+  buyout: 'asc',
 }
 
 export function ContractsPage({ search, from }: { search: ContractSearch; from: '/contracts/' }) {

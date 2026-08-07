@@ -17,6 +17,7 @@ const PAGE = {
       issuer_id: 1,
       issuer_corporation_id: 101,
       start_location_id: 60003760,
+      collateral: 0,
       type: 'item_exchange',
       title: 'Tristan for Sale',
       for_corporation: false,
@@ -24,9 +25,13 @@ const PAGE = {
       date_expired: '2026-07-08T00:00:00Z',
       price: 1000000,
       is_ship_contract: true,
-      items: [],
+      is_blueprint_copy_contract: false,
+      primary_label: 'Tristan',
+      composition: null,
     },
   ],
+  segment_counts: { item_exchange: 1, auction: 0, courier: 0, loan: 0, unknown: 0 },
+  coverage: { ingested_region_ids: [10000002], as_of: null },
 }
 
 function stubFetch(handler: (url: string) => Response) {

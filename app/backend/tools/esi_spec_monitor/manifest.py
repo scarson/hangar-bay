@@ -119,8 +119,8 @@ MANIFEST: tuple[Endpoint, ...] = (
         known_absent_fields=(
             KnownAbsentField(
                 name="raw_quantity",
-                consumer="background_aggregation._fetch_item_rows -> ContractItem.raw_quantity; read by the min_runs/max_runs filter in contract_service",
-                consequence="always NULL, so min_runs/max_runs match zero rows — this field is on the AUTHENTICATED character/corporation item routes only (ESI-3)",
+                consumer="background_aggregation._fetch_item_rows -> ContractItem.raw_quantity; kept but read by nothing — min_runs/max_runs now filter ContractItem.runs",
+                consequence="always NULL under public ingestion; this field is on the AUTHENTICATED character/corporation item routes only (ESI-3), where the column fills in and its stack-vs-quantity distinction becomes readable",
             ),
             KnownAbsentField(
                 name="is_singleton",

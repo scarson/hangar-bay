@@ -63,20 +63,34 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phase A in progress.
+**Overall:** Phases A and B shipped (B pending merge); C3-C6 and D not started.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| A — Data layer (migration, ingestion, taxonomy cache) | 🚧 In progress | `a7cd7ba`..gate fixes | All 8 tasks implemented + per-task reviewed (migration `685dab7d6df5`, ENRICHMENT_VERSION→2); 581 tests green; PR-A open, codex review pending. |
-| B — API contract (model split, counts, filters, taxonomy endpoint) | ⬜ Not started | — | — |
+| A — Data layer (migration, ingestion, taxonomy cache) | ✅ Shipped | `a7cd7ba`..`c0e3d85` | PR #138 merged at `8303e15` 2026-08-07; migration `685dab7d6df5`; ENRICHMENT_VERSION→2; 582 tests green; codex-reviewed (D10 deferral logged). |
+| B — API contract (model split, counts, filters, taxonomy endpoint) | 🚧 In progress | — | Claimed 2026-08-07 on `feat/f008-api-contract` (includes Tasks C1/C2 per the PR-boundary correction). |
 | C — Frontend contract-level surface (renderer refactor, segments, auction/courier) | ⬜ Not started | — | — |
 | D — Frontend item-level surface (taxonomy UI, ME/TE/runs, BPC, composition) | ⬜ Not started | — | — |
 
 ### Deviations
-- (none yet)
+- Task C1: the binding `Column` interface gained `cellClass?: string | ((contract, ctx) => string)` and a `rowContext(contract)` helper, and the default set is named `DEFAULT_COLUMNS` (not `COLUMNS`) — the plan's literal interface could not carry the existing per-cell classes; C4 builds per-segment sets beside it.
+- Tasks B6/B9: `ContractFilters.category_id/group_id` are `List[int]` (B6's spec block) while `SavedSearchParameters` uses `List[PositiveInt]` (B9's spec block). Deliberate asymmetry kept: ids ≤ 0 do not exist in EVE, the URL layer already drops them, and the stricter blob validation only refuses values the live filter would match nothing on.
+- Phase B task order in execution: C2 ran AFTER B10's steps 1–4 (regeneration), not before B10 as the section order reads — the C2 executor correctly refused to take B10's single-writer regeneration step and the dispatch was re-sequenced (see the workflow-ordering memory note).
+- **Task B2, test placement.** The plan sent the requested-only-BPC fixture to `test_contract_service.py`; the mixed-bundle partition test it names actually lives in `test_contract_filters.py` (`test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle`, region 99999954), so the new contract went there. Noted inline in B2 Step 1.
+- **Task B2, one test folded rather than migrated.** `test_item_response_omits_fields_public_ingestion_cannot_populate` asserted that list-row ITEMS omit `is_singleton`/`raw_quantity`. List rows no longer carry items at all, so the assertion has nothing to range over. Its coverage was folded into `test_detail_item_response_omits_fields_public_ingestion_cannot_populate`, which now sweeps all four fixture contracts (previously only 101) across the endpoint that does carry items — net coverage up, not down. Flagged here and in the PR body per Step 4's rule.
+- **Task B3, equivalence-corpus regions.** Step 1 called for the equivalence corpus to sit in "two private regions"; it was seeded into `DELISTED_REGION_A`/`DELISTED_REGION_B` (99999911/99999912) instead, because those are the two ids the `liveness_branch` fixture writes into `AGGREGATION_REGION_IDS`. A corpus in any other region takes the correlated fallback under *both* params, which would make the parametrisation vacuous and leave the watermark fast branch uncovered. `db_session` drops and recreates every table per test function, so sharing the ids with the delisting cases is safe. Noted inline in B3 Step 1. **Region 99999963 is untouched and remains Task B5's** (Global Constraint 23) — B3's service-level zero-fill test queries the empty 99999962, B3's own claim.
+- **Task B4, region claim and two tests beyond the three the step named.** B4's Files list assigned no private region, so it claims **99999967–99999970** under the plan's 99999960–99999979 allocation (A/B, a configured-but-uningested third, and a fourth whose rows carry no `last_seen_at`). Two tests were added past Step 1's three: one asserting the empty-page short-circuit carries `coverage` (Global Constraint 18 — the field threads through both `ContractListResponse` constructors, and only a non-empty corpus filtered to nothing distinguishes a threaded field from a hardcoded empty one), and one asserting a region whose rows are all unstamped still counts as covered without breaking `as_of` (`last_seen_at` is nullable, and an unguarded `max()` over the rows raises TypeError — mutation-verified). Test-only helper renamed to `_region_contract`: `_coverage_contract` was already taken in that module by the unknown-system residual tests, where "coverage" means location resolution.
+
+- **Task B7, five deviations** (details inline at the end of Task B7): region 99999971 claimed for a test block whose population is the whole table rather than one region; one test past Step 1's seven, pinning that the name-cache condition is scoped to LIVE contracts (the reason it owns its own query instead of reusing ingestion's unscoped sweep); `coverage` typed as a str-enum so the regenerated TypeScript is a two-value union rather than `string`; the name sort run in Python so the served order does not vary with the server's collation; and a vacuous sort fixture of my own that mutation caught before commit — the categories were seeded already in name order, so the sort assertion agreed with the sort without constraining it.
+
+- **Task B6, four deviations** (details inline at the end of Task B6): region 99999965 claimed behind a shared `taxonomy_corpus` fixture; Step 1's seven assertions split across four behavior-named tests; the module's OpenAPI param-enumeration guard extended with `category_id`/`group_id` (outside the step's list, but it is the FASTAPI-1 guard for exactly this filter class); and `_needs_item_join`'s trailing comment widened to name the fourth EXISTS family.
+
+- **Task B10, one test beyond Step 1's and a fix reaching outside the task's Files list** (details inline at the end of Task B10). Step 1 named a single test; `test_full_dimension_logs_carry_the_type_and_taxonomy_filters` was added because Step 3 also *adds* three keys to the two full-dimension payloads, which is production behavior Step 1's test does not constrain. Separately, review found the PII invariant only half-closed — the failure site logged `str(e)`, which for a `StatementError` renders the failed statement's bind values and so re-published the search text `search_terms` had just withheld. Closing it reached `db.py` (`hide_parameters=True`) and added `tests/test_db_engine.py`, both outside the task's Files list, plus pitfalls SQLA-4 / TEST-21 and a decision-log entry.
+
+- **Task B5, four deviations** (details inline at the end of Task B5): a fourth test pinning that the three range families stay independent EXISTS clauses; a repair to `tests/conftest.py::setup_contracts`, outside the task's Files list, where `raw_quantity=10` had to become `runs=10` for `test_filter_by_bpc_runs` to keep meaning anything; past-tense corrections to pitfalls FASTAPI-2 and TEST-18, whose present-tense claims this task falsifies; and an offline re-projection of the ESI monitor snapshot instead of `--update`, to avoid accepting unreviewed live-spec drift while updating one manifest annotation.
 
 ### Discoveries
-- (none yet)
+- **Two pre-existing sorts are nullable and place NULL inconsistently with the rule Task B8 establishes.** `SortableContractFields.volume` maps to `Contract.volume` (`models/contracts.py`, `nullable=True`) and `ship_name` maps to `ContractItem.type_name`; neither carries `nulls_last()`, so on PostgreSQL a descending sort by volume leads with every volume-less contract and a descending sort by ship name leads with every item-less one. Task B8 deliberately did not touch them — the step directs that the existing sorts stay byte-identical, and changing a live sort's plan is outside an additive task — but the frontend now offers three sorts that put "no value" last beside two that put it first, which reads as a bug to anyone who tries both. Decide in PR-C/D whether to extend `NULLABLE_SORTS` (`services/contract_service.py`) to cover them.
 
 ---
 
@@ -130,7 +144,7 @@ Every task implicitly includes all of these. Verbatim values are copied from the
 
 # Phase A — Data layer (branch `feat/f008-data-layer`, PR-A, `Review — database schema`)
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-07T11:40Z on branch `feat/f008-data-layer`; tasks A1–A8 shipped (`a7cd7ba`, `fc60be8`, `551704b`, `49b15b8`, `492a7b1`, `699ee3f` + fix `679b9e8`, `1cb8d40`, `bb95eed`) plus gate fixes; awaiting PR-A codex review + merge.
+**Execution Status:** ✅ SHIPPED at `c0e3d85` on 2026-08-07 (PR #138 merged at `8303e15`). Tasks A1–A8: `a7cd7ba`, `fc60be8`, `551704b`, `49b15b8`, `492a7b1`, `699ee3f`+`679b9e8`, `1cb8d40`, `bb95eed`; gate fixes `b7b7bda`, codex dispositions `c0e3d85` (group-name DB-observed retry added; name NULL-overwrite deferred per decision-log D10).
 
 Everything ingestion-side: the single migration, contract-level and item-level writes, end-location resolution, the taxonomy name cache, the completion-predicate widening, the manifest, and the version bump. After this phase merges, an ordinary ingestion run populates every contract-level column and a resweep populates every item-level column. **No API or frontend change in this phase.**
 
@@ -680,14 +694,14 @@ No TDD exemption issues — this is tooling config, but the monitor's tests run 
 
 - [x] **Step 1:** Full verification: backend suite green on the scratch DB, `pdm run lint`, `alembic heads` = 1, `pytest fastapi_app/tests/test_migrations.py -q` green.
 - [x] **Step 2:** Three self-review rounds with distinct lenses: (a) spec §4.1/§5/§7 coverage — every data-layer claim implemented; (b) ESI-3 sweep — every new mapping uses `.get()`, no default masquerading as data; (c) bulk-upsert semantics — uniform keys, no enrichment-maintained column added to `_build_contract_rows`, read-back covers both location roles. Fix everything found; extra rounds until clean.
-- [ ] **Step 3:** Push branch, open PR-A against `dev` (`## Merge classification` → `Review — database schema`, note Sam's 2026-08-06 merge grant). Run the backgrounded codex review; address findings (fix or rebut in PR comments); record any consequential choice in the decision log.
-- [ ] **Step 4:** CI green (verify explicitly) → `gh pr merge <n> --merge --delete-branch --body ""`. Update this plan's banner + table with SHAs. (The local branch survives in-worktree; expected — the `gh` exit-1 on local cleanup after a successful remote merge is a known worktree artifact.)
+- [x] **Step 3:** Push branch, open PR-A against `dev` (`## Merge classification` → `Review — database schema`, note Sam's 2026-08-06 merge grant). Run the backgrounded codex review; address findings (fix or rebut in PR comments); record any consequential choice in the decision log.
+- [x] **Step 4:** CI green (verify explicitly) → `gh pr merge <n> --merge --delete-branch --body ""`. Update this plan's banner + table with SHAs. (The local branch survives in-worktree; expected — the `gh` exit-1 on local cleanup after a successful remote merge is a known worktree artifact.)
 
 ---
 
 # Phase B — API contract (branch `feat/f008-api-contract` off merged `dev`, PR-B, `Review — public API contract`)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-07T14:05Z on branch `feat/f008-api-contract` (carries Tasks C1/C2 per the codex round-2 PR-boundary correction).
 
 Everything wire-visible: the §17 model split, the contract-type filter and grouped counts, coverage, functional item-level filters, new sorts, the taxonomy endpoint, the saved-search widening, the PII log fix, and the regenerated client artifacts. Rebase onto `dev` after PR-A merges before starting.
 
@@ -699,7 +713,7 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
 
 **Interfaces — Produces:** `ContractType(str, Enum)` with members `item_exchange, auction, courier, loan, unknown` (the full ESI set, spec Criterion 1.1); `ContractFilters.contract_type: Optional[List[ContractType]]`.
 
-- [ ] **Step 1: Failing tests** (HTTP-level per TEST-1; region 99999960):
+- [x] **Step 1: Failing tests** (HTTP-level per TEST-1; region 99999960):
   ```python
   async def test_filter_by_contract_type(client, db_session):
       """contract_type narrows to the named types; repeated params combine; an
@@ -731,8 +745,8 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
       assert bad.status_code == 422
   ```
   Plus the FASTAPI-1 sentinel: extend `test_id_list_filters_are_query_params_in_openapi_schema` (`test_contract_filters.py:243`) to assert `contract_type` appears as a query parameter.
-- [ ] **Step 2: FAIL** (unknown param today is ignored → 200).
-- [ ] **Step 3: Implement.** In `schemas/contracts.py`, above `SortableContractFields`:
+- [x] **Step 2: FAIL** (unknown param today is ignored → 200).
+- [x] **Step 3: Implement.** In `schemas/contracts.py`, above `SortableContractFields`:
   ```python
   class ContractType(str, Enum):
       """Every contract type ESI can emit (confirmed against the committed spec
@@ -760,8 +774,8 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
   ```
   (Applied inside `_apply_contract_filters` so the residual count stays synchronized — Global Constraint 19. `Contract.type` leads `ix_contracts_type_status`, so the composite serves a type-only predicate as a prefix; no new index.)
   `watchlist_matcher.py:151`: replace the tuple literal with `(ContractType.item_exchange.value, ContractType.auction.value)` (import from `..schemas.contracts`) — same behavior, one authority for the vocabulary.
-- [ ] **Step 4: Green**; run the watchlist matcher module too (`pytest -q fastapi_app/tests/services/test_watchlist_matcher.py`).
-- [ ] **Step 5: Commit** — `feat(api): filter contracts by type with a closed enum`
+- [x] **Step 4: Green**; run the watchlist matcher module too (`pytest -q fastapi_app/tests/services/test_watchlist_matcher.py`).
+- [x] **Step 5: Commit** — `feat(api): filter contracts by type with a closed enum`
 
 ### Task B2: Response-model split + server-computed derived fields (§17.1–§17.4)
 
@@ -785,18 +799,20 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
 - `reward_per_volume = reward / volume`, `None` when either is NULL or `volume == 0` (§9).
 - Category display names for composition come from one small SELECT over `EsiTaxonomyCache` (kind='category') per request; a missing name serves `name: null` rather than a fabricated string.
 
-- [ ] **Step 1: Failing tests.** In `test_contract_filters.py`, region 99999961 — seed one multi-item mixed contract (offered ship + offered BPC + **requested** module), one single-item contract, one courier; assert:
+- [x] **Step 1: Failing tests.** In `test_contract_filters.py`, region 99999961 — seed one multi-item mixed contract (offered ship + offered BPC + **requested** module), one single-item contract, one courier; assert:
   - list rows carry **no** `items` key at all (`"items" not in row` — the envelope's `items` is the page, the row must not have one);
   - the mixed contract: `is_blueprint_copy_contract is True`, `primary_label` is the ship's type_name, `composition.total_item_rows == 2` (requested module excluded), `blueprint_summary.copy_count == 1` with the BPC's runs/ME/TE;
   - the courier row: `primary_label == "Courier to <name>"`, `composition is None`;
   - the detail endpoint for the mixed contract still carries full `items` including the requested module, each item exposing `runs`/`category_id` fields;
   - a contract holding **two** offered BPCs serves `blueprint_summary == {"runs": None, "material_efficiency": None, "time_efficiency": None, "copy_count": 2}`.
   In `test_contract_service.py`: extend the existing mixed-bundle partition test's fixture family with a **requested-only BPC** contract and assert it matches `is_bpc=false` (offered-only semantics — the Story 8 disagreement, resolved).
-- [ ] **Step 2: FAIL.**
-- [ ] **Step 3: Implement** — schemas first (all new response fields `Optional` per FASTAPI-3 except `is_blueprint_copy_contract`/`primary_label`, which the builder always supplies), then the service builder (explicit keyword construction, no `model_validate` on ORM for the split models), then rewire both `ContractListResponse` constructors, then the detail route. `ContractListResponse` becomes `PaginatedResponse[ContractListItemSchema]` keeping `unknown_system_excluded`. **The detail route needs the category-names lookup too** — composition on the detail response reads the same `EsiTaxonomyCache` SELECT the list path uses; extract it as `_category_names(db) -> dict[int, str]` and call it from both `get_contracts` and the detail handler, or detail composition serves `name: null` for every category and looks broken.
-- [ ] **Step 4: Green.** Then run the FULL backend suite — this task breaks every test that read `items` off list rows; fix each by moving it to the detail endpoint or the new fields (that migration of assertions is in-scope here, and any test whose meaning evaporates gets flagged in the PR body, never silently deleted).
-- [ ] **Step 5: Update `tests/test_export_openapi.py:30-33`** envelope assertion (still `{"total","page","size","items","unknown_system_excluded"}` here; B3/B4 extend it).
-- [ ] **Step 6: Commit** — `feat(api)!: split the contract list row from the detail response and serve derived summaries`
+  **As executed:** that mixed-bundle partition test is `test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle` in `test_contract_filters.py` (region 99999954), not `test_contract_service.py`; the requested-only BPC (`954003`) was added to its fixture family there. `test_contract_service.py`'s only `items`-reading assertion (`test_filter_by_is_bpc`) moved to `is_blueprint_copy_contract`.
+- [x] **Step 2: FAIL.**
+- [x] **Step 3: Implement** — schemas first (all new response fields `Optional` per FASTAPI-3 except `is_blueprint_copy_contract`/`primary_label`, which the builder always supplies), then the service builder (explicit keyword construction, no `model_validate` on ORM for the split models), then rewire both `ContractListResponse` constructors, then the detail route. `ContractListResponse` becomes `PaginatedResponse[ContractListItemSchema]` keeping `unknown_system_excluded`. **The detail route needs the category-names lookup too** — composition on the detail response reads the same `EsiTaxonomyCache` SELECT the list path uses; extract it as `_category_names(db) -> dict[int, str]` and call it from both `get_contracts` and the detail handler, or detail composition serves `name: null` for every category and looks broken.
+- [x] **Step 4: Green.** Then run the FULL backend suite — this task breaks every test that read `items` off list rows; fix each by moving it to the detail endpoint or the new fields (that migration of assertions is in-scope here, and any test whose meaning evaporates gets flagged in the PR body, never silently deleted).
+- [x] **Step 5: Update `tests/test_export_openapi.py:30-33`** envelope assertion (still `{"total","page","size","items","unknown_system_excluded"}` here; B3/B4 extend it).
+  **As executed:** the envelope assertion needed no change (it is a subset check and the envelope model keeps its name). Added instead the assertions that make the split visible in the artifact the TS client is generated from: `ContractListItemSchema` has no `items` property and carries all nine new row fields, and `/contracts/{contract_id}` responds with `ContractDetailSchema`, which does.
+- [x] **Step 6: Commit** — `feat(api)!: split the contract list row from the detail response and serve derived summaries`
   (The `!` is honest: list rows stop carrying `items` — a breaking wire change, §6.4.)
 
 ### Task B3: Grouped segment counts + derived total (decision-log D2; §17.5, Criteria 1.3/1.8)
@@ -822,19 +838,24 @@ grouped = (
 ```
 Python then: zero-fills over `ContractType`; **folds any grouped row whose stored `type` string is outside the enum into the `"unknown"` key** (codex round-2 finding 14 — `Contract.type` is an unconstrained string written straight from ESI, and a future ESI type must stay counted and reachable per Criterion 1.1, not silently vanish from the sum — which would also mis-trigger the `total == 0` short-circuit while rows exist); picks per-type counts for `segment_counts` per Criterion 1.8 (while `is_ship_contract=True` is active: item-bearing types use the ships aggregate, item-less types — courier/loan/unknown — use the lifted aggregate; `is_ship_contract=False`: `all - ships` for item-bearing; inactive: the lifted aggregate); derives `total` as the sum over the *selected* types (**all grouped rows including non-enum strings** when no `contract_type` filter) of the aggregate matching the actual `is_ship_contract` filter. The flat `_count_distinct_contracts` call disappears from `get_contracts` (it remains for the residual count). One corpus-scale aggregate per request — same as today, not one more (D2). **DISTINCT is conditional, matching decision-log D2 exactly** (codex finding 15 resolved in D2's favor): `count(DISTINCT contract_id)` when `needs_item_join` is true (the join inflates rows — SQLA-1), plain `count(contract_id)` otherwise (the PK is unique per row and the DISTINCT sort is pure cost on the hot unjoined default path — this is where the perf-audit's drop-the-DISTINCT follow-up is absorbed).
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
   - **Equivalence property (the load-bearing one):** in `test_contract_service.py`, seed a corpus in two private regions with mixed types, multi-item contracts, ships and non-ships; for each filter combination in a parametrized matrix (`search`, `is_bpc`, `type_ids` joined path, `is_ship_contract` both values, `contract_type` single + multi, price bounds), assert `response.total == await _count_distinct_contracts(db, reference_query)` where `reference_query` is built independently inside the test the pre-B3 way: `select(Contract)` + `outerjoin(ContractItem)` iff `_needs_item_join(filters)` + `_apply_contract_filters(query, filters)` + `_apply_item_filters(query, filters)` with the ORIGINAL (unlifted) filters. Run under **both** `liveness_branch` params (the fixture at `:509` — the watermark fast/fallback branches must agree).
+    **As executed:** the corpus sits in `DELISTED_REGION_A`/`DELISTED_REGION_B` (99999911/99999912) rather than newly claimed private regions, because those are the two ids `liveness_branch` writes into `AGGREGATION_REGION_IDS`. Rows in any other region take the correlated fallback under *both* params, which would have made the parametrisation vacuous and left the fast branch with no coverage. `db_session` drops and recreates every table per test function, so sharing the ids with the delisting/system-coverage cases is safe. 13 filter cases × 2 branches; each case asserts its reference count is non-zero first so the equality cannot pass vacuously. One case (`unknown-contract-type`) pins that a `contract_type` selection matches the stored string exactly and does NOT sweep in the non-enum row folded beside it in `segment_counts`.
   - **Zero-fill:** every response's `segment_counts` has exactly the five keys, zeros included (`assert set(data["segment_counts"]) == {"item_exchange","auction","courier","loan","unknown"}` even against an empty region).
   - **Criterion 1.8 (HTTP-level, region 99999962):** seed 2 ship item_exchanges, 1 non-ship item_exchange, 1 courier. With `is_ship_contract=true`: `segment_counts["item_exchange"] == 2` (respects ships-only) but `segment_counts["courier"] == 1` (lifted — not 0). `total == 2`.
+    **As executed:** the `is_ship_contract=false` half of the same criterion needed its own HTTP case (`test_an_item_bearing_segment_reports_the_complement_under_ships_excluded`, same fixture): `segment_counts["item_exchange"] == 1`, `courier == 1`, `total == 2`. The equivalence matrix's `ships-excluded` case asserts only `total` and the key set, so nothing pinned the complement aggregate for an item-bearing segment — see the third mutation under Step 4.
   - **Counts respect other filters (§6.2):** with a `min_price` excluding one ship, `segment_counts["item_exchange"]` drops accordingly.
   - **Distinct contracts (Criterion 1.3):** a multi-item contract counts once under a joined-path filter (`search` hitting both its items).
   - **Empty-page threading:** a filter matching nothing still returns full zero-filled `segment_counts` (Global Constraint 18 — both constructors).
+    **As executed:** written as `contract_type=loan` against a corpus holding three item exchanges and a courier, so the empty page asserts the five keys *and* non-zero counts beside them. A filter that empties the corpus outright would have let an all-zeros dict pass while the short-circuit dropped the real counts.
   - **Non-enum stored type (finding 14):** seed a row with `type="somenewtype"` (write it via `db_session.add`, which the unconstrained column accepts) → it counts inside `segment_counts["unknown"]`, the unfiltered `total` includes it, and the page shows it — no silent vanishing, no spurious empty short-circuit.
-- [ ] **Step 2: FAIL** (no `segment_counts` key).
-- [ ] **Step 3: Implement** per the binding shape; thread through **both** `ContractListResponse` constructors; `total == 0` short-circuit now keys off the derived total.
-- [ ] **Step 4: Green; mutation-verify the equivalence test** (snapshot, drop the `FILTER` aggregate so ships counts equal all counts, confirm red, restore, green).
-- [ ] **Step 5:** Extend `tests/test_export_openapi.py` envelope assertion with `segment_counts`.
-- [ ] **Step 6: Commit** — `feat(api): serve per-type segment counts from one grouped statement`
+- [x] **Step 2: FAIL** (no `segment_counts` key). 35 failures, all `AttributeError: 'ContractListResponse' object has no attribute 'segment_counts'`.
+- [x] **Step 3: Implement** per the binding shape; thread through **both** `ContractListResponse` constructors; `total == 0` short-circuit now keys off the derived total.
+- [x] **Step 4: Green; mutation-verify the equivalence test** (snapshot, drop the `FILTER` aggregate so ships counts equal all counts, confirm red, restore, green).
+  **As executed:** two mutations, both killed. (1) `FILTER` aggregate replaced by a second plain aggregate → 6 red (`ships-only`, `ships-excluded`, `contract-type-with-ships-only`, both branches). (2) DISTINCT made unconditional-plain → 5 red (`search-joins-items`, `search-with-ships-only`, both branches, plus the HTTP Criterion 1.3 case). Restored from a `cp` snapshot and re-ran green both times. Note `type-ids-joins-items` survives mutation (2): no fixture contract carries two items sharing one `type_id`, so only the `search` cases reach the inflating shape — the corpus's duplication coverage rests on those.
+  **Third mutation, initially survived:** making the ships-excluded case report the lifted population for item-bearing segments too (`None if segment in _ITEMLESS_CONTRACT_TYPES or filters.is_ship_contract is False else …`) left all 98 tests green. The implementation was correct; the coverage was not — the derivation's `all - ships` branch had no assertion on any segment VALUE. Closed with the ships-excluded HTTP case in Step 1; re-running the mutation now reddens exactly that test, and the restored file re-runs green.
+- [x] **Step 5:** Extend `tests/test_export_openapi.py` envelope assertion with `segment_counts`. (Written as part of the Step 1 red set rather than after green.)
+- [x] **Step 6: Commit** — `feat(api): serve per-type segment counts from one grouped statement`
 
 ### Task B4: Coverage envelope (decision-log D3; §17.7, Criteria 7.3/7.4)
 
@@ -866,10 +887,10 @@ _OBSERVED_REGIONS_SQL = text("""
 ```
 `ingested_region_ids` = the returned ids sorted ascending; `as_of` = the max of `newest` (None on an empty corpus). Sourced from observed rows, never `Settings.AGGREGATION_REGION_IDS` (Criterion 7.4 — configured-but-not-ingested is exactly the misleading state).
 
-- [ ] **Step 1: Failing tests:** seed contracts in two regions → `coverage.ingested_region_ids` equals exactly those two, `as_of` equals the newest `last_seen_at` seeded; empty DB → `ingested_region_ids == []`, `as_of is None`; and the drift case: monkeypatch `AGGREGATION_REGION_IDS` to include a third, empty region → it must NOT appear (that assertion is the criterion).
-- [ ] **Step 2: FAIL. Step 3: Implement** (both constructors; computed once per request alongside the counts). **Step 4: Green.**
-- [ ] **Step 5:** Extend the export-openapi envelope assertion with `coverage`.
-- [ ] **Step 6: Commit** — `feat(api): report observed region coverage on the list envelope`
+- [x] **Step 1: Failing tests:** seed contracts in two regions → `coverage.ingested_region_ids` equals exactly those two, `as_of` equals the newest `last_seen_at` seeded; empty DB → `ingested_region_ids == []`, `as_of is None`; and the drift case: monkeypatch `AGGREGATION_REGION_IDS` to include a third, empty region → it must NOT appear (that assertion is the criterion).
+- [x] **Step 2: FAIL. Step 3: Implement** (both constructors; computed once per request alongside the counts). **Step 4: Green.**
+- [x] **Step 5:** Extend the export-openapi envelope assertion with `coverage`.
+- [x] **Step 6: Commit** — `feat(api): report observed region coverage on the list envelope`
 
 ### Task B5: Functional item-level range filters (runs, ME, TE) as offered-only per-family EXISTS (§3.1, Criteria 2.3/2.5)
 
@@ -919,7 +940,7 @@ def _offered_item_range_exists(column, minimum, maximum):
 
 **Spec-interpretation note (binding; decision-log D8):** §3.1's "the test must assert it lands in exactly one branch" holds for the **boolean** `is_bpc` family, whose false branch is the *negation* of the true branch — negation-derived complements partition by construction. Range families have no negation branch: under §3.1's own existential rule, a contract holding offered items on BOTH sides of complementary bounds (ME 5 and ME 15 against `max_me=9` / `min_me=10`) **legitimately matches both branches** — each bound is satisfied by a different offered item, which is exactly what "at least one offered item satisfies the predicate" means. The mixed-child fixture's discriminating assertions for ranges are therefore: (a) the straddling contract appears in BOTH single-bound branches (pins existential semantics), (b) the **window** test — no single item inside both bounds ⇒ no match (pins §3.1's "bounds within a family apply to the same item", the reading that kills the two-separate-EXISTS misimplementation), and (c) the three-way identity computed with the overlap named explicitly. A naive reading of "exactly one branch" applied to ranges would reject a correct implementation.
 
-- [ ] **Step 1: Failing tests** — for EACH family, the §3.1 three-way identity with a mixed-child fixture (template: `test_contract_filters.py:636`, adjusted per the note above). The ME one in full (runs and TE are the same shape over their columns; write all three, no "similar to above"):
+- [x] **Step 1: Failing tests** — for EACH family, the §3.1 three-way identity with a mixed-child fixture (template: `test_contract_filters.py:636`, adjusted per the note above). The ME one in full (runs and TE are the same shape over their columns; write all three, no "similar to above"):
   ```python
   async def test_me_filter_is_a_contract_level_predicate_with_a_three_way_identity(
       client, db_session
@@ -995,16 +1016,22 @@ def _offered_item_range_exists(column, minimum, maximum):
       assert high.json()["total"] < unfiltered.json()["total"]
   ```
   Note the mixed contract appears in BOTH single-bound branches (it has an item on each side) — that is correct under §3.1's existential rule; the three-way identity accounts for the overlap explicitly (`-1`). The runs-family test additionally seeds a blueprint **original** (`runs=None`) and asserts it lands in `neither` under both bounds (ESI-3: absence is not zero).
-- [ ] **Step 2: FAIL** (today: runs reads permanently-NULL `raw_quantity`; ME/TE ignored entirely → identical counts).
-- [ ] **Step 3: Implement** per the binding shape. **Step 4: Green; mutation-verify** the ME test by removing `is_included.is_(True)` from the factory (must go red on 964004 leaking in), restore, green. Run the full filter + service modules.
-- [ ] **Step 5: Commit** — `fix(api): make the runs, ME, and TE filter families classify contracts by offered items`
+- [x] **Step 2: FAIL** (today: runs reads permanently-NULL `raw_quantity`; ME/TE ignored entirely → identical counts). Observed exactly that: the runs branches came back empty, the ME branches came back with all four fixture contracts.
+- [x] **Step 3: Implement** per the binding shape. **Step 4: Green; mutation-verify** the ME test by removing `is_included.is_(True)` from the factory (must go red on 964004 leaking in), restore, green. Run the full filter + service modules. Three mutations run in all, each restored from a `cp` snapshot (TEST-12): (1) drop `is_included.is_(True)` → red, 964004 leaks into the ME high branch; (2) emit one EXISTS per bound instead of one per family → red in all three window assertions, the misimplementation §3.1 exists to forbid; (3) fold the runs bounds into the ME family's EXISTS → red on the independence test. Restored, full suite green.
+- [x] **Step 5: Commit** — `fix(api): make the runs, ME, and TE filter families classify contracts by offered items`
+
+**Executed deviations (Task B5):**
+- **A fourth test, `test_range_families_are_independent_of_each_other`.** The three named tests pin bounds composing per item WITHIN a family; nothing in them fails if all three families collapse into one EXISTS. The fourth seeds a contract whose ME comes from one copy and whose runs come from another and asserts `min_me=10&min_runs=50` still matches it — mutation 3 above is the proof it is load-bearing.
+- **`tests/conftest.py::setup_contracts` repaired, outside the task's Files list.** The fixture set `raw_quantity=10` on contract 102 — TEST-18's own worked example of a fixture column ingestion never writes — so pointing the runs family at `ContractItem.runs` turned `test_filter_by_bpc_runs` red. The value moved to `runs=10`, which `background_aggregation._fetch_item_rows` does assign, converting a test that proved query binding into one that proves the feature. The fixture's WARNING docstring was rewritten accordingly.
+- **Two pitfall entries corrected in the same commit** (CLAUDE.md §Development Workflow). FASTAPI-2's "Where It Bit Us" asserted in the present tense that `min_me`/`max_me`/`min_te`/`max_te` are silently ignored — this task makes that false, so it is now past tense with the fix named. TEST-18's `raw_quantity=10` clause gained the same "since fixed" annotation its `start_location_system_id` sibling already carried.
+- **The ESI monitor snapshot was re-projected offline, not regenerated with `--update`.** `snapshot.json` embeds the manifest's `known_absent_fields` prose, so the rewritten `raw_quantity` annotation had to reach it; `--update` would have refetched the live spec and silently accepted any real ESI drift since Task A6 took the snapshot, which is exactly what that file's own readme warns against. Instead the two views' `raw_quantity` blocks were rewritten from `MANIFEST` and the file re-serialized through `monitor.serialize`, so the diff is four lines of prose and nothing else. The monitor's findings output is unchanged either way — the diff engine compares field/parameter/status shape, never the consumer annotations.
 
 ### Task B6: Taxonomy filters (`category_id`, `group_id`) as one offered-only EXISTS family (Criteria 3.1–3.4)
 
 **Files:** `schemas/contracts.py` (`ContractFilters`), `services/contract_service.py` (`_apply_item_filters`), test `tests/api/test_contract_filters.py` (region **99999965**)
 
-- [ ] **Step 1: Failing test:** seed a mixed-child contract (offered Ship-category item + offered Module-category item), a module-only contract, and a requested-only-in-category contract; assert `category_id=<ship>` matches the mixed + not the module-only; `category_id=<ship>&group_id=<frigate>` requires the SAME offered item to satisfy both (a contract whose ship item is group A does not match group B even though another offered item is group B — seed exactly that shape); requested-side items never match; a category with zero matches returns `total == 0` (not an error); the mixed contract appears under a ship-category query AND under a module-category query (existential semantics — a mixed contract legitimately matches both positive filters; there is no negation branch for taxonomy), and repeated `group_id` params combine.
-- [ ] **Step 2: FAIL. Step 3: Implement:** fields
+- [x] **Step 1: Failing test:** seed a mixed-child contract (offered Ship-category item + offered Module-category item), a module-only contract, and a requested-only-in-category contract; assert `category_id=<ship>` matches the mixed + not the module-only; `category_id=<ship>&group_id=<frigate>` requires the SAME offered item to satisfy both (a contract whose ship item is group A does not match group B even though another offered item is group B — seed exactly that shape); requested-side items never match; a category with zero matches returns `total == 0` (not an error); the mixed contract appears under a ship-category query AND under a module-category query (existential semantics — a mixed contract legitimately matches both positive filters; there is no negation branch for taxonomy), and repeated `group_id` params combine.
+- [x] **Step 2: FAIL. Step 3: Implement:** fields
   ```python
       category_id: Optional[List[int]] = Field(
           default=None, description="Dogma category ids; matches contracts with at least one offered item in any of them."
@@ -1029,7 +1056,14 @@ def _offered_item_range_exists(column, minimum, maximum):
           )
   ```
   (NOT added to `_needs_item_join` — EXISTS shape.)
-- [ ] **Step 4: Green. Step 5: Commit** — `feat(api): filter contracts by dogma category and group`
+- [x] **Step 4: Green. Step 5: Commit** — `feat(api): filter contracts by dogma category and group`
+  Two mutations run (TEST-12), each restored from a `cp` snapshot, ending on a green full-suite run (638 passed): (1) drop `is_included.is_(True)` → red, the requested-only-frigate contract leaks into every category and group answer; (2) emit one EXISTS per predicate instead of one per family → red on exactly the same-item test, the mixed bundle coming back for `category_id=6&group_id=60` it holds no item satisfying.
+
+**Executed deviations (Task B6):**
+- **Region 99999965 claimed** (Global Constraint 23), as the task's Files line assigned. A module-level `taxonomy_corpus` fixture seeds all four contracts once; the fixture docstring names 965001 as the TEST-19 mixed-child parent and the two-EXISTS discriminator, so the next reader does not have to re-derive why it holds a frigate and an afterburner.
+- **Step 1's seven assertions were split across four named tests** rather than written as one. Each test is named for the single behavior it constrains (contract-level classification, same-item composition, repeated-param union, absent-category empty page), so a failure names the semantics that broke instead of "the taxonomy test". Both mutations above landed on exactly the intended test, which is the evidence the split is real and not cosmetic.
+- **`test_id_list_filters_are_query_params_in_openapi_schema` gained the two new names**, outside the assertions Step 1 enumerated. That test is this module's FASTAPI-1 / TEST-1 guard for precisely this filter class — an ID list bound into the GET *body* works at the service layer and is unreachable over HTTP — and adding two `Optional[List[int]]` params while leaving the guard enumerating only the old five would have left the new ones the one shape it exists to catch.
+- **`_needs_item_join`'s trailing comment widened** to name the category/group family alongside `is_bpc` and the ranges. It enumerates the filters deliberately absent from the join and why; leaving it listing three of four families makes it stale by omission the moment the fourth lands.
 
 ### Task B7: Taxonomy options endpoint with the coverage signal (decision-log D1; §17.6, Criterion 3.5)
 
@@ -1050,16 +1084,25 @@ Flat, not nested (§17.6 — the client filters groups locally). Lists come from
 
 `"complete"` iff both conditions hold; `"partial"` otherwise. The signal auto-degrades during any future version bump's resweep and auto-restores — a feature, not an accident (D1).
 
-- [ ] **Step 1: Failing tests:** (a) cold cache → `{"categories": [], "groups": [], "coverage": "partial"}` (200, honest, never 500); (b) seeded cache + a corpus fully stamped at the current version → `"complete"`, lists sorted, groups carrying `category_id`; (c) 1 of 200 live item-bearing contracts at the old version (0.995) → `"complete"`; 5 of 100 (0.95) → `"partial"` (the threshold is 0.99 — these numbers are chosen to sit on either side of it); (d) **50 COMPLETED-current + 50 ENRICHMENT_INCOMPLETE live contracts → `"partial"`** (the finding-3 regression case: the incomplete rows are IN the denominator); (e) a delisted old-version contract (stale `last_seen_at` in a region with a newer watermark) does NOT drag the ratio; (f) couriers/loans do not count in the denominator; (g) **ratio at 1.0 but one live item's `category_id` has no cache row → `"partial"`** (the finding-4 case); add the missing cache row → `"complete"`.
-- [ ] **Step 2: FAIL. Step 3: Implement** (ratio via one aggregate query: `count(*) FILTER (WHERE item_processing_status = 'COMPLETED' AND enrichment_version = :v)` over the live item-bearing population; import `ENRICHMENT_VERSION` from the service module — one authority). **Step 4: Green. Step 5: Commit** — `feat(api): serve the taxonomy option list with an observed readiness signal`
+- [x] **Step 1: Failing tests:** (a) cold cache → `{"categories": [], "groups": [], "coverage": "partial"}` (200, honest, never 500); (b) seeded cache + a corpus fully stamped at the current version → `"complete"`, lists sorted, groups carrying `category_id`; (c) 1 of 200 live item-bearing contracts at the old version (0.995) → `"complete"`; 5 of 100 (0.95) → `"partial"` (the threshold is 0.99 — these numbers are chosen to sit on either side of it); (d) **50 COMPLETED-current + 50 ENRICHMENT_INCOMPLETE live contracts → `"partial"`** (the finding-3 regression case: the incomplete rows are IN the denominator); (e) a delisted old-version contract (stale `last_seen_at` in a region with a newer watermark) does NOT drag the ratio; (f) couriers/loans do not count in the denominator; (g) **ratio at 1.0 but one live item's `category_id` has no cache row → `"partial"`** (the finding-4 case); add the missing cache row → `"complete"`.
+- [x] **Step 2: FAIL** — all nine items 422, the route-order failure exactly: with no `/taxonomy` route registered, `/{contract_id}` captured the path and tried to parse `"taxonomy"` as an integer.
+- [x] **Step 3: Implement** (ratio via one aggregate query: `count(*) FILTER (WHERE item_processing_status = 'COMPLETED' AND enrichment_version = :v)` over the live item-bearing population; import `ENRICHMENT_VERSION` from the service module — one authority). **Step 4: Green. Step 5: Commit** — `feat(api): serve the taxonomy option list with an observed readiness signal`
+  Nine mutations run (TEST-12), each restored from a `cp` snapshot, ending on a green full-suite run (647 passed): COMPLETED-only denominator, liveness dropped from the population, item-bearing type predicate dropped, name-cache condition dropped, name-cache condition unscoped from liveness, threshold lowered to 0.90, groups stop carrying `parent_category_id`, and each of the two name sorts replaced by a constant key. All nine red.
+
+**Executed deviations (Task B7):**
+- **Region 99999971 claimed** (Global Constraint 23); the task's Files line assigned none. The endpoint takes no filters, so unlike every other block in `test_contract_filters.py` its population is the whole table — the tests seed their own corpus and deliberately do not use `setup_contracts`, relying on `db_session` recreating every table per function. The region id still matters because the per-region delisting watermark needs somewhere private to work.
+- **One test past the seven Step 1 enumerated:** `test_a_category_seen_only_on_delisted_rows_does_not_hold_the_signal`. The step's list covers the two conditions and the ratio's population but never the *name* condition's population, which is the whole point of it owning its own query rather than reusing ingestion's unscoped `_observed_category_ids` — a category present only on bought-or-withdrawn rows must not hold the item-level surface shut. Mutation-verified: unscoping the category sweep from liveness turns it red. The item-bearing-types test also makes a second request with an auction knocked back a version, since the enumerated fixture only proves couriers and loans are *out* and nothing proves auctions are *in*.
+- **`coverage` is typed as a `TaxonomyCoverage` str-enum, not a bare `str`.** The wire values are the two §17.6 names verbatim; the enum is what makes the regenerated TypeScript a `"partial" | "complete"` union instead of `string`, so PR-D's gate cannot compare against a typo the compiler would have caught. Same reasoning as §17.8's `contract_type`.
+- **The name sort runs in Python, not `ORDER BY`.** A database-side sort orders by the server's collation, so the option list a client renders would change with the deployment's `lc_collate`; the lists are a few dozen categories and ~1,500 groups, so the cost is nil.
+- **Mutation caught a vacuous fixture of my own before commit** (recorded because it is the TEST-12 lesson repeating): the sort assertion originally seeded the categories already in name order, so replacing the sort key with a constant left the served order unchanged and the mutation survived. Both lists are now seeded in exactly reverse name order, and both sorts are separately mutation-killed.
 
 ### Task B8: New sortable fields (`reward_per_volume`, `days_to_complete`, `buyout`) (§6.2, Criterion 5.4, §11's five-touchpoint rule)
 
 **Files:** `schemas/contracts.py` (`SortableContractFields`), `services/contract_service.py` (`SORT_MAP` + null ordering), test `tests/api/test_contract_filters.py` (region **99999966**)
 
-- [ ] **Step 1: Failing tests — one per field, asc AND desc, distinct-value fixtures (TEST-3):** the fixture must give EACH sort a population with ≥3 distinct non-NULL values **on rows the production writer would actually give that value** (codex round-2 finding 11 — buyout is auction-only, so couriers cannot carry it without violating TEST-18): seed **three auctions with distinct `buyout` values plus one auction without** (the null case), and **three couriers with distinct reward/volume ratios and distinct `days_to_complete`** plus one courier with `volume=0` (guard case) and one item_exchange (`reward` NULL). For each of the three new sorts assert ascending and descending produce different first rows, the expected exact order, and that NULL-valued rows sort LAST in both directions (a null `reward_per_volume` row must not occupy the "best value" end — the §15.2 display rule applied to the one ratio this feature ships). Also: `volume=0` yields `reward_per_volume: null` on the wire, not infinity/error (§9), and one sort test runs with `search` set so the grouped joined path exercises the aggregate (SQLA-1).
-- [ ] **Step 2: FAIL** (enum rejects the values → 422).
-- [ ] **Step 3: Implement:** enum members `reward_per_volume`, `days_to_complete`, `buyout`; SORT_MAP entries:
+- [x] **Step 1: Failing tests — one per field, asc AND desc, distinct-value fixtures (TEST-3):** the fixture must give EACH sort a population with ≥3 distinct non-NULL values **on rows the production writer would actually give that value** (codex round-2 finding 11 — buyout is auction-only, so couriers cannot carry it without violating TEST-18): seed **three auctions with distinct `buyout` values plus one auction without** (the null case), and **three couriers with distinct reward/volume ratios and distinct `days_to_complete`** plus one courier with `volume=0` (guard case) and one item_exchange (`reward` NULL). For each of the three new sorts assert ascending and descending produce different first rows, the expected exact order, and that NULL-valued rows sort LAST in both directions (a null `reward_per_volume` row must not occupy the "best value" end — the §15.2 display rule applied to the one ratio this feature ships). Also: `volume=0` yields `reward_per_volume: null` on the wire, not infinity/error (§9), and one sort test runs with `search` set so the grouped joined path exercises the aggregate (SQLA-1).
+- [x] **Step 2: FAIL** — all five tests 422, the enum rejecting the three values exactly as predicted.
+- [x] **Step 3: Implement:** enum members `reward_per_volume`, `days_to_complete`, `buyout`; SORT_MAP entries:
   ```python
       SortableContractFields.buyout: Contract.buyout,
       SortableContractFields.days_to_complete: Contract.days_to_complete,
@@ -1067,16 +1110,21 @@ Flat, not nested (§17.6 — the client filters groups locally). Lists come from
       SortableContractFields.reward_per_volume: Contract.reward / func.nullif(Contract.volume, 0.0),
   ```
   Null ordering: in both fetch paths, when the resolved sort column is one of the three new (nullable) entries, append `.nulls_last()` to the order expression (`order_expr = order_expr.nulls_last()`), leaving the existing four sorts byte-identical (they are non-null columns; changing their plans without cause is scope creep). The grouped path's aggregate (`func.max`/`min` over the expression) already tolerates expressions.
-- [ ] **Step 4: Green.** Note the five-touchpoint rule: touchpoints 1–2 (SORT_MAP, enum) here; 3 (`SavedSearchParameters.sort_by`) widens automatically via the shared enum — B9's tests cover it; 4–5 (frontend `SORT_FIELDS`, regenerated types) are PR-C Task C2.
-- [ ] **Step 5: Commit** — `feat(api): sort by reward per volume, delivery window, and buyout`
+- [x] **Step 4: Green** (652 passed, flake8 clean). Note the five-touchpoint rule: touchpoints 1–2 (SORT_MAP, enum) here; 3 (`SavedSearchParameters.sort_by`) widens automatically via the shared enum — B9's tests cover it; 4–5 (frontend `SORT_FIELDS`, regenerated types) are PR-C Task C2.
+  Seven mutations run (TEST-12), each restored from a `cp` snapshot and ending on a green restore run: `nulls_last` dropped from the simple path (3 red) and from the joined path (1 red), the ratio replaced by the raw reward, by the raw volume, and by an unguarded `reward / volume` (division by zero), and each of the `buyout` / `days_to_complete` map entries repointed at `Contract.price`. All seven red, no survivors.
+- [x] **Step 5: Commit** — `feat(api): sort by reward per volume, delivery window, and buyout`
+
+**Executed deviations (Task B8):**
+- **The `volume=0` guard courier also carries a `days_to_complete`,** giving that sort four distinct non-NULL values rather than the three Step 1's phrasing implies. ESI sends a delivery window on every courier, so a courier without one is not a row the writer can produce (TEST-18); leaving it NULL to keep the count at three would have bought a rounder fixture with a shape that does not exist.
+- **The plan's "existing four sorts" is six.** `SORT_MAP` held `date_issued`, `date_expired`, `price`, `collateral`, `volume`, and `ship_name` before this task — the parenthetical "(they are non-null columns)" is true of four of them and false of `volume` (`models/contracts.py`, `nullable=True`) and of `ship_name` (`ContractItem.type_name`). All six are left byte-identical as the step directs, so the instruction stands; only its count and its stated reason were off. The consequence is recorded under Discoveries rather than fixed here.
 
 ### Task B9: `SavedSearchParameters` widening (decision-log D4; spec §14)
 
 **Files:** `schemas/account.py`, tests `tests/api/test_account_schemas.py`, `tests/api/test_saved_searches.py`
 
-- [ ] **Step 1: Failing tests first, as edits to the pins:** replace the two `min_me` 422 cases (`test_saved_searches.py:125`, `test_account_schemas.py:57`) with a still-rejected key (`{"min_me_typo": 5}`-style junk) AND add acceptance cases: a blob carrying `contract_type=["courier"]`, `category_id=[6]`, `group_id=[25]`, `min_runs=1`, `min_me=10`, `max_te=20` validates and round-trips. Keep the `page` and `is_ship_contract` rejection pins (`test_account_schemas.py:58-59`) — both stay rejected. `test_saved_searches.py:168` (`additionalProperties is False`) stays green because `extra="forbid"` stays.
-- [ ] **Step 2: Run — the acceptance cases FAIL** (extra=forbid rejects them today).
-- [ ] **Step 3: Implement:** add to `SavedSearchParameters`, bounds copied from `ContractFilters` exactly:
+- [x] **Step 1: Failing tests first, as edits to the pins:** replace the two `min_me` 422 cases (`test_saved_searches.py:125`, `test_account_schemas.py:57`) with a still-rejected key (`{"min_me_typo": 5}`-style junk) AND add acceptance cases: a blob carrying `contract_type=["courier"]`, `category_id=[6]`, `group_id=[25]`, `min_runs=1`, `min_me=10`, `max_te=20` validates and round-trips. Keep the `page` and `is_ship_contract` rejection pins (`test_account_schemas.py:58-59`) — both stay rejected. `test_saved_searches.py:168` (`additionalProperties is False`) stays green because `extra="forbid"` stays.
+- [x] **Step 2: Run — the acceptance cases FAIL** (extra=forbid rejects them today).
+- [x] **Step 3: Implement:** add to `SavedSearchParameters`, bounds copied from `ContractFilters` exactly:
   ```python
       contract_type: Optional[List[ContractType]] = Field(default=None)
       category_id: Optional[List[PositiveInt]] = Field(default=None)
@@ -1089,17 +1137,30 @@ Flat, not nested (§17.6 — the client filters groups locally). Lists come from
       max_te: Optional[int] = Field(default=None, ge=0)
   ```
   Rewrite the docstring: it no longer rejects ME/TE (they are functional as of F008); it still rejects `page`, the wire-only `is_ship_contract`, and junk.
-- [ ] **Step 4: Green** (all three saved-search test modules). **Step 5: Commit** — `feat(api): let saved searches hold the type, taxonomy, and blueprint filters`
+- [x] **Step 4: Green** (all three saved-search test modules). **Step 5: Commit** — `feat(api): let saved searches hold the type, taxonomy, and blueprint filters`
 
 ### Task B10: PII log fix + regeneration + phase gate
 
 **Files:** `services/contract_service.py` (4 sites), `app/frontend/web/openapi.json` + `src/lib/api/schema.d.ts` (regenerated), tests
 
-- [ ] **Step 1: Failing test:** in `test_contract_service.py`, following the `log_key_event`-monkeypatch idiom (`:178`/`:268`): perform a search with `filters.search="Tristan sale"`; capture ALL log calls (including the plain `logger.info` start log — monkeypatch `contract_service.logger` too); assert no captured `search_terms` dict contains the literal string, and each carries `search_len: 12` instead.
-- [ ] **Step 2: FAIL. Step 3: Implement:** in all FOUR `search_terms` dicts (`:373` start `logger.info`, `:421` zero-result, `:468` success, `:492` failure — the first is NOT a `log_key_event`; a task scoped to those would miss it), replace `"search": filters.search` with `"search_len": len(filters.search) if filters.search else 0`. Reconcile `tests/api/test_observability.py:42/:58` if the key change surfaces there. Also add the new filter dimensions to the two full-dimension sites (`contract_type`, `category_id`, `group_id` — dimensions only, §4.1).
-- [ ] **Step 4:** `pdm run export-openapi` && `npm run generate:api`; commit both artifacts. Full backend suite + lint green, **AND all five frontend lanes green (eslint, tsc, vitest, future-clock, Playwright fixture e2e)** — PR-B carries Tasks C1/C2's frontend adaptation, so its CI runs the frontend job and the gate must prove it locally first.
+- [x] **Step 1: Failing test:** in `test_contract_service.py`, following the `log_key_event`-monkeypatch idiom (`:178`/`:268`): perform a search with `filters.search="Tristan sale"`; capture ALL log calls (including the plain `logger.info` start log — monkeypatch `contract_service.logger` too); assert no captured `search_terms` dict contains the literal string, and each carries `search_len: 12` instead.
+- [x] **Step 2: FAIL. Step 3: Implement:** in all FOUR `search_terms` dicts (`:373` start `logger.info`, `:421` zero-result, `:468` success, `:492` failure — the first is NOT a `log_key_event`; a task scoped to those would miss it), replace `"search": filters.search` with `"search_len": len(filters.search) if filters.search else 0`. Reconcile `tests/api/test_observability.py:42/:58` if the key change surfaces there. Also add the new filter dimensions to the two full-dimension sites (`contract_type`, `category_id`, `group_id` — dimensions only, §4.1).
+- [~] **Step 4 (backend half done):** `pdm run export-openapi` && `npm run generate:api`; commit both artifacts. Full backend suite + lint green, **AND all five frontend lanes green (eslint, tsc, vitest, future-clock, Playwright fixture e2e)** — PR-B carries Tasks C1/C2's frontend adaptation, so its CI runs the frontend job and the gate must prove it locally first.
+
+**Task B10 notes (Steps 1-4).** Three commits: `326652c` (the fix), `6eb0b9c` (the regeneration), and the follow-up below that closes the residual `326652c` left open.
+
+- **The scrub was half-closed, and its own test could not see it.** `326652c` redacted all four `search_terms` payloads and its message claimed the search text "is treated as PII and never lands in a log line" — but the failure site passed `error_message=str(e)` in the SAME record. The exception a contract search realistically fails with is a SQLAlchemy `StatementError` (statement timeout, dropped connection, deadlock), whose `str()` appends `[parameters: {...}]`, and the failing statement is the one carrying the `ILIKE '%<search text>%'` bind — so `error_message` re-published exactly what `search_terms` withheld one key earlier. The shipped test was structurally blind to it: it injected `RuntimeError("simulated db failure")`, whose `str()` is parameter-free. Two production changes close it: `hide_parameters=True` on the application engine (`db.py`), which stops SQLAlchemy rendering bind values into any error it raises — covering `main.py`'s `generic_exception_handler`, which logs both `str(exc)` and the traceback, not just this service — and `_error_without_bound_parameters` at the log site, which holds the guarantee for an exception arriving from a session built elsewhere. Rationale and the rejected alternatives are in the decision log; the trap is now pitfalls SQLA-4 (implementation) + TEST-21 (testing).
+- **Testing the engine flag without a reachable engine.** The suite runs against `DATABASE_URL_TESTS`; this worktree's `DATABASE_URL` carries placeholder credentials, so a real round-trip through `async_engine` is not available to drive an error end-to-end. `tests/test_db_engine.py` instead renders a `StatementError` with the flag the engine actually carries — the same value SQLAlchemy hands `DBAPIError.instance()` in `engine/base.py::_handle_dbapi_exception` — so the assertion is on the consequence, not on the constructor kwarg. Mutation-verified: removing `hide_parameters=True` turns it red.
+- **The service-level test drives a real `StatementError`.** `test_a_failing_statement_does_not_log_its_bound_search_text` injects one carrying `%Tristan sale%` as a bind, guards against vacuity by first asserting the unscrubbed rendering *does* leak, then asserts against the whole captured record. `test_no_search_log_site_echoes_the_raw_query_text` was widened the same way — it scanned only `search_terms` before, which is what let a sibling key escape it.
+
+- **A second test beyond Step 1's** (summarized in the top-of-plan Deviations subsection). Step 1 pins only the PII invariant, but Step 3 also *adds* three keys to the two full-dimension payloads, which is production behavior with no test behind it. `test_full_dimension_logs_carry_the_type_and_taxonomy_filters` pins the exact eleven-key set and the rendered values; stripping the new keys from either site individually turns it red. It stamps taxonomy onto contract 101's Tristan item rather than claiming a private region — the fixture writes no `category_id`/`group_id`, and one UPDATE inside the test is cheaper than a region's worth of seed.
+- **Recording the logger, not `log_key_event`.** The `:178`/`:268` idiom monkeypatches `log_key_event`, which cannot see the start log. `log_key_event` renders through `logger.info`/`logger.error`, so recording `contract_service.logger` alone catches all four sites — the two idioms are not additive and only the second is used in the new tests. Factored into `_record_search_logs`.
+- **`test_observability.py` needed no reconciliation.** Its `:42`/`:58` region builds a record dict and scans for `contract_search_executed`; it never reads `search_terms`, so the key rename does not surface there (verified by grep: `search_terms` appears in no test module but `test_contract_service.py`).
+- **Two pre-existing tests reconciled.** `test_zero_results_returns_empty_page` and `test_db_error_logs_failure_and_reraises` pinned the old `search` key by name; both now pin `search_len`. The zero-result docstring's count of the full-dimension payload rises from eight keys to eleven.
+- **Step 4's frontend half is deliberately NOT done here.** The regeneration deletes `ContractSchema`, which `client.ts` still aliases, so `npx tsc -b` cannot pass until Task C2 lands. Backend suite (666 passed) and `flake8` are green; the five frontend lanes are C2's gate, and Step 5 must not run before they are.
+
 - [ ] **Step 5:** Three review rounds (lenses: §17 field-name conformance byte-for-byte; FASTAPI-3 optionality chain over every new field; the two-constructor/residual-sync traps 18–19), codex PR review (backgrounded), address, decision-log any judgment calls, merge PR-B per protocol.
-- [ ] **Step 6: Commit** (fix itself) — `fix(api): log search dimensions without the raw query text`
+- [x] **Step 6: Commit** (fix itself) — `fix(api): log search dimensions without the raw query text`
 
 ---
 
@@ -1132,9 +1193,9 @@ interface RowContext { expiry: string }   // computed once per row, used by two 
 ```
 The six existing columns move into renderers with their exact current JSX (link + "+N more" suffix; badges; ISK; truncated location; expiry with `text-warn`; issued date). `<thead>` keeps its current sort/aria logic; `<tbody>` maps `COLUMNS.map(c => <td className={...}>{c.cell(contract, ctx)}</td>)`. `ContractTableSkeleton`'s `aria-label="Loading contracts"` is load-bearing for e2e — do not rename.
 
-- [ ] **Step 1:** Refactor; `COLUMNS` becomes the single source for header AND cell.
-- [ ] **Step 2:** `npm run test` + `npm run test:future-clock` + `npx tsc -b` + `npx eslint .` + `npm run e2e` — ALL green with **zero spec edits** (that is the proof it was a pure refactor).
-- [ ] **Step 3: Commit** — `refactor(web): drive contract table cells from the column definitions`
+- [x] **Step 1:** Refactor; `COLUMNS` becomes the single source for header AND cell.
+- [x] **Step 2:** `npm run test` + `npm run test:future-clock` + `npx tsc -b` + `npx eslint .` + `npm run e2e` — ALL green with **zero spec edits** (that is the proof it was a pure refactor).
+- [x] **Step 3: Commit** — `refactor(web): drive contract table cells from the column definitions`
 
 ### Task C2: Adopt the new wire shape (rename + derived fields + fixtures) — **executes on the PR-B branch, same commit series as the regeneration**
 
@@ -1152,9 +1213,9 @@ The six existing columns move into renderers with their exact current JSX (link 
 
    **Item-less-segment normalization lives HERE, in `parseContractSearch` (codex round-2 finding 10 — confirmed):** when `contract_type` is non-empty and EVERY entry is item-less (`courier`/`loan`/`unknown` — export an `ITEM_LESS_TYPES` const beside the type list), the parsed `ships_only` is forced `false` regardless of the raw value. Putting the rule in the pure parser means deep links (`?contract_type=loan`), saved-search `apply()`, and in-app navigation all inherit Criterion 1.7 — without it, a shared loan URL defaults `ships_only` on and requests a guaranteed-empty combination. A mixed selection (`item_exchange,courier`) is NOT normalized — the item-bearing member can match, so the combination is not guaranteed-empty. `filters.test.ts` cases: `?contract_type=loan` parses with `ships_only: false`; `?contract_type=courier&ships_only=true` likewise; mixed selection leaves `ships_only` alone; and a `toApiQuery` case asserting no `is_ship_contract` is emitted for the normalized parse.
 7. `e2e/fixtures/contracts.ts`: `WireContract` loses `items` and gains `end_location_name`, `buyout`, `days_to_complete`, `reward_per_volume`, `last_seen_at`, `is_blueprint_copy_contract`, `primary_label`, `composition`, `blueprint_summary`; `type` union gains `'loan' | 'unknown'`; `WirePage` gains `segment_counts` (all five keys) and `coverage`; `WireContractDetail` (new) carries `items` for detail intercepts; builders updated so every existing dataset compiles with honest values (`primary_label` derived in the builder from the same inputs it previously buried in items). Add canned `AUCTION_CONTRACTS` and `COURIER_CONTRACTS` datasets (distinct sortable values, TEST-3).
-- [ ] **Step 1:** Make the changes test-first where behavior exists (`filters.test.ts` cases for each new param's parse/serialize junk-tolerance; `pages.test.tsx` fixtures to the new shape) — then chase the compiler (`npx tsc -b`) to every remaining consumer.
-- [ ] **Step 2:** All four verification lanes green + e2e fixture lane green.
-- [ ] **Step 3: Commit** — `feat(web): adopt the split list-row contract and server-computed labels`
+- [x] **Step 1:** Make the changes test-first where behavior exists (`filters.test.ts` cases for each new param's parse/serialize junk-tolerance; `pages.test.tsx` fixtures to the new shape) — then chase the compiler (`npx tsc -b`) to every remaining consumer.
+- [x] **Step 2:** All four verification lanes green + e2e fixture lane green.
+- [x] **Step 3: Commit** — `feat(web): adopt the split list-row contract and server-computed labels`
 
 ### Task C3: Contract-type segmentation UI (Criteria 1.3–1.9)
 

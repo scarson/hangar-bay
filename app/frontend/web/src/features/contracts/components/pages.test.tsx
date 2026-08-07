@@ -5,7 +5,11 @@ import { anonymousMe, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
-const CONTRACT = {
+/**
+ * A list row: the summaries the server derives (primary_label, the blueprint
+ * flag, composition) and no item array — the shape GET /contracts/ returns.
+ */
+const ROW = {
   contract_id: 101,
   issuer_id: 1,
   issuer_corporation_id: 101,
@@ -19,6 +23,14 @@ const CONTRACT = {
   price: 1000000,
   start_location_name: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
   is_ship_contract: true,
+  is_blueprint_copy_contract: false,
+  primary_label: 'Tristan',
+  composition: null,
+}
+
+/** The same contract as GET /contracts/{id} returns it: the row plus its items. */
+const CONTRACT = {
+  ...ROW,
   items: [
     {
       record_id: 1011,
@@ -28,6 +40,33 @@ const CONTRACT = {
       type_name: 'Tristan',
     },
   ],
+}
+
+/**
+ * The list envelope. Every response carries per-type segment counts (all five
+ * keys, zero-filled) and the coverage block, so a fixture is never a response
+ * the real API could not produce. Counts are derived from the rows served here
+ * — the request in these tests never filters by type, which is the one case
+ * where the page's own rows ARE the segment population.
+ */
+function listPage(rows: { type: string }[], overrides: Record<string, unknown> = {}) {
+  const segment_counts: Record<string, number> = {
+    item_exchange: 0,
+    auction: 0,
+    courier: 0,
+    loan: 0,
+    unknown: 0,
+  }
+  for (const row of rows) segment_counts[row.type] += 1
+  return {
+    total: rows.length,
+    page: 1,
+    size: 50,
+    items: rows,
+    segment_counts,
+    coverage: { ingested_region_ids: [10000002], as_of: minutesFromNow(-5) },
+    ...overrides,
+  }
 }
 
 function stubFetch(handler: (url: string) => Response) {
@@ -45,7 +84,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('ContractsPage', () => {
   it('renders fetched contracts in the table', async () => {
-    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] })))
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
 
     renderApp('/contracts')
 
@@ -77,12 +116,12 @@ describe('ContractsPage', () => {
       { name: 'Dominix', minutes: 20.5, expected: '20m' },
     ]
     const items = rows.map((row, index) => ({
-      ...CONTRACT,
+      ...ROW,
       contract_id: 200 + index,
       date_expired: minutesFromNow(row.minutes),
-      items: [{ ...CONTRACT.items[0], record_id: 200 + index, type_name: row.name }],
+      primary_label: row.name,
     }))
-    stubFetch(anonymousMe(() => jsonResponse({ total: 3, page: 1, size: 50, items })))
+    stubFetch(anonymousMe(() => jsonResponse(listPage(items))))
 
     renderApp('/contracts')
 
@@ -94,7 +133,7 @@ describe('ContractsPage', () => {
   })
 
   it('announces the result count in a polite status region (WCAG 4.1.3)', async () => {
-    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] })))
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
 
     renderApp('/contracts')
 
@@ -107,25 +146,54 @@ describe('ContractsPage', () => {
     expect(status).toHaveAttribute('aria-live', 'polite')
   })
 
-  it('falls back to "Contract <id>" when the title is empty and no item name resolves', async () => {
+  it('renders the row link from the label the server derived, id fallback included', async () => {
     // Real ESI data: title is "" (not null) and non-ship contracts often have
-    // no resolvable type_name — ?? alone leaves an empty, unclickable-looking
-    // link (found live during Task 9 acceptance).
+    // no resolvable type_name, so the server's last resort is "Contract <id>".
+    // The row renders that verbatim rather than deriving its own — an empty
+    // link would be unclickable-looking (found live during M1 acceptance).
     const untitled = {
-      ...CONTRACT,
+      ...ROW,
       contract_id: 555,
       title: '',
-      items: [{ ...CONTRACT.items[0], type_name: null }],
+      primary_label: 'Contract 555',
     }
-    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [untitled] })))
+    stubFetch(anonymousMe(() => jsonResponse(listPage([untitled]))))
 
     renderApp('/contracts')
 
     expect(await screen.findByRole('link', { name: 'Contract 555' })).toBeInTheDocument()
   })
 
+  it('counts the rest of a bundle from the composition, in item rows not quantities', async () => {
+    // The row carries no items, so the "+N more" suffix reads the server's
+    // composition. total_item_rows counts item ROWS: a bundle of three rows is
+    // "+2 more" however many units each row stacks.
+    const bundle = {
+      ...ROW,
+      contract_id: 606,
+      primary_label: 'Myrmidon',
+      composition: {
+        categories: [
+          { category_id: 7, name: 'Module', item_row_count: 2 },
+          { category_id: 6, name: 'Ship', item_row_count: 1 },
+        ],
+        total_item_rows: 3,
+        total_volume: 120_000,
+      },
+    }
+    stubFetch(anonymousMe(() => jsonResponse(listPage([bundle, ROW]))))
+
+    renderApp('/contracts')
+
+    const bundled = within(await screen.findByRole('row', { name: /Myrmidon/ }))
+    expect(bundled.getByText('+2 more')).toBeInTheDocument()
+    // A single-item contract gets no composition at all, so nothing to add.
+    const single = within(screen.getByRole('row', { name: /Tristan/ }))
+    expect(single.queryByText(/more/)).not.toBeInTheDocument()
+  })
+
   it('shows the empty state for zero results', async () => {
-    stubFetch(anonymousMe(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] })))
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
 
     renderApp('/contracts')
 
@@ -143,7 +211,7 @@ describe('ContractsPage', () => {
 
   it('reads filters from the URL and sends them to the API', async () => {
     const calls = stubFetch(
-      anonymousMe(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] })),
+      anonymousMe(() => jsonResponse(listPage([]))),
     )
 
     renderApp('/contracts?region_ids=10000002&is_bpc=true&sort_by=price&sort_direction=asc')
@@ -163,7 +231,7 @@ describe('ContractsPage', () => {
     // coercion -> toApiQuery -> openapi-fetch's repeated-array serializer.
     // Guards the two-repeat case that single-value URL tests can't (TEST-5).
     const calls = stubFetch(
-      anonymousMe(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] })),
+      anonymousMe(() => jsonResponse(listPage([]))),
     )
 
     renderApp('/contracts?region_ids=10000002&region_ids=10000020')
@@ -182,8 +250,8 @@ describe('ContractsPage', () => {
     stubFetch(
       anonymousMe((url) =>
         url.includes('page=9')
-          ? jsonResponse({ total: 30, page: 9, size: 50, items: [] })
-          : jsonResponse({ total: 30, page: 1, size: 50, items: [CONTRACT] }),
+          ? jsonResponse(listPage([], { total: 30, page: 9 }))
+          : jsonResponse(listPage([ROW], { total: 30 })),
       ),
     )
 
@@ -196,7 +264,7 @@ describe('ContractsPage', () => {
 
   it('resets to page 1 when a filter changes', async () => {
     const calls = stubFetch(
-      anonymousMe(() => jsonResponse({ total: 200, page: 3, size: 50, items: [CONTRACT] })),
+      anonymousMe(() => jsonResponse(listPage([ROW], { total: 200, page: 3 }))),
     )
 
     const { router } = renderApp('/contracts?page=3')
@@ -231,10 +299,11 @@ describe('ContractDetailPage', () => {
     expect(document.title).toBe('Tristan — Hangar Bay')
   })
 
-  it('heads with the item name when the title is blank, and "Contract <id>" as last resort', async () => {
-    // Hull-first heading (primaryLabel): item name beats the seller title,
-    // and the blank-"" ESI-title trap still falls through to the id when no
-    // item name resolves (M1 acceptance discovery, preserved).
+  it('heads with the label the server derived, "Contract <id>" last resort included', async () => {
+    // The heading is the server's primary_label verbatim, so the detail page and
+    // the list row can never name the same contract differently. Both ends of the
+    // server's fallback chain render: a hull name, and the bare id a contract with
+    // a blank-"" ESI title and no resolvable item name falls through to.
     const untitled = { ...CONTRACT, contract_id: 777, title: '' }
     stubFetch(anonymousMe(() => jsonResponse(untitled)))
     const named = renderApp('/contracts/777')
@@ -246,6 +315,7 @@ describe('ContractDetailPage', () => {
       ...CONTRACT,
       contract_id: 778,
       title: '',
+      primary_label: 'Contract 778',
       items: [{ ...CONTRACT.items[0], type_name: null }],
     }
     stubFetch(anonymousMe(() => jsonResponse(bare)))
@@ -310,7 +380,7 @@ describe('ContractDetailPage', () => {
       anonymousMe((url) =>
         /\/contracts\/\d+/.test(url)
           ? jsonResponse(CONTRACT)
-          : jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] }),
+          : jsonResponse(listPage([ROW])),
       ),
     )
 
@@ -349,7 +419,9 @@ describe('ContractDetailPage', () => {
 
 // A courier carries no items, prices at 0, and puts its money in the reward and
 // the collateral. It reaches the UI whenever the ships-only default is turned off.
-const COURIER = {
+// With no item to name it after, the server's label falls through to the seller's
+// own title.
+const COURIER_ROW = {
   contract_id: 505,
   issuer_id: 9,
   issuer_corporation_id: 99,
@@ -359,21 +431,28 @@ const COURIER = {
   title: 'Jita to Amarr rush',
   for_corporation: false,
   date_issued: '2026-07-01T00:00:00Z',
-  // Anchored to the clock like CONTRACT: a fixed expiry is a response the real
+  // Anchored to the clock like ROW: a fixed expiry is a response the real
   // API cannot produce (the list filters date_expired > now()) and silently
   // repaints "Time left" as Expired once it passes (testing-pitfalls TEST-17).
   date_expired: daysFromNow(7),
   price: 0,
   reward: 80_000_000,
   volume: 899_999,
+  reward_per_volume: 80_000_000 / 899_999,
   start_location_name: 'Airaken V - Moon 6 - Impro Warehouse',
+  end_location_name: 'Amarr VIII (Oris) - Emperor Family Academy',
+  days_to_complete: 3,
   is_ship_contract: false,
-  items: [],
+  is_blueprint_copy_contract: false,
+  primary_label: 'Jita to Amarr rush',
+  composition: null,
 }
+
+const COURIER = { ...COURIER_ROW, items: [] }
 
 describe('courier contracts', () => {
   it('labels a courier row "Courier", not "Exchange"', async () => {
-    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [COURIER] })))
+    stubFetch(anonymousMe(() => jsonResponse(listPage([COURIER_ROW]))))
 
     renderApp('/contracts?ships_only=false')
 

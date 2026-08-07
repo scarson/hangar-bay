@@ -104,6 +104,22 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 
 ---
 
+## D11 — The search-text PII scrub is closed at the engine, not only at the log site
+
+**Background.** Task B10 replaced the raw search string with its length in all four `search_terms` payloads and its commit claimed the text "never lands in a log line". Review found the claim false: the failure site logs `error_message=str(e)` in the same record, and the exception a contract search realistically fails with is a SQLAlchemy `StatementError` — statement timeout, dropped connection, deadlock — whose `str()` appends `[SQL: ...]\n[parameters: {...}]`. The failing statement is the one carrying the `ILIKE '%<search text>%'` bind, so `error_message` re-published the exact string `search_terms` had just withheld. `create_async_engine` in `db.py` set no `hide_parameters`, so the default `False` applied. The shipped test could not see any of this: it injected `RuntimeError("simulated db failure")`, whose `str()` carries no parameters.
+
+**Alternatives considered.**
+1. **Narrow the claim** — retitle the test to "the `search_terms` payloads", record the residual under Discoveries, and defer. Rejected: the residual is a live PII leak on a path that fires under ordinary production operation — no statement timeout is configured, but `db.py` sets `pool_pre_ping=True` precisely because managed-PG restarts and pooler idle-kills happen on this deployment, and a connection dropped mid-statement raises exactly this error class — and the same value escapes past this service anyway — `main.py`'s `generic_exception_handler` logs `str(exc)` and the traceback for the re-raised exception. Deferring would leave a known leak behind an honest label.
+2. **Scrub `error_message` at the log site only.** Rejected as insufficient alone: it fixes one of the three places the value surfaces and leaves the global handler and the traceback untouched.
+3. **`hide_parameters=True` on the application engine only.** Correct and complete for engine-raised errors, but it makes the invariant depend entirely on one engine-construction kwarg, and the service-level test that carries the invariant's name would have to inject an already-hidden error to pass — which is circular.
+4. **Chosen: both.** `hide_parameters=True` on the engine stops SQLAlchemy rendering bind values into any error it raises, closing the service log, the global handler, and the traceback at the source; `_error_without_bound_parameters` at the log site renders through the same flag regardless of which engine produced the exception. CLAUDE.md's defense-in-depth rule governs over DRY here — the two layers fail independently, and the service-level test can then inject a genuinely unscrubbed `StatementError` and assert against the whole record.
+
+**Cost accepted.** Bind values no longer appear in production error messages or in `echo=True` dev SQL logs. The values on this path are contract/region ids and user text; the structured `search_terms` dimensions remain, and the driver's own diagnosis (`canceling statement due to statement timeout`) still reaches `error_message` — only the parameter block is replaced with SQLAlchemy's `[SQL parameters hidden due to hide_parameters=True]` placeholder.
+
+**Reversibility: trivial** — one kwarg and one helper call; the pitfalls entries (SQLA-4, TEST-21) survive either way because the trap is the reasoning, not the switch.
+
+---
+
 ## D10 — PR-A codex finding on name NULL-overwrite: deferred as a pre-existing, self-healing defect class
 
 **Background.** Codex's PR-A review flagged as P1: a transient `/universe/names` failure yields a partial name map, every upsert row still supplies `end_location_name=None`, and `bulk_upsert` copies supplied columns on conflict — blanking previously-resolved courier destinations for the re-sighted batch.

@@ -22,12 +22,16 @@
 # transaction lifecycle.
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 from datetime import datetime, timedelta, timezone
 from fastapi_app.models.contracts import Contract, ContractItem
 from fastapi_app.schemas.contracts import (
     ContractFilters,
+    ContractType,
     SortableContractFields,
     SortDirection,
 )
@@ -125,7 +129,7 @@ async def test_filter_by_is_bpc(db_session: AsyncSession, setup_contracts):
 
     assert result.total == 1
     assert result.items[0].contract_id == 102
-    assert result.items[0].items[0].is_blueprint_copy is True
+    assert result.items[0].is_blueprint_copy_contract is True
 
 
 async def test_sorting_by_price_asc(db_session: AsyncSession, setup_contracts):
@@ -184,7 +188,7 @@ async def test_zero_results_returns_empty_page(
     Deleting the early return would still yield an empty response through the normal
     pagination path, so the response assertions cannot tell the two branches apart. The
     early return's search_terms payload carries exactly four keys; the normal path's
-    carries eight, which is the difference this test locks.
+    carries eleven, which is the difference this test locks.
     """
     events = []
     real_log_key_event = contract_service.log_key_event
@@ -208,8 +212,8 @@ async def test_zero_results_returns_empty_page(
     assert events[0]["event"] == "contract_search_executed"
     assert events[0]["success"] is True
     assert events[0]["results_count"] == 0
-    assert set(events[0]["search_terms"]) == {"search", "type_ids", "page", "size"}
-    assert events[0]["search_terms"]["search"] == "no-such-ship-name-anywhere"
+    assert set(events[0]["search_terms"]) == {"search_len", "type_ids", "page", "size"}
+    assert events[0]["search_terms"]["search_len"] == len("no-such-ship-name-anywhere")
     assert events[0]["search_terms"]["page"] == 1
     assert events[0]["search_terms"]["size"] == 10
 
@@ -298,13 +302,188 @@ async def test_db_error_logs_failure_and_reraises(
     assert failure_events[0]["event"] == "contract_search_executed"
     assert failure_events[0]["error_message"] == "simulated db failure"
     assert set(failure_events[0]["search_terms"]) == {
-        "search",
+        "search_len",
         "type_ids",
         "min_price",
         "max_price",
         "page",
         "size",
     }
+
+
+def _record_search_logs(monkeypatch) -> list:
+    """Record every payload the service logs, and return the growing list.
+
+    Recording `contract_service.logger` (rather than `log_key_event`) is what catches
+    all four `search_terms` sites: `log_key_event` renders through `logger.info` /
+    `logger.error`, so one seam sees the plain start log and the three key events alike.
+    """
+    captured = []
+    real_logger = contract_service.logger
+
+    class RecordingLogger:
+        def info(self, *args, **kwargs):
+            captured.append(kwargs)
+            return real_logger.info(*args, **kwargs)
+
+        def error(self, *args, **kwargs):
+            captured.append(kwargs)
+            return real_logger.error(*args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(real_logger, name)
+
+    monkeypatch.setattr(contract_service, "logger", RecordingLogger())
+    return captured
+
+
+async def test_no_search_log_site_echoes_the_raw_query_text(
+    db_session: AsyncSession, setup_contracts, monkeypatch
+):
+    """Every search log reports the query's LENGTH, never the query text itself.
+
+    A search string is user-typed free text and can carry anything the user pasted, so
+    it is treated as PII and never lands in a log line; the length is the dimension the
+    latency/quality analysis actually needs.
+
+    Four sites emit a `search_terms` payload — the start log, the zero-result
+    short-circuit, the success log, and the failure log — and no single call reaches
+    more than two of them, so all three reachable paths are driven here.
+    """
+    captured = _record_search_logs(monkeypatch)
+
+    def assert_length_only(secret: str) -> None:
+        payloads = [c["search_terms"] for c in captured if "search_terms" in c]
+        assert payloads, "no search_terms payload was captured"
+        for payload in payloads:
+            assert "search" not in payload
+            assert payload["search_len"] == len(secret)
+        # The whole record, not just its `search_terms`: the failure site logs an
+        # `error_message` in the SAME call, and a scrub that covers one key while a
+        # sibling key re-publishes the text is not a scrub.
+        for record in captured:
+            assert secret not in repr(record)
+
+    # Start log + zero-result short-circuit.
+    no_match = "Tristan sale"
+    await get_contracts(db_session, ContractFilters(search=no_match, page=1, size=10))
+    assert len(captured) == 2
+    assert_length_only(no_match)
+
+    # Start log + success log.
+    captured.clear()
+    a_match = "Tristan"
+    result = await get_contracts(db_session, ContractFilters(search=a_match, page=1, size=10))
+    assert result.total > 0
+    assert len(captured) == 2
+    assert_length_only(a_match)
+
+    # Start log + failure log. Driven last: it disables the session's execute.
+    captured.clear()
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("simulated db failure")
+
+    monkeypatch.setattr(db_session, "execute", boom)
+    with pytest.raises(RuntimeError, match="simulated db failure"):
+        await get_contracts(db_session, ContractFilters(search=no_match, page=1, size=10))
+    assert len(captured) == 2
+    assert_length_only(no_match)
+
+
+async def test_a_failing_statement_does_not_log_its_bound_search_text(
+    db_session: AsyncSession, setup_contracts, monkeypatch
+):
+    """The failure log renders its exception without the statement's bind values.
+
+    `search_terms` is scrubbed at all four sites, but the failure site logs the
+    exception in the SAME record — and the exception a contract search realistically
+    fails with is a `StatementError` (statement timeout, dropped connection,
+    deadlock). Its `str()` appends `[parameters: ...]`, and the statement that failed
+    is the one carrying the `ILIKE` bind holding the raw search text, so an
+    unscrubbed rendering re-publishes into `error_message` exactly the text
+    `search_terms` withheld one key earlier.
+    """
+    captured = _record_search_logs(monkeypatch)
+
+    secret = "Tristan sale"
+    statement_error = StatementError(
+        "canceling statement due to statement timeout",
+        "SELECT contracts.contract_id FROM contracts WHERE contracts.title ILIKE %(title_1)s",
+        {"title_1": f"%{secret}%"},
+        Exception("canceling statement due to statement timeout"),
+    )
+    # Guard against a vacuous run: the leak only exists because the default rendering
+    # carries the binds. If that ever stopped being true the test would pass without
+    # the service doing anything.
+    assert secret in str(statement_error)
+
+    async def boom(*args, **kwargs):
+        raise statement_error
+
+    monkeypatch.setattr(db_session, "execute", boom)
+    with pytest.raises(StatementError):
+        await get_contracts(db_session, ContractFilters(search=secret, page=1, size=10))
+
+    assert captured, "no log record was captured"
+    for record in captured:
+        assert secret not in repr(record)
+
+    # Scrubbed, not discarded: the driver's diagnosis is the reason the field exists.
+    failures = [r for r in captured if r.get("success") is False]
+    assert len(failures) == 1
+    assert "statement timeout" in failures[0]["error_message"]
+
+
+async def test_full_dimension_logs_carry_the_type_and_taxonomy_filters(
+    db_session: AsyncSession, setup_contracts, monkeypatch
+):
+    """The start log and the success log report contract type and taxonomy as dimensions.
+
+    Two of the four sites carry the whole filter shape; the type and taxonomy families
+    are part of it, so a slow or empty search can be attributed to the segment and the
+    category/group it was scoped to. Only the ids and the closed type enum travel — the
+    taxonomy names, like the search text, do not.
+    """
+    tristan = (
+        await db_session.execute(
+            select(ContractItem).where(ContractItem.record_id == 1011)
+        )
+    ).scalar_one()
+    tristan.category_id = 6
+    tristan.group_id = 25
+    await db_session.flush()
+
+    captured = _record_search_logs(monkeypatch)
+
+    filters = ContractFilters(
+        contract_type=[ContractType.item_exchange],
+        category_id=[6],
+        group_id=[25, 26],
+        page=1,
+        size=10,
+    )
+    result = await get_contracts(db_session, filters)
+    assert result.total > 0
+
+    start_payload, success_payload = (c["search_terms"] for c in captured)
+    for payload in (start_payload, success_payload):
+        assert set(payload) == {
+            "search_len",
+            "type_ids",
+            "contract_type",
+            "category_id",
+            "group_id",
+            "min_price",
+            "max_price",
+            "page",
+            "size",
+            "sort_by",
+            "sort_direction",
+        }
+        assert payload["contract_type"] == ["item_exchange"]
+        assert payload["category_id"] == [6]
+        assert payload["group_id"] == [25, 26]
 
 
 async def test_joined_pagination_tiebreaks_equal_sort_keys_by_contract_id(
@@ -750,3 +929,396 @@ async def test_the_residual_holds_on_the_item_joined_path(db_session: AsyncSessi
 
     assert result.total == 1
     assert result.unknown_system_excluded == 1
+
+
+# --- Segment counts and the derived total -----------------------------------
+#
+# The list envelope publishes a per-type count, and `total` is derived from the
+# same grouped statement rather than from a second corpus-scale aggregate. That
+# makes the total a computation instead of a query result, so the property that
+# matters is equivalence: whatever the caller asked for, the derived total must
+# equal the count the pre-existing flat count query would have produced for the
+# very same filters.
+#
+# The corpus deliberately sits in DELISTED_REGION_A/DELISTED_REGION_B — the two
+# regions `liveness_branch` names in AGGREGATION_REGION_IDS. Seeding it anywhere
+# else makes the parametrisation vacuous: rows outside the configured set take
+# the correlated fallback under BOTH params, so the fast branch would never be
+# exercised and an equivalence break confined to it would pass unnoticed.
+
+_SEGMENT_KEYS = {"item_exchange", "auction", "courier", "loan", "unknown"}
+
+
+def _segment_item(
+    record_id: int, type_id: int, type_name: str, *, is_copy: bool = False
+) -> ContractItem:
+    return ContractItem(
+        record_id=record_id,
+        type_id=type_id,
+        type_name=type_name,
+        quantity=1,
+        is_included=True,
+        is_singleton=False,
+        # ESI sends is_blueprint_copy only for actual copies, so non-copies carry
+        # NULL rather than False (the shape production really has).
+        is_blueprint_copy=True if is_copy else None,
+    )
+
+
+@pytest_asyncio.fixture(scope="function")
+async def segment_corpus(db_session: AsyncSession):
+    """Mixed types, ships and non-ships, multi-item contracts, one stale row.
+
+    Every live row shares one `last_seen_at` value so it sits exactly at its
+    region's watermark under either liveness branch; 962007 is stamped earlier and
+    is therefore delisted, which keeps the liveness predicate load-bearing rather
+    than trivially true for the whole corpus.
+    """
+    now = datetime.now(timezone.utc)
+    stale = now - timedelta(hours=2)
+
+    def _contract(
+        contract_id: int,
+        *,
+        region: int,
+        contract_type: str,
+        is_ship: bool,
+        price: float,
+        seen: datetime | None = None,
+        items: list[ContractItem] | None = None,
+    ) -> Contract:
+        return Contract(
+            contract_id=contract_id,
+            title=f"Segment Case {contract_id}",
+            price=price,
+            collateral=0,
+            status="outstanding",
+            type=contract_type,
+            issuer_id=962,
+            issuer_corporation_id=962,
+            start_location_id=60003760,
+            start_location_system_id=30000142,
+            start_location_region_id=region,
+            for_corporation=False,
+            date_issued=now - timedelta(days=1),
+            date_expired=now + timedelta(days=7),
+            last_seen_at=seen if seen is not None else now,
+            is_ship_contract=is_ship,
+            items=items or [],
+        )
+
+    db_session.add_all([
+        # Two matching items, so a joined-path filter duplicates this contract's
+        # rows and a count without DISTINCT over the join reports it twice.
+        _contract(
+            962001, region=DELISTED_REGION_A, contract_type="item_exchange",
+            is_ship=True, price=1_500_000,
+            items=[
+                _segment_item(9620011, 587, "Rifter"),
+                _segment_item(9620012, 588, "Rifter"),
+            ],
+        ),
+        _contract(
+            962002, region=DELISTED_REGION_A, contract_type="item_exchange",
+            is_ship=False, price=2_000_000,
+            items=[_segment_item(9620021, 448, "Warp Scrambler II")],
+        ),
+        _contract(
+            962003, region=DELISTED_REGION_A, contract_type="auction",
+            is_ship=True, price=5_000_000,
+            items=[
+                _segment_item(9620031, 587, "Rifter"),
+                _segment_item(9620032, 621, "Caracal Blueprint", is_copy=True),
+            ],
+        ),
+        _contract(
+            962004, region=DELISTED_REGION_A, contract_type="courier",
+            is_ship=False, price=0,
+        ),
+        _contract(
+            962005, region=DELISTED_REGION_A, contract_type="loan",
+            is_ship=False, price=0,
+        ),
+        _contract(
+            962006, region=DELISTED_REGION_A, contract_type="item_exchange",
+            is_ship=True, price=200_000_000,
+            items=[_segment_item(9620061, 587, "Rifter")],
+        ),
+        # Delisted: not restamped by its region's latest run.
+        _contract(
+            962007, region=DELISTED_REGION_A, contract_type="item_exchange",
+            is_ship=True, price=3_000_000, seen=stale,
+            items=[_segment_item(9620071, 587, "Rifter")],
+        ),
+        _contract(
+            962011, region=DELISTED_REGION_B, contract_type="auction",
+            is_ship=True, price=4_000_000,
+            items=[
+                _segment_item(9620111, 587, "Rifter"),
+                _segment_item(9620112, 448, "Warp Scrambler II"),
+                _segment_item(9620113, 621, "Caracal Blueprint", is_copy=True),
+            ],
+        ),
+        _contract(
+            962012, region=DELISTED_REGION_B, contract_type="courier",
+            is_ship=False, price=0,
+        ),
+        _contract(
+            962013, region=DELISTED_REGION_B, contract_type="item_exchange",
+            is_ship=False, price=800_000,
+            items=[_segment_item(9620131, 621, "Caracal Blueprint", is_copy=True)],
+        ),
+        _contract(
+            962014, region=DELISTED_REGION_B, contract_type="unknown",
+            is_ship=False, price=1_000_000,
+        ),
+        # A type ESI could add after this enum was written. Contract.type is an
+        # unconstrained string, so the row is storable and must stay counted.
+        _contract(
+            962015, region=DELISTED_REGION_B, contract_type="somenewtype",
+            is_ship=False, price=1_000_000,
+        ),
+    ])
+    await db_session.flush()
+
+
+# Each case is the filter set a caller could actually send. They cover the
+# unjoined path, both joined paths (search and type_ids), the EXISTS path
+# (is_bpc), both values of the ships-only flag, contract_type alone and combined,
+# and a value outside the corpus's designed types.
+_EQUIVALENCE_CASES = {
+    "unfiltered": {},
+    "search-joins-items": {"search": "Rifter"},
+    "type-ids-joins-items": {"type_ids": [587]},
+    "is-bpc-true": {"is_bpc": True},
+    "is-bpc-false": {"is_bpc": False},
+    "ships-only": {"is_ship_contract": True},
+    "ships-excluded": {"is_ship_contract": False},
+    "one-contract-type": {"contract_type": [ContractType.courier]},
+    "several-contract-types": {
+        "contract_type": [ContractType.item_exchange, ContractType.auction]
+    },
+    "unknown-contract-type": {"contract_type": [ContractType.unknown]},
+    "contract-type-with-ships-only": {
+        "contract_type": [ContractType.item_exchange],
+        "is_ship_contract": True,
+    },
+    "price-bounds": {"min_price": 1_000_000, "max_price": 50_000_000},
+    "search-with-ships-only": {"search": "Rifter", "is_ship_contract": True},
+}
+
+
+@pytest.mark.parametrize("case", sorted(_EQUIVALENCE_CASES), ids=sorted(_EQUIVALENCE_CASES))
+async def test_the_derived_total_equals_the_flat_count_for_the_same_filters(
+    db_session: AsyncSession, segment_corpus, liveness_branch, case
+):
+    """`total` is now derived from the grouped statement, so it must still agree
+    with counting the filtered query directly.
+
+    The reference is built here rather than borrowed from the service, the way the
+    list path built it before this change: base select, the item join iff the
+    filters need one, both filter helpers, count DISTINCT contract ids. A
+    derivation that lifts the wrong predicate, folds the wrong bucket, or picks the
+    wrong aggregate under the ships-only flag disagrees with it.
+    """
+    overrides = _EQUIVALENCE_CASES[case]
+    filters = ContractFilters(
+        region_ids=[DELISTED_REGION_A, DELISTED_REGION_B], **overrides
+    )
+
+    reference = select(Contract)
+    if contract_service._needs_item_join(filters):
+        reference = reference.outerjoin(ContractItem)
+    reference = contract_service._apply_contract_filters(reference, filters)
+    reference = contract_service._apply_item_filters(reference, filters)
+    expected = await contract_service._count_distinct_contracts(db_session, reference)
+
+    # A case matching nothing would satisfy the equality vacuously.
+    assert expected > 0, f"{case} selects no contracts; the corpus no longer covers it"
+
+    result = await get_contracts(db_session, filters)
+
+    assert result.total == expected, f"{case} ({liveness_branch})"
+    assert set(result.segment_counts) == _SEGMENT_KEYS
+
+
+async def test_segment_counts_are_zero_filled_over_every_contract_type(
+    db_session: AsyncSession,
+):
+    """SQL emits no group for a type nothing matched, and a client rendering a
+    stable set of segments needs the key anyway — so the zeros are filled in here
+    rather than guessed at by each consumer."""
+    result = await get_contracts(db_session, ContractFilters(region_ids=[99999962]))
+
+    assert result.total == 0
+    assert result.segment_counts == {
+        "item_exchange": 0,
+        "auction": 0,
+        "courier": 0,
+        "loan": 0,
+        "unknown": 0,
+    }
+
+
+async def test_a_stored_type_outside_the_enum_is_counted_under_unknown(
+    db_session: AsyncSession, segment_corpus
+):
+    """Contract.type is written straight from ESI with no constraint, so a type
+    added after this enum was written must stay counted and reachable rather than
+    dropping out of the sum — a total short of the corpus would also fire the
+    empty-page short-circuit while rows exist."""
+    filters = ContractFilters(region_ids=[DELISTED_REGION_A, DELISTED_REGION_B], size=100)
+
+    result = await get_contracts(db_session, filters)
+
+    # 962014 is a stored "unknown"; 962015 is the unrecognised string folded in
+    # beside it.
+    assert result.segment_counts["unknown"] == 2
+    assert 962015 in {item.contract_id for item in result.items}
+    assert sum(result.segment_counts.values()) == result.total
+
+
+# --- Observed region coverage on the list envelope --------------------------
+#
+# Regions 99999967 (A), 99999968 (B), 99999969 (configured but never ingested),
+# 99999970 (ingested but never stamped) — Task B4's claim under the plan's
+# 99999960–99999979 allocation.
+#
+# The envelope reports which regions the corpus ACTUALLY holds, so a client can
+# distinguish "that region is not covered" from "nothing there matched" without
+# embedding a region literal of its own. The distinction only has teeth if the
+# figure is read off observed rows: AGGREGATION_REGION_IDS states intent, and for
+# the whole ingestion window after a coverage change it names a region holding
+# nothing at all.
+
+OBSERVED_REGION_A = 99999967
+OBSERVED_REGION_B = 99999968
+OBSERVED_REGION_CONFIGURED_ONLY = 99999969
+OBSERVED_REGION_UNSTAMPED = 99999970
+
+
+def _region_contract(
+    contract_id: int, *, region: int, seen: datetime | None
+) -> Contract:
+    now = datetime.now(timezone.utc)
+    return Contract(
+        contract_id=contract_id,
+        title=f"Coverage Case {contract_id}",
+        price=1_000_000,
+        collateral=0,
+        status="outstanding",
+        type="item_exchange",
+        issuer_id=967,
+        issuer_corporation_id=967,
+        start_location_id=60003760,
+        start_location_system_id=30000142,
+        start_location_region_id=region,
+        for_corporation=False,
+        date_issued=now - timedelta(days=1),
+        date_expired=now + timedelta(days=7),
+        last_seen_at=seen,
+    )
+
+
+async def test_coverage_reports_every_region_the_corpus_holds(db_session: AsyncSession):
+    """`ingested_region_ids` is every distinct region with rows, ascending, and
+    `as_of` is the newest ingestion stamp across all of them — not the newest in the
+    region the caller filtered on, which would read as staleness the corpus does not
+    have."""
+    newest = datetime.now(timezone.utc)
+    older = newest - timedelta(hours=3)
+    db_session.add_all([
+        _region_contract(967001, region=OBSERVED_REGION_A, seen=older),
+        _region_contract(967002, region=OBSERVED_REGION_A, seen=older),
+        _region_contract(968001, region=OBSERVED_REGION_B, seen=newest),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session, ContractFilters(region_ids=[OBSERVED_REGION_A])
+    )
+
+    # The page is region A alone; the coverage figure is corpus-wide.
+    assert {item.contract_id for item in result.items} == {967001, 967002}
+    assert result.coverage.ingested_region_ids == [OBSERVED_REGION_A, OBSERVED_REGION_B]
+    assert result.coverage.as_of == newest
+
+
+async def test_coverage_on_an_empty_corpus_is_empty_rather_than_absent(
+    db_session: AsyncSession,
+):
+    """Nothing ingested is a state the client must be able to render, so the field is
+    present and empty rather than omitted — and `as_of` is None, not the epoch."""
+    result = await get_contracts(db_session, ContractFilters())
+
+    assert result.total == 0
+    assert result.coverage.ingested_region_ids == []
+    assert result.coverage.as_of is None
+
+
+async def test_coverage_is_carried_onto_an_empty_page(db_session: AsyncSession):
+    """The empty-page short-circuit builds its own response, and coverage is exactly
+    what an empty page needs: a reader who filtered into an uncovered region can only
+    tell that apart from "covered but nothing matched" by reading this field."""
+    stamped = datetime.now(timezone.utc)
+    db_session.add(_region_contract(967101, region=OBSERVED_REGION_A, seen=stamped))
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session, ContractFilters(region_ids=[OBSERVED_REGION_CONFIGURED_ONLY])
+    )
+
+    assert result.total == 0
+    assert result.items == []
+    assert result.coverage.ingested_region_ids == [OBSERVED_REGION_A]
+    assert result.coverage.as_of == stamped
+
+
+async def test_a_configured_but_uningested_region_is_absent_from_coverage(
+    db_session: AsyncSession, monkeypatch
+):
+    """Coverage is observed reality, never configured intent. The two diverge for the
+    whole ingestion window after a coverage change, and during that window the
+    configured value would tell a reader a region is covered while it holds nothing —
+    the exact misreport this field exists to prevent."""
+    stamped = datetime.now(timezone.utc)
+    db_session.add_all([
+        _region_contract(967201, region=OBSERVED_REGION_A, seen=stamped),
+        _region_contract(968201, region=OBSERVED_REGION_B, seen=stamped),
+    ])
+    await db_session.flush()
+    monkeypatch.setattr(
+        contract_service.get_settings(),
+        "AGGREGATION_REGION_IDS",
+        [OBSERVED_REGION_A, OBSERVED_REGION_B, OBSERVED_REGION_CONFIGURED_ONLY],
+    )
+
+    result = await get_contracts(
+        db_session, ContractFilters(region_ids=[OBSERVED_REGION_A])
+    )
+
+    assert OBSERVED_REGION_CONFIGURED_ONLY not in result.coverage.ingested_region_ids
+    assert result.coverage.ingested_region_ids == [OBSERVED_REGION_A, OBSERVED_REGION_B]
+
+
+async def test_a_region_whose_rows_are_all_unstamped_still_counts_as_covered(
+    db_session: AsyncSession,
+):
+    """`last_seen_at` is nullable — rows predating the column carry no stamp, and
+    still_listed_by_esi keeps them visible. The region holds contracts, so it is
+    covered; its missing stamp must not remove it from the list nor collide with a
+    real stamp when the newest is picked."""
+    stamped = datetime.now(timezone.utc)
+    db_session.add_all([
+        _region_contract(967301, region=OBSERVED_REGION_A, seen=stamped),
+        _region_contract(970301, region=OBSERVED_REGION_UNSTAMPED, seen=None),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(db_session, ContractFilters())
+
+    assert result.coverage.ingested_region_ids == [
+        OBSERVED_REGION_A,
+        OBSERVED_REGION_UNSTAMPED,
+    ]
+    assert result.coverage.as_of == stamped

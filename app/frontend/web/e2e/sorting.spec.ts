@@ -57,7 +57,7 @@ const byName: Record<string, WireContract> = Object.fromEntries(
  */
 function sortedNames(sortBy: string | null, direction: string | null): string[] {
   const factor = direction === 'asc' ? 1 : -1
-  const shipName = (c: WireContract) => c.items[0]?.type_name ?? ''
+  const shipName = (c: WireContract) => c.primary_label
   return [...SHIPS.map((s) => s.name)].sort((a, b) => {
     const ca = byName[a]
     const cb = byName[b]

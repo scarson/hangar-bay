@@ -25,8 +25,8 @@
             "consumer": "background_aggregation._fetch_item_rows -> ContractItem.is_singleton (non-null column, exposed as ContractItemSchema.is_singleton)"
           },
           "raw_quantity": {
-            "consequence": "always NULL, so min_runs/max_runs match zero rows \u2014 this field is on the AUTHENTICATED character/corporation item routes only (ESI-3)",
-            "consumer": "background_aggregation._fetch_item_rows -> ContractItem.raw_quantity; read by the min_runs/max_runs filter in contract_service"
+            "consequence": "always NULL under public ingestion; this field is on the AUTHENTICATED character/corporation item routes only (ESI-3), where the column fills in and its stack-vs-quantity distinction becomes readable",
+            "consumer": "background_aggregation._fetch_item_rows -> ContractItem.raw_quantity; kept but read by nothing \u2014 min_runs/max_runs now filter ContractItem.runs"
           }
         },
         "known_absent_fields_now_present": [],
@@ -1239,8 +1239,8 @@
             "consumer": "background_aggregation._fetch_item_rows -> ContractItem.is_singleton (non-null column, exposed as ContractItemSchema.is_singleton)"
           },
           "raw_quantity": {
-            "consequence": "always NULL, so min_runs/max_runs match zero rows \u2014 this field is on the AUTHENTICATED character/corporation item routes only (ESI-3)",
-            "consumer": "background_aggregation._fetch_item_rows -> ContractItem.raw_quantity; read by the min_runs/max_runs filter in contract_service"
+            "consequence": "always NULL under public ingestion; this field is on the AUTHENTICATED character/corporation item routes only (ESI-3), where the column fills in and its stack-vs-quantity distinction becomes readable",
+            "consumer": "background_aggregation._fetch_item_rows -> ContractItem.raw_quantity; kept but read by nothing \u2014 min_runs/max_runs now filter ContractItem.runs"
           }
         },
         "known_absent_fields_now_present": [],

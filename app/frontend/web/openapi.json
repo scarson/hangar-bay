@@ -1,36 +1,14 @@
 {
   "components": {
     "schemas": {
-      "ContractItemSchema": {
-        "description": "Schema for an item within a contract.\n\n`is_singleton` and `raw_quantity` are deliberately absent. Both are fields of ESI's\nAUTHENTICATED character/corporation contract-item routes; the public item route\nHangar Bay reads carries neither, so `is_singleton` is the mapping default and\n`raw_quantity` is NULL for every item in the corpus today. The columns stay \u2014 they\nfill in the moment a user's own contracts are ingested \u2014 but a wire field that can\nonly misinform is worse than no wire field (ESI-3).",
+      "BlueprintSummary": {
+        "description": "The blueprint terms of a contract offering copies.\n\nWith more than one copy on offer the three value fields are NULL: the terms belong\nto individual copies, and picking one to report would misdescribe the others.",
         "properties": {
-          "category": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category"
+          "copy_count": {
+            "title": "Copy Count",
+            "type": "integer"
           },
-          "is_blueprint_copy": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Blueprint Copy"
-          },
-          "is_included": {
-            "title": "Is Included",
-            "type": "boolean"
-          },
-          "market_group_id": {
+          "material_efficiency": {
             "anyOf": [
               {
                 "type": "integer"
@@ -39,21 +17,56 @@
                 "type": "null"
               }
             ],
-            "title": "Market Group Id"
+            "title": "Material Efficiency"
           },
-          "quantity": {
-            "title": "Quantity",
+          "runs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runs"
+          },
+          "time_efficiency": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Efficiency"
+          }
+        },
+        "required": [
+          "copy_count"
+        ],
+        "title": "BlueprintSummary",
+        "type": "object"
+      },
+      "CompositionCategory": {
+        "description": "One category's share of a contract's offered item rows.\n\n`name` is NULL when the taxonomy name cache has not resolved that category yet,\nand `category_id` is NULL for the bucket holding rows whose category could not be\ndetermined at all \u2014 the client renders that bucket as \"other\".",
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "item_row_count": {
+            "title": "Item Row Count",
             "type": "integer"
           },
-          "record_id": {
-            "title": "Record Id",
-            "type": "integer"
-          },
-          "type_id": {
-            "title": "Type Id",
-            "type": "integer"
-          },
-          "type_name": {
+          "name": {
             "anyOf": [
               {
                 "type": "string"
@@ -62,72 +75,85 @@
                 "type": "null"
               }
             ],
-            "title": "Type Name"
+            "title": "Name"
           }
         },
         "required": [
-          "record_id",
-          "type_id",
-          "quantity",
-          "is_included"
+          "item_row_count"
         ],
-        "title": "ContractItemSchema",
+        "title": "CompositionCategory",
         "type": "object"
       },
-      "ContractListResponse": {
-        "description": "A page of contracts plus the coverage figure the system_ids filter needs.\n\nA bare total hides that system_ids can only ever match the locations we resolved:\na search returning 3 results reads as \"there are 3\" when it may mean \"there are 3\nwe can place, and 40 more we cannot\". Publishing the residual next to the number\nis the convention the EVE tooling ecosystem already uses for partial data \u2014\nAdam4EVE prints a NoP (number of participants) column beside its aggregates,\nEVE Tycoon labels each row with the appraisal method behind it.",
+      "CompositionSummary": {
+        "description": "What a multi-item contract is made of, structured rather than pre-rendered.\n\nCounts are item ROWS, not summed quantities: \"3 modules\" describes a bundle far\nbetter than \"3,000 units of ammunition\" does. Pluralization and truncation stay\nwith the client, which is the layer that knows how much room it has.",
         "properties": {
-          "items": {
-            "description": "List of items for the current page",
+          "categories": {
             "items": {
-              "$ref": "#/components/schemas/ContractSchema"
+              "$ref": "#/components/schemas/CompositionCategory"
             },
-            "title": "Items",
+            "title": "Categories",
             "type": "array"
           },
-          "page": {
-            "description": "Current page number",
-            "title": "Page",
+          "total_item_rows": {
+            "title": "Total Item Rows",
             "type": "integer"
           },
-          "size": {
-            "description": "Number of items per page",
-            "title": "Size",
-            "type": "integer"
-          },
-          "total": {
-            "description": "Total number of items",
-            "title": "Total",
-            "type": "integer"
-          },
-          "unknown_system_excluded": {
+          "total_volume": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "number"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "How many contracts matched every other filter but were excluded because their start location has no known solar system (player-owned structures, which need an ACL-scoped token to resolve). Null when system_ids was not applied \u2014 no results were dropped for that reason, which is different from none having been.",
-            "title": "Unknown System Excluded"
+            "title": "Total Volume"
           }
         },
         "required": [
-          "total",
-          "page",
-          "size",
-          "items"
+          "categories",
+          "total_item_rows"
         ],
-        "title": "ContractListResponse",
+        "title": "CompositionSummary",
         "type": "object"
       },
-      "ContractSchema": {
-        "description": "Schema for a public contract.\n\n`status` and `date_completed` are deliberately absent. Both are fields of ESI's\nAUTHENTICATED character/corporation contract routes; the public route Hangar Bay\nreads carries neither, so the columns behind them hold a placeholder and a NULL for\nevery contract in the corpus today. The columns stay \u2014 they fill in the moment a\nuser's own contracts are ingested \u2014 but a wire field that can only misinform is\nworse than no wire field (ESI-3).",
+      "ContractDetailSchema": {
+        "description": "A single contract with its full item array \u2014 REQUESTED items included, because\nthe detail page shows both sides of the trade.",
         "properties": {
+          "blueprint_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlueprintSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "buyout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyout"
+          },
           "collateral": {
             "title": "Collateral",
             "type": "number"
+          },
+          "composition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompositionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "contract_id": {
             "title": "Contract Id",
@@ -143,6 +169,17 @@
             "title": "Date Issued",
             "type": "string"
           },
+          "days_to_complete": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Complete"
+          },
           "end_location_id": {
             "anyOf": [
               {
@@ -154,8 +191,23 @@
             ],
             "title": "End Location Id"
           },
+          "end_location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Location Name"
+          },
           "for_corporation": {
             "title": "For Corporation",
+            "type": "boolean"
+          },
+          "is_blueprint_copy_contract": {
+            "title": "Is Blueprint Copy Contract",
             "type": "boolean"
           },
           "is_ship_contract": {
@@ -200,6 +252,18 @@
             "title": "Items",
             "type": "array"
           },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
           "price": {
             "anyOf": [
               {
@@ -211,6 +275,10 @@
             ],
             "title": "Price"
           },
+          "primary_label": {
+            "title": "Primary Label",
+            "type": "string"
+          },
           "reward": {
             "anyOf": [
               {
@@ -221,6 +289,17 @@
               }
             ],
             "title": "Reward"
+          },
+          "reward_per_volume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reward Per Volume"
           },
           "start_location_id": {
             "anyOf": [
@@ -291,9 +370,496 @@
           "date_issued",
           "date_expired",
           "collateral",
-          "is_ship_contract"
+          "is_ship_contract",
+          "is_blueprint_copy_contract",
+          "primary_label"
         ],
-        "title": "ContractSchema",
+        "title": "ContractDetailSchema",
+        "type": "object"
+      },
+      "ContractItemSchema": {
+        "description": "Schema for an item within a contract.\n\n`is_singleton` and `raw_quantity` are deliberately absent. Both are fields of ESI's\nAUTHENTICATED character/corporation contract-item routes; the public item route\nHangar Bay reads carries neither, so `is_singleton` is the mapping default and\n`raw_quantity` is NULL for every item in the corpus today. The columns stay \u2014 they\nfill in the moment a user's own contracts are ingested \u2014 but a wire field that can\nonly misinform is worse than no wire field (ESI-3).",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "is_blueprint_copy": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Blueprint Copy"
+          },
+          "is_included": {
+            "title": "Is Included",
+            "type": "boolean"
+          },
+          "market_group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Group Id"
+          },
+          "material_efficiency": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Efficiency"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "integer"
+          },
+          "runs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runs"
+          },
+          "time_efficiency": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Efficiency"
+          },
+          "type_id": {
+            "title": "Type Id",
+            "type": "integer"
+          },
+          "type_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Name"
+          }
+        },
+        "required": [
+          "record_id",
+          "type_id",
+          "quantity",
+          "is_included"
+        ],
+        "title": "ContractItemSchema",
+        "type": "object"
+      },
+      "ContractListItemSchema": {
+        "description": "A contract as it appears in a list row: a summary, carrying no item array.\n\nEverything a client used to derive by walking the items \u2014 the blueprint flag, the\nheadline label, the composition breakdown \u2014 is computed here, so a row costs one\ncontract's worth of payload instead of all its items, and every client agrees on\nwhat the row says.\n\n`status` and `date_completed` are deliberately absent. Both are fields of ESI's\nAUTHENTICATED character/corporation contract routes; the public route Hangar Bay\nreads carries neither, so the columns behind them hold a placeholder and a NULL for\nevery contract in the corpus today. The columns stay \u2014 they fill in the moment a\nuser's own contracts are ingested \u2014 but a wire field that can only misinform is\nworse than no wire field (ESI-3).",
+        "properties": {
+          "blueprint_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlueprintSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "buyout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyout"
+          },
+          "collateral": {
+            "title": "Collateral",
+            "type": "number"
+          },
+          "composition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompositionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "date_expired": {
+            "format": "date-time",
+            "title": "Date Expired",
+            "type": "string"
+          },
+          "date_issued": {
+            "format": "date-time",
+            "title": "Date Issued",
+            "type": "string"
+          },
+          "days_to_complete": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Complete"
+          },
+          "end_location_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Location Id"
+          },
+          "end_location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Location Name"
+          },
+          "for_corporation": {
+            "title": "For Corporation",
+            "type": "boolean"
+          },
+          "is_blueprint_copy_contract": {
+            "title": "Is Blueprint Copy Contract",
+            "type": "boolean"
+          },
+          "is_ship_contract": {
+            "title": "Is Ship Contract",
+            "type": "boolean"
+          },
+          "issuer_corporation_id": {
+            "title": "Issuer Corporation Id",
+            "type": "integer"
+          },
+          "issuer_corporation_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Corporation Name"
+          },
+          "issuer_id": {
+            "title": "Issuer Id",
+            "type": "integer"
+          },
+          "issuer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Name"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "primary_label": {
+            "title": "Primary Label",
+            "type": "string"
+          },
+          "reward": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reward"
+          },
+          "reward_per_volume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reward Per Volume"
+          },
+          "start_location_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Location Id"
+          },
+          "start_location_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Location Name"
+          },
+          "start_location_system_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Location System Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "contract_id",
+          "issuer_id",
+          "issuer_corporation_id",
+          "type",
+          "for_corporation",
+          "date_issued",
+          "date_expired",
+          "collateral",
+          "is_ship_contract",
+          "is_blueprint_copy_contract",
+          "primary_label"
+        ],
+        "title": "ContractListItemSchema",
+        "type": "object"
+      },
+      "ContractListResponse": {
+        "description": "A page of contracts plus the figures that make the page readable in context.\n\nA bare total hides that system_ids can only ever match the locations we resolved:\na search returning 3 results reads as \"there are 3\" when it may mean \"there are 3\nwe can place, and 40 more we cannot\". Publishing the residual next to the number\nis the convention the EVE tooling ecosystem already uses for partial data \u2014\nAdam4EVE prints a NoP (number of participants) column beside its aggregates,\nEVE Tycoon labels each row with the appraisal method behind it.",
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageInfo",
+            "description": "Which regions the corpus actually holds and how fresh they are. Independent of the filters on this request \u2014 it describes the dataset, not the page, so a client can tell an uncovered region apart from a covered one that matched nothing."
+          },
+          "items": {
+            "description": "List of items for the current page",
+            "items": {
+              "$ref": "#/components/schemas/ContractListItemSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "description": "Current page number",
+            "title": "Page",
+            "type": "integer"
+          },
+          "segment_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Matching contracts per contract type, keyed by every ContractType value including the ones nothing matched, so a client renders a stable set of segments. Counts are of distinct contracts and are computed with the contract_type filter lifted and every other filter applied, so a segment the reader is not on still reports what selecting it would show. A stored type outside the enum is counted under 'unknown'.",
+            "title": "Segment Counts",
+            "type": "object"
+          },
+          "size": {
+            "description": "Number of items per page",
+            "title": "Size",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items",
+            "title": "Total",
+            "type": "integer"
+          },
+          "unknown_system_excluded": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many contracts matched every other filter but were excluded because their start location has no known solar system (player-owned structures, which need an ACL-scoped token to resolve). Null when system_ids was not applied \u2014 no results were dropped for that reason, which is different from none having been.",
+            "title": "Unknown System Excluded"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "size",
+          "items",
+          "segment_counts",
+          "coverage"
+        ],
+        "title": "ContractListResponse",
+        "type": "object"
+      },
+      "ContractType": {
+        "description": "Every contract type ESI can emit (confirmed against the committed spec\nsnapshot). Typed as an enum so an unknown value 422s instead of silently\nmatching nothing \u2014 the defect class this feature exists to remove (\u00a717.8).",
+        "enum": [
+          "item_exchange",
+          "auction",
+          "courier",
+          "loan",
+          "unknown"
+        ],
+        "title": "ContractType",
+        "type": "string"
+      },
+      "CoverageInfo": {
+        "description": "Which regions the corpus actually holds, and how fresh the newest of them is.\n\nReported from observed rows rather than from the configured ingestion targets: the\ntwo diverge for the whole ingestion window after a coverage change, and during that\nwindow the configured value names a region holding nothing. A client that cannot\nread this has to either embed a region literal \u2014 wrong the day coverage expands \u2014\nor infer coverage from an empty result, which reads a genuinely empty covered\nregion as uncovered.",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest ingestion stamp across all covered regions. Null when nothing is ingested, and also when nothing carries a stamp yet \u2014 absence of a freshness signal, not a claim of freshness at the epoch.",
+            "title": "As Of"
+          },
+          "ingested_region_ids": {
+            "description": "Every region id the contract corpus holds rows for, ascending. Empty before the first ingestion run completes.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Ingested Region Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ingested_region_ids"
+        ],
+        "title": "CoverageInfo",
         "type": "object"
       },
       "CurrentUserSchema": {
@@ -476,8 +1042,52 @@
       },
       "SavedSearchParameters": {
         "additionalProperties": false,
-        "description": "Server-side validation model for a saved search's stored filter blob. Mirrors the\nfrontend ContractSearch shape minus `page`; extra=\"forbid\" rejects the inert ME/TE params\n(FASTAPI-2), the wire-only `is_ship_contract`, `page`, and arbitrary junk (design \u00a74.5).",
+        "description": "Server-side validation model for a saved search's stored filter blob. Mirrors the\nfrontend ContractSearch shape minus `page`; extra=\"forbid\" rejects the wire-only\n`is_ship_contract`, `page`, and arbitrary junk (design \u00a74.5). The type, taxonomy, and\nblueprint-attribute filters are held here because the contracts query honours them; their\nbounds match ContractFilters so a saved blob can never replay into a 422.",
         "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "items": {
+                  "exclusiveMinimum": 0.0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "contract_type": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ContractType"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Type"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "items": {
+                  "exclusiveMinimum": 0.0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
           "is_bpc": {
             "anyOf": [
               {
@@ -488,6 +1098,18 @@
               }
             ],
             "title": "Is Bpc"
+          },
+          "max_me": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Me"
           },
           "max_price": {
             "anyOf": [
@@ -502,6 +1124,42 @@
             ],
             "title": "Max Price"
           },
+          "max_runs": {
+            "anyOf": [
+              {
+                "minimum": -1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Runs"
+          },
+          "max_te": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Te"
+          },
+          "min_me": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Me"
+          },
           "min_price": {
             "anyOf": [
               {
@@ -514,6 +1172,30 @@
               }
             ],
             "title": "Min Price"
+          },
+          "min_runs": {
+            "anyOf": [
+              {
+                "minimum": -1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Runs"
+          },
+          "min_te": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Te"
           },
           "region_ids": {
             "anyOf": [
@@ -630,10 +1312,103 @@
           "price",
           "collateral",
           "ship_name",
-          "volume"
+          "volume",
+          "reward_per_volume",
+          "days_to_complete",
+          "buyout"
         ],
         "title": "SortableContractFields",
         "type": "string"
+      },
+      "TaxonomyCategory": {
+        "description": "One dogma category the filter rail can offer.",
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category_id",
+          "name"
+        ],
+        "title": "TaxonomyCategory",
+        "type": "object"
+      },
+      "TaxonomyCoverage": {
+        "description": "Whether the item-level surface can be opened yet.\n\n\"complete\" means the corpus is enriched at the current enrichment version AND the\nname cache names every category that corpus holds. Anything short of both is\n\"partial\": a taxonomy filter offered over half-enriched items returns a page that\nis missing contracts for reasons the reader cannot see, which is worse than a\ncontrol that is honestly not ready. Degrades on its own during any future\nenrichment resweep and restores on its own afterwards.",
+        "enum": [
+          "partial",
+          "complete"
+        ],
+        "title": "TaxonomyCoverage",
+        "type": "string"
+      },
+      "TaxonomyGroup": {
+        "description": "One dogma group, carrying the category it belongs to so the client can scope\nthe group list to the selected categories without a second request.",
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "name"
+        ],
+        "title": "TaxonomyGroup",
+        "type": "object"
+      },
+      "TaxonomyResponse": {
+        "description": "The option lists behind the category and group filters, plus their readiness.\n\nFlat rather than nested (\u00a717.6): the client filters groups down to the selected\ncategories locally, so changing a category selection costs no round trip.",
+        "properties": {
+          "categories": {
+            "description": "Every cached dogma category, ascending by name.",
+            "items": {
+              "$ref": "#/components/schemas/TaxonomyCategory"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/TaxonomyCoverage",
+            "description": "Whether the item-level filters can be trusted yet, measured from observed rows: 'complete' only when the live corpus is enriched at the current enrichment version and every category on its items has a cached name. 'partial' while either is still true, including on a cold cache."
+          },
+          "groups": {
+            "description": "Every cached dogma group, ascending by name, each naming its category so the client can scope the list without refetching.",
+            "items": {
+              "$ref": "#/components/schemas/TaxonomyGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "categories",
+          "groups",
+          "coverage"
+        ],
+        "title": "TaxonomyResponse",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {
@@ -1102,7 +1877,7 @@
             }
           },
           {
-            "description": "Minimum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
+            "description": "Minimum runs for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
             "in": "query",
             "name": "min_runs",
             "required": false,
@@ -1116,12 +1891,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Minimum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
+              "description": "Minimum runs for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
               "title": "Min Runs"
             }
           },
           {
-            "description": "Maximum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
+            "description": "Maximum runs for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
             "in": "query",
             "name": "max_runs",
             "required": false,
@@ -1135,12 +1910,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Maximum runs for BPCs. (NO MATCHES \u2014 filters an always-NULL column; do not expose in clients)",
+              "description": "Maximum runs for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
               "title": "Max Runs"
             }
           },
           {
-            "description": "Minimum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+            "description": "Minimum Material Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
             "in": "query",
             "name": "min_me",
             "required": false,
@@ -1154,12 +1929,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Minimum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+              "description": "Minimum Material Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
               "title": "Min Me"
             }
           },
           {
-            "description": "Maximum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+            "description": "Maximum Material Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
             "in": "query",
             "name": "max_me",
             "required": false,
@@ -1173,12 +1948,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Maximum Material Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+              "description": "Maximum Material Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
               "title": "Max Me"
             }
           },
           {
-            "description": "Minimum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+            "description": "Minimum Time Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
             "in": "query",
             "name": "min_te",
             "required": false,
@@ -1192,12 +1967,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Minimum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+              "description": "Minimum Time Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
               "title": "Min Te"
             }
           },
           {
-            "description": "Maximum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+            "description": "Maximum Time Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
             "in": "query",
             "name": "max_te",
             "required": false,
@@ -1211,7 +1986,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Maximum Time Efficiency for BPCs. (NOT IMPLEMENTED \u2014 accepted but ignored by the service; do not expose in clients)",
+              "description": "Maximum Time Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family.",
               "title": "Max Te"
             }
           },
@@ -1297,6 +2072,69 @@
               ],
               "description": "List of ship type IDs to filter by.",
               "title": "Type Ids"
+            }
+          },
+          {
+            "description": "Contract types to include (repeatable).",
+            "in": "query",
+            "name": "contract_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/ContractType"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Contract types to include (repeatable).",
+              "title": "Contract Type"
+            }
+          },
+          {
+            "description": "Dogma category ids; matches contracts with at least one offered item in any of them.",
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Dogma category ids; matches contracts with at least one offered item in any of them.",
+              "title": "Category Id"
+            }
+          },
+          {
+            "description": "Dogma group ids, scoped within category_id when both are set (same offered item satisfies both).",
+            "in": "query",
+            "name": "group_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Dogma group ids, scoped within category_id when both are set (same offered item satisfies both).",
+              "title": "Group Id"
             }
           },
           {
@@ -1413,6 +2251,28 @@
         ]
       }
     },
+    "/contracts/taxonomy": {
+      "get": {
+        "description": "Retrieves the dogma category and group option lists for the item-level filters,\nwith a readiness signal saying whether those filters can be trusted yet.",
+        "operationId": "list_contract_taxonomy_contracts_taxonomy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonomyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Contract Taxonomy",
+        "tags": [
+          "Contracts"
+        ]
+      }
+    },
     "/contracts/{contract_id}": {
       "get": {
         "description": "Retrieves a single contract by its ID, including its items.",
@@ -1433,7 +2293,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractSchema"
+                  "$ref": "#/components/schemas/ContractDetailSchema"
                 }
               }
             },

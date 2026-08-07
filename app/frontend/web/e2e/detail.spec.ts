@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { makeBpcItem, makeContract, makeShipItem, pageOf } from './fixtures/contracts'
+import {
+  makeBpcItem,
+  makeContract,
+  makeContractDetail,
+  makeShipItem,
+  pageOf,
+} from './fixtures/contracts'
 import {
   failUnexpectedApiCalls,
   interceptContractDetail,
@@ -17,16 +23,31 @@ import { rowLinks } from './helpers/ui'
 const CONTRACT_ID = 232_500_001
 const HULL = 'Maelstrom'
 
+const CONTRACT_FIELDS = {
+  contract_id: CONTRACT_ID,
+  price: 1_750_000_000,
+  type: 'item_exchange' as const,
+}
+
 /**
  * One contract carrying BOTH a ship item and a blueprint-copy item, so the
  * Contents list exercises the SHIP badge and the BPC badge in a single fixture.
  * Fresh items each call (record_id auto-increments) keep list keys unique.
  */
 function detailContract() {
+  return makeContractDetail({
+    ...CONTRACT_FIELDS,
+    items: [makeShipItem(HULL), makeBpcItem('Raven Blueprint')],
+  })
+}
+
+/**
+ * The same contract as a list row — same item inputs, so the derived label
+ * matches the detail heading, and no item array (the list serves none).
+ */
+function listRow() {
   return makeContract({
-    contract_id: CONTRACT_ID,
-    price: 1_750_000_000,
-    type: 'item_exchange',
+    ...CONTRACT_FIELDS,
     items: [makeShipItem(HULL), makeBpcItem('Raven Blueprint')],
   })
 }
@@ -37,7 +58,7 @@ test.describe('contract detail (F003)', () => {
   }) => {
     const contract = detailContract()
     await interceptCurrentUser(page, { status: 401 })
-    await interceptContractList(page, pageOf([contract]))
+    await interceptContractList(page, pageOf([listRow()]))
     const detailCalls = await interceptContractDetail(page, contract)
 
     await page.goto('/contracts')
@@ -76,10 +97,9 @@ test.describe('contract detail (F003)', () => {
   test('history back from a filtered list restores the URL search state (button control)', async ({
     page,
   }) => {
-    const contract = detailContract()
     await interceptCurrentUser(page, { status: 401 })
-    await interceptContractList(page, pageOf([contract]))
-    await interceptContractDetail(page, contract)
+    await interceptContractList(page, pageOf([listRow()]))
+    await interceptContractDetail(page, detailContract())
 
     await page.goto('/contracts?min_price=5000000')
     await expect(rowLinks(page)).toHaveText([HULL])
@@ -127,7 +147,7 @@ test.describe('contract detail (F003)', () => {
     page,
   }) => {
     await interceptCurrentUser(page, { status: 401 })
-    await interceptContractList(page, pageOf([detailContract()]))
+    await interceptContractList(page, pageOf([listRow()]))
     await interceptContractDetail(page, { status: 404 })
 
     await page.goto('/contracts/424242')

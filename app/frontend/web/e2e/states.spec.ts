@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { SEVEN_SHIPS, makeContract, makeShipItem, pageOf } from './fixtures/contracts'
+import { SEVEN_SHIPS, makeContractDetail, makeShipItem, pageOf } from './fixtures/contracts'
 import { interceptContractDetail, interceptContractList, interceptCurrentUser } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
@@ -165,7 +165,7 @@ test.describe('states', () => {
   })
 
   test('detail page shows its loading status while the request is in flight', async ({ page }) => {
-    const contract = makeContract({
+    const contract = makeContractDetail({
       contract_id: 232_100_001,
       items: [makeShipItem('Revelation')],
     })

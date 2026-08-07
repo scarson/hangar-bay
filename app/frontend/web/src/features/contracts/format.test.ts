@@ -1,15 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Contract } from '../../lib/api/client'
-import {
-  contractTypeLabel,
-  formatDate,
-  formatIsk,
-  locationLabel,
-  primaryLabel,
-  timeRemaining,
-} from './format'
+import { contractTypeLabel, formatDate, formatIsk, locationLabel, timeRemaining } from './format'
 
-function contract(items: Partial<Contract['items'][number]>[], title = ''): Contract {
+function contract(): Contract {
   return {
     contract_id: 900,
     issuer_id: 1,
@@ -17,49 +10,16 @@ function contract(items: Partial<Contract['items'][number]>[], title = ''): Cont
     start_location_id: 60003760,
     collateral: 0,
     type: 'item_exchange',
-    title,
+    title: '',
     for_corporation: false,
     date_issued: '2026-07-01T00:00:00Z',
     date_expired: '2026-07-08T00:00:00Z',
     price: 1,
     is_ship_contract: true,
-    items: items.map((item, index) => ({
-      record_id: index + 1,
-      type_id: 1,
-      quantity: 1,
-      is_included: true,
-      ...item,
-    })),
-  } as Contract
+    is_blueprint_copy_contract: false,
+    primary_label: 'Tristan',
+  }
 }
-
-describe('primaryLabel', () => {
-  it('prefers the included ship over modules listed first (fitted-hull contracts)', () => {
-    const fitted = contract([
-      { type_name: 'Medium Auxiliary Nano Pump I', category: null },
-      { type_name: 'Myrmidon', category: 'ship' },
-      { type_name: 'Medium Auxiliary Nano Pump II', category: null },
-    ])
-    expect(primaryLabel(fitted)).toBe('Myrmidon')
-  })
-
-  it('falls back to the first included item when nothing is categorized', () => {
-    expect(primaryLabel(contract([{ type_name: 'Tritanium', category: null }]))).toBe('Tritanium')
-  })
-
-  it('ignores excluded (asked-for) ships', () => {
-    const askedFor = contract([
-      { type_name: 'Module', category: null },
-      { type_name: 'Dominix', category: 'ship', is_included: false },
-    ])
-    expect(primaryLabel(askedFor)).toBe('Module')
-  })
-
-  it('uses title, then contract id, when items carry no names', () => {
-    expect(primaryLabel(contract([{ type_name: null }], 'My Deal'))).toBe('My Deal')
-    expect(primaryLabel(contract([{ type_name: null }], ''))).toBe('Contract 900')
-  })
-})
 
 describe('timeRemaining', () => {
   const now = Date.parse('2026-07-01T00:00:00Z')
@@ -142,6 +102,12 @@ describe('contractTypeLabel', () => {
     expect(contractTypeLabel('loan')).toBe('Loan')
     expect(contractTypeLabel('unknown')).toBe('Unknown')
   })
+
+  it('labels a type outside the map as Unknown, never as an exchange', () => {
+    // The server folds out-of-enum stored types into the unknown segment, so a
+    // future ESI type must read as what the segment says it is.
+    expect(contractTypeLabel('somenewtype')).toBe('Unknown')
+  })
 })
 
 describe('locationLabel', () => {
@@ -155,5 +121,5 @@ describe('locationLabel', () => {
 })
 
 function contractAt(name: string | null, id: number | null): Contract {
-  return { ...contract([]), start_location_name: name, start_location_id: id }
+  return { ...contract(), start_location_name: name, start_location_id: id }
 }

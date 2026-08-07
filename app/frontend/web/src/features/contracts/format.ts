@@ -52,7 +52,9 @@ const TYPE_LABELS: Record<string, string> = {
  * so labelling it "Exchange" describes the one thing it is not.
  */
 export function contractTypeLabel(type: string): string {
-  return TYPE_LABELS[type] ?? 'Exchange'
+  // A stored type outside the map is served under the unknown segment, so the
+  // label must say so rather than masquerade as an exchange.
+  return TYPE_LABELS[type] ?? 'Unknown'
 }
 
 /**
@@ -65,19 +67,4 @@ export function locationLabel(contract: Contract): string {
   return contract.start_location_id != null
     ? `Location ${contract.start_location_id}`
     : 'Unknown location'
-}
-
-/**
- * Row/heading label. The hull is the headline on a ship marketplace: prefer
- * the included SHIP item (ingestion marks category === 'ship') over whatever
- * module happens to be listed first in a fitted-hull contract. Real ESI titles
- * are often "" (not null), which ?? passes through — treat blank as absent
- * (found live during M1 acceptance).
- */
-export function primaryLabel(contract: Contract): string {
-  const included = contract.items.filter((item) => item.is_included && item.type_name)
-  const ship = included.find((item) => item.category === 'ship')
-  return (
-    (ship ?? included[0])?.type_name ?? (contract.title?.trim() || `Contract ${contract.contract_id}`)
-  )
 }

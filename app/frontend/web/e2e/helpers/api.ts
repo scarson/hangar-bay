@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import type { WireContract, WirePage } from '../fixtures/contracts'
+import type { WireContractDetail, WirePage } from '../fixtures/contracts'
 import type { WireCurrentUser } from '../fixtures/auth'
 import { makeSavedSearch, type WireSavedSearch } from '../fixtures/account'
 import type { WireWatchlistItem } from '../fixtures/account'
@@ -69,7 +69,10 @@ export async function interceptContractList(page: Page, responder: ListResponder
   return calls
 }
 
-export type DetailResponder = WireContract | ErrorResponse | ((contractId: number) => WireContract | ErrorResponse)
+export type DetailResponder =
+  | WireContractDetail
+  | ErrorResponse
+  | ((contractId: number) => WireContractDetail | ErrorResponse)
 
 /** Intercept the contract-detail endpoint. */
 export async function interceptContractDetail(page: Page, responder: DetailResponder): Promise<CapturedCall[]> {

@@ -1,20 +1,33 @@
 import asyncio
 import time
-from sqlalchemy import and_, case, func, or_
+from sqlalchemy import and_, case, func, or_, text
+from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import aliased, selectinload
 
 from ..core.config import get_settings
 from ..core.logging import get_logger, log_key_event
-from ..models.contracts import Contract, ContractItem
+from ..models.contracts import Contract, ContractItem, EsiTaxonomyCache
 from ..schemas.contracts import (
+    BlueprintSummary,
+    CompositionCategory,
+    CompositionSummary,
+    ContractDetailSchema,
     ContractFilters,
+    ContractItemSchema,
+    ContractListItemSchema,
     ContractListResponse,
+    ContractType,
+    CoverageInfo,
     SortDirection,
-    ContractSchema,
     SortableContractFields,
+    TaxonomyCategory,
+    TaxonomyCoverage,
+    TaxonomyGroup,
+    TaxonomyResponse,
 )
+from .background_aggregation import ENRICHMENT_VERSION
 
 # Initialize logger for this module
 logger = get_logger(__name__)
@@ -33,7 +46,31 @@ SORT_MAP = {
     SortableContractFields.volume: Contract.volume,
     # Note: Sorting by ship_name joins the items table.
     SortableContractFields.ship_name: ContractItem.type_name,
+    SortableContractFields.buyout: Contract.buyout,
+    SortableContractFields.days_to_complete: Contract.days_to_complete,
+    # Computed in SQL so the ratio sorts without loading the corpus into the
+    # application (§11). NULL when reward is NULL or volume is NULL/0 (§9).
+    SortableContractFields.reward_per_volume: (
+        Contract.reward / func.nullif(Contract.volume, 0.0)
+    ),
 }
+
+# Sorts whose column is NULL for most of the corpus: buyout belongs to auctions,
+# days_to_complete to couriers, and the ratio needs both a reward and a volume.
+# A missing value is not a low one — a contract with no reward per m3 must not
+# lead the best-value sort — so NULL goes to the end whichever way the sort runs.
+# The remaining six sorts keep their existing order expressions. Four of them
+# (date_issued, date_expired, price, collateral) are non-null columns; the other
+# two are not — volume is nullable, and ship_name resolves to ContractItem.type_name
+# across an outer join, so both lead with NULL under a descending sort. Their
+# absence here is deliberate scope, not a claim that they cannot be NULL; whether
+# to bring them under the same rule is an open decision, recorded under Discoveries
+# in docs/superpowers/plans/2026-08-06-f008-type-aware-contract-browsing.md.
+NULLABLE_SORTS = frozenset({
+    SortableContractFields.buyout,
+    SortableContractFields.days_to_complete,
+    SortableContractFields.reward_per_volume,
+})
 
 
 def _needs_item_join(filters: ContractFilters) -> bool:
@@ -44,14 +81,14 @@ def _needs_item_join(filters: ContractFilters) -> bool:
     return bool(
         filters.search
         or filters.type_ids
-        or filters.min_runs is not None
-        or filters.max_runs is not None
         # Add sorting by ship name to the condition
         or filters.sort_by == SortableContractFields.ship_name
     )
-    # is_bpc is deliberately absent: it asks a question about the contract as a
-    # whole ("does it contain a copy?"), which a correlated EXISTS answers without
-    # multiplying rows. See _has_blueprint_copy_item.
+    # is_bpc, the runs/ME/TE ranges, and the category/group family are deliberately
+    # absent: each asks a question about the contract as a whole ("does it hold an
+    # item like this?"), which a correlated EXISTS answers without multiplying rows.
+    # See _has_blueprint_copy_item, _offered_item_range_exists, and the taxonomy
+    # clause in _apply_item_filters.
 
 
 def still_listed_by_esi():
@@ -155,17 +192,57 @@ def _has_blueprint_copy_item():
 
     Expressed once and negated for the false branch, so the branches are exact
     complements by construction rather than by two predicates kept in agreement.
+
+    Offered items only (§3.1): a want-to-buy ad asking for a copy offers none, and
+    matching it here would put it in front of every buyer browsing copies for sale.
+    This is the same rule the served is_blueprint_copy_contract flag applies, so the
+    filter and the flag agree by construction.
     """
     return (
         select(ContractItem.record_id)
         .where(
             ContractItem.contract_id == Contract.contract_id,
+            ContractItem.is_included.is_(True),
             # ESI sends is_blueprint_copy only for actual copies, so the column is
             # True-or-NULL and NULL means "not a copy" (pitfall ESI-3).
             ContractItem.is_blueprint_copy.is_(True),
         )
         .correlate(Contract)
         .exists()
+    )
+
+
+def _offered_item_range_exists(column, minimum, maximum):
+    """Contract-level classification: at least one OFFERED item whose `column`
+    satisfies every supplied bound (§3.1).
+
+    One EXISTS per filter family, holding both of that family's bounds, so the
+    bounds compose per ITEM rather than per contract: a contract offering a copy at
+    ME 5 and another at ME 15 does not satisfy min_me=10&max_me=12, because no
+    single copy sits inside that window. Two separate EXISTS would match it and
+    hand a buyer looking for one copy in a band a contract that holds none.
+
+    Separate families stay separate expressions, deliberately: different families
+    may be satisfied by different items, so ME and runs bounds can land on two
+    different copies of the same contract.
+
+    Offered items only, the same rule the boolean is_bpc family applies: a
+    want-to-buy ad asking for a 20-run copy offers nobody a 20-run copy.
+
+    NULL satisfies nothing in either direction. ESI omits `runs` entirely on a
+    blueprint original rather than sending -1 (ESI-3), so an original is absent
+    from both min_runs and max_runs results — absence is not zero.
+    """
+    conditions = [
+        ContractItem.contract_id == Contract.contract_id,
+        ContractItem.is_included.is_(True),
+    ]
+    if minimum is not None:
+        conditions.append(column >= minimum)
+    if maximum is not None:
+        conditions.append(column <= maximum)
+    return (
+        select(ContractItem.record_id).where(*conditions).correlate(Contract).exists()
     )
 
 
@@ -213,6 +290,21 @@ def _apply_contract_filters(query, filters: ContractFilters):
     if filters.is_ship_contract is not None:
         query = query.filter(Contract.is_ship_contract == filters.is_ship_contract)
 
+    # Contract.type leads ix_contracts_type_status, so the composite serves a
+    # type-only predicate as a prefix; no companion index is needed.
+    if filters.contract_type:
+        selected = [t.value for t in filters.contract_type]
+        type_predicate = Contract.type.in_(selected)
+        if ContractType.unknown.value in selected:
+            # The unknown segment owns every stored value outside the enum, so
+            # its count (which folds those in) and its rows agree — a segment
+            # must show what its numeral advertised.
+            known = [
+                t.value for t in ContractType if t is not ContractType.unknown
+            ]
+            type_predicate = or_(type_predicate, Contract.type.not_in(known))
+        query = query.filter(type_predicate)
+
     # 2c. Blueprint-copy classification. "Contains a copy" and its negation, so a
     # contract bundling a copy with ordinary items counts as a BPC contract and
     # appears in exactly one of the two branches.
@@ -249,11 +341,49 @@ def _apply_item_filters(query, filters: ContractFilters):
     """Apply the Contract Item specific filters."""
     if filters.type_ids:
         query = query.filter(ContractItem.type_id.in_(filters.type_ids))
-    # BPC Run filters (Note: ME/TE not implemented as data is not in model)
-    if filters.min_runs is not None:
-        query = query.filter(ContractItem.raw_quantity >= filters.min_runs)
-    if filters.max_runs is not None:
-        query = query.filter(ContractItem.raw_quantity <= filters.max_runs)
+    # Blueprint attribute ranges. Each family is one correlated EXISTS over the
+    # contract's offered items, so it asks a question about the CONTRACT and its
+    # own bounds land on a single item (§3.1, SQLA-3).
+    if filters.min_runs is not None or filters.max_runs is not None:
+        query = query.filter(
+            _offered_item_range_exists(
+                ContractItem.runs, filters.min_runs, filters.max_runs
+            )
+        )
+    if filters.min_me is not None or filters.max_me is not None:
+        query = query.filter(
+            _offered_item_range_exists(
+                ContractItem.material_efficiency, filters.min_me, filters.max_me
+            )
+        )
+    if filters.min_te is not None or filters.max_te is not None:
+        query = query.filter(
+            _offered_item_range_exists(
+                ContractItem.time_efficiency, filters.min_te, filters.max_te
+            )
+        )
+
+    # Taxonomy. ONE family holding both predicates, so a single offered item must
+    # satisfy both: a group belongs to a category, and "Ship" paired with
+    # "Propulsion Module" describes nothing a contract can hold. Two separate
+    # EXISTS would hand that pairing back a contract offering a frigate and an
+    # unrelated afterburner. It is also the only pairing the cascading
+    # category -> group rail can send.
+    if filters.category_id or filters.group_id:
+        conditions = [
+            ContractItem.contract_id == Contract.contract_id,
+            ContractItem.is_included.is_(True),
+        ]
+        if filters.category_id:
+            conditions.append(ContractItem.category_id.in_(filters.category_id))
+        if filters.group_id:
+            conditions.append(ContractItem.group_id.in_(filters.group_id))
+        query = query.filter(
+            select(ContractItem.record_id)
+            .where(*conditions)
+            .correlate(Contract)
+            .exists()
+        )
 
     return query
 
@@ -269,6 +399,175 @@ async def _count_distinct_contracts(db: AsyncSession, query) -> int:
 
     total_result = await db.execute(count_query)
     return total_result.scalar_one()
+
+
+# Contract types ESI never returns items for. The ship flag is derived from items,
+# so a contract of one of these types is never a ship contract — which is why their
+# segment counts are read with the ships-only filter lifted (Criterion 1.8).
+_ITEMLESS_CONTRACT_TYPES = frozenset({
+    ContractType.courier.value,
+    ContractType.loan.value,
+    ContractType.unknown.value,
+})
+
+
+# The complement of _ITEMLESS_CONTRACT_TYPES over the enum, derived rather than
+# restated so a contract type can only ever be classified in one place.
+_ITEM_BEARING_CONTRACT_TYPES = frozenset(
+    contract_type.value for contract_type in ContractType
+) - _ITEMLESS_CONTRACT_TYPES
+
+# The share of the live item-bearing corpus that must be enriched at the current
+# version before the item-level filters are offered. Short of 1.0 because a resweep
+# finishes contract by contract and a handful of contracts whose ESI item fetch keeps
+# failing would otherwise hold the whole surface shut indefinitely.
+_ENRICHMENT_READINESS_RATIO = 0.99
+
+
+def _count_under_ships_filter(
+    all_matching: int, ships_matching: int, is_ship_contract: bool | None
+) -> int:
+    """Pick the aggregate the ships-only filter selects.
+
+    is_ship_contract is NOT NULL on the model, so the two aggregates partition the
+    group and the false branch is the complement rather than a third count.
+    """
+    if is_ship_contract is None:
+        return all_matching
+    if is_ship_contract:
+        return ships_matching
+    return all_matching - ships_matching
+
+
+async def _segment_counts_and_total(
+    db: AsyncSession, filters: ContractFilters, needs_item_join: bool
+) -> tuple[dict[str, int], int]:
+    """Per-type contract counts and the page total, from one grouped statement.
+
+    The counts label the segment controls, so they answer a different question from
+    the page: "how many would I see over there", not "how many am I seeing". That
+    means contract_type is lifted (a segment must report its own population while
+    the reader stands on another one) and, per Criterion 1.8, so is the ships-only
+    flag for the types ESI returns no items for — a Courier (0) that becomes
+    Courier (115) the instant it is clicked is the silent-filter-no-op defect
+    wearing a numeral. Every OTHER filter still applies (§6.2), or the labels
+    advertise results the list cannot show.
+
+    `total` is derived from the same rows rather than fetched by a second aggregate:
+    at corpus scale the flat count is the expensive part of a list request, and
+    running it alongside a grouped count would double the worst path. It sums only
+    the types the caller actually selected, under the aggregate their actual
+    ships-only filter selects — the total is never lifted.
+
+    The query is rebuilt from scratch the way _count_unknown_system_excluded rebuilds
+    its residual, so every filter reaches it through _apply_contract_filters /
+    _apply_item_filters and a filter added to neither cannot silently desynchronize
+    the counts from the page. The join need is computed from the ORIGINAL filters;
+    lifting two contract-level predicates cannot change it.
+    """
+    lifted = filters.model_copy(
+        update={"contract_type": None, "is_ship_contract": None}
+    )
+    query = select(Contract)
+    if needs_item_join:
+        query = query.outerjoin(ContractItem)
+    query = _apply_contract_filters(query, lifted)
+    query = _apply_item_filters(query, lifted)
+
+    # DISTINCT only where the join can spread one contract over several rows
+    # (SQLA-1). Without it the primary key already gives one row per contract, and
+    # the DISTINCT sort is pure cost on the unjoined path every default request takes.
+    matched = (
+        func.count(func.distinct(Contract.contract_id))
+        if needs_item_join
+        else func.count(Contract.contract_id)
+    )
+    grouped = query.with_only_columns(
+        Contract.type,
+        matched,
+        matched.filter(Contract.is_ship_contract.is_(True)),
+    ).group_by(Contract.type)
+
+    rows = (await db.execute(grouped)).all()
+
+    all_by_segment = {contract_type.value: 0 for contract_type in ContractType}
+    ships_by_segment = dict.fromkeys(all_by_segment, 0)
+    for stored_type, all_matching, ships_matching in rows:
+        # Contract.type is an unconstrained string written straight from ESI, so a
+        # type added after this enum was written is storable. It folds into
+        # "unknown" rather than dropping out of the sum: Criterion 1.1 requires such
+        # a contract to stay counted and reachable, and a total short of the corpus
+        # would also fire the empty-page short-circuit while rows exist.
+        segment = stored_type if stored_type in all_by_segment else ContractType.unknown.value
+        all_by_segment[segment] += all_matching
+        ships_by_segment[segment] += ships_matching
+
+    segment_counts = {
+        segment: _count_under_ships_filter(
+            all_by_segment[segment],
+            ships_by_segment[segment],
+            None if segment in _ITEMLESS_CONTRACT_TYPES else filters.is_ship_contract,
+        )
+        for segment in all_by_segment
+    }
+
+    # Membership is judged on the FOLDED segment so the total matches the page
+    # predicate exactly: selecting "unknown" also matches every stored type
+    # outside the enum, and a numeral that advertises rows the page then
+    # withholds is the silent-no-op defect in envelope form.
+    selected = (
+        {contract_type.value for contract_type in filters.contract_type}
+        if filters.contract_type
+        else None
+    )
+    total = sum(
+        _count_under_ships_filter(all_matching, ships_matching, filters.is_ship_contract)
+        for stored_type, all_matching, ships_matching in rows
+        if selected is None
+        or (
+            stored_type if stored_type in all_by_segment else ContractType.unknown.value
+        ) in selected
+    )
+
+    return segment_counts, total
+
+
+# Loose index scan: SELECT DISTINCT over start_location_region_id is a 600ms
+# full index scan on the production corpus (perf audit 2026-08-02 §4 — PG18's
+# btree skip scan does not engage). The recursive CTE walks one index probe per
+# distinct region instead. as_of is the newest ingestion stamp across them.
+_OBSERVED_REGIONS_SQL = text("""
+    WITH RECURSIVE regions(region_id) AS (
+        SELECT min(start_location_region_id) FROM contracts
+        UNION ALL
+        SELECT (SELECT min(start_location_region_id) FROM contracts
+                WHERE start_location_region_id > regions.region_id)
+        FROM regions WHERE regions.region_id IS NOT NULL
+    )
+    SELECT r.region_id,
+           (SELECT max(c.last_seen_at) FROM contracts c
+             WHERE c.start_location_region_id = r.region_id) AS newest
+    FROM regions r WHERE r.region_id IS NOT NULL
+""")
+
+
+async def _observed_coverage(db: AsyncSession) -> CoverageInfo:
+    """Which regions the corpus holds, read off the rows themselves.
+
+    Never from Settings.AGGREGATION_REGION_IDS: that states what we mean to ingest,
+    and for the whole ingestion window after a coverage change it names a region
+    holding nothing — a reader told that region is covered and shown an empty page
+    learns the wrong thing about both.
+
+    A region with rows but no stamps yet contributes no candidate for as_of, so the
+    freshest real stamp still wins and a corpus with none reports None rather than
+    claiming freshness it cannot support.
+    """
+    rows = (await db.execute(_OBSERVED_REGIONS_SQL)).all()
+    return CoverageInfo(
+        ingested_region_ids=sorted(region_id for region_id, _ in rows),
+        as_of=max((newest for _, newest in rows if newest is not None), default=None),
+    )
 
 
 async def _count_unknown_system_excluded(
@@ -312,6 +611,8 @@ async def _fetch_page_joined(
     # tiebreaker.
     sort_aggregate = func.max(sort_column) if descending else func.min(sort_column)
     order_expr = sort_aggregate.desc() if descending else sort_aggregate.asc()
+    if filters.sort_by in NULLABLE_SORTS:
+        order_expr = order_expr.nulls_last()
     id_query = (
         query.with_only_columns(Contract.contract_id)
         .group_by(Contract.contract_id)
@@ -343,6 +644,8 @@ async def _fetch_page_simple(
     descending: bool,
 ) -> list[Contract]:
     order_expr = sort_column.desc() if descending else sort_column.asc()
+    if filters.sort_by in NULLABLE_SORTS:
+        order_expr = order_expr.nulls_last()
     data_query = (
         query.order_by(order_expr, Contract.contract_id.asc())
         .offset((filters.page - 1) * filters.size)
@@ -351,6 +654,353 @@ async def _fetch_page_simple(
     )
     result = await db.execute(data_query)
     return result.scalars().unique().all()
+
+
+async def _category_names(db: AsyncSession) -> dict[int, str]:
+    """Display names for every cached Dogma category, keyed by id.
+
+    One small SELECT per request over a table holding a few dozen rows. Both the list
+    and the detail path call it: composition carries category names, and a detail
+    response built without this lookup serves a null name for every category while
+    the list row beside it shows them.
+    """
+    result = await db.execute(
+        select(EsiTaxonomyCache.esi_id, EsiTaxonomyCache.name).where(
+            EsiTaxonomyCache.kind == "category"
+        )
+    )
+    return {esi_id: name for esi_id, name in result.all()}
+
+
+def _offered_items(contract: Contract) -> list[ContractItem]:
+    """The items the contract puts up, oldest record first.
+
+    is_included=False marks the items the issuer is ASKING FOR, so every derived
+    figure counts only the offered side (§3.1). Ordering by record_id makes "the
+    first item" a fact about the data rather than about row-return order.
+    """
+    return sorted(
+        (item for item in contract.items if item.is_included),
+        key=lambda item: item.record_id,
+    )
+
+
+def _reward_per_volume(contract: Contract) -> float | None:
+    """Reward per m3, the figure haulers compare offers on.
+
+    Undefined without both sides, and a zero volume gives nothing to divide by — so
+    both cases serve NULL rather than a number that reads as free hauling (§9).
+    """
+    if contract.reward is None or not contract.volume:
+        return None
+    return float(contract.reward) / float(contract.volume)
+
+
+def _primary_label(contract: Contract, offered: list[ContractItem]) -> str:
+    """The row's headline.
+
+    The hull is the headline on a ship marketplace, so an offered ship outranks
+    whatever module happens to come first in a fitted-hull contract. Real ESI titles
+    are frequently "" rather than NULL, so blank counts as absent. Computed here
+    rather than per client so the list row, the detail page, and any future consumer
+    name a contract the same way.
+    """
+    named = [item for item in offered if item.type_name]
+    ship = next((item for item in named if item.category == "ship"), None)
+    headline = ship or (named[0] if named else None)
+    if headline is not None:
+        return headline.type_name
+
+    if contract.title and contract.title.strip():
+        return contract.title.strip()
+
+    if contract.type == ContractType.courier.value:
+        if contract.end_location_name:
+            return f"Courier to {contract.end_location_name}"
+        return "Courier"
+
+    return f"Contract {contract.contract_id}"
+
+
+def _composition(
+    contract: Contract, offered: list[ContractItem], names: dict[int, str]
+) -> CompositionSummary | None:
+    """What a multi-item contract is made of, by category.
+
+    One offered row is not a breakdown — the row already names it — so composition is
+    NULL below two. Counts are item ROWS rather than summed quantities (Criterion
+    6.1). total_volume is the contract's own volume: the model holds no per-item
+    volume, so there is nothing to sum.
+    """
+    if len(offered) < 2:
+        return None
+
+    row_counts: dict[int | None, int] = {}
+    for item in offered:
+        row_counts[item.category_id] = row_counts.get(item.category_id, 0) + 1
+
+    categories = [
+        CompositionCategory(
+            category_id=category_id,
+            # A category the name cache has not resolved serves NULL rather than a
+            # fabricated string — the client can say "unnamed", we cannot invent.
+            name=names.get(category_id) if category_id is not None else None,
+            item_row_count=count,
+        )
+        for category_id, count in row_counts.items()
+    ]
+    # Share governs the order for every entry — including the NULL-category
+    # bucket, which must not hide at the end when it dominates the lot (§17.2:
+    # item_row_count descending, then name ascending; unnamed entries sort after
+    # named ones at equal counts so the order is total rather than merely stable).
+    categories.sort(
+        key=lambda entry: (
+            -entry.item_row_count,
+            entry.name is None,
+            entry.name or "",
+        )
+    )
+
+    return CompositionSummary(
+        categories=categories,
+        total_item_rows=len(offered),
+        total_volume=float(contract.volume) if contract.volume is not None else None,
+    )
+
+
+def _blueprint_summary(offered: list[ContractItem]) -> BlueprintSummary | None:
+    """The blueprint terms of a contract offering copies.
+
+    With more than one copy the terms belong to individual copies, so reporting one
+    copy's runs would misdescribe the others: the count goes out alone and the client
+    sends the reader to the detail page for the rest (§17.3).
+    """
+    copies = [item for item in offered if item.is_blueprint_copy is True]
+    if not copies:
+        return None
+    if len(copies) > 1:
+        return BlueprintSummary(copy_count=len(copies))
+
+    copy = copies[0]
+    return BlueprintSummary(
+        runs=copy.runs,
+        material_efficiency=copy.material_efficiency,
+        time_efficiency=copy.time_efficiency,
+        copy_count=1,
+    )
+
+
+def _contract_fields(contract: Contract, names: dict[int, str]) -> dict:
+    """The fields shared by the list row and the detail response.
+
+    Written out rather than validated off the ORM object, so a column added to the
+    model does not silently become a wire field.
+    """
+    offered = _offered_items(contract)
+    return {
+        "contract_id": contract.contract_id,
+        "issuer_id": contract.issuer_id,
+        "issuer_corporation_id": contract.issuer_corporation_id,
+        "start_location_id": contract.start_location_id,
+        "start_location_system_id": contract.start_location_system_id,
+        "end_location_id": contract.end_location_id,
+        "type": contract.type,
+        "title": contract.title,
+        "for_corporation": contract.for_corporation,
+        "date_issued": contract.date_issued,
+        "date_expired": contract.date_expired,
+        "price": contract.price,
+        "collateral": contract.collateral,
+        "reward": contract.reward,
+        "volume": contract.volume,
+        "buyout": contract.buyout,
+        "days_to_complete": contract.days_to_complete,
+        "reward_per_volume": _reward_per_volume(contract),
+        "start_location_name": contract.start_location_name,
+        "end_location_name": contract.end_location_name,
+        "issuer_name": contract.issuer_name,
+        "issuer_corporation_name": contract.issuer_corporation_name,
+        "last_seen_at": contract.last_seen_at,
+        "is_ship_contract": contract.is_ship_contract,
+        "is_blueprint_copy_contract": any(
+            item.is_blueprint_copy is True for item in offered
+        ),
+        "primary_label": _primary_label(contract, offered),
+        "composition": _composition(contract, offered, names),
+        "blueprint_summary": _blueprint_summary(offered),
+    }
+
+
+def _list_item(contract: Contract, names: dict[int, str]) -> ContractListItemSchema:
+    """Build one list row."""
+    return ContractListItemSchema(**_contract_fields(contract, names))
+
+
+def _detail_item(contract: Contract, names: dict[int, str]) -> ContractDetailSchema:
+    """Build a detail response: the row plus the contract's full item array.
+
+    Ordered by record_id, the same order the derived fields treat as canonical, so
+    the item table renders identically on every request.
+    """
+    return ContractDetailSchema(
+        **_contract_fields(contract, names),
+        items=[
+            ContractItemSchema.model_validate(item)
+            for item in sorted(contract.items, key=lambda item: item.record_id)
+        ],
+    )
+
+
+def _live_item_bearing_contracts():
+    """The population the readiness signal measures, as filter criteria.
+
+    Expired and delisted rows are out because ingestion never revisits them: their
+    items keep whatever enrichment they last received, so counting them would hold the
+    ratio below the threshold forever on a corpus that is entirely up to date. Couriers
+    and loans are out because ESI returns no items for them at all (Criterion 1.2) —
+    enrichment can never complete for one, and every courier in the corpus would
+    otherwise count as a contract still waiting to be enriched.
+    """
+    return (
+        Contract.date_expired > func.now(),
+        still_listed_by_esi(),
+        Contract.type.in_(sorted(_ITEM_BEARING_CONTRACT_TYPES)),
+    )
+
+
+async def _enrichment_is_current(db: AsyncSession) -> bool:
+    """Is the live corpus enriched at the enrichment version this code writes?
+
+    The denominator is EVERY live item-bearing contract, whatever its processing
+    status. Measured over COMPLETED rows alone, one enriched contract beside
+    ninety-nine that failed reads as 1/1 — the state the signal exists to warn about,
+    reported as the state it exists to permit. Rows still pending and rows whose
+    enrichment failed have to drag it; that is what the ratio measures.
+
+    An empty corpus is not ready either: there is nothing for the item-level filters
+    to act on, so a client that opened them would offer controls over no data.
+    """
+    counts = await db.execute(
+        select(
+            func.count(),
+            func.count().filter(
+                Contract.item_processing_status == "COMPLETED",
+                Contract.enrichment_version == ENRICHMENT_VERSION,
+            ),
+        )
+        .select_from(Contract)
+        .where(*_live_item_bearing_contracts())
+    )
+    live, enriched = counts.one()
+    return live > 0 and enriched / live >= _ENRICHMENT_READINESS_RATIO
+
+
+async def _live_category_ids(db: AsyncSession) -> set[int]:
+    """Every dogma category present on the items of live contracts.
+
+    Scoped to live contracts, and so deliberately narrower than ingestion's sweep of
+    observed categories, which is unscoped because fetching a name for a category seen
+    only on delisted rows is a harmless one-time cost. Here the scope is load-bearing
+    in the other direction: a category nobody can filter to any more must not hold the
+    item-level surface shut. Both sides of the trade are included — the name cache is
+    filled from the same unscoped sweep, so requiring requested-side categories to be
+    named delays nothing that ingestion is not already fetching.
+    """
+    rows = await db.execute(
+        select(ContractItem.category_id)
+        .join(Contract, Contract.contract_id == ContractItem.contract_id)
+        .where(*_live_item_bearing_contracts(), ContractItem.category_id.is_not(None))
+        .distinct()
+    )
+    return set(rows.scalars())
+
+
+async def _taxonomy_coverage(
+    db: AsyncSession, named_categories: set[int]
+) -> TaxonomyCoverage:
+    """Whether the item-level filter surface can be opened, from observed rows.
+
+    Two conditions, because either one alone can be satisfied while the surface is
+    broken. The ratio alone can read complete while a category-name fetch failure
+    leaves the option list unable to name what the corpus holds — a name failure does
+    not block COMPLETED stamping — so the endpoint would be gating the surface on
+    itself being intact. The name cache alone says nothing about whether the items
+    carry taxonomy ids at all.
+
+    Ordered and short-circuited deliberately: while a resweep is running the ratio
+    already settles the answer, and the category sweep is the more expensive query.
+    """
+    if not await _enrichment_is_current(db):
+        return TaxonomyCoverage.partial
+    if await _live_category_ids(db) - named_categories:
+        return TaxonomyCoverage.partial
+    return TaxonomyCoverage.complete
+
+
+async def get_taxonomy(db: AsyncSession) -> TaxonomyResponse:
+    """The dogma option lists behind the category and group filters, and their readiness.
+
+    Flat rather than nested (§17.6): every group names its category, so the client
+    scopes the group list to the selected categories without a second request.
+
+    Sorted in Python rather than by the database, so the order a client renders does
+    not change with the server's collation.
+    """
+    cached = (await db.execute(select(EsiTaxonomyCache))).scalars().all()
+
+    categories = sorted(
+        (
+            TaxonomyCategory(category_id=row.esi_id, name=row.name)
+            for row in cached
+            if row.kind == "category"
+        ),
+        key=lambda entry: (entry.name, entry.category_id),
+    )
+    groups = sorted(
+        (
+            TaxonomyGroup(
+                group_id=row.esi_id,
+                category_id=row.parent_category_id,
+                name=row.name,
+            )
+            for row in cached
+            if row.kind == "group"
+        ),
+        key=lambda entry: (entry.name, entry.group_id),
+    )
+
+    return TaxonomyResponse(
+        categories=categories,
+        groups=groups,
+        # Measured against the list this response actually carries, so "complete"
+        # cannot be claimed for a category the reader is not being offered.
+        coverage=await _taxonomy_coverage(
+            db, {entry.category_id for entry in categories}
+        ),
+    )
+
+
+def _error_without_bound_parameters(exc: BaseException) -> str:
+    """Render `exc` for a log line without the bind values of the statement that failed.
+
+    `StatementError.__str__` appends `[parameters: {...}]`, and on the search path the
+    failing statement is the one carrying the `ILIKE` bind that holds the user's raw
+    query text — the same text `search_terms` reports only the length of. SQLAlchemy
+    substitutes a placeholder when the error carries `hide_parameters`, so the flag is
+    flipped for the duration of the render and restored afterwards.
+
+    The application engine already sets `hide_parameters=True` (`db.py`), so errors it
+    raises arrive scrubbed; this holds the guarantee at the log site for an exception
+    that reaches it from a session built anywhere else.
+    """
+    if not isinstance(exc, StatementError):
+        return str(exc)
+    previously_hidden = exc.hide_parameters
+    exc.hide_parameters = True
+    try:
+        return str(exc)
+    finally:
+        exc.hide_parameters = previously_hidden
 
 
 async def get_contracts(
@@ -366,12 +1016,19 @@ async def get_contracts(
     """
     start_time = time.time()
 
-    # Log the start of the contract search operation
+    # Log the start of the contract search operation. `search` is user-typed free text,
+    # so only its length travels: the analysis these logs feed needs the dimension, and
+    # the text itself is whatever the user happened to paste.
     logger.info(
         "Starting contract search",
         search_terms={
-            "search": filters.search,
+            "search_len": len(filters.search) if filters.search else 0,
             "type_ids": filters.type_ids,
+            "contract_type": (
+                [t.value for t in filters.contract_type] if filters.contract_type else None
+            ),
+            "category_id": filters.category_id,
+            "group_id": filters.group_id,
             "min_price": filters.min_price,
             "max_price": filters.max_price,
             "page": filters.page,
@@ -398,7 +1055,11 @@ async def get_contracts(
         query = _apply_item_filters(query, filters)
 
         # --- Count Query ---
-        total = await _count_distinct_contracts(db, query)
+        # One grouped aggregate serves both the segment labels and the page total,
+        # so a request costs the same one corpus-scale count it always did.
+        segment_counts, total = await _segment_counts_and_total(
+            db, filters, needs_item_join
+        )
 
         # Measured before the empty-result short-circuit: an empty page is where the
         # figure matters most, since a system holding only structure-hosted contracts
@@ -409,6 +1070,10 @@ async def get_contracts(
             else None
         )
 
+        # Describes the dataset rather than the page, so it is computed once per
+        # request beside the counts and is the same figure whatever was filtered.
+        coverage = await _observed_coverage(db)
+
         if total == 0:
             duration_ms = (time.time() - start_time) * 1000
             log_key_event(
@@ -418,7 +1083,7 @@ async def get_contracts(
                 duration_ms=duration_ms,
                 results_count=0,
                 search_terms={
-                    "search": filters.search,
+                    "search_len": len(filters.search) if filters.search else 0,
                     "type_ids": filters.type_ids,
                     "page": filters.page,
                     "size": filters.size,
@@ -430,6 +1095,13 @@ async def get_contracts(
                 size=filters.size,
                 items=[],
                 unknown_system_excluded=unknown_system_excluded,
+                # Carried onto the empty page deliberately: the counts are the only
+                # thing telling a reader who filtered into an empty segment that the
+                # corpus around it is not empty.
+                segment_counts=segment_counts,
+                # Likewise: an empty page is precisely where a reader needs to know
+                # whether the region they picked is ingested at all.
+                coverage=coverage,
             )
 
         # --- Data Query ---
@@ -446,6 +1118,8 @@ async def get_contracts(
         else:
             contracts = await _fetch_page_simple(db, query, filters, sort_column, descending)
 
+        names = await _category_names(db)
+
         # Calculate duration and log successful completion
         duration_ms = (time.time() - start_time) * 1000
 
@@ -453,8 +1127,10 @@ async def get_contracts(
             total=total,
             page=filters.page,
             size=filters.size,
-            items=[ContractSchema.model_validate(c) for c in contracts],
+            items=[_list_item(c, names) for c in contracts],
             unknown_system_excluded=unknown_system_excluded,
+            segment_counts=segment_counts,
+            coverage=coverage,
         )
 
         # Log successful contract search with key event schema
@@ -465,8 +1141,13 @@ async def get_contracts(
             duration_ms=duration_ms,
             results_count=len(contracts),
             search_terms={
-                "search": filters.search,
+                "search_len": len(filters.search) if filters.search else 0,
                 "type_ids": filters.type_ids,
+                "contract_type": (
+                    [t.value for t in filters.contract_type] if filters.contract_type else None
+                ),
+                "category_id": filters.category_id,
+                "group_id": filters.group_id,
                 "min_price": filters.min_price,
                 "max_price": filters.max_price,
                 "page": filters.page,
@@ -487,9 +1168,9 @@ async def get_contracts(
             event="contract_search_executed",
             success=False,
             duration_ms=duration_ms,
-            error_message=str(e),
+            error_message=_error_without_bound_parameters(e),
             search_terms={
-                "search": filters.search,
+                "search_len": len(filters.search) if filters.search else 0,
                 "type_ids": filters.type_ids,
                 "min_price": filters.min_price,
                 "max_price": filters.max_price,

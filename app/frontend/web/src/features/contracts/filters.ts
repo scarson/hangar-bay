@@ -1,3 +1,5 @@
+import type { components } from '../../lib/api/schema'
+
 export const SORT_FIELDS = [
   'date_issued',
   'date_expired',
@@ -5,11 +7,52 @@ export const SORT_FIELDS = [
   'collateral',
   'ship_name',
   'volume',
+  'reward_per_volume',
+  'days_to_complete',
+  'buyout',
 ] as const
 export type SortField = (typeof SORT_FIELDS)[number]
 
 export const SORT_DIRECTIONS = ['asc', 'desc'] as const
 export type SortDirection = (typeof SORT_DIRECTIONS)[number]
+
+export type ContractTypeValue = components['schemas']['ContractType']
+
+/**
+ * The backend's closed contract-type enum, mirrored so the parser can drop a
+ * value that would 422. `satisfies` fails the build if a member here stops
+ * being one the server accepts; UnmirroredContractTypes below fails it in the
+ * other direction, when the server gains a member this list does not carry.
+ */
+export const CONTRACT_TYPES = [
+  'item_exchange',
+  'auction',
+  'courier',
+  'loan',
+  'unknown',
+] as const satisfies readonly ContractTypeValue[]
+
+/** Admits only the empty union, so anything left over is a compile error. */
+type Exhausted<T extends never> = T
+
+/**
+ * The server contract types CONTRACT_TYPES leaves out — none, or the build
+ * fails on this line. `satisfies` above cannot stand in for it: it checks that
+ * every member listed is one the server accepts, not that the list exhausts
+ * the server's enum. The requirement belongs beside the list because a type
+ * the mirror omits is one the UI never parses out of a URL, offers no control
+ * for, and leaves as an unreachable segment.
+ */
+export type UnmirroredContractTypes = Exhausted<
+  Exclude<ContractTypeValue, (typeof CONTRACT_TYPES)[number]>
+>
+
+/**
+ * The types that carry no items. Ships-only classifies a contract by its
+ * offered items, so none of these can ever satisfy it — selecting only these
+ * and keeping ships-only on asks for a guaranteed-empty result.
+ */
+export const ITEM_LESS_TYPES: readonly ContractTypeValue[] = ['courier', 'loan', 'unknown']
 
 /** Backend ContractFilters.search has min_length=3; shorter values 422. */
 export const MIN_SEARCH_LENGTH = 3
@@ -22,6 +65,15 @@ export interface ContractSearch {
   min_price?: number
   max_price?: number
   region_ids?: number[]
+  contract_type?: ContractTypeValue[]
+  category_id?: number[]
+  group_id?: number[]
+  min_runs?: number
+  max_runs?: number
+  min_me?: number
+  max_me?: number
+  min_te?: number
+  max_te?: number
   is_bpc?: boolean
   /** F002 Criterion 1.1: the default view is ship contracts only. */
   ships_only: boolean
@@ -42,6 +94,11 @@ function toNumber(value: unknown): number | undefined {
  * negative values (typeable past the inputs' `min="0"`, or hand-edited into a
  * shared URL) 422 the request, so they fall back to undefined here — the same
  * junk-tolerance contract toIdArray applies to the ID lists.
+ *
+ * The blueprint bounds go through here too, one notch stricter than the wire
+ * allows: the backend accepts `min_runs=-1` because ESI publishes it as a
+ * sentinel, but no control in this UI produces a negative, so a sub-zero value
+ * in the URL is junk and falls back rather than filtering on a sentinel.
  */
 function toNonNegativeNumber(value: unknown): number | undefined {
   const n = toNumber(value)
@@ -61,20 +118,46 @@ function toIdArray(value: unknown): number[] | undefined {
   return ids.length > 0 ? ids : undefined
 }
 
+function toContractTypes(value: unknown): ContractTypeValue[] | undefined {
+  const raw = Array.isArray(value) ? value : value === undefined ? [] : [value]
+  const types = raw.filter((entry): entry is ContractTypeValue =>
+    CONTRACT_TYPES.includes(entry as ContractTypeValue),
+  )
+  return types.length > 0 ? types : undefined
+}
+
 /**
  * validateSearch for the /contracts route. Accepts arbitrary address-bar
  * input and always returns a well-formed ContractSearch — invalid values
  * fall back to defaults rather than throwing.
  */
 export function parseContractSearch(raw: Record<string, unknown>): ContractSearch {
+  const contractTypes = toContractTypes(raw.contract_type)
+  // Ships-only asks for a contract with an offered ship in it, so pairing it
+  // with a selection of nothing but item-less types requests a combination that
+  // can never match. Widening here rather than in a component means a shared
+  // URL, an applied saved search, and in-app navigation all get the same
+  // treatment — and the ships-only checkbox visibly unchecks rather than
+  // silently contradicting the results.
+  const itemLessOnly =
+    contractTypes !== undefined && contractTypes.every((type) => ITEM_LESS_TYPES.includes(type))
   return {
     search: typeof raw.search === 'string' && raw.search.length > 0 ? raw.search : undefined,
     min_price: toNonNegativeNumber(raw.min_price),
     max_price: toNonNegativeNumber(raw.max_price),
     region_ids: toIdArray(raw.region_ids),
+    contract_type: contractTypes,
+    category_id: toIdArray(raw.category_id),
+    group_id: toIdArray(raw.group_id),
+    min_runs: toNonNegativeNumber(raw.min_runs),
+    max_runs: toNonNegativeNumber(raw.max_runs),
+    min_me: toNonNegativeNumber(raw.min_me),
+    max_me: toNonNegativeNumber(raw.max_me),
+    min_te: toNonNegativeNumber(raw.min_te),
+    max_te: toNonNegativeNumber(raw.max_te),
     is_bpc: typeof raw.is_bpc === 'boolean' ? raw.is_bpc : undefined,
     // Default ON; only an explicit false in the URL widens to all contracts.
-    ships_only: raw.ships_only !== false,
+    ships_only: itemLessOnly ? false : raw.ships_only !== false,
     page: toBoundedInt(raw.page, 1, Number.MAX_SAFE_INTEGER, DEFAULT_PAGE),
     size: toBoundedInt(raw.size, 1, MAX_SIZE, DEFAULT_SIZE),
     sort_by: SORT_FIELDS.includes(raw.sort_by as SortField)
@@ -98,6 +181,15 @@ export function toApiQuery(s: ContractSearch) {
     min_price: s.min_price,
     max_price: s.max_price,
     region_ids: s.region_ids,
+    contract_type: s.contract_type,
+    category_id: s.category_id,
+    group_id: s.group_id,
+    min_runs: s.min_runs,
+    max_runs: s.max_runs,
+    min_me: s.min_me,
+    max_me: s.max_me,
+    min_te: s.min_te,
+    max_te: s.max_te,
     is_bpc: s.is_bpc,
     is_ship_contract: s.ships_only ? true : undefined,
     page: s.page,
