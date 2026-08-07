@@ -62,7 +62,6 @@ export const ITEM_LESS_TYPES: readonly ContractTypeValue[] = ['courier', 'loan',
  */
 export const ITEM_BEARING_TYPES: readonly ContractTypeValue[] = ['item_exchange', 'auction']
 
-/**
 /** Backend ContractFilters.search has min_length=3; shorter values 422. */
 export const MIN_SEARCH_LENGTH = 3
 export const DEFAULT_PAGE = 1

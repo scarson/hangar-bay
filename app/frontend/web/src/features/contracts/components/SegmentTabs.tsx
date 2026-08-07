@@ -8,6 +8,7 @@ import {
   type ContractSearch,
   type ContractTypeValue,
 } from '../filters'
+import { columnsFor } from '../columns'
 
 /**
  * The controls the view offers. `loan` and `unknown` are deliberately absent:
@@ -72,12 +73,21 @@ function sumCounts(counts: Record<string, number>, types: readonly ContractTypeV
 function segmentPatch(
   type: ContractTypeValue | undefined,
   leavingItemLess: boolean,
+  currentSort: ContractSearch['sort_by'],
 ): Partial<ContractSearch> {
   const contract_type = type === undefined ? undefined : [type]
+  // A sort must not outlive the segment that offered it: a column set with no
+  // header for the active sort field would order the list by a criterion the
+  // user can neither see nor clear. Removing the keys restores the parser's
+  // default, exactly as the ships-only restore below removes rather than sets.
+  const sortSurvives = columnsFor(type).some((column) => column.sortField === currentSort)
+  const sortReset = sortSurvives ? {} : { sort_by: undefined, sort_direction: undefined }
   if (type !== undefined && ITEM_LESS_TYPES.includes(type)) {
-    return { contract_type, ships_only: false }
+    return { contract_type, ships_only: false, ...sortReset }
   }
-  return leavingItemLess ? { contract_type, ships_only: undefined } : { contract_type }
+  return leavingItemLess
+    ? { contract_type, ships_only: undefined, ...sortReset }
+    : { contract_type, ...sortReset }
 }
 
 export function SegmentTabs({
@@ -114,7 +124,7 @@ export function SegmentTabs({
             // aria-pressed on plain buttons rather than a tablist: there are no
             // tab panels here — the toolbar re-filters one region (Criterion 12).
             aria-pressed={active}
-            onClick={() => onSelect(segmentPatch(segment.type, leavingItemLess))}
+            onClick={() => onSelect(segmentPatch(segment.type, leavingItemLess, search.sort_by))}
             className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm transition-colors duration-150 ${
               active
                 ? 'border-brand-dim bg-brand-wash text-brand'

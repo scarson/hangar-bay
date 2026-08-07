@@ -631,6 +631,73 @@ describe('contract-type segments', () => {
     })
   })
 
+  it('resets a sort the destination segment cannot express', async () => {
+    // Reward/m³ exists only on the courier column set. Carrying it into All
+    // would order the list by a criterion no on-screen header discloses or can
+    // clear — an invisible sort is the silent-control defect in sort form.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp(
+      '/contracts?contract_type=courier&ships_only=false&sort_by=reward_per_volume&sort_direction=asc',
+    )
+    await screen.findByText('Jita to Amarr rush')
+
+    await userEvent.click(screen.getByRole('button', { name: /^All 1,300$/ }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ sort_by: 'date_issued' }),
+    )
+    expect(router.state.location.searchStr).not.toContain('reward_per_volume')
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=date_issued')
+      expect(listCall).not.toContain('reward_per_volume')
+    })
+  })
+
+  it('resets the ship-name sort on the way into the courier segment', async () => {
+    // The courier Contract column deliberately drops the ship_name sortField,
+    // so the sort must not survive the switch invisibly.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp('/contracts?sort_by=ship_name&sort_direction=asc')
+    await screen.findByText('Tristan')
+
+    await userEvent.click(screen.getByRole('button', { name: /^Courier 115$/ }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ sort_by: 'date_issued' }),
+    )
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).not.toContain('ship_name')
+    })
+  })
+
+  it('keeps a sort both segments can express', async () => {
+    // Price is sortable in All and in Auction alike — resetting it would throw
+    // away the user's choice for no disclosure gain.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp('/contracts?sort_by=price&sort_direction=asc')
+    await screen.findByText('Tristan')
+
+    await userEvent.click(screen.getByRole('button', { name: /^Auction 60$/ }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        contract_type: ['auction'],
+        sort_by: 'price',
+        sort_direction: 'asc',
+      }),
+    )
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=price')
+      expect(listCall).toContain('sort_direction=asc')
+    })
+  })
+
   it('keeps the default column set for All and for item exchange', async () => {
     // The segment selects the columns (spec §8 axis 1), so the two segments
     // that describe a fixed-price sale keep the set the table has always had —
