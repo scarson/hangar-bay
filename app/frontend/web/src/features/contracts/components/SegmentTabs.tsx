@@ -4,6 +4,7 @@ import {
   CONTRACT_TYPES,
   ITEM_BEARING_TYPES,
   ITEM_LESS_TYPES,
+  activeSegment,
   type ContractSearch,
   type ContractTypeValue,
 } from '../filters'
@@ -28,15 +29,6 @@ const SEGMENT_TITLES: Record<ContractTypeValue, string> = {
   courier: 'Courier Contracts',
   loan: 'Loan Contracts',
   unknown: 'Unknown Contracts',
-}
-
-/**
- * The one type in effect, or undefined for no selection — or for several, which
- * only a hand-edited URL produces. It names the view and, through
- * `columnsFor`, selects the columns the rows are described with (spec §8).
- */
-export function activeSegment(search: ContractSearch): ContractTypeValue | undefined {
-  return search.contract_type?.length === 1 ? search.contract_type[0] : undefined
 }
 
 /**

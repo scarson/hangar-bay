@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { anonymousMe, jsonResponse } from '../../../test/http'
+import { anonymousMe, jsonResponse, type FetchHandler } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
@@ -78,7 +78,7 @@ function headerNames(): string[] {
   return screen.getAllByRole('columnheader').map((th) => th.textContent!.replace(/[▲▼]/g, '').trim())
 }
 
-function stubFetch(handler: (url: string) => Response) {
+function stubFetch(handler: FetchHandler) {
   const calls: string[] = []
   vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
     const url =
@@ -832,6 +832,58 @@ describe('per-segment column sets', () => {
     ).toBeInTheDocument()
     expect(bulk.queryByText(/Location \d/)).not.toBeInTheDocument()
     expect(bulk.getAllByText('—')).toHaveLength(2)
+  })
+
+  it('describes the rows still on screen with their own columns while the next segment loads', async () => {
+    // The table holds the previous segment's rows until the new response lands
+    // (keepPreviousData), and the unfiltered list takes seconds in production —
+    // this window is not a sub-frame flicker. Columns taken from the URL rather
+    // than from the rows would describe THIS sale as a hauling job: its price
+    // read as a reward, its hull volume read as cargo, and a destination
+    // invented for a contract that has no route at all.
+    let releaseCouriers!: (page: Response) => void
+    const couriersInFlight = new Promise<Response>((resolve) => {
+      releaseCouriers = resolve
+    })
+    const calls = stubFetch(
+      anonymousMe((url) =>
+        url.includes('contract_type=courier') ? couriersInFlight : typedPage(url),
+      ),
+    )
+
+    renderApp('/contracts')
+    await screen.findByText('Tristan')
+
+    await userEvent.click(screen.getByRole('button', { name: /^Courier/ }))
+    await waitFor(() => expect(calls.some((url) => url.includes('contract_type=courier'))).toBe(true))
+
+    expect(screen.getByRole('row', { name: /Tristan/ })).toBeInTheDocument()
+    expect(headerNames()).toEqual([
+      'Ship / Contract',
+      'Type',
+      'Price (ISK)',
+      'Location',
+      'Time left',
+      'Issued',
+    ])
+    // Spec §8 reserves this wording for a courier endpoint no public token can
+    // resolve; a sale has no endpoint to fail to resolve.
+    expect(screen.queryByText(/Unknown structure/)).not.toBeInTheDocument()
+
+    releaseCouriers(jsonResponse(listPage(COURIER_ROWS)))
+
+    expect(await screen.findByText('Jita to Amarr rush')).toBeInTheDocument()
+    expect(headerNames()).toEqual([
+      'Contract',
+      'Route',
+      'Reward',
+      'Collateral',
+      'Volume',
+      'Reward/m³',
+      'Deadline',
+      'Time left',
+    ])
+    expect(screen.queryByRole('row', { name: /Tristan/ })).not.toBeInTheDocument()
   })
 
   it('sorts the courier segment on reward per m³ from its own header', async () => {

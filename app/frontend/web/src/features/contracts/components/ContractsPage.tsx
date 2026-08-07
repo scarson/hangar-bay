@@ -9,7 +9,7 @@ import { useContracts } from '../hooks/useContracts'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
 import { FilterRail } from './FilterRail'
 import { Pagination } from './Pagination'
-import { SegmentTabs, activeSegment, listTitle } from './SegmentTabs'
+import { SegmentTabs, listTitle } from './SegmentTabs'
 
 /** New sort field starts in its most useful direction: newest/soonest for dates, cheap-first for ISK. */
 const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
@@ -159,8 +159,11 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
             <ContractTable
               contracts={data.items}
               // The segment picks the columns; the table frame is the same one
-              // every segment renders through (spec §8).
-              columns={columnsFor(activeSegment(search))}
+              // every segment renders through (spec §8). It comes off the
+              // response rather than the URL so the columns always describe the
+              // rows beneath them — the two disagree for the whole of a segment
+              // switch, which `keepPreviousData` renders with the old rows.
+              columns={columnsFor(data.segment)}
               search={search}
               onSort={handleSort}
               isRefreshing={isFetching}

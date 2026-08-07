@@ -24,9 +24,17 @@ export function emptyContractPage(): Record<string, unknown> {
   }
 }
 
+/** A stubbed handler may answer later, so a test can hold one request in flight. */
+export type FetchHandler = (url: string) => Response | Promise<Response>
+
 // Wrap a fetch handler so /api/v1/me answers 401 (anonymous) by default. The header
 // queries /me on every page now; without this, URL-agnostic stubs render a bogus
 // authenticated header (name undefined, portrait src .../characters/undefined/...).
-export function anonymousMe(handler: (url: string) => Response): (url: string) => Response {
+// Generic over what the wrapped handler answers with, so wrapping a plain
+// Response handler still produces one — only a caller that itself defers gets a
+// deferred type back.
+export function anonymousMe<R extends Response | Promise<Response>>(
+  handler: (url: string) => R,
+): (url: string) => R | Response {
   return (url) => (/\/api\/v1\/me$/.test(url) ? jsonResponse({ detail: 'unauthenticated' }, 401) : handler(url))
 }

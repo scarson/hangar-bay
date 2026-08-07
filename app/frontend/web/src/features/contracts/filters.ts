@@ -62,6 +62,7 @@ export const ITEM_LESS_TYPES: readonly ContractTypeValue[] = ['courier', 'loan',
  */
 export const ITEM_BEARING_TYPES: readonly ContractTypeValue[] = ['item_exchange', 'auction']
 
+/**
 /** Backend ContractFilters.search has min_length=3; shorter values 422. */
 export const MIN_SEARCH_LENGTH = 3
 export const DEFAULT_PAGE = 1
@@ -89,6 +90,18 @@ export interface ContractSearch {
   size: number
   sort_by: SortField
   sort_direction: SortDirection
+}
+
+/**
+ * The one type in effect, or undefined for no selection — or for several, which
+ * only a hand-edited URL produces. It names the view and, through `columnsFor`,
+ * selects the columns the rows are described with (spec §8). It lives beside
+ * the search it reads rather than beside either consumer: the segment control
+ * asks what the URL selects, while the list asks what the rows on screen were
+ * fetched under, and those are the same question at two different moments.
+ */
+export function activeSegment(search: ContractSearch): ContractTypeValue | undefined {
+  return search.contract_type?.length === 1 ? search.contract_type[0] : undefined
 }
 
 function toNumber(value: unknown): number | undefined {
