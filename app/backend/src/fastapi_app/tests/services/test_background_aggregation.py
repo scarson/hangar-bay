@@ -35,6 +35,9 @@ def _make_service() -> ContractAggregationService:
     )
     # get_contract_items is exercised by other flows; keep it inert here.
     esi_client.get_contract_items = AsyncMock(return_value=[])
+    # A resolvable default keeps captured logs free of "can't be awaited" warnings
+    # from the taxonomy-name fan-out; tests that exercise failure paths override it.
+    esi_client.get_universe_category = AsyncMock(return_value={"name": "Ship"})
     settings = MagicMock()
     return ContractAggregationService(esi_client=esi_client, settings=settings)
 
@@ -1023,6 +1026,17 @@ async def test_type_specific_contract_fields_land_on_persisted_rows(db_session: 
             60008494: "Amarr VIII (Oris) - Emperor Family Academy",
         }
     )
+    # A real item keeps the auction off the zero-items warning path, so the run's
+    # captured logs stay pristine (an item_exchange/auction cannot be empty).
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8011, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
     await service._process_contracts(db_session, [contract])
 
     row = (await db_session.execute(
@@ -1033,12 +1047,18 @@ async def test_type_specific_contract_fields_land_on_persisted_rows(db_session: 
     assert row.end_location_name == "Amarr VIII (Oris) - Emperor Family Academy"
 
     # Absence stays NULL (ESI-3): a payload without the fields must not write zeros.
+    # Fresh record_id so the upsert cannot move contract 801's item row here.
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8021, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
     bare = _ship_contract_dict(802)
     await service._process_contracts(db_session, [bare])
     bare_row = (await db_session.execute(
         select(Contract).where(Contract.contract_id == 802)
     )).scalar_one()
-    assert bare_row.buyout is None and bare_row.days_to_complete is None
+    assert bare_row.buyout is None
+    assert bare_row.days_to_complete is None
+    assert bare_row.end_location_name is None
 
 
 async def test_item_level_columns_persist_from_payload_and_enrichment(db_session: AsyncSession):
@@ -1068,7 +1088,10 @@ async def test_item_level_columns_persist_from_payload_and_enrichment(db_session
     assert (copy.runs, copy.material_efficiency, copy.time_efficiency) == (10, 8, 14)
     assert copy.item_id == 1_000_000_001
     assert copy.category_id == 9 and copy.group_id == 105
-    assert original.runs is None and original.material_efficiency is None
+    assert original.runs is None
+    assert original.material_efficiency is None
+    assert original.time_efficiency is None
+    assert original.item_id is None
     assert original.category_id == 9          # taxonomy resolves regardless of blueprint fields
 
 

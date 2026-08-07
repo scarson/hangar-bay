@@ -163,10 +163,10 @@ class ContractItem(Base):
     # AUTHENTICATED character/corporation contract-ITEM routes; the public item route
     # carries neither, so under public ingestion is_singleton takes its mapping default and
     # raw_quantity stays NULL for every row. They fill in when a user's own contracts are
-    # ingested. Until then no filter may read them — min_runs/max_runs already did, and
-    # returned an empty result that looked like "no BPCs match" rather than a dead control
-    # (ESI-3). A public contract's run count would come from the public `runs` field, which
-    # is a different column nothing ingests yet.
+    # ingested. Until then no filter may read them — min_runs/max_runs once read
+    # raw_quantity and returned an empty result that looked like "no BPCs match" rather
+    # than a dead control (ESI-3). A public contract's run count comes from the public
+    # `runs` column above, which enrichment ingests.
     is_singleton: Mapped[bool] = mapped_column(Boolean, nullable=False)
     raw_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 

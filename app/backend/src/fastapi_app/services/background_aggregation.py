@@ -148,7 +148,8 @@ async def _resolve_esi_objects(
 
 
 # Loose index scan over ix_contract_items_category_id. SELECT DISTINCT category_id
-# reads the whole index on a corpus this size (perf audit 2026-08-02 §4 measured the
+# reads the whole index on a corpus this size (the contract-list perf audit,
+# docs/perf-audits/2026-08-02-contract-list-watermark-subquery.md §4, measured the
 # equivalent region query at 602 ms; PG18's btree skip scan does not engage), while
 # the recursive CTE costs one index probe per distinct category — a set of a few dozen.
 # min() ignores NULLs, so items whose taxonomy never resolved drop out on their own.
@@ -851,7 +852,8 @@ class ContractAggregationService:
     ) -> tuple[set[int], set[int], dict[int, dict]]:
         """Resolve type -> group -> category for fetched items (ESI static data,
         ETag-cached in Valkey, so repeat runs are near-free), enrich the item
-        dicts in place (type_name, market_group_id, category), and return
+        dicts in place (type_name, market_group_id, category, group_id,
+        category_id), and return
         (ship_contract_ids, unresolved_category_contract_ids, group_info): the
         contract_ids whose INCLUDED items contain a ship (EVE category 6), those
         with ANY item whose category could not be determined, and the group
