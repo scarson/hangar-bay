@@ -75,10 +75,11 @@ async def test_filter_by_bpc_runs(client: AsyncClient, setup_contracts):
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) == 1
-    # The run count is not served on a list row, so the matched contract itself is
-    # the only observable the response can carry.
+    # The row publishes the run count the filter bounded — a single offered copy, so
+    # blueprint_summary reports that copy's terms — and the two cannot disagree.
     assert data["items"][0]["contract_id"] == 102
     assert data["items"][0]["is_blueprint_copy_contract"] is True
+    assert data["items"][0]["blueprint_summary"]["runs"] == 10
 
 
 async def test_response_omits_fields_public_ingestion_cannot_populate(
