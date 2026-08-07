@@ -437,8 +437,16 @@ export const AUCTION_CONTRACTS: WireContract[] = [
 /**
  * Couriers: no items, money in the reward and the collateral, distinct
  * reward/collateral/volume/reward-per-m³/deadline so every sortable courier
- * column has an unambiguous order. The last one's destination is a player
- * structure nothing could resolve — the row must say so rather than go blank.
+ * column has an unambiguous order (TEST-3).
+ *
+ * reward ÷ volume is 2000, 1500 and 1800 ISK/m³, which orders the rows
+ * differently from every other key here — an ordering assertion on Reward/m³
+ * therefore fails if the sort falls back to reward. Keep the third row's
+ * volume off the reward's own ratio: 12,000 m³ would put it at 1500 ISK/m³,
+ * tying the second row and making that assertion decide on a tiebreaker.
+ *
+ * The last one's destination is a player structure nothing could resolve — the
+ * row must say so rather than go blank.
  */
 export const COURIER_CONTRACTS: WireContract[] = [
   {
@@ -459,7 +467,7 @@ export const COURIER_CONTRACTS: WireContract[] = [
     destination: null,
     reward: 18_000_000,
     collateral: 250_000_000,
-    volume: 12_000,
+    volume: 10_000,
     days: 3,
   },
 ].map((courier, i) =>
