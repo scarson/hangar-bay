@@ -109,7 +109,7 @@ MANIFEST: tuple[Endpoint, ...] = (
             "record_id": "background_aggregation._fetch_item_rows -> ContractItem.record_id (primary key)",
             "type_id": "background_aggregation._fetch_item_rows -> ContractItem.type_id; drives the /universe/types enrichment fan-out",
             "quantity": "background_aggregation._fetch_item_rows -> ContractItem.quantity",
-            "is_included": "background_aggregation._fetch_item_rows -> ContractItem.is_included; _enrich_items_and_find_ships lets only included items set the ship flag, and every item-level filter is an offered-items EXISTS",
+            "is_included": "background_aggregation._fetch_item_rows -> ContractItem.is_included; _enrich_items_and_find_ships lets only included items set the ship flag",
             "is_blueprint_copy": "background_aggregation._fetch_item_rows -> ContractItem.is_blueprint_copy; contract_service._has_blueprint_copy_item backs the is_bpc filter",
             "runs": "background_aggregation._fetch_item_rows -> ContractItem.runs; blueprint-copy display and the min_runs/max_runs filter (F008)",
             "material_efficiency": "background_aggregation._fetch_item_rows -> ContractItem.material_efficiency; blueprint display and the min_me/max_me filter (F008)",

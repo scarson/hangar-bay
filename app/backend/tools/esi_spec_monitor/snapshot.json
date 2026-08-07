@@ -10,7 +10,7 @@
         "consumed_fields_absent_from_spec": [],
         "consumers": {
           "is_blueprint_copy": "background_aggregation._fetch_item_rows -> ContractItem.is_blueprint_copy; contract_service._has_blueprint_copy_item backs the is_bpc filter",
-          "is_included": "background_aggregation._fetch_item_rows -> ContractItem.is_included; _enrich_items_and_find_ships lets only included items set the ship flag, and every item-level filter is an offered-items EXISTS",
+          "is_included": "background_aggregation._fetch_item_rows -> ContractItem.is_included; _enrich_items_and_find_ships lets only included items set the ship flag",
           "item_id": "background_aggregation._fetch_item_rows -> ContractItem.item_id; the dynamic-item join key, absent on requested items (F008)",
           "material_efficiency": "background_aggregation._fetch_item_rows -> ContractItem.material_efficiency; blueprint display and the min_me/max_me filter (F008)",
           "quantity": "background_aggregation._fetch_item_rows -> ContractItem.quantity",
@@ -1224,7 +1224,7 @@
         "consumed_fields_absent_from_spec": [],
         "consumers": {
           "is_blueprint_copy": "background_aggregation._fetch_item_rows -> ContractItem.is_blueprint_copy; contract_service._has_blueprint_copy_item backs the is_bpc filter",
-          "is_included": "background_aggregation._fetch_item_rows -> ContractItem.is_included; _enrich_items_and_find_ships lets only included items set the ship flag, and every item-level filter is an offered-items EXISTS",
+          "is_included": "background_aggregation._fetch_item_rows -> ContractItem.is_included; _enrich_items_and_find_ships lets only included items set the ship flag",
           "item_id": "background_aggregation._fetch_item_rows -> ContractItem.item_id; the dynamic-item join key, absent on requested items (F008)",
           "material_efficiency": "background_aggregation._fetch_item_rows -> ContractItem.material_efficiency; blueprint display and the min_me/max_me filter (F008)",
           "quantity": "background_aggregation._fetch_item_rows -> ContractItem.quantity",
