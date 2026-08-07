@@ -63,13 +63,13 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phases A and B shipped (B pending merge); C3-C6 and D not started.
+**Overall:** Phases A and B MERGED to dev; C (C3-C6) in progress; D not started.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | A — Data layer (migration, ingestion, taxonomy cache) | ✅ Shipped | `a7cd7ba`..`c0e3d85` | PR #138 merged at `8303e15` 2026-08-07; migration `685dab7d6df5`; ENRICHMENT_VERSION→2; 582 tests green; codex-reviewed (D10 deferral logged). |
-| B — API contract (model split, counts, filters, taxonomy endpoint) | 🚧 In progress | — | Claimed 2026-08-07 on `feat/f008-api-contract` (includes Tasks C1/C2 per the PR-boundary correction). |
-| C — Frontend contract-level surface (renderer refactor, segments, auction/courier) | ⬜ Not started | — | — |
+| B — API contract (model split, counts, filters, taxonomy endpoint) | ✅ Shipped | `ecb1352`..`8da5588` | PR #139 merged 2026-08-07; incl. Tasks C1/C2; 669 backend tests, all frontend lanes; codex-reviewed (3 P2s taken). |
+| C — Frontend contract-level surface (segments, auction/courier, coverage states) | 🚧 In progress | — | C1/C2 shipped with PR-B; C3-C6 claimed 2026-08-07 on `feat/f008-contract-surface`. |
 | D — Frontend item-level surface (taxonomy UI, ME/TE/runs, BPC, composition) | ⬜ Not started | — | — |
 
 ### Deviations
