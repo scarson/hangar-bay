@@ -21,8 +21,8 @@ export type ContractTypeValue = components['schemas']['ContractType']
 /**
  * The backend's closed contract-type enum, mirrored so the parser can drop a
  * value that would 422. `satisfies` fails the build if a member here stops
- * being one the server accepts; filters.test.ts pins the membership the other
- * way, so a member the server gains cannot go unnoticed either.
+ * being one the server accepts; UnmirroredContractTypes below fails it in the
+ * other direction, when the server gains a member this list does not carry.
  */
 export const CONTRACT_TYPES = [
   'item_exchange',
@@ -31,6 +31,21 @@ export const CONTRACT_TYPES = [
   'loan',
   'unknown',
 ] as const satisfies readonly ContractTypeValue[]
+
+/** Admits only the empty union, so anything left over is a compile error. */
+type Exhausted<T extends never> = T
+
+/**
+ * The server contract types CONTRACT_TYPES leaves out — none, or the build
+ * fails on this line. `satisfies` above cannot stand in for it: it checks that
+ * every member listed is one the server accepts, not that the list exhausts
+ * the server's enum. The requirement belongs beside the list because a type
+ * the mirror omits is one the UI never parses out of a URL, offers no control
+ * for, and leaves as an unreachable segment.
+ */
+export type UnmirroredContractTypes = Exhausted<
+  Exclude<ContractTypeValue, (typeof CONTRACT_TYPES)[number]>
+>
 
 /**
  * The types that carry no items. Ships-only classifies a contract by its
