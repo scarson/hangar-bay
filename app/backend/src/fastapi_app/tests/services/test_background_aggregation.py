@@ -1072,9 +1072,15 @@ async def test_item_level_columns_persist_from_payload_and_enrichment(db_session
          "is_blueprint_copy": True, "runs": 10, "material_efficiency": 8,
          "time_efficiency": 14, "item_id": 1_000_000_001},
         {"record_id": 8212, "type_id": 621, "quantity": 1, "is_included": True},  # original: runs absent
+        # A type whose payload carries no group_id: taxonomy ids must persist as
+        # NULL, never a fabricated default (ESI-3 — absence is not zero).
+        {"record_id": 8213, "type_id": 999, "quantity": 1, "is_included": True},
     ])
     service.esi_client.get_universe_type = AsyncMock(
-        return_value={"name": "Caracal Blueprint", "group_id": 105, "market_group_id": 4}
+        side_effect=lambda type_id: {
+            621: {"name": "Caracal Blueprint", "group_id": 105, "market_group_id": 4},
+            999: {"name": "Mystery Meat"},
+        }[type_id]
     )
     service.esi_client.get_universe_group = AsyncMock(
         return_value={"name": "Cruiser Blueprint", "category_id": 9}
@@ -1093,6 +1099,9 @@ async def test_item_level_columns_persist_from_payload_and_enrichment(db_session
     assert original.time_efficiency is None
     assert original.item_id is None
     assert original.category_id == 9          # taxonomy resolves regardless of blueprint fields
+    groupless = rows[8213]
+    assert groupless.group_id is None
+    assert groupless.category_id is None
 
 
 async def test_enrichment_fills_the_taxonomy_name_cache(db_session: AsyncSession):
@@ -1166,9 +1175,11 @@ async def test_a_failed_category_name_fetch_is_repaired_from_observed_items(
     )).scalar_one()
     assert contract.item_processing_status == "COMPLETED"
 
-    # Next run: ESI recovers, but the batch is courier-only — no items are fetched,
-    # so nothing in this run's enrichment mentions category 6. The stored item does.
-    service.esi_client.get_universe_category = AsyncMock(return_value={"name": "Ship"})
+    # Next run: ESI recovers, the batch is courier-only — no items are fetched, so
+    # nothing in this run's enrichment mentions category 6. The stored item does.
+    # A FRESH service proves the retry is DB-observed, not in-memory state that a
+    # process restart would lose.
+    service = _make_service()
     courier = _ship_contract_dict(842)
     courier["type"] = "courier"
     await service._process_contracts(db_session, [courier])
@@ -1179,6 +1190,57 @@ async def test_a_failed_category_name_fetch_is_repaired_from_observed_items(
         )
     )).scalar_one()
     assert row.name == "Ship"
+
+
+async def test_a_nameless_group_payload_is_repaired_from_observed_items(
+    db_session: AsyncSession,
+):
+    """A group payload carrying category_id but no name must not be lost forever.
+
+    The item resolves (category_id present), the contract is stamped COMPLETED, and
+    the enrichment skip withholds it from every later run — so without a DB-observed
+    retry the group would stay absent from the taxonomy option list permanently.
+    Same self-healing shape as categories, one level down.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8511, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    # The codex-flagged shape: category resolves, the group name is absent.
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(851)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "group")
+    )).scalars().all() == []
+    contract = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 851)
+    )).scalar_one()
+    assert contract.item_processing_status == "COMPLETED"
+
+    # Next run, fresh service, healed ESI, courier-only batch: the stored item's
+    # group_id is the only mention of group 25, and it must be enough.
+    service = _make_service()
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    courier = _ship_contract_dict(852)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    row = (await db_session.execute(
+        select(EsiTaxonomyCache).where(
+            EsiTaxonomyCache.kind == "group", EsiTaxonomyCache.esi_id == 25
+        )
+    )).scalar_one()
+    assert row.name == "Frigate"
+    assert row.parent_category_id == 6
 
 
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):

@@ -104,6 +104,20 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 
 ---
 
+## D10 — PR-A codex finding on name NULL-overwrite: deferred as a pre-existing, self-healing defect class
+
+**Background.** Codex's PR-A review flagged as P1: a transient `/universe/names` failure yields a partial name map, every upsert row still supplies `end_location_name=None`, and `bulk_upsert` copies supplied columns on conflict — blanking previously-resolved courier destinations for the re-sighted batch.
+
+**Verification.** Confirmed real — and confirmed **pre-existing**: `start_location_name`, `issuer_name`, and `issuer_corporation_name` have carried the identical exposure since M1. It also self-heals: names re-resolve on every sighting, so the blank window lasts exactly as long as the ESI names outage.
+
+**Alternatives.** (1) Fix now via coalesce-on-conflict semantics in `bulk_upsert` — correct, but changes shared upsert infrastructure consumed by every writer, at the gate of a schema-classified PR, for a defect class production has lived with for months. (2) Per-row key omission — impossible under the uniform-keys invariant. (3) **Defer (chosen):** land PR-A with the exposure unchanged in kind (one more nullable display column), file the coalesce fix as its own reviewed change covering all four name columns.
+
+**Decision.** Defer with a spawned follow-up task; severity treated as parity-with-existing (P2), not P1, because F008 adds no new failure *mechanism*. **Reversibility: cheap** — the follow-up is independent of everything in this build.
+
+**Codex reviewed:** it raised it; the fix lands separately with its own review. Also from the same review: the taxonomy cache gained a DB-observed retry for **group** names (P1-2, accepted and shipped in the gate commit), the category-repair test now uses a fresh service across runs (P2-3), the group-less-type NULL case is pinned (P2-4), and B7's readiness check was re-scoped to live contracts with its own query (P2-5, plan amendment).
+
+---
+
 ## D9 — Codex round-2 outcomes: 13 findings accepted, one rebutted (migration-file ABOUTME headers)
 
 **Background.** The cross-model plan review (codex, gpt-5.6-sol, high) returned 13 P1 + 2 P2 findings. All were verified against source before acting; 14 were accepted and are folded into the plan (PR-B/C boundary, item-surface gate scope, coverage denominator + cache-completeness + threshold-test arithmetic, taxonomy-cache retry path, category-less-payload completion bug, All-count arithmetic, item-less deep-link normalization, buyout sort fixtures, columns-module extraction, non-enum type folding, conditional DISTINCT).

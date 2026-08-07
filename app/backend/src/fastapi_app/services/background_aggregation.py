@@ -164,15 +164,38 @@ _OBSERVED_CATEGORY_IDS_SQL = text("""
     SELECT category_id FROM categories WHERE category_id IS NOT NULL
 """)
 
+# Same loose-index-scan shape over ix_contract_items_group_id: the distinct group
+# set is O(hundreds), so the CTE costs one probe per group where DISTINCT would
+# read the whole index.
+_OBSERVED_GROUP_IDS_SQL = text("""
+    WITH RECURSIVE groups(group_id) AS (
+        SELECT min(group_id) FROM contract_items
+        UNION ALL
+        SELECT (SELECT min(group_id) FROM contract_items
+                 WHERE group_id > groups.group_id)
+        FROM groups WHERE groups.group_id IS NOT NULL
+    )
+    SELECT group_id FROM groups WHERE group_id IS NOT NULL
+""")
+
 
 async def _observed_category_ids(db_session: AsyncSession) -> set[int]:
     """The distinct dogma categories present on stored contract items.
 
-    Shared by the name-cache writer and the taxonomy endpoint's completeness
-    condition so the two cannot drift: both ask what the corpus actually contains,
-    rather than what the current batch happens to mention.
+    Feeds the name-cache writer's retry set. Deliberately unscoped to live
+    contracts: fetching a name for a category seen only on delisted rows is a
+    harmless one-time cost, and names are immutable. The taxonomy endpoint's
+    readiness condition asks a different question (live contracts only) and owns
+    its own query.
     """
     rows = await db_session.execute(_OBSERVED_CATEGORY_IDS_SQL)
+    return set(rows.scalars())
+
+
+async def _observed_group_ids(db_session: AsyncSession) -> set[int]:
+    """The distinct dogma groups present on stored contract items (same contract
+    as _observed_category_ids, one taxonomy level down)."""
+    rows = await db_session.execute(_OBSERVED_GROUP_IDS_SQL)
     return set(rows.scalars())
 
 
@@ -800,12 +823,12 @@ class ContractAggregationService:
         the one ESI call this feature adds — issued cache-first, because the set is
         tiny and immutable, so steady state fetches zero categories.
 
-        The categories considered are this run's PLUS every category observed on
-        stored items that has no cache row yet. That second source is what makes the
-        cache self-healing: a contract stamped COMPLETED is withheld from the item
-        re-fetch, so its group payload never reaches this writer again, and a
-        category whose first name fetch failed would otherwise stay nameless until
-        some unrelated contract happened to carry it.
+        Both levels consider this run's payloads PLUS every id observed on stored
+        items that has no cache row yet. That second source is what makes the cache
+        self-healing: a contract stamped COMPLETED is withheld from the item
+        re-fetch, so its payloads never reach this writer again, and a name whose
+        first fetch failed (or a group payload that arrived nameless) would
+        otherwise stay absent until some unrelated contract happened to carry it.
         """
         now = datetime.now(timezone.utc)
         group_rows = [
@@ -816,6 +839,36 @@ class ContractAggregationService:
         ]
         if group_rows:
             await bulk_upsert(db_session, EsiTaxonomyCache, group_rows)
+
+        # Groups get the same DB-observed retry as categories: a payload that
+        # carried category_id but no name resolved its item (so the contract is
+        # COMPLETED and skipped forever) while writing no cache row above.
+        observed_groups = await _observed_group_ids(db_session)
+        if observed_groups:
+            cached_groups = set((await db_session.execute(
+                select(EsiTaxonomyCache.esi_id).where(
+                    EsiTaxonomyCache.kind == "group",
+                    EsiTaxonomyCache.esi_id.in_(sorted(observed_groups)),
+                )
+            )).scalars())
+            missing_groups = observed_groups - cached_groups
+            if missing_groups:
+                group_payloads = await _resolve_esi_objects(
+                    self.esi_client.get_universe_group, missing_groups, "Group"
+                )
+                repair_rows = [
+                    {"kind": "group", "esi_id": group_id, "name": payload["name"],
+                     "parent_category_id": payload.get("category_id"),
+                     "fetched_at": now}
+                    for group_id, payload in group_payloads.items()
+                    if payload.get("name") is not None
+                ]
+                if repair_rows:
+                    await bulk_upsert(db_session, EsiTaxonomyCache, repair_rows)
+                # Their categories join the fetch set below so a repaired group
+                # never dangles without its parent's name.
+                group_info = dict(group_info)
+                group_info.update(group_payloads)
 
         category_ids = {
             info["category_id"] for info in group_info.values()
