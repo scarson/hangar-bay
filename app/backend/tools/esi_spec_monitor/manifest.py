@@ -77,13 +77,15 @@ MANIFEST: tuple[Endpoint, ...] = (
             "date_issued": "background_aggregation._build_contract_rows -> Contract.date_issued",
             "date_expired": "background_aggregation._build_contract_rows -> Contract.date_expired",
             "start_location_id": "background_aggregation._build_contract_rows -> Contract.start_location_id, and name resolution",
-            "end_location_id": "background_aggregation._build_contract_rows -> Contract.end_location_id",
+            "end_location_id": "background_aggregation._build_contract_rows -> Contract.end_location_id, and the destination half of both name and system resolution (Contract.end_location_name, Contract.end_location_system_id)",
             "title": "background_aggregation._build_contract_rows -> Contract.title",
             "for_corporation": "background_aggregation._build_contract_rows -> Contract.for_corporation",
             "price": "background_aggregation._build_contract_rows -> Contract.price (sortable, filterable)",
             "collateral": "background_aggregation._build_contract_rows -> Contract.collateral",
             "reward": "background_aggregation._build_contract_rows -> Contract.reward",
             "volume": "background_aggregation._build_contract_rows -> Contract.volume",
+            "buyout": "background_aggregation._build_contract_rows -> Contract.buyout; the auction-segment column and the buyout sort (F008)",
+            "days_to_complete": "background_aggregation._build_contract_rows -> Contract.days_to_complete; the courier-segment column and the days_to_complete sort (F008)",
         },
         known_absent_fields=(
             KnownAbsentField(
@@ -107,8 +109,12 @@ MANIFEST: tuple[Endpoint, ...] = (
             "record_id": "background_aggregation._fetch_item_rows -> ContractItem.record_id (primary key)",
             "type_id": "background_aggregation._fetch_item_rows -> ContractItem.type_id; drives the /universe/types enrichment fan-out",
             "quantity": "background_aggregation._fetch_item_rows -> ContractItem.quantity",
-            "is_included": "background_aggregation._fetch_item_rows -> ContractItem.is_included; _enrich_items lets only included items set the ship flag",
+            "is_included": "background_aggregation._fetch_item_rows -> ContractItem.is_included; _enrich_items_and_find_ships lets only included items set the ship flag, and every item-level filter is an offered-items EXISTS",
             "is_blueprint_copy": "background_aggregation._fetch_item_rows -> ContractItem.is_blueprint_copy; contract_service._has_blueprint_copy_item backs the is_bpc filter",
+            "runs": "background_aggregation._fetch_item_rows -> ContractItem.runs; blueprint-copy display and the min_runs/max_runs filter (F008)",
+            "material_efficiency": "background_aggregation._fetch_item_rows -> ContractItem.material_efficiency; blueprint display and the min_me/max_me filter (F008)",
+            "time_efficiency": "background_aggregation._fetch_item_rows -> ContractItem.time_efficiency; blueprint display and the min_te/max_te filter (F008)",
+            "item_id": "background_aggregation._fetch_item_rows -> ContractItem.item_id; the dynamic-item join key, absent on requested items (F008)",
         },
         known_absent_fields=(
             KnownAbsentField(
@@ -129,9 +135,9 @@ MANIFEST: tuple[Endpoint, ...] = (
         call_path="/v3/universe/types/{type_id}/",
         caller="core/esi_client_class.py ESIClient.get_universe_type",
         consumed_fields={
-            "name": "background_aggregation._enrich_items -> ContractItem.type_name (the searchable ship name)",
-            "group_id": "background_aggregation._enrich_items -> the /universe/groups fan-out that decides the ship flag",
-            "market_group_id": "background_aggregation._enrich_items -> ContractItem.market_group_id",
+            "name": "background_aggregation._enrich_items_and_find_ships -> ContractItem.type_name (the searchable ship name)",
+            "group_id": "background_aggregation._enrich_items_and_find_ships -> the /universe/groups fan-out that decides the ship flag, and ContractItem.group_id, which backs the group filter and the taxonomy option list",
+            "market_group_id": "background_aggregation._enrich_items_and_find_ships -> ContractItem.market_group_id",
         },
     ),
     Endpoint(
@@ -140,7 +146,17 @@ MANIFEST: tuple[Endpoint, ...] = (
         call_path="/v1/universe/groups/{group_id}/",
         caller="core/esi_client_class.py ESIClient.get_universe_group",
         consumed_fields={
-            "category_id": "background_aggregation._enrich_items -> compared against SHIP_CATEGORY_ID; this single field decides whether a contract is a ship contract, which is the product's default view",
+            "category_id": "background_aggregation._enrich_items_and_find_ships -> compared against SHIP_CATEGORY_ID, which decides whether a contract is a ship contract (the product's default view), and ContractItem.category_id, which backs the category filter; _upsert_taxonomy_names also stores it as EsiTaxonomyCache.parent_category_id and drives the /universe/categories fan-out",
+            "name": "background_aggregation._upsert_taxonomy_names -> EsiTaxonomyCache row for kind='group'; the label of every group option in the taxonomy list",
+        },
+    ),
+    Endpoint(
+        spec_path="/universe/categories/{category_id}",
+        method="get",
+        call_path="/v1/universe/categories/{category_id}/",
+        caller="core/esi_client_class.py ESIClient.get_universe_category",
+        consumed_fields={
+            "name": "background_aggregation._upsert_taxonomy_names -> EsiTaxonomyCache row for kind='category'; the label of every category option in the taxonomy list, fetched cache-first so steady state calls this route zero times",
         },
     ),
     Endpoint(
@@ -150,7 +166,7 @@ MANIFEST: tuple[Endpoint, ...] = (
         caller="core/esi_client_class.py ESIClient.resolve_ids_to_names",
         consumed_fields={
             "id": "esi_client_class.resolve_ids_to_names -> the id->name map key",
-            "name": "esi_client_class.resolve_ids_to_names -> Contract.issuer_name / issuer_corporation_name / start_location_name",
+            "name": "esi_client_class.resolve_ids_to_names -> Contract.issuer_name / issuer_corporation_name / start_location_name / end_location_name",
         },
     ),
     Endpoint(
@@ -172,7 +188,7 @@ MANIFEST: tuple[Endpoint, ...] = (
             # carries a location id and no system id, so without this the system_ids
             # filter has nothing to match — its disappearance would leave every
             # start_location_system_id NULL while the ingestion kept reporting success.
-            "system_id": "background_aggregation._resolve_station_systems -> Contract.start_location_system_id, which backs the system_ids filter",
+            "system_id": "background_aggregation._resolve_station_systems -> Contract.start_location_system_id, which backs the system_ids filter, and Contract.end_location_system_id, the courier destination",
         },
     ),
     Endpoint(
