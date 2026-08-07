@@ -7,7 +7,7 @@ from typing import Iterable, Iterator, List, Callable  # Added Callable
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis  # For on-demand client creation
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import Settings  # Settings type for hinting
@@ -16,7 +16,7 @@ from ..core.exceptions import ESINotModifiedError  # Restored ESINotModifiedErro
 from ..core.metrics import last_ingest_success_timestamp
 
 from ..db import AsyncSessionLocal
-from ..models.contracts import Contract, ContractItem  # Models
+from ..models.contracts import Contract, ContractItem, EsiTaxonomyCache  # Models
 # Removed incorrect import: from ..services.esi_client import ESIClient as ESIClientService
 from .db_upsert import bulk_upsert  # Upsert utility
 
@@ -70,7 +70,7 @@ NPC_STATION_ID_MAX = 64_000_000
 # while a run stays under 2x the scheduler interval — so don't deploy again or
 # scale out mid-resweep, and re-derive that margin before shortening
 # AGGREGATION_SCHEDULER_INTERVAL_SECONDS.
-ENRICHMENT_VERSION = 1
+ENRICHMENT_VERSION = 2
 
 
 def _chunk_ids(ids: Iterable[int]) -> Iterator[list[int]]:
@@ -147,12 +147,65 @@ async def _resolve_esi_objects(
     return {obj_id: payload for obj_id, payload in results if payload is not None}
 
 
+# Loose index scan over ix_contract_items_category_id. SELECT DISTINCT category_id
+# reads the whole index on a corpus this size (the contract-list perf audit,
+# docs/perf-audits/2026-08-02-contract-list-watermark-subquery.md §4, measured the
+# equivalent region query at 602 ms; PG18's btree skip scan does not engage), while
+# the recursive CTE costs one index probe per distinct category — a set of a few dozen.
+# min() ignores NULLs, so items whose taxonomy never resolved drop out on their own.
+_OBSERVED_CATEGORY_IDS_SQL = text("""
+    WITH RECURSIVE categories(category_id) AS (
+        SELECT min(category_id) FROM contract_items
+        UNION ALL
+        SELECT (SELECT min(category_id) FROM contract_items
+                 WHERE category_id > categories.category_id)
+        FROM categories WHERE categories.category_id IS NOT NULL
+    )
+    SELECT category_id FROM categories WHERE category_id IS NOT NULL
+""")
+
+# Same loose-index-scan shape over ix_contract_items_group_id: the distinct group
+# set is O(hundreds), so the CTE costs one probe per group where DISTINCT would
+# read the whole index.
+_OBSERVED_GROUP_IDS_SQL = text("""
+    WITH RECURSIVE groups(group_id) AS (
+        SELECT min(group_id) FROM contract_items
+        UNION ALL
+        SELECT (SELECT min(group_id) FROM contract_items
+                 WHERE group_id > groups.group_id)
+        FROM groups WHERE groups.group_id IS NOT NULL
+    )
+    SELECT group_id FROM groups WHERE group_id IS NOT NULL
+""")
+
+
+async def _observed_category_ids(db_session: AsyncSession) -> set[int]:
+    """The distinct dogma categories present on stored contract items.
+
+    Feeds the name-cache writer's retry set. Deliberately unscoped to live
+    contracts: fetching a name for a category seen only on delisted rows is a
+    harmless one-time cost, and names are immutable. The taxonomy endpoint's
+    readiness condition asks a different question (live contracts only) and owns
+    its own query.
+    """
+    rows = await db_session.execute(_OBSERVED_CATEGORY_IDS_SQL)
+    return set(rows.scalars())
+
+
+async def _observed_group_ids(db_session: AsyncSession) -> set[int]:
+    """The distinct dogma groups present on stored contract items (same contract
+    as _observed_category_ids, one taxonomy level down)."""
+    rows = await db_session.execute(_OBSERVED_GROUP_IDS_SQL)
+    return set(rows.scalars())
+
+
 def _npc_station_ids(contracts: List[dict]) -> set[int]:
-    """The distinct start locations that /universe/stations/ can answer for."""
+    """The distinct start and end locations /universe/stations/ can answer for."""
     return {
         location_id
         for contract in contracts
-        if (location_id := contract.get("start_location_id")) is not None
+        for location_id in (contract.get("start_location_id"), contract.get("end_location_id"))
+        if location_id is not None
         and NPC_STATION_ID_MIN <= location_id < NPC_STATION_ID_MAX
     }
 
@@ -184,6 +237,7 @@ def _build_contract_rows(
             "start_location_system_id": station_to_system.get(c.get("start_location_id")),
             "start_location_region_id": c.get("_hb_region_id"),
             "end_location_id": c.get("end_location_id"),
+            "end_location_system_id": station_to_system.get(c.get("end_location_id")),
             "type": c["type"],  # Direct mapping - field names now match
             "status": c.get("status", "unknown"),
             "title": c.get("title"),
@@ -196,8 +250,11 @@ def _build_contract_rows(
             "last_seen_at": seen_at,
             "reward": c.get("reward"),
             "volume": c.get("volume"),
+            "buyout": c.get("buyout"),
+            "days_to_complete": c.get("days_to_complete"),
             # Denormalized data for search performance
             "start_location_name": id_to_name_map.get(c.get("start_location_id")),
+            "end_location_name": id_to_name_map.get(c.get("end_location_id")),
             "issuer_name": id_to_name_map.get(c.get('issuer_id')),
             "issuer_corporation_name": id_to_name_map.get(c.get('issuer_corporation_id')),
             # is_ship_contract, item_processing_status and enrichment_version are
@@ -501,9 +558,10 @@ class ContractAggregationService:
         # included ship (fills the gap that left is_ship_contract permanently
         # False — "will be updated later" never happened; found during the
         # /impeccable design phase when the ships-only default matched nothing).
-        ship_contract_ids, unresolved_category_contract_ids = (
+        ship_contract_ids, unresolved_category_contract_ids, group_info = (
             await self._enrich_items_and_find_ships(all_items)
         )
+        await self._upsert_taxonomy_names(db_session, group_info)
 
         if all_items:
             logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
@@ -536,7 +594,7 @@ class ContractAggregationService:
     async def _resolve_station_systems(
         self, db_session: AsyncSession, contracts: List[dict]
     ) -> dict[int, int]:
-        """Map the batch's NPC start stations to their solar system ids.
+        """Map the batch's NPC stations — start and end alike — to their solar system ids.
 
         ESI's public contract payload carries a location id and no system id, so
         without this the system_ids filter has nothing to match. Station→system is
@@ -575,26 +633,32 @@ class ContractAggregationService:
     async def _select_known_station_systems(
         self, db_session: AsyncSession, station_ids: set[int]
     ) -> dict[int, int]:
-        """Station→system pairs already recorded on stored contracts.
+        """Station→system pairs already recorded on stored contracts, in either role.
 
         Makes the contracts table its own durable cache for a lookup whose answer never
         changes, so steady state costs zero station requests. It is also what keeps an
         ESI outage from blanking the filter: the upsert copies every supplied column on
         conflict, so a run that re-resolved from scratch and came back empty would write
         NULL over every system the site already knew — the same decay that ETag-304s once
-        inflicted on is_ship_contract.
+        inflicted on is_ship_contract. Both the start and the end column pair are read
+        back for exactly that reason: a station known only as some contract's destination
+        would otherwise be re-fetched forever, and blanked whenever the fetch failed.
         """
         known: dict[int, int] = {}
         for chunk in _chunk_ids(station_ids):
-            rows = await db_session.execute(
-                select(Contract.start_location_id, Contract.start_location_system_id)
-                .where(
-                    Contract.start_location_id.in_(chunk),
-                    Contract.start_location_system_id.is_not(None),
+            for location_column, system_column in (
+                (Contract.start_location_id, Contract.start_location_system_id),
+                (Contract.end_location_id, Contract.end_location_system_id),
+            ):
+                rows = await db_session.execute(
+                    select(location_column, system_column)
+                    .where(
+                        location_column.in_(chunk),
+                        system_column.is_not(None),
+                    )
+                    .distinct()
                 )
-                .distinct()
-            )
-            known.update({station_id: system_id for station_id, system_id in rows})
+                known.update({station_id: system_id for station_id, system_id in rows})
         return known
 
     async def _select_already_enriched(
@@ -657,6 +721,13 @@ class ContractAggregationService:
                         # dead on real data (same class as the ship-flag gap).
                         "is_blueprint_copy": i.get("is_blueprint_copy"),
                         "raw_quantity": i.get("raw_quantity"),
+                        # Blueprint stats and the dynamic-item join key. A blueprint
+                        # ORIGINAL omits `runs` rather than sending a sentinel, so
+                        # absence must stay NULL (ESI-3).
+                        "runs": i.get("runs"),
+                        "material_efficiency": i.get("material_efficiency"),
+                        "time_efficiency": i.get("time_efficiency"),
+                        "item_id": i.get("item_id"),
                     }
                     for i in items
                 ]
@@ -681,11 +752,12 @@ class ContractAggregationService:
         # whose type/group resolution failed keeps NULL enrichment (the
         # graceful-degrade path), so a future consumer trusting 'COMPLETED' would
         # skip re-enriching a transiently-failed row. Mark COMPLETED only when every
-        # fetched item resolved a type_name AND every included item resolved a
-        # category; the rest are ENRICHMENT_INCOMPLETE. An unresolved category is a
-        # half-done enrichment exactly like an unresolved type — it decides the ship
-        # flag — and stamping it COMPLETED would hand it to the skip, which withholds
-        # it from every later run: silently unenriched with no route back.
+        # fetched item resolved a type_name AND a category; the rest are
+        # ENRICHMENT_INCOMPLETE. An unresolved category is a half-done enrichment
+        # exactly like an unresolved type — it decides the ship flag and the
+        # per-category rendering of both contract sides — and stamping it COMPLETED
+        # would hand it to the skip, which withholds it from every later run:
+        # silently unenriched with no route back.
         incomplete_contract_ids = {
             item["contract_id"] for item in all_items if item.get("type_name") is None
         } | unresolved_category_contract_ids
@@ -742,25 +814,113 @@ class ContractAggregationService:
                 "they stay in the item re-fetch set."
             )
 
+    async def _upsert_taxonomy_names(
+        self, db_session: AsyncSession, group_info: dict[int, dict]
+    ) -> None:
+        """Persist dogma names for the taxonomy option list (spec §5.2).
+
+        Group names ride payloads enrichment already fetched. Category names need
+        the one ESI call this feature adds — issued cache-first, because the set is
+        tiny and immutable, so steady state fetches zero categories.
+
+        Both levels consider this run's payloads PLUS every id observed on stored
+        items that has no cache row yet. That second source is what makes the cache
+        self-healing: a contract stamped COMPLETED is withheld from the item
+        re-fetch, so its payloads never reach this writer again, and a name whose
+        first fetch failed (or a group payload that arrived nameless) would
+        otherwise stay absent until some unrelated contract happened to carry it.
+        """
+        now = datetime.now(timezone.utc)
+        group_rows = [
+            {"kind": "group", "esi_id": group_id, "name": info["name"],
+             "parent_category_id": info.get("category_id"), "fetched_at": now}
+            for group_id, info in group_info.items()
+            if info.get("name") is not None
+        ]
+        if group_rows:
+            await bulk_upsert(db_session, EsiTaxonomyCache, group_rows)
+
+        # Groups get the same DB-observed retry as categories: a payload that
+        # carried category_id but no name resolved its item (so the contract is
+        # COMPLETED and skipped forever) while writing no cache row above.
+        observed_groups = await _observed_group_ids(db_session)
+        if observed_groups:
+            cached_groups = set((await db_session.execute(
+                select(EsiTaxonomyCache.esi_id).where(
+                    EsiTaxonomyCache.kind == "group",
+                    EsiTaxonomyCache.esi_id.in_(sorted(observed_groups)),
+                )
+            )).scalars())
+            missing_groups = observed_groups - cached_groups
+            if missing_groups:
+                group_payloads = await _resolve_esi_objects(
+                    self.esi_client.get_universe_group, missing_groups, "Group"
+                )
+                repair_rows = [
+                    {"kind": "group", "esi_id": group_id, "name": payload["name"],
+                     "parent_category_id": payload.get("category_id"),
+                     "fetched_at": now}
+                    for group_id, payload in group_payloads.items()
+                    if payload.get("name") is not None
+                ]
+                if repair_rows:
+                    await bulk_upsert(db_session, EsiTaxonomyCache, repair_rows)
+                # Their categories join the fetch set below so a repaired group
+                # never dangles without its parent's name.
+                group_info = dict(group_info)
+                group_info.update(group_payloads)
+
+        category_ids = {
+            info["category_id"] for info in group_info.values()
+            if info.get("category_id") is not None
+        }
+        category_ids |= await _observed_category_ids(db_session)
+        if not category_ids:
+            return
+        cached = set((await db_session.execute(
+            select(EsiTaxonomyCache.esi_id).where(
+                EsiTaxonomyCache.kind == "category",
+                EsiTaxonomyCache.esi_id.in_(sorted(category_ids)),
+            )
+        )).scalars())
+        missing = category_ids - cached
+        if not missing:
+            return
+        payloads = await _resolve_esi_objects(
+            self.esi_client.get_universe_category, missing, "Category"
+        )
+        category_rows = [
+            {"kind": "category", "esi_id": category_id, "name": payload["name"],
+             "parent_category_id": None, "fetched_at": now}
+            for category_id, payload in payloads.items()
+            if payload.get("name") is not None
+        ]
+        if category_rows:
+            await bulk_upsert(db_session, EsiTaxonomyCache, category_rows)
+
     SHIP_CATEGORY_ID = 6  # EVE static category: Ship
 
     async def _enrich_items_and_find_ships(
         self, item_values: List[dict]
-    ) -> tuple[set[int], set[int]]:
+    ) -> tuple[set[int], set[int], dict[int, dict]]:
         """Resolve type -> group -> category for fetched items (ESI static data,
         ETag-cached in Valkey, so repeat runs are near-free), enrich the item
-        dicts in place (type_name, market_group_id, category), and return
-        (ship_contract_ids, unresolved_category_contract_ids): the contract_ids
-        whose INCLUDED items contain a ship (EVE category 6), and those with an
-        INCLUDED item whose category could not be determined at all.
+        dicts in place (type_name, market_group_id, category, group_id,
+        category_id), and return
+        (ship_contract_ids, unresolved_category_contract_ids, group_info): the
+        contract_ids whose INCLUDED items contain a ship (EVE category 6), those
+        with ANY item whose category could not be determined, and the group
+        payloads this run resolved, keyed by group_id.
 
         Resolution failures degrade gracefully: the item keeps NULL enrichment
         and the contract stays unflagged; the aggregation run never dies here.
         The second set is what keeps "not a ship" distinguishable from "we could
-        not tell" — only the former may clear an existing flag.
+        not tell" — only the former may clear an existing flag. The third value
+        carries the group names and owning categories on to the name cache, which
+        would otherwise need a second fan-out over the same ids.
         """
         if not item_values:
-            return set(), set()
+            return set(), set(), {}
 
         type_info = await _resolve_esi_objects(
             self.esi_client.get_universe_type,
@@ -785,16 +945,24 @@ class ContractAggregationService:
             item["type_name"] = info.get("name")
             item["market_group_id"] = info.get("market_group_id")
             item["category"] = "ship" if is_ship else None
+            # The taxonomy ids the ship flag already walked past, kept for the
+            # category/group filter families. No extra ESI call: both payloads
+            # are in hand.
+            item["group_id"] = info.get("group_id")
+            item["category_id"] = group.get("category_id")
             # Only INCLUDED items decide the flag, so only they classify the contract.
             if is_ship and item["is_included"]:
                 ship_contract_ids.add(item["contract_id"])
-            # An empty group means the category is UNKNOWN, not "not a ship": the group
-            # fetch failed, the payload had a surprise shape, or the type carried no
-            # group_id. Deliberately narrowed to INCLUDED items: only they decide the
-            # ship flag, and the narrowing bounds the retry-forever population. The
-            # accepted cost is that an EXCLUDED item's category can stay NULL
-            # permanently on an otherwise-COMPLETED contract (cosmetic: the detail
-            # page renders no Ship badge for that item).
-            elif not group and item["is_included"]:
+            # A NULL category_id means the category is UNKNOWN, not "not a ship": the
+            # group fetch failed, the payload arrived without a category_id, or the
+            # type carried no group_id. Testing the resolved value rather than the
+            # group dict is what covers that middle shape — a non-empty group payload
+            # missing category_id would otherwise read as success and stamp the
+            # contract COMPLETED with a permanently NULL category.
+            # Every item counts here, included or not: the requested side is rendered
+            # and summarized by category, so a NULL there is a blank half of the
+            # contract, not a missing badge. The ship-flag branch above stays
+            # offered-only — only included items decide what the contract IS.
+            elif item["category_id"] is None:
                 unresolved_category_contract_ids.add(item["contract_id"])
-        return ship_contract_ids, unresolved_category_contract_ids
+        return ship_contract_ids, unresolved_category_contract_ids, group_info

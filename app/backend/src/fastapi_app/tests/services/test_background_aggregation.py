@@ -20,7 +20,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.background_aggregation as bg_agg
-from fastapi_app.models.contracts import Contract, ContractItem
+from fastapi_app.models.contracts import Contract, ContractItem, EsiTaxonomyCache
 from fastapi_app.services.background_aggregation import ContractAggregationService
 from fastapi_app.tests.core.test_esi_client import _etag_client, _etag_response
 from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
@@ -35,6 +35,9 @@ def _make_service() -> ContractAggregationService:
     )
     # get_contract_items is exercised by other flows; keep it inert here.
     esi_client.get_contract_items = AsyncMock(return_value=[])
+    # A resolvable default keeps captured logs free of "can't be awaited" warnings
+    # from the taxonomy-name fan-out; tests that exercise failure paths override it.
+    esi_client.get_universe_category = AsyncMock(return_value={"name": "Ship"})
     settings = MagicMock()
     return ContractAggregationService(esi_client=esi_client, settings=settings)
 
@@ -818,6 +821,77 @@ async def test_degraded_category_resolution_does_not_clear_a_ship_flag(
     assert row.is_ship_contract is True, "a degraded category read must not clear a flag"
 
 
+async def test_a_requested_items_failed_category_leaves_the_contract_retryable(
+    db_session: AsyncSession,
+):
+    """Want-to-buy side: an EXCLUDED item with no resolvable group must block
+    COMPLETED, or the contract is withheld from every future re-fetch with a
+    permanently blank requested side. The requested half is rendered and
+    summarized by category, so its taxonomy is load-bearing, not cosmetic."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 8411, "type_id": 587, "quantity": 1, "is_included": True},
+            {"record_id": 8412, "type_id": 99999, "quantity": 1, "is_included": False},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda tid: {
+            587: {"name": "Tristan", "group_id": 25},
+            99999: {"name": "Mystery Meat"},  # no group_id: the chain stops here
+        }[tid]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(841)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 841))
+    ).scalar_one()
+    assert row.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    assert row.enrichment_version == 0
+
+
+async def test_a_category_less_group_payload_leaves_the_contract_retryable(
+    db_session: AsyncSession,
+):
+    """A non-empty group payload that omits category_id is a resolution failure too.
+
+    Testing the group dict for emptiness passes on this shape, category_id lands NULL,
+    and the contract is stamped COMPLETED forever — the silent unenrichment the
+    predicate exists to prevent. The test that decides is the resolved category itself.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 8421, "type_id": 587, "quantity": 1, "is_included": True},
+            {"record_id": 8422, "type_id": 99999, "quantity": 1, "is_included": False},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda tid: {
+            587: {"name": "Tristan", "group_id": 25},
+            99999: {"name": "Mystery Meat", "group_id": 26},
+        }[tid]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda gid: {
+            25: {"name": "Frigate", "category_id": 6},
+            26: {"name": "Salvaged Materials"},  # no category_id
+        }[gid]
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(842)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 842))
+    ).scalar_one()
+    assert row.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    assert row.enrichment_version == 0
+
+
 async def test_skip_select_reads_across_the_chunk_boundary(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, caplog
 ):
@@ -931,6 +1005,242 @@ async def test_resolved_location_names_land_on_persisted_contract_rows(db_sessio
     assert row.start_location_name == "Jita IV - Moon 4 - Caldari Navy Assembly Plant"
     assert row.issuer_name == "Test Issuer"
     assert row.issuer_corporation_name == "Test Issuer Corp"
+
+
+async def test_type_specific_contract_fields_land_on_persisted_rows(db_session: AsyncSession):
+    """buyout / days_to_complete / end_location_name persist from the ESI payload.
+
+    _build_contract_rows is only exercised end-to-end (nothing unit-tests its dict
+    literal), so each new key needs a persisted-row assertion or its wiring can
+    silently drop (same rationale as the location-names test above).
+    """
+    service = _make_service()
+    contract = _ship_contract_dict(801)
+    contract["type"] = "auction"
+    contract["buyout"] = 950_000_000.0
+    contract["days_to_complete"] = 3          # ESI sends it on couriers; mapping is type-agnostic
+    contract["end_location_id"] = 60008494
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            60008494: "Amarr VIII (Oris) - Emperor Family Academy",
+        }
+    )
+    # A real item keeps the auction off the zero-items warning path, so the run's
+    # captured logs stay pristine (an item_exchange/auction cannot be empty).
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8011, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    await service._process_contracts(db_session, [contract])
+
+    row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 801)
+    )).scalar_one()
+    assert row.buyout == 950_000_000
+    assert row.days_to_complete == 3
+    assert row.end_location_name == "Amarr VIII (Oris) - Emperor Family Academy"
+
+    # Absence stays NULL (ESI-3): a payload without the fields must not write zeros.
+    # Fresh record_id so the upsert cannot move contract 801's item row here.
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8021, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    bare = _ship_contract_dict(802)
+    await service._process_contracts(db_session, [bare])
+    bare_row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 802)
+    )).scalar_one()
+    assert bare_row.buyout is None
+    assert bare_row.days_to_complete is None
+    assert bare_row.end_location_name is None
+
+
+async def test_item_level_columns_persist_from_payload_and_enrichment(db_session: AsyncSession):
+    """runs/ME/TE/item_id come off the item payload; category_id/group_id off the
+    type→group chain the ship flag already walks. A blueprint ORIGINAL omits runs
+    entirely (ESI-3) and must persist NULL, not zero."""
+    service = _make_service()
+    contract = _ship_contract_dict(821)
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8211, "type_id": 621, "quantity": 1, "is_included": True,
+         "is_blueprint_copy": True, "runs": 10, "material_efficiency": 8,
+         "time_efficiency": 14, "item_id": 1_000_000_001},
+        {"record_id": 8212, "type_id": 621, "quantity": 1, "is_included": True},  # original: runs absent
+        # A type whose payload carries no group_id: taxonomy ids must persist as
+        # NULL, never a fabricated default (ESI-3 — absence is not zero).
+        {"record_id": 8213, "type_id": 999, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            621: {"name": "Caracal Blueprint", "group_id": 105, "market_group_id": 4},
+            999: {"name": "Mystery Meat"},
+        }[type_id]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Cruiser Blueprint", "category_id": 9}
+    )
+    await service._process_contracts(db_session, [contract])
+
+    rows = {r.record_id: r for r in (await db_session.execute(
+        select(ContractItem).where(ContractItem.contract_id == 821)
+    )).scalars()}
+    copy, original = rows[8211], rows[8212]
+    assert (copy.runs, copy.material_efficiency, copy.time_efficiency) == (10, 8, 14)
+    assert copy.item_id == 1_000_000_001
+    assert copy.category_id == 9 and copy.group_id == 105
+    assert original.runs is None
+    assert original.material_efficiency is None
+    assert original.time_efficiency is None
+    assert original.item_id is None
+    assert original.category_id == 9          # taxonomy resolves regardless of blueprint fields
+    groupless = rows[8213]
+    assert groupless.group_id is None
+    assert groupless.category_id is None
+
+
+async def test_enrichment_fills_the_taxonomy_name_cache(db_session: AsyncSession):
+    """Group names ride the payloads enrichment already fetches; category names come
+    from the one new ESI call (spec §5.2), cache-first so the tiny immutable set is
+    fetched once, ever."""
+    service = _make_service()
+    contract = _ship_contract_dict(831)
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8311, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    service.esi_client.get_universe_category = AsyncMock(return_value={"name": "Ship"})
+    await service._process_contracts(db_session, [contract])
+
+    rows = {(r.kind, r.esi_id): r for r in (await db_session.execute(
+        select(EsiTaxonomyCache)
+    )).scalars()}
+    assert rows[("group", 25)].name == "Frigate"
+    assert rows[("group", 25)].parent_category_id == 6
+    assert rows[("category", 6)].name == "Ship"
+
+    # Second run: category already cached — the ESI call must not repeat.
+    service.esi_client.get_universe_category.reset_mock()
+    again = _ship_contract_dict(832)
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8321, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    await service._process_contracts(db_session, [again])
+    service.esi_client.get_universe_category.assert_not_awaited()
+
+
+async def test_a_failed_category_name_fetch_is_repaired_from_observed_items(
+    db_session: AsyncSession,
+):
+    """A category whose name fetch failed must be retried without re-enrichment.
+
+    The contract that carried it is stamped COMPLETED (a missing NAME is not a
+    missing category), so the item-fetch skip withholds it from every later run
+    and its group payload never reaches the cache writer again. The categories to
+    fetch therefore include the ones observed on stored items but absent from the
+    cache — which is what makes the repair happen on a run whose own batch carries
+    no items at all.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8411, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    service.esi_client.get_universe_category = AsyncMock(
+        side_effect=RuntimeError("ESI down")
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(841)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "category")
+    )).scalars().all() == []
+    contract = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 841)
+    )).scalar_one()
+    assert contract.item_processing_status == "COMPLETED"
+
+    # Next run: ESI recovers, the batch is courier-only — no items are fetched, so
+    # nothing in this run's enrichment mentions category 6. The stored item does.
+    # A FRESH service proves the retry is DB-observed, not in-memory state that a
+    # process restart would lose.
+    service = _make_service()
+    courier = _ship_contract_dict(842)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    row = (await db_session.execute(
+        select(EsiTaxonomyCache).where(
+            EsiTaxonomyCache.kind == "category", EsiTaxonomyCache.esi_id == 6
+        )
+    )).scalar_one()
+    assert row.name == "Ship"
+
+
+async def test_a_nameless_group_payload_is_repaired_from_observed_items(
+    db_session: AsyncSession,
+):
+    """A group payload carrying category_id but no name must not be lost forever.
+
+    The item resolves (category_id present), the contract is stamped COMPLETED, and
+    the enrichment skip withholds it from every later run — so without a DB-observed
+    retry the group would stay absent from the taxonomy option list permanently.
+    Same self-healing shape as categories, one level down.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8511, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    # The codex-flagged shape: category resolves, the group name is absent.
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(851)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "group")
+    )).scalars().all() == []
+    contract = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 851)
+    )).scalar_one()
+    assert contract.item_processing_status == "COMPLETED"
+
+    # Next run, fresh service, healed ESI, courier-only batch: the stored item's
+    # group_id is the only mention of group 25, and it must be enough.
+    service = _make_service()
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    courier = _ship_contract_dict(852)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    row = (await db_session.execute(
+        select(EsiTaxonomyCache).where(
+            EsiTaxonomyCache.kind == "group", EsiTaxonomyCache.esi_id == 25
+        )
+    )).scalar_one()
+    assert row.name == "Frigate"
+    assert row.parent_category_id == 6
 
 
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
@@ -1558,3 +1868,86 @@ async def test_station_id_range_boundaries_decide_what_is_requested(
         call.args[0] for call in service.esi_client.get_universe_station.await_args_list
     }
     assert requested == {60_000_000, 63_999_999}
+
+
+# --- End-location system resolution -----------------------------------------
+#
+# A courier contract's destination is a location id exactly like its origin, and
+# /universe/stations/ answers for it on the same terms. Both halves of the
+# station path — the fetch set and the contracts-table read-back — carry the end
+# role alongside the start role, because the upsert copies every supplied column
+# on conflict: a read-back that covered only starts would let one ESI outage
+# write NULL over every known destination corpus-wide.
+
+
+async def test_courier_end_station_resolves_to_its_solar_system(db_session: AsyncSession):
+    """end_location_system_id persists via the same station path as starts."""
+    service = _make_service()
+    contract = _ship_contract_dict(811)
+    contract["type"] = "courier"  # skips item fetching entirely
+    contract["end_location_id"] = 60008494
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: {
+            60003760: {"system_id": 30000142},
+            60008494: {"system_id": 30002187},
+        }[sid]
+    )
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 811))
+    ).scalar_one()
+    assert row.start_location_system_id == 30000142
+    assert row.end_location_system_id == 30002187
+
+
+async def test_structure_end_location_keeps_null_system_and_is_never_requested(
+    db_session: AsyncSession,
+):
+    """Player-structure destinations stay NULL and never spend ESI error budget."""
+    service = _make_service()
+    contract = _ship_contract_dict(812)
+    contract["type"] = "courier"
+    contract["end_location_id"] = 1_040_000_000_000  # Upwell structure id range
+    calls = []
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: calls.append(sid) or {"system_id": 30000142}
+    )
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 812))
+    ).scalar_one()
+    assert row.end_location_system_id is None
+    assert 1_040_000_000_000 not in calls
+
+
+async def test_a_known_end_station_survives_an_esi_outage(db_session: AsyncSession):
+    """The DB read-back covers END pairs too — without it, an outage run would
+    re-resolve from scratch, get nothing, and bulk_upsert would write NULL over
+    every known destination (the start-side hazard, end-column edition)."""
+    service = _make_service()
+    first = _ship_contract_dict(813)
+    first["type"] = "courier"
+    first["end_location_id"] = 60008494
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: {
+            60003760: {"system_id": 30000142},
+            60008494: {"system_id": 30002187},
+        }[sid]
+    )
+    await service._process_contracts(db_session, [first])
+
+    # Second sighting: ESI down for stations. The pair must come from the table.
+    service.esi_client.get_universe_station = AsyncMock(side_effect=Exception("ESI down"))
+    again = _ship_contract_dict(813)
+    again["type"] = "courier"
+    again["end_location_id"] = 60008494
+    await service._process_contracts(db_session, [again])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 813))
+    ).scalar_one()
+    assert row.end_location_system_id == 30002187

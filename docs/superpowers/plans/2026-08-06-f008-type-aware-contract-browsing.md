@@ -63,11 +63,11 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** Phase A in progress.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| A — Data layer (migration, ingestion, taxonomy cache) | ⬜ Not started | — | — |
+| A — Data layer (migration, ingestion, taxonomy cache) | 🚧 In progress | `a7cd7ba`..gate fixes | All 8 tasks implemented + per-task reviewed (migration `685dab7d6df5`, ENRICHMENT_VERSION→2); 581 tests green; PR-A open, codex review pending. |
 | B — API contract (model split, counts, filters, taxonomy endpoint) | ⬜ Not started | — | — |
 | C — Frontend contract-level surface (renderer refactor, segments, auction/courier) | ⬜ Not started | — | — |
 | D — Frontend item-level surface (taxonomy UI, ME/TE/runs, BPC, composition) | ⬜ Not started | — | — |
@@ -130,7 +130,7 @@ Every task implicitly includes all of these. Verbatim values are copied from the
 
 # Phase A — Data layer (branch `feat/f008-data-layer`, PR-A, `Review — database schema`)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-07T11:40Z on branch `feat/f008-data-layer`; tasks A1–A8 shipped (`a7cd7ba`, `fc60be8`, `551704b`, `49b15b8`, `492a7b1`, `699ee3f` + fix `679b9e8`, `1cb8d40`, `bb95eed`) plus gate fixes; awaiting PR-A codex review + merge.
 
 Everything ingestion-side: the single migration, contract-level and item-level writes, end-location resolution, the taxonomy name cache, the completion-predicate widening, the manifest, and the version bump. After this phase merges, an ordinary ingestion run populates every contract-level column and a resweep populates every item-level column. **No API or frontend change in this phase.**
 
@@ -146,8 +146,8 @@ Everything ingestion-side: the single migration, contract-level and item-level w
 - `ContractItem.category_id / group_id / runs / material_efficiency / time_efficiency: Mapped[Optional[int]]` (Integer), `ContractItem.item_id: Mapped[Optional[int]]` (BigInteger)
 - `EsiTaxonomyCache` model: `kind: Mapped[str]` (String, PK part), `esi_id: Mapped[int]` (Integer, PK part), `name: Mapped[str]` (String, non-null), `parent_category_id: Mapped[Optional[int]]`, `fetched_at: Mapped[datetime]` (DateTime(timezone=True), non-null)
 
-- [ ] **Step 1: Confirm the chain has one head** — `cd app/backend/src && ../.venv/bin/python -m alembic heads` prints exactly `ea2491c47a9f (head)`. If it prints anything else, STOP: another migration landed; re-anchor `down_revision` before proceeding.
-- [ ] **Step 2: Make the equivalence test the failing test.** Add all model changes (below), run
+- [x] **Step 1: Confirm the chain has one head** — `cd app/backend/src && ../.venv/bin/python -m alembic heads` prints exactly `ea2491c47a9f (head)`. If it prints anything else, STOP: another migration landed; re-anchor `down_revision` before proceeding.
+- [x] **Step 2: Make the equivalence test the failing test.** Add all model changes (below), run
   `pytest fastapi_app/tests/test_migrations.py::test_migrated_schema_matches_model_metadata -q` → expect FAIL with a non-empty schema diff (models ahead of migrations). This is the red step.
 
   Model additions — `Contract`, inserted after `volume` (`models/contracts.py:64`), matching sibling style:
@@ -218,7 +218,7 @@ Everything ingestion-side: the single migration, contract-level and item-level w
           Index('ix_contract_items_material_efficiency', 'material_efficiency'),
           Index('ix_contract_items_time_efficiency', 'time_efficiency'),
   ```
-- [ ] **Step 3: Author the migration** (green step). `pdm run makemigration f008_type_aware_columns` may scaffold it, but hand-verify against house style — required shape (fill the generated revision id; `down_revision = 'ea2491c47a9f'`):
+- [x] **Step 3: Author the migration** (green step). `pdm run makemigration f008_type_aware_columns` may scaffold it, but hand-verify against house style — required shape (fill the generated revision id; `down_revision = 'ea2491c47a9f'`):
   ```python
   """f008 type-aware columns
 
@@ -302,9 +302,9 @@ Everything ingestion-side: the single migration, contract-level and item-level w
       op.drop_column('contracts', 'days_to_complete')
       op.drop_column('contracts', 'buyout')
   ```
-- [ ] **Step 4: Run the equivalence test green**, then the whole migration file lane: `pytest fastapi_app/tests/test_migrations.py -q` → PASS. `alembic heads` → exactly one head (the new revision).
-- [ ] **Step 5: Do NOT hand-edit `openapi.json`/`schema.d.ts`** — nothing wire-visible changed yet (schemas change in PR-B).
-- [ ] **Step 6: Commit** — `feat(api): add type-aware contract and item columns with taxonomy name cache`
+- [x] **Step 4: Run the equivalence test green**, then the whole migration file lane: `pytest fastapi_app/tests/test_migrations.py -q` → PASS. `alembic heads` → exactly one head (the new revision).
+- [x] **Step 5: Do NOT hand-edit `openapi.json`/`schema.d.ts`** — nothing wire-visible changed yet (schemas change in PR-B).
+- [x] **Step 6: Commit** — `feat(api): add type-aware contract and item columns with taxonomy name cache`
 
 **Do NOT:** add response-schema fields, filters, or any read path here; touch `ENRICHMENT_VERSION`; add a server_default to any new column (absence must remain NULL); reuse `EsiMarketGroupCache`.
 
@@ -316,7 +316,7 @@ Everything ingestion-side: the single migration, contract-level and item-level w
 
 **Interfaces — Consumes:** A1's columns. **Produces:** upsert rows now carry `buyout`, `days_to_complete`, `end_location_name` keys (uniform across every row — the bulk_upsert derives update columns from `values[0]`).
 
-- [ ] **Step 1: Write the failing test.** In `test_background_aggregation.py`, next to `test_resolved_location_names_land_on_persisted_contract_rows` (`:900`), following its end-to-end `_process_contracts` pattern:
+- [x] **Step 1: Write the failing test.** In `test_background_aggregation.py`, next to `test_resolved_location_names_land_on_persisted_contract_rows` (`:900`), following its end-to-end `_process_contracts` pattern:
   ```python
   async def test_type_specific_contract_fields_land_on_persisted_rows(db_session: AsyncSession):
       """buyout / days_to_complete / end_location_name persist from the ESI payload.
@@ -354,8 +354,8 @@ Everything ingestion-side: the single migration, contract-level and item-level w
       )).scalar_one()
       assert bare_row.buyout is None and bare_row.days_to_complete is None
   ```
-- [ ] **Step 2: Run it** — FAIL (`row.buyout is None`).
-- [ ] **Step 3: Implement.** In `_build_contract_rows`'s dict literal: after `"volume": c.get("volume"),` (`:198`) add
+- [x] **Step 2: Run it** — FAIL (`row.buyout is None`).
+- [x] **Step 3: Implement.** In `_build_contract_rows`'s dict literal: after `"volume": c.get("volume"),` (`:198`) add
   ```python
               "buyout": c.get("buyout"),
               "days_to_complete": c.get("days_to_complete"),
@@ -365,8 +365,8 @@ Everything ingestion-side: the single migration, contract-level and item-level w
               "end_location_name": id_to_name_map.get(c.get("end_location_id")),
   ```
   (End locations are already in the name map — `_collect_resolvable_ids:97` unions them. Do not touch the deliberately-absent-columns comment block at `:203-209`.)
-- [ ] **Step 4: Run green**, then the full aggregation module: `pytest fastapi_app/tests/services/test_background_aggregation.py -q`.
-- [ ] **Step 5: Commit** — `feat(api): persist buyout, days_to_complete, and end_location_name at ingestion`
+- [x] **Step 4: Run green**, then the full aggregation module: `pytest fastapi_app/tests/services/test_background_aggregation.py -q`.
+- [x] **Step 5: Commit** — `feat(api): persist buyout, days_to_complete, and end_location_name at ingestion`
 
 ### Task A3: End-location system resolution (widen both start-only paths — spec §5.1 exactly)
 
@@ -376,7 +376,7 @@ Everything ingestion-side: the single migration, contract-level and item-level w
 
 **Context (do not re-derive):** §5.1 names exactly two paths to widen. The fetch set (`_npc_station_ids`) is start-only; the DB cache read-back (`_select_known_station_systems`) is start-only — and skipping the read-back does not fail loudly, it just re-fetches destination-only stations from ESI forever. The read-back's docstring hazard must be preserved: the upsert copies every supplied column on conflict, so the read-back must cover the `end_location_*` column pair too or an ESI blip writes NULL over known destinations corpus-wide.
 
-- [ ] **Step 1: Failing tests** (three, added near the station-resolution block at `:1379+`):
+- [x] **Step 1: Failing tests** (three, added near the station-resolution block at `:1379+`):
   ```python
   async def test_courier_end_station_resolves_to_its_solar_system(db_session: AsyncSession):
       """end_location_system_id persists via the same station path as starts (§5.1)."""
@@ -427,8 +427,8 @@ Everything ingestion-side: the single migration, contract-level and item-level w
       row = (await db_session.execute(select(Contract).where(Contract.contract_id == 813))).scalar_one()
       assert row.end_location_system_id == 30002187
   ```
-- [ ] **Step 2: Run — all three FAIL** (first on NULL end system; third may fail on NULL-overwrite).
-- [ ] **Step 3: Implement.**
+- [x] **Step 2: Run — all three FAIL** (first on NULL end system; third may fail on NULL-overwrite).
+- [x] **Step 3: Implement.**
   - `_npc_station_ids`: collect from both roles, updating the docstring truthfully:
     ```python
     def _npc_station_ids(contracts: List[dict]) -> set[int]:
@@ -446,8 +446,8 @@ Everything ingestion-side: the single migration, contract-level and item-level w
     ```python
             "end_location_system_id": station_to_system.get(c.get("end_location_id")),
     ```
-- [ ] **Step 4: Run green; run the whole station block** (`pytest -q -k station`), confirming the four existing station tests (`:1379`, `:1398`, `:1425`, `:1484`, `:1531`) still pass — the boundary test pins the id-range logic your comprehension must preserve.
-- [ ] **Step 5: Commit** — `feat(api): resolve courier end locations to solar systems at ingestion`
+- [x] **Step 4: Run green; run the whole station block** (`pytest -q -k station`), confirming the four existing station tests (`:1379`, `:1398`, `:1425`, `:1484`, `:1531`) still pass — the boundary test pins the id-range logic your comprehension must preserve.
+- [x] **Step 5: Commit** — `feat(api): resolve courier end locations to solar systems at ingestion`
 
 ### Task A4: Item-level ingestion writes (`runs`, `material_efficiency`, `time_efficiency`, `item_id`, `category_id`, `group_id`)
 
@@ -455,7 +455,7 @@ Everything ingestion-side: the single migration, contract-level and item-level w
 - Modify: `background_aggregation.py` — `_fetch_item_rows` item mapping (`:647-662`) and `_enrich_items_and_find_ships` (`:780-800`)
 - Test: `tests/services/test_background_aggregation.py`
 
-- [ ] **Step 1: Failing test** (end-to-end through `_process_contracts`, the enrichment-stubbing idiom from `:133-144`):
+- [x] **Step 1: Failing test** (end-to-end through `_process_contracts`, the enrichment-stubbing idiom from `:133-144`):
   ```python
   async def test_item_level_columns_persist_from_payload_and_enrichment(db_session):
       """runs/ME/TE/item_id come off the item payload; category_id/group_id off the
@@ -487,8 +487,8 @@ Everything ingestion-side: the single migration, contract-level and item-level w
       assert original.runs is None and original.material_efficiency is None
       assert original.category_id == 9          # taxonomy resolves regardless of blueprint fields
   ```
-- [ ] **Step 2: Run — FAIL.**
-- [ ] **Step 3: Implement.** In `_fetch_item_rows`'s dict literal (after `"raw_quantity"`):
+- [x] **Step 2: Run — FAIL.**
+- [x] **Step 3: Implement.** In `_fetch_item_rows`'s dict literal (after `"raw_quantity"`):
   ```python
                       "runs": i.get("runs"),
                       "material_efficiency": i.get("material_efficiency"),
@@ -501,9 +501,9 @@ Everything ingestion-side: the single migration, contract-level and item-level w
               item["category_id"] = group.get("category_id")
   ```
   (Uniform-keys constraint at `:784` is satisfied because the block is unconditional. **No new ESI call** — resist the urge; §16.2.)
-- [ ] **Step 4: Green; run the enrichment-version tests** (`:573`, `:595`, `:673`, `:706`) to confirm the added keys didn't disturb the upsert's uniform key set.
-- [ ] **Step 5: Mutation-verify** (TEST-12): `cp` snapshot, delete the `item["category_id"] = ...` line, confirm the new test goes red on `category_id is None`, restore, rerun green.
-- [ ] **Step 6: Commit** — `feat(api): persist blueprint stats, item_id, and dogma taxonomy ids during enrichment`
+- [x] **Step 4: Green; run the enrichment-version tests** (`:573`, `:595`, `:673`, `:706`) to confirm the added keys didn't disturb the upsert's uniform key set.
+- [x] **Step 5: Mutation-verify** (TEST-12): `cp` snapshot, delete the `item["category_id"] = ...` line, confirm the new test goes red on `category_id is None`, restore, rerun green.
+- [x] **Step 6: Commit** — `feat(api): persist blueprint stats, item_id, and dogma taxonomy ids during enrichment`
 
 ### Task A5: Taxonomy name cache population
 
@@ -513,7 +513,7 @@ Everything ingestion-side: the single migration, contract-level and item-level w
 
 **Interfaces — Produces:** `EsiTaxonomyCache` rows: `('group', <id>, name, parent_category_id, fetched_at)` from group payloads already in hand; `('category', <id>, name, NULL, fetched_at)` from the one new ESI call. `ESIClient.get_universe_category(category_id: int) -> dict[str, Any]`.
 
-- [ ] **Step 1: Failing test:**
+- [x] **Step 1: Failing test:**
   ```python
   async def test_enrichment_fills_the_taxonomy_name_cache(db_session):
       """Group names ride the payloads enrichment already fetches; category names come
@@ -549,8 +549,8 @@ Everything ingestion-side: the single migration, contract-level and item-level w
       await service._process_contracts(db_session, [again])
       service.esi_client.get_universe_category.assert_not_awaited()
   ```
-- [ ] **Step 2: FAIL** (no `EsiTaxonomyCache` import / no rows).
-- [ ] **Step 3: Implement.**
+- [x] **Step 2: FAIL** (no `EsiTaxonomyCache` import / no rows).
+- [x] **Step 3: Implement.**
   - `ESIClient`, next to `get_universe_group` (`esi_client_class.py:463-465`) — **verify the version prefix against the committed snapshot (`tools/esi_spec_monitor/snapshot.json`), not memory**, then:
     ```python
     async def get_universe_category(self, category_id: int) -> dict[str, Any]:
@@ -609,9 +609,9 @@ Everything ingestion-side: the single migration, contract-level and item-level w
     `_enrich_items_and_find_ships` returns `group_info` alongside its two sets (change its return to `tuple[set[int], set[int], dict[int, dict]]` and update the single call site at `:528-534`); `_process_contracts` then awaits `self._upsert_taxonomy_names(db_session, group_info)`.
 
     **The retry path must not depend on re-enrichment (codex round-2 finding 5 — confirmed).** A COMPLETED-current contract is skipped by `_select_already_enriched`, so its group data never re-reaches this helper: a category whose first name fetch failed would stay missing forever unless a *new* contract happened to carry it. Therefore `category_ids` in the helper is the union of (a) the ids off this run's `group_info` and (b) **ids observed in the database but absent from the cache**: a loose-index-scan over `ix_contract_items_category_id` (the B4/B7 CTE pattern — small distinct set, sub-ms) set-differenced against `kind='category'` cache keys. That makes the cache self-healing on every run regardless of enrichment skips, and it is the same query B7's completeness condition runs — extract it as a shared module-level helper `_observed_category_ids(db_session) -> set[int]` so the two cannot drift.
-- [ ] **Step 3b: Failing test for the retry path:** first run with `get_universe_category` raising → no category row, contract COMPLETED; second run with the mock healed and a contract batch that does NOT include the category (e.g. a courier-only batch) → the category row appears anyway (fetched via the DB-observed missing set).
-- [ ] **Step 4: Green.** The shape-guard behavior (`_resolve_esi_objects` drops non-dict payloads) degrades one id per failure without killing the run; the observed-missing union above is what guarantees the retry.
-- [ ] **Step 5: Commit** — `feat(api): cache dogma category and group names for the taxonomy option list`
+- [x] **Step 3b: Failing test for the retry path:** first run with `get_universe_category` raising → no category row, contract COMPLETED; second run with the mock healed and a contract batch that does NOT include the category (e.g. a courier-only batch) → the category row appears anyway (fetched via the DB-observed missing set).
+- [x] **Step 4: Green.** The shape-guard behavior (`_resolve_esi_objects` drops non-dict payloads) degrades one id per failure without killing the run; the observed-missing union above is what guarantees the retry.
+- [x] **Step 5: Commit** — `feat(api): cache dogma category and group names for the taxonomy option list`
 
 ### Task A6: ESI drift-monitor manifest + snapshot
 
@@ -621,12 +621,12 @@ Everything ingestion-side: the single migration, contract-level and item-level w
 
 No TDD exemption issues — this is tooling config, but the monitor's tests run in the ordinary lane.
 
-- [ ] **Step 1:** Add the six consumed fields (spec §6.1 point 1): `buyout`, `days_to_complete` to the `/contracts/public/{region_id}` block; `runs`, `material_efficiency`, `time_efficiency`, `item_id` to the `/contracts/public/items/{contract_id}` block — each value string naming its consumer in the house format, e.g. `"runs": "background_aggregation._fetch_item_rows -> ContractItem.runs; blueprint-copy display and the min_runs/max_runs filter (F008)"`.
-- [ ] **Step 2:** Amend the two existing entries (point 2): `group_id` (`manifest.py:133`) and `category_id` (`:143`) consumer notes now also name the persisted `ContractItem.group_id`/`category_id` columns and the taxonomy cache. While editing, correct the stale method name in those strings: the function is `_enrich_items_and_find_ships`, not `_enrich_items`.
-- [ ] **Step 3:** Add a new `Endpoint` block for `GET /universe/categories/{category_id}` (spec_path `/universe/categories/{category_id}`, call_path `/v1/universe/categories/{category_id}/` — match whatever version Task A5 verified, caller `background_aggregation._upsert_taxonomy_names`, consumed field `name`).
-- [ ] **Step 4:** Leave the `raw_quantity` `KnownAbsentField` (`:114-118`) **unchanged in this PR** — its "read by min_runs/max_runs" consequence stays true until PR-B rewires the filter; PR-B Task B5 amends it (spec §6.1 point 3).
-- [ ] **Step 5:** `pdm run esi-spec-monitor --update` to regenerate the snapshot; commit it with the reason in the message. Run `pdm run esi-spec-monitor` → green; `pytest tools -q` → green.
-- [ ] **Step 6: Commit** — `chore(api): extend the ESI drift manifest to the F008 field set`
+- [x] **Step 1:** Add the six consumed fields (spec §6.1 point 1): `buyout`, `days_to_complete` to the `/contracts/public/{region_id}` block; `runs`, `material_efficiency`, `time_efficiency`, `item_id` to the `/contracts/public/items/{contract_id}` block — each value string naming its consumer in the house format, e.g. `"runs": "background_aggregation._fetch_item_rows -> ContractItem.runs; blueprint-copy display and the min_runs/max_runs filter (F008)"`.
+- [x] **Step 2:** Amend the two existing entries (point 2): `group_id` (`manifest.py:133`) and `category_id` (`:143`) consumer notes now also name the persisted `ContractItem.group_id`/`category_id` columns and the taxonomy cache. While editing, correct the stale method name in those strings: the function is `_enrich_items_and_find_ships`, not `_enrich_items`.
+- [x] **Step 3:** Add a new `Endpoint` block for `GET /universe/categories/{category_id}` (spec_path `/universe/categories/{category_id}`, call_path `/v1/universe/categories/{category_id}/` — match whatever version Task A5 verified, caller `background_aggregation._upsert_taxonomy_names`, consumed field `name`).
+- [x] **Step 4:** Leave the `raw_quantity` `KnownAbsentField` (`:114-118`) **unchanged in this PR** — its "read by min_runs/max_runs" consequence stays true until PR-B rewires the filter; PR-B Task B5 amends it (spec §6.1 point 3).
+- [x] **Step 5:** `pdm run esi-spec-monitor --update` to regenerate the snapshot; commit it with the reason in the message. Run `pdm run esi-spec-monitor` → green; `pytest tools -q` → green.
+- [x] **Step 6: Commit** — `chore(api): extend the ESI drift manifest to the F008 field set`
 
 ### Task A7: Completion-predicate widening (requested items' categories count)
 
@@ -636,7 +636,7 @@ No TDD exemption issues — this is tooling config, but the monitor's tests run 
 
 **Context:** Criterion 8.1 renders requested items and 6.3 summarizes them by category, so a contract whose *requested* item failed category resolution must not be stamped COMPLETED (spec §9 "a narrow scope mismatch this feature creates"). The ship-flag `if` at `:789` keeps its `is_included` guard — only offered items decide the flag; the failure-tracking `elif` drops its guard.
 
-- [ ] **Step 1: Failing test:**
+- [x] **Step 1: Failing test:**
   ```python
   async def test_a_requested_items_failed_category_leaves_the_contract_retryable(db_session):
       """Want-to-buy side: an EXCLUDED item with no resolvable group must block
@@ -659,27 +659,27 @@ No TDD exemption issues — this is tooling config, but the monitor's tests run 
       row = (await db_session.execute(select(Contract).where(Contract.contract_id == 841))).scalar_one()
       assert row.item_processing_status == "ENRICHMENT_INCOMPLETE"
   ```
-- [ ] **Step 1b (codex round-2 finding 7 — confirmed): a second failing test** for the payload shape `{"name": "Frigate"}` — a NON-empty group dict with no `category_id`. Under the naive `elif not group:` fix, `not group` is False, `category_id` lands NULL, and the contract is stamped COMPLETED forever — the exact silent-unenrichment the predicate exists to prevent. Same test shape as Step 1 with `get_universe_group` returning `{"name": "Frigate"}` for the requested item's chain; assert `ENRICHMENT_INCOMPLETE`.
-- [ ] **Step 2: FAIL** (currently stamps COMPLETED — the guard skips excluded items).
-- [ ] **Step 3: Implement:** the unresolved test is **`item["category_id"] is None`** — after Task A4, that assignment (`group.get("category_id")`) is exactly "did category resolution succeed", and it covers both the empty-group and the category-less-payload shapes in one condition. Change `:798` from `elif not group and item["is_included"]:` to `elif item["category_id"] is None:` (the `elif` still chains off the ship-flag `if`, so a resolved ship item never reaches it) and update the adjacent comment block (`:792-797`) to say the category half covers every item because requested items now render by category (F008 Criteria 6.3/8.1), while the ship-flag `if` above stays offered-only.
-- [ ] **Step 4: Green; run `:744` and `:785`** (the existing unresolved-category tests) — they pin the offered-item half and must stay green.
-- [ ] **Step 5: Commit** — `fix(api): keep contracts retryable when a requested item's category fails to resolve`
+- [x] **Step 1b (codex round-2 finding 7 — confirmed): a second failing test** for the payload shape `{"name": "Frigate"}` — a NON-empty group dict with no `category_id`. Under the naive `elif not group:` fix, `not group` is False, `category_id` lands NULL, and the contract is stamped COMPLETED forever — the exact silent-unenrichment the predicate exists to prevent. Same test shape as Step 1 with `get_universe_group` returning `{"name": "Frigate"}` for the requested item's chain; assert `ENRICHMENT_INCOMPLETE`.
+- [x] **Step 2: FAIL** (currently stamps COMPLETED — the guard skips excluded items).
+- [x] **Step 3: Implement:** the unresolved test is **`item["category_id"] is None`** — after Task A4, that assignment (`group.get("category_id")`) is exactly "did category resolution succeed", and it covers both the empty-group and the category-less-payload shapes in one condition. Change `:798` from `elif not group and item["is_included"]:` to `elif item["category_id"] is None:` (the `elif` still chains off the ship-flag `if`, so a resolved ship item never reaches it) and update the adjacent comment block (`:792-797`) to say the category half covers every item because requested items now render by category (F008 Criteria 6.3/8.1), while the ship-flag `if` above stays offered-only.
+- [x] **Step 4: Green; run `:744` and `:785`** (the existing unresolved-category tests) — they pin the offered-item half and must stay green.
+- [x] **Step 5: Commit** — `fix(api): keep contracts retryable when a requested item's category fails to resolve`
 
 ### Task A8: The `ENRICHMENT_VERSION` bump (last ingestion change; nothing after this touches ingestion)
 
 **Files:** `background_aggregation.py:73`
 **Test:** existing `:673` / `:706` (they monkeypatch relative to the constant and stay green by construction; the point of this task is the production resweep).
 
-- [ ] **Step 1:** Change `ENRICHMENT_VERSION = 1` → `ENRICHMENT_VERSION = 2`. Do not edit the runbook comment (it is evergreen).
-- [ ] **Step 2:** Full backend suite green (Global Constraint 11 invocation), `pdm run lint` green.
-- [ ] **Step 3: Commit** — `feat(api): requeue the corpus to backfill item-level taxonomy and blueprint columns`
+- [x] **Step 1:** Change `ENRICHMENT_VERSION = 1` → `ENRICHMENT_VERSION = 2`. Do not edit the runbook comment (it is evergreen).
+- [x] **Step 2:** Full backend suite green (Global Constraint 11 invocation), `pdm run lint` green.
+- [x] **Step 3: Commit** — `feat(api): requeue the corpus to backfill item-level taxonomy and blueprint columns`
 
   Body must carry the operational note: the next production run after deploy is a one-off ~80-minute resweep; the lock-token-mismatch warning at its end is expected; do not redeploy mid-resweep (runbook at the constant).
 
 ### Task A9: Phase A gate — review, codex, merge
 
-- [ ] **Step 1:** Full verification: backend suite green on the scratch DB, `pdm run lint`, `alembic heads` = 1, `pytest fastapi_app/tests/test_migrations.py -q` green.
-- [ ] **Step 2:** Three self-review rounds with distinct lenses: (a) spec §4.1/§5/§7 coverage — every data-layer claim implemented; (b) ESI-3 sweep — every new mapping uses `.get()`, no default masquerading as data; (c) bulk-upsert semantics — uniform keys, no enrichment-maintained column added to `_build_contract_rows`, read-back covers both location roles. Fix everything found; extra rounds until clean.
+- [x] **Step 1:** Full verification: backend suite green on the scratch DB, `pdm run lint`, `alembic heads` = 1, `pytest fastapi_app/tests/test_migrations.py -q` green.
+- [x] **Step 2:** Three self-review rounds with distinct lenses: (a) spec §4.1/§5/§7 coverage — every data-layer claim implemented; (b) ESI-3 sweep — every new mapping uses `.get()`, no default masquerading as data; (c) bulk-upsert semantics — uniform keys, no enrichment-maintained column added to `_build_contract_rows`, read-back covers both location roles. Fix everything found; extra rounds until clean.
 - [ ] **Step 3:** Push branch, open PR-A against `dev` (`## Merge classification` → `Review — database schema`, note Sam's 2026-08-06 merge grant). Run the backgrounded codex review; address findings (fix or rebut in PR comments); record any consequential choice in the decision log.
 - [ ] **Step 4:** CI green (verify explicitly) → `gh pr merge <n> --merge --delete-branch --body ""`. Update this plan's banner + table with SHAs. (The local branch survives in-worktree; expected — the `gh` exit-1 on local cleanup after a successful remote merge is a known worktree artifact.)
 
@@ -1046,7 +1046,7 @@ def _offered_item_range_exists(column, minimum, maximum):
 Flat, not nested (§17.6 — the client filters groups locally). Lists come from `EsiTaxonomyCache` (kind partition), sorted by name. **`coverage` is the item-surface readiness signal (D1), and it has TWO conditions — both revised per codex round-2 findings 3 and 4 (confirmed):**
 
 1. **Enrichment ratio.** Numerator: live, item-bearing contracts with `item_processing_status = 'COMPLETED'` AND `enrichment_version == ENRICHMENT_VERSION`. Denominator: **ALL live, item-bearing contracts regardless of status** — including `PENDING_ITEMS` and `ENRICHMENT_INCOMPLETE`. (The original COMPLETED-only denominator was a real defect: 1 completed + 99 incomplete measured 1/1 = "complete". Failed and pending rows must drag the ratio — that is what it measures.) "Live" = `still_listed_by_esi()` + unexpired (§7.1's population-mixing warning made executable — delisted rows never re-enrich); "item-bearing" = `type IN (item_exchange, auction)` (couriers/loans/unknown are item-less by construction, Criterion 1.2). Threshold: ratio ≥ **0.99** with denominator > 0.
-2. **Name-cache completeness.** Every distinct non-NULL `category_id` present on the items of live contracts has a `kind='category'` row in `EsiTaxonomyCache`. (A category-name fetch failure does not block COMPLETED stamping, so the ratio alone can read "complete" while the option list is missing names — the endpoint would gate the surface on itself being broken.) Computed via a loose-index-scan CTE over `ix_contract_items_category_id` (same pattern as B4; a plain DISTINCT is the 602 ms trap), set-differenced against cache keys in Python.
+2. **Name-cache completeness.** Every distinct non-NULL `category_id` present on the items of **live** contracts has a `kind='category'` row in `EsiTaxonomyCache`. (A category-name fetch failure does not block COMPLETED stamping, so the ratio alone can read "complete" while the option list is missing names — the endpoint would gate the surface on itself being broken.) **This condition owns its own query and does NOT reuse ingestion's `_observed_category_ids`** (codex PR-A round, P2-5): that helper is deliberately unscoped (fetching a name for a delisted-only category is a harmless one-time cost), while THIS condition must scope to live contracts — an uncached category present only on delisted rows must not hold the item-level UI hostage. Shape: join `contract_items` to live `contracts` (`still_listed_by_esi()` + unexpired + item-bearing types), distinct `category_id` — the joined population is small enough that the plain distinct is acceptable here; if `EXPLAIN` at corpus scale disagrees, fall back to the loose-scan CTE with the liveness predicate in the inner probes.
 
 `"complete"` iff both conditions hold; `"partial"` otherwise. The signal auto-degrades during any future version bump's resweep and auto-restores — a feature, not an accident (D1).
 

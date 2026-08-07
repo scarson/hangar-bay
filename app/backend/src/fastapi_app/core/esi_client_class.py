@@ -464,6 +464,10 @@ class ESIClient:
         """Fetches static group info (name, category_id)."""
         return await self._get_esi_object(f"/v1/universe/groups/{group_id}/")
 
+    async def get_universe_category(self, category_id: int) -> dict[str, Any]:
+        """Fetches static dogma category info (name). Immutable set; long TTL."""
+        return await self._get_esi_object(f"/v1/universe/categories/{category_id}/")
+
     async def get_universe_station(self, station_id: int) -> dict[str, Any]:
         """Fetches static NPC-station info (name, `system_id`, type_id).
 
