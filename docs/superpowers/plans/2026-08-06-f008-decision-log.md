@@ -104,6 +104,16 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 
 ---
 
+## D9 — Codex round-2 outcomes: 13 findings accepted, one rebutted (migration-file ABOUTME headers)
+
+**Background.** The cross-model plan review (codex, gpt-5.6-sol, high) returned 13 P1 + 2 P2 findings. All were verified against source before acting; 14 were accepted and are folded into the plan (PR-B/C boundary, item-surface gate scope, coverage denominator + cache-completeness + threshold-test arithmetic, taxonomy-cache retry path, category-less-payload completion bug, All-count arithmetic, item-less deep-link normalization, buyout sort fixtures, columns-module extraction, non-enum type folding, conditional DISTINCT).
+
+**The rebuttal.** Finding 13 said the plan's migration scaffold violates the repo's ABOUTME-header rule for created files. Declined: every existing Alembic revision follows `script.py.mako`'s docstring-first shape with no ABOUTME header, migrations are template-generated scaffolds, and CLAUDE.md's own consistency rule ("match the style of surrounding code") governs a file family with five uniform precedents. Adding a header to one migration would make it the odd file out in its own directory. **Reversibility: trivial** — if Sam prefers ABOUTME on migrations, it's a two-line addition and a template edit.
+
+**Also amended by this round:** D1 gains the two-condition coverage signal (denominator over ALL live item-bearing contracts, plus name-cache completeness) and the whole-surface gate scope; D2's conditional-DISTINCT wording is now binding over the plan's earlier "unconditional is harmless" line; D6's PR train is now A → B (which includes the frontend type adaptation and the renderer-module extraction, or frontend CI breaks on the regenerated types) → C (segments/columns/coverage states) → D.
+
+---
+
 ## D8 — Range families under §3.1: straddling mixed-child contracts match both single-bound branches
 
 **Background.** Spec §3.1 / §16.3 say the mixed-child fixture "must assert it lands in exactly one branch." During plan review (round 1) this turned out to be internally consistent only for the boolean `is_bpc` family, whose false branch is the *negation* of the true branch. Range families (runs/ME/TE) have no negation branch, and §3.1's own existential rule ("at least one offered item satisfies the predicate") means a contract holding ME-5 and ME-15 offered items genuinely matches BOTH `max_me=9` and `min_me=10` — each bound satisfied by a different item.
@@ -114,7 +124,7 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 
 **Reversibility: cheap** (test-shape decision; no wire or schema impact).
 
-**Codex review:** yes — explicitly called out in the round-2 prompt.
+**Codex review:** yes — and codex **objected** (round-2 finding 8): it agrees the spec is internally inconsistent but holds that changing acceptance behavior against a binding spec's literal text needs the spec owner, not a plan-local ruling. Proceeding anyway under Sam's explicit 2026-08-06 decision-making grant, because the alternative (enforcing "exactly one branch" on ranges) would reject implementations that are *correct under the spec's own existential rule* — but this entry is the one flagged most prominently for Sam's morning ratification, and §3.1's wording should be amended once ratified. If Sam overrules, the change is confined to the B5 test fixtures.
 
 ---
 
