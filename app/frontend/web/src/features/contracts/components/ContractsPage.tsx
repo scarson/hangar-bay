@@ -87,6 +87,12 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
   const [filtersOpen, setFiltersOpen] = useState(false)
   const title = listTitle(search)
   useDocumentTitle(title)
+  // The selection the RESPONSE was fetched under (WEB-1), for the live-region
+  // coverage sentence; EmptyResults derives the same split for the visible card.
+  const uncoveredSelection =
+    data !== undefined
+      ? data.regionIds.filter((id) => !data.coverage.ingested_region_ids.includes(id))
+      : []
 
   // Text inputs (search, min/max price) fire on every keystroke, so they
   // navigate with { replace: true } to avoid one history entry per character
@@ -165,7 +171,13 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
             label to avoid a double read. */}
         <p className="sr-only" role="status" aria-live="polite">
           {data !== undefined
-            ? `${data.total.toLocaleString('en-US')} ${data.total === 1 ? 'contract matches' : 'contracts match'} your filters`
+            ? `${data.total.toLocaleString('en-US')} ${data.total === 1 ? 'contract matches' : 'contracts match'} your filters` +
+              // A bare zero is misleading when the cause is coverage, and the
+              // explanation must ride the same announcement assistive tech
+              // hears — not sit in a card the listener has to go find.
+              (data.total === 0 && uncoveredSelection.length > 0
+                ? ` ${regionNames(uncoveredSelection)} ${uncoveredSelection.length === 1 ? 'is' : 'are'} not covered yet.`
+                : '')
             : ''}
         </p>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -208,41 +220,47 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
         ) : pageOutOfRange ? (
           // Transient: the effect above is navigating to the last valid page.
           <ContractTableSkeleton />
-        ) : data.total === 0 ? (
-          <EmptyResults
-            selectedRegionIds={data.regionIds}
-            coveredRegionIds={data.coverage.ingested_region_ids}
-            onReset={resetFilters}
-          />
         ) : (
           <>
             {/* Criterion 5.7: a hauler reading a list of routes has to know the
-                origins are one region's worth rather than the cluster's. Named
-                from the envelope, so it follows coverage instead of freezing
-                today's into this file (Criterion 7.3). */}
+                origins are one region's worth rather than the cluster's — and
+                the hauler staring at ZERO jobs needs it most, so the line sits
+                above the empty/populated split. Named from the envelope, so it
+                follows coverage instead of freezing today's into this file
+                (Criterion 7.3). */}
             {data.segment === 'courier' && data.coverage.ingested_region_ids.length > 0 ? (
               <p className="text-xs text-ink-dim">
                 Couriers originating in {regionNames(data.coverage.ingested_region_ids)} only.
               </p>
             ) : null}
-            <ContractTable
-              contracts={data.items}
-              // The segment picks the columns; the table frame is the same one
-              // every segment renders through (spec §8). It comes off the
-              // response rather than the URL so the columns always describe the
-              // rows beneath them — the two disagree for the whole of a segment
-              // switch, which `keepPreviousData` renders with the old rows.
-              columns={columnsFor(data.segment)}
-              search={search}
-              onSort={handleSort}
-              isRefreshing={isFetching}
-            />
-            <Pagination
-              page={search.page}
-              size={data.size ?? DEFAULT_SIZE}
-              total={data.total}
-              onPage={goToPage}
-            />
+            {data.total === 0 ? (
+              <EmptyResults
+                selectedRegionIds={data.regionIds}
+                coveredRegionIds={data.coverage.ingested_region_ids}
+                onReset={resetFilters}
+              />
+            ) : (
+              <>
+                <ContractTable
+                  contracts={data.items}
+                  // The segment picks the columns; the table frame is the same one
+                  // every segment renders through (spec §8). It comes off the
+                  // response rather than the URL so the columns always describe the
+                  // rows beneath them — the two disagree for the whole of a segment
+                  // switch, which `keepPreviousData` renders with the old rows.
+                  columns={columnsFor(data.segment)}
+                  search={search}
+                  onSort={handleSort}
+                  isRefreshing={isFetching}
+                />
+                <Pagination
+                  page={search.page}
+                  size={data.size ?? DEFAULT_SIZE}
+                  total={data.total}
+                  onPage={goToPage}
+                />
+              </>
+            )}
           </>
         )}
       </section>

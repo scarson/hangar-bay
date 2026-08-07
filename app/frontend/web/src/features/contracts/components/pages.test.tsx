@@ -1057,6 +1057,47 @@ describe('freshness and coverage', () => {
     expect(results().getByRole('button', { name: 'Clear filters' })).toBeInTheDocument()
   })
 
+  it('pluralizes the coverage explanation for several uncovered regions', async () => {
+    // Only the singular ternary arm was pinned before; a swapped pair would
+    // have shipped green.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?region_ids=10000043&region_ids=10000030')
+
+    expect(
+      await screen.findByRole('heading', { name: /No data for (Domain and Heimatar|Heimatar and Domain) yet/ }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Those regions hold nothing here yet/)).toBeInTheDocument()
+    expect(screen.queryByText(/That region holds/)).not.toBeInTheDocument()
+  })
+
+  it('announces the coverage gap in the same breath as the zero count', async () => {
+    // The polite live region is what assistive tech hears. "0 contracts match"
+    // alone is misleading when the real story is "that region is not covered" —
+    // the explanation must ride the same announcement, not sit in a card the
+    // listener has to go find.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?region_ids=10000043')
+
+    await screen.findByRole('heading', { name: 'No data for Domain yet' })
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('0 contracts match your filters')
+    expect(status).toHaveTextContent('Domain is not covered yet')
+  })
+
+  it('keeps the courier coverage statement on an empty courier view', async () => {
+    // Criterion 5.7's reader is exactly the hauler staring at zero jobs: the
+    // statement that origins are one region's worth must not vanish with the
+    // rows.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?contract_type=courier&ships_only=false')
+
+    await screen.findByText(/no contracts match/i)
+    expect(screen.getByText('Couriers originating in The Forge only.')).toBeInTheDocument()
+  })
+
   it('keeps the loosen-your-filters copy when every selected region is covered', async () => {
     // A covered region that happens to hold nothing matching is the ordinary
     // empty, and the advice that fits it must not be replaced by a coverage
