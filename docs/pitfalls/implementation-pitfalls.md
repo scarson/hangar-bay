@@ -27,7 +27,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | § | Section | You're working on... | Entries | Checklist |
 |---|---------|---------------------|---------|-----------|
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, FASTAPI-3, PROXY-1 | §1.C |
-| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3 | §2.C |
+| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3, SQLA-4 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8, ENV-9, ENV-10 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status, spec drift | ESI-1, ESI-2, ESI-3, ESI-4 | §4.C |
 | 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4, DEPLOY-5, DEPLOY-6 | §5.C |
@@ -151,11 +151,38 @@ One expression negated makes the branches exact complements *by construction*, i
 
 ---
 
+### SQLA-4: A SQLAlchemy error carries the failed statement's bind values into `str()`
+
+**The Flaw:** Scrubbing a sensitive value out of a log payload while the same log record renders the exception with `str(e)`. Every `StatementError` (and so every `DBAPIError` — statement timeout, dropped connection, deadlock) appends `[SQL: ...]\n[parameters: {...}]` to its message. The SQL carries placeholders, but the parameters carry the **values**, and the statement that failed is the one holding the user's input as a bind.
+
+**Why It Matters:** It defeats the scrub completely and silently, on exactly the path nobody exercises. The success path logs the redacted dimension; the failure path re-publishes the raw value one key over, in the same record. Nothing looks wrong in review, and a test that injects a plain `RuntimeError` — the obvious way to simulate a DB failure — cannot see it, because a non-SQLAlchemy exception's `str()` has no parameters to leak. The value also escapes past the service: a re-raised exception reaches whatever global handler logs `str(exc)` and the traceback.
+
+**The Fix:** Hide at the source — `create_async_engine(..., hide_parameters=True)` — so SQLAlchemy substitutes `[SQL parameters hidden due to hide_parameters=True]` in every error the engine raises, in the service's log, in the global handler's, and in the traceback alike. Where a log site must hold the guarantee for a session built elsewhere, render through the same flag rather than dropping the message (the driver's diagnosis is why the field exists):
+
+```python
+def _error_without_bound_parameters(exc: BaseException) -> str:
+    if not isinstance(exc, StatementError):
+        return str(exc)
+    previously_hidden = exc.hide_parameters
+    exc.hide_parameters = True
+    try:
+        return str(exc)
+    finally:
+        exc.hide_parameters = previously_hidden
+```
+
+Test it by injecting a real `StatementError` constructed with the sensitive value as a bind, and assert against the WHOLE log record, not the payload key you scrubbed.
+
+**Where It Bit Us:** F008 Task B10 (2026-08-07). The four `search_terms` payloads were changed to report `search_len` instead of the user's raw query text, and the commit claimed the text "never lands in a log line" — but the failure site's `error_message=str(e)` sat in the same record, and the failing statement is the one carrying the `ILIKE '%<search text>%'` bind. Caught in review; the test that shipped with the scrub injected `RuntimeError("simulated db failure")` and was structurally unable to see it. Pairs with the universal "no PII in audit/debug logs" rule and testing-pitfalls TEST-21.
+
+---
+
 ### §2.C — Review Checklist
 
 - [ ] **Pagination over a one-to-many join paginates distinct parent IDs, not duplicated joined rows** — grouped subquery with aggregate-based ordering; page entities re-loaded and restored to the ID order (SQLA-1)
 - [ ] **Parent-level classification uses a correlated EXISTS, not a predicate on a joined child row** — the negative branch negates the same expression, and a mixed-child fixture proves the branches are complements (SQLA-3)
 - [ ] **`ON CONFLICT` against a partial unique index restates the index predicate** — `index_where=` matches the index's `WHERE`, and every indexed column is non-NULL on insert (Postgres NULLs never conflict) (SQLA-2)
+- [ ] **No log site renders a SQLAlchemy exception with an unscrubbed `str()`** — the engine sets `hide_parameters=True`, and any redaction claim is tested against the whole record with a real `StatementError` carrying the value as a bind (SQLA-4)
 
 ---
 
@@ -486,6 +513,11 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
+## 2026-08-07 — SQLA-4 added: SQLAlchemy errors carry bind values into `str()`
+
+- Added SQLA-4. Found in review of F008 Task B10: the four contract-search log sites had just been changed to report the search string's LENGTH instead of its text, and the commit claimed the text never reaches a log line — but the failure site's `error_message=str(e)` sat in the same record, and a `StatementError`'s `str()` appends `[parameters: {...}]` from the statement holding that very text as an `ILIKE` bind. Closed at the source with `hide_parameters=True` on the application engine (which also covers `main.py`'s global handler and the traceback it logs) plus a render-time scrub at the log site.
+- Paired with testing-pitfalls TEST-21, the reason the shipped test could not see it: the injected failure was a `RuntimeError`, whose `str()` has no parameters to leak.
+
 ## 2026-08-06 — DEPLOY-6 added: Dependabot does not index pdm.lock
 
 - Added DEPLOY-6. Triage of five open Dependabot alerts (all npm, all undici) included a due-diligence OSV audit of the backend lock, which found nine vulnerable pins Dependabot had never surfaced — four in production scope, including the cryptography build backing EVE SSO token validation. All but a plugin-capped pytest advisory were fixed in the same PR; the entry records the blind spot so future triage never reads GitHub's zero as a backend result.
@@ -598,6 +630,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | SQLA-1 | Paginating a joined query paginates joined rows | HIGH | VALIDATED | Data & Persistence |
 | SQLA-2 | ON CONFLICT vs a partial unique index needs index_where | HIGH | VALIDATED | Data & Persistence |
 | SQLA-3 | A per-row predicate over a one-to-many join cannot classify the parent | HIGH | VALIDATED | Data & Persistence |
+| SQLA-4 | A SQLAlchemy error carries the failed statement's bind values into `str()` | HIGH | VALIDATED | Data & Persistence |
 | ENV-1 | pydantic-settings JSON-decodes complex env fields early | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-2 | Backend restart wipes and re-ingests all data | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-3 | --reload + ingestion + Valkey lock interact badly in dev | MEDIUM | VALIDATED | Environment & Dev Loop |
