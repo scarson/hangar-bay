@@ -2,7 +2,7 @@
 // ABOUTME: aria-label announces the unread count; zero-count renders the link but no numeric badge.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
-import { jsonResponse } from '../../../test/http'
+import { emptyContractPage, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 
 const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
@@ -12,7 +12,7 @@ function stubFetch(unreadTotal: number) {
     const url = typeof input === 'string' ? input : (input as Request).url
     if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
     if (/\/me\/notifications\//.test(url)) return jsonResponse({ total: unreadTotal, page: 1, size: 1, items: [] })
-    return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
+    return jsonResponse(emptyContractPage())
   })
 }
 afterEach(() => vi.unstubAllGlobals())

@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../../test/http'
+import { emptyContractPage, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 import { daysFromNow } from '../../../test/dates'
 
@@ -13,7 +13,7 @@ function stubAnonymous() {
   vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : (input as Request).url
     if (/\/api\/v1\/me$/.test(url)) return jsonResponse({ detail: 'unauthenticated' }, 401)
-    return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
+    return jsonResponse(emptyContractPage())
   })
 }
 
@@ -75,7 +75,7 @@ describe('SsoNotice', () => {
           items: [],
         })
       }
-      return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
+      return jsonResponse(emptyContractPage())
     })
     const { router } = renderApp('/contracts/123?sso=error&foo=bar#items')
     const notice = await screen.findByText(/went wrong/i)

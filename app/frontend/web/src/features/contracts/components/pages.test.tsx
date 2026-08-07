@@ -456,8 +456,11 @@ describe('courier contracts', () => {
 
     renderApp('/contracts?ships_only=false')
 
-    expect(await screen.findByText('Courier')).toBeInTheDocument()
-    expect(screen.queryByText('Exchange')).not.toBeInTheDocument()
+    // Scoped to the row: the segment toolbar above the table carries a Courier
+    // control of its own, and the assertion is about the row's type badge.
+    const row = within(await screen.findByRole('row', { name: /Jita to Amarr rush/ }))
+    expect(row.getByText('Courier')).toBeInTheDocument()
+    expect(row.queryByText('Exchange')).not.toBeInTheDocument()
   })
 
   it('shows the courier badge and its collateral on the detail view', async () => {
@@ -482,5 +485,160 @@ describe('courier contracts', () => {
 
     expect(await screen.findByText('Unknown location')).toBeInTheDocument()
     expect(screen.queryByText(/Location null/)).not.toBeInTheDocument()
+  })
+})
+
+const AUCTION_ROW = {
+  ...ROW,
+  contract_id: 303,
+  type: 'auction',
+  title: 'Vargur, no reserve',
+  primary_label: 'Vargur',
+}
+
+// Loans carry no items, exactly like couriers, so nothing in one can satisfy
+// ships-only. They get no segment control (spec Criterion 1.1) but stay
+// reachable by URL and counted.
+const LOAN_ROW = {
+  ...ROW,
+  contract_id: 404,
+  type: 'loan',
+  title: 'Capital fleet float',
+  is_ship_contract: false,
+  primary_label: 'Capital fleet float',
+}
+
+/**
+ * Per-type counts as the server computes them: over the whole matching
+ * population with the contract_type predicate lifted, and — for the item-less
+ * types — with ships-only lifted too, so the courier figure is its true total
+ * rather than the zero a ships-only view would return (Criterion 1.8). Nothing
+ * here is derived from the page's own rows.
+ */
+const SEGMENT_COUNTS = { item_exchange: 1240, auction: 60, courier: 115, loan: 2, unknown: 1 }
+
+/** Rows keyed off the requested segment, so a render can't drift from the request. */
+function segmentedPage(url: string) {
+  const type = new URL(url, 'http://localhost').searchParams.get('contract_type')
+  const rows =
+    type === 'courier'
+      ? [COURIER_ROW]
+      : type === 'auction'
+        ? [AUCTION_ROW]
+        : type === 'loan'
+          ? [LOAN_ROW]
+          : [ROW]
+  return jsonResponse(listPage(rows, { segment_counts: SEGMENT_COUNTS }))
+}
+
+describe('contract-type segments', () => {
+  it('counts All over the item-bearing types only while ships-only is on', async () => {
+    // The item-less counts beside it are deliberately lifted figures (Criterion
+    // 1.8) describing a view ships-only cannot show, so summing all five would
+    // overstate what All actually renders: 1240 + 60, not + 115 + 2 + 1.
+    stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts')
+
+    expect(await screen.findByRole('button', { name: /^All 1,300$/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: /^Item exchange 1,240$/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Auction 60$/ })).toBeInTheDocument()
+    // The courier control advertises its true total rather than the 0 the
+    // ships-only view would return — the label must not flip on click.
+    expect(screen.getByRole('button', { name: /^Courier 115$/ })).toBeInTheDocument()
+    // loan and unknown are counted but get no control of their own.
+    expect(screen.queryByRole('button', { name: /Loan/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Unknown/ })).not.toBeInTheDocument()
+  })
+
+  it('counts All over every type once the view is already widened', async () => {
+    // ships_only=false with no segment selected: the item-less types are part of
+    // what All renders, so they are part of what it claims — 1240+60+115+2+1.
+    stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts?ships_only=false')
+
+    expect(await screen.findByRole('button', { name: /^All 1,418$/ })).toBeInTheDocument()
+  })
+
+  it('selecting Courier clears ships-only visibly and asks the API for couriers', async () => {
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp('/contracts')
+    await screen.findByText('Tristan')
+
+    await userEvent.click(screen.getByRole('button', { name: /^Courier 115$/ }))
+
+    // One navigation carries both halves: the segment AND the cleared checkbox
+    // (Criterion 1.7 — the combination must be unreachable, and visibly so).
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        contract_type: ['courier'],
+        ships_only: false,
+      }),
+    )
+    expect(screen.getByLabelText(/ships only/i)).not.toBeChecked()
+    expect(screen.getByRole('button', { name: /^Courier 115$/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    // The segment names the view, in the heading and the tab label alike.
+    expect(screen.getByRole('heading', { level: 1, name: 'Courier Contracts' })).toBeInTheDocument()
+    await waitFor(() => expect(document.title).toBe('Courier Contracts — Hangar Bay'))
+
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('contract_type=courier')
+      expect(listCall).not.toContain('is_ship_contract')
+    })
+  })
+
+  it('returning to All removes both parameters and restores the ships-only default', async () => {
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    await userEvent.click(screen.getByRole('button', { name: /^All 1,300$/ }))
+
+    // Criterion 1.9: the patch REMOVES ships_only rather than setting it true,
+    // so the restored state is whatever the default is rather than a value
+    // frozen at the call site. The route's validateSearch then re-derives that
+    // default and writes it back out, exactly as Clear filters already does —
+    // what must not survive is the explicit false that "cleared" is stored as.
+    await waitFor(() => expect(router.state.location.searchStr).not.toContain('contract_type'))
+    expect(router.state.location.searchStr).not.toContain('ships_only=false')
+    expect(router.state.location.search).toMatchObject({ ships_only: true })
+    expect(screen.getByLabelText(/ships only/i)).toBeChecked()
+    expect(screen.getByRole('heading', { level: 1, name: 'Ship Contracts' })).toBeInTheDocument()
+
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('is_ship_contract=true')
+      expect(listCall).not.toContain('contract_type')
+    })
+  })
+
+  it('reaches a loan segment by URL alone, without a control and without ships-only', async () => {
+    // Criterion 1.1: a type with no control is still reachable and counted. The
+    // parser's item-less normalization has to hold at the wire, not just in its
+    // own unit test — a shared ?contract_type=loan URL that still sent
+    // is_ship_contract would be a guaranteed-empty request.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts?contract_type=loan')
+
+    expect(await screen.findByText('Capital fleet float')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Loan Contracts' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Loan/ })).not.toBeInTheDocument()
+    // No control claims the view: All is not selected either.
+    expect(screen.getByRole('button', { name: /^All/ })).toHaveAttribute('aria-pressed', 'false')
+
+    const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+    expect(listCall).toContain('contract_type=loan')
+    expect(listCall).not.toContain('is_ship_contract')
   })
 })

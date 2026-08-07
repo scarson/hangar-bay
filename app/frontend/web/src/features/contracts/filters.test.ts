@@ -3,6 +3,7 @@ import {
   CONTRACT_TYPES,
   DEFAULT_PAGE,
   DEFAULT_SIZE,
+  ITEM_BEARING_TYPES,
   ITEM_LESS_TYPES,
   MIN_SEARCH_LENGTH,
   SORT_FIELDS,
@@ -62,6 +63,10 @@ describe('parseContractSearch', () => {
       'unknown',
     ])
     expect([...ITEM_LESS_TYPES]).toEqual(['courier', 'loan', 'unknown'])
+    expect([...ITEM_BEARING_TYPES]).toEqual(['item_exchange', 'auction'])
+    // The two lists partition the enum. A type in neither would be counted in
+    // no All total; a type in both would be counted twice.
+    expect([...ITEM_BEARING_TYPES, ...ITEM_LESS_TYPES].sort()).toEqual([...CONTRACT_TYPES].sort())
   })
 
   it('keeps only contract types the backend enum accepts', () => {

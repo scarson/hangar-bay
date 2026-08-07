@@ -3,13 +3,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { anonymousMe, jsonResponse } from '../../../test/http'
+import { anonymousMe, emptyContractPage, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 
 interface Call { url: string; method?: string; body?: string }
 
 const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
-const EMPTY_PAGE = { total: 0, page: 1, size: 50, items: [] }
+const EMPTY_PAGE = emptyContractPage()
 
 function stubFetch(handler: (url: string, call: Call) => Response): Call[] {
   const calls: Call[] = []

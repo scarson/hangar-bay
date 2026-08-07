@@ -54,6 +54,14 @@ export type UnmirroredContractTypes = Exhausted<
  */
 export const ITEM_LESS_TYPES: readonly ContractTypeValue[] = ['courier', 'loan', 'unknown']
 
+/**
+ * The types that carry items, and so the only ones a ships-only view can show.
+ * They are what the All segment counts while ships-only is on: the item-less
+ * counts served beside them are computed with ships-only lifted, so they
+ * describe a view All is not — adding them in would overstate it.
+ */
+export const ITEM_BEARING_TYPES: readonly ContractTypeValue[] = ['item_exchange', 'auction']
+
 /** Backend ContractFilters.search has min_length=3; shorter values 422. */
 export const MIN_SEARCH_LENGTH = 3
 export const DEFAULT_PAGE = 1

@@ -1,0 +1,135 @@
+// ABOUTME: The contract-type segment control — one toggle per browsable type,
+// ABOUTME: each labelled with the count of contracts selecting it would show.
+import {
+  CONTRACT_TYPES,
+  ITEM_BEARING_TYPES,
+  ITEM_LESS_TYPES,
+  type ContractSearch,
+  type ContractTypeValue,
+} from '../filters'
+
+/**
+ * The controls the view offers. `loan` and `unknown` are deliberately absent:
+ * both stay reachable by URL and counted like every other type, but they are
+ * empty or near-empty in The Forge, so they hold no permanent screen space.
+ * Promoting one later is additive.
+ */
+const SEGMENTS: { type?: ContractTypeValue; label: string }[] = [
+  { label: 'All' },
+  { type: 'item_exchange', label: 'Item exchange' },
+  { type: 'auction', label: 'Auction' },
+  { type: 'courier', label: 'Courier' },
+]
+
+/** What names the view once a single type is in effect — the two without a control included. */
+const SEGMENT_TITLES: Record<ContractTypeValue, string> = {
+  item_exchange: 'Item Exchange Contracts',
+  auction: 'Auction Contracts',
+  courier: 'Courier Contracts',
+  loan: 'Loan Contracts',
+  unknown: 'Unknown Contracts',
+}
+
+/** The one type in effect, or undefined for no selection — or for several, which only a hand-edited URL produces. */
+function activeType(search: ContractSearch): ContractTypeValue | undefined {
+  return search.contract_type?.length === 1 ? search.contract_type[0] : undefined
+}
+
+/**
+ * Whether every selected type is item-less. Such a selection is the one the
+ * parser widened on the way in, so it is also the one leaving restores from.
+ */
+function itemLessOnly(search: ContractSearch): boolean {
+  const selected = search.contract_type
+  return selected !== undefined && selected.every((type) => ITEM_LESS_TYPES.includes(type))
+}
+
+/**
+ * The list heading and document title. A selected segment names the view;
+ * without one it falls back to the ships-only pair, which is what the default
+ * view still reads.
+ */
+export function listTitle(search: ContractSearch): string {
+  const type = activeType(search)
+  if (type !== undefined) return SEGMENT_TITLES[type]
+  return search.ships_only ? 'Ship Contracts' : 'All Contracts'
+}
+
+function sumCounts(counts: Record<string, number>, types: readonly ContractTypeValue[]): number {
+  return types.reduce((total, type) => total + (counts[type] ?? 0), 0)
+}
+
+/**
+ * The navigation a control performs. Both halves of the ships-only rule live
+ * here so they travel in one navigation: an item-less segment clears ships-only
+ * on the way in — visibly, the checkbox unchecks — and leaving one restores the
+ * default by REMOVING the parameter, since the parser reads absence as on and
+ * writes "cleared" as an explicit false.
+ *
+ * The clearing half is a second layer, not the only one: parseContractSearch
+ * widens any all-item-less selection on its way through validateSearch, so no
+ * test can observe this branch alone (mutation-verified — deleting it changes
+ * nothing any lane can see). It stays because Criterion 1.7 is an invariant
+ * about a combination that must never exist, and because the restore half
+ * below has no such backstop.
+ */
+function segmentPatch(
+  type: ContractTypeValue | undefined,
+  leavingItemLess: boolean,
+): Partial<ContractSearch> {
+  const contract_type = type === undefined ? undefined : [type]
+  if (type !== undefined && ITEM_LESS_TYPES.includes(type)) {
+    return { contract_type, ships_only: false }
+  }
+  return leavingItemLess ? { contract_type, ships_only: undefined } : { contract_type }
+}
+
+export function SegmentTabs({
+  search,
+  counts,
+  onSelect,
+}: {
+  search: ContractSearch
+  /** The envelope's per-type counts, keyed by every type the server enumerates. */
+  counts: Record<string, number>
+  onSelect: (patch: Partial<ContractSearch>) => void
+}) {
+  const leavingItemLess = itemLessOnly(search)
+  const selected = activeType(search)
+  // What All would land on decides what All may claim: every route into it from
+  // an item-less segment restores ships-only, so only a view the reader has
+  // already widened counts the item-less types in.
+  const allCountsEveryType = !leavingItemLess && !search.ships_only
+
+  return (
+    <fieldset className="flex flex-wrap items-center gap-1.5">
+      <legend className="sr-only">Contract type</legend>
+      {SEGMENTS.map((segment) => {
+        const active =
+          segment.type === undefined ? search.contract_type === undefined : segment.type === selected
+        const count =
+          segment.type === undefined
+            ? sumCounts(counts, allCountsEveryType ? CONTRACT_TYPES : ITEM_BEARING_TYPES)
+            : (counts[segment.type] ?? 0)
+        return (
+          <button
+            key={segment.type ?? 'all'}
+            type="button"
+            // aria-pressed on plain buttons rather than a tablist: there are no
+            // tab panels here — the toolbar re-filters one region (Criterion 12).
+            aria-pressed={active}
+            onClick={() => onSelect(segmentPatch(segment.type, leavingItemLess))}
+            className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm transition-colors duration-150 ${
+              active
+                ? 'border-brand-dim bg-brand-wash text-brand'
+                : 'border-line-strong text-ink-body hover:bg-raised'
+            }`}
+          >
+            {segment.label}{' '}
+            <span className="font-mono text-xs">{count.toLocaleString('en-US')}</span>
+          </button>
+        )
+      })}
+    </fieldset>
+  )
+}

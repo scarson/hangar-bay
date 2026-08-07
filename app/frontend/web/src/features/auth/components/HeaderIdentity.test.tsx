@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { jsonResponse } from '../../../test/http'
+import { emptyContractPage, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -13,7 +13,7 @@ describe('HeaderIdentity', () => {
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : (input as Request).url
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse({ detail: 'unauthenticated' }, 401)
-      return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
+      return jsonResponse(emptyContractPage())
     })
     const { router } = renderApp('/contracts?is_bpc=true')
     const link = await screen.findByRole('link', { name: /log in with eve/i })
@@ -39,7 +39,7 @@ describe('HeaderIdentity', () => {
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : (input as Request).url
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse({ detail: 'unauthenticated' }, 401)
-      return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
+      return jsonResponse(emptyContractPage())
     })
     const { router } = renderApp('/contracts?sso=error&is_bpc=true')
     const link = await screen.findByRole('link', { name: /log in with eve/i })
@@ -58,7 +58,7 @@ describe('HeaderIdentity', () => {
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : (input as Request).url
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse({ character_id: 91000001, character_name: 'Sesta Hound' })
-      return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
+      return jsonResponse(emptyContractPage())
     })
     renderApp('/contracts')
     expect(await screen.findByText('Sesta Hound')).toBeInTheDocument()
@@ -85,7 +85,7 @@ describe('HeaderIdentity', () => {
           ? jsonResponse({ character_id: 91000001, character_name: 'Sesta Hound' })
           : jsonResponse({ detail: 'unauthenticated' }, 401)
       }
-      return jsonResponse({ total: 0, page: 1, size: 50, items: [] })
+      return jsonResponse(emptyContractPage())
     })
     renderApp('/contracts')
     await userEvent.click(await screen.findByRole('button', { name: /log out/i }))

@@ -8,6 +8,7 @@ import { useContracts } from '../hooks/useContracts'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
 import { FilterRail } from './FilterRail'
 import { Pagination } from './Pagination'
+import { SegmentTabs, listTitle } from './SegmentTabs'
 
 /** New sort field starts in its most useful direction: newest/soonest for dates, cheap-first for ISK. */
 const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
@@ -28,7 +29,8 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
   const navigate = useNavigate({ from })
   const { data, isPending, isError, isFetching, refetch } = useContracts(search)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  useDocumentTitle(search.ships_only ? 'Ship Contracts' : 'All Contracts')
+  const title = listTitle(search)
+  useDocumentTitle(title)
 
   // Text inputs (search, min/max price) fire on every keystroke, so they
   // navigate with { replace: true } to avoid one history entry per character
@@ -111,9 +113,7 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
             : ''}
         </p>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-h1 font-semibold">
-            {search.ships_only ? 'Ship Contracts' : 'All Contracts'}
-          </h1>
+          <h1 className="text-h1 font-semibold">{title}</h1>
           {data !== undefined ? (
             <p className="text-data text-ink-dim">
               {data.total.toLocaleString('en-US')} matching
@@ -121,6 +121,13 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
           ) : null}
           <SaveSearchControl search={search} />
         </div>
+
+        {/* The segments need the envelope's counts, so they appear with the
+            first response and stay through later ones (keepPreviousData holds
+            the previous page while a new segment loads). */}
+        {data !== undefined ? (
+          <SegmentTabs search={search} counts={data.segment_counts} onSelect={update} />
+        ) : null}
 
         {isPending ? (
           <ContractTableSkeleton />
