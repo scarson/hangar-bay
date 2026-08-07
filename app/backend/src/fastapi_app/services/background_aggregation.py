@@ -728,11 +728,12 @@ class ContractAggregationService:
         # whose type/group resolution failed keeps NULL enrichment (the
         # graceful-degrade path), so a future consumer trusting 'COMPLETED' would
         # skip re-enriching a transiently-failed row. Mark COMPLETED only when every
-        # fetched item resolved a type_name AND every included item resolved a
-        # category; the rest are ENRICHMENT_INCOMPLETE. An unresolved category is a
-        # half-done enrichment exactly like an unresolved type — it decides the ship
-        # flag — and stamping it COMPLETED would hand it to the skip, which withholds
-        # it from every later run: silently unenriched with no route back.
+        # fetched item resolved a type_name AND a category; the rest are
+        # ENRICHMENT_INCOMPLETE. An unresolved category is a half-done enrichment
+        # exactly like an unresolved type — it decides the ship flag and the
+        # per-category rendering of both contract sides — and stamping it COMPLETED
+        # would hand it to the skip, which withholds it from every later run:
+        # silently unenriched with no route back.
         incomplete_contract_ids = {
             item["contract_id"] for item in all_items if item.get("type_name") is None
         } | unresolved_category_contract_ids
@@ -853,8 +854,8 @@ class ContractAggregationService:
         dicts in place (type_name, market_group_id, category), and return
         (ship_contract_ids, unresolved_category_contract_ids, group_info): the
         contract_ids whose INCLUDED items contain a ship (EVE category 6), those
-        with an INCLUDED item whose category could not be determined at all, and
-        the group payloads this run resolved, keyed by group_id.
+        with ANY item whose category could not be determined, and the group
+        payloads this run resolved, keyed by group_id.
 
         Resolution failures degrade gracefully: the item keeps NULL enrichment
         and the contract stays unflagged; the aggregation run never dies here.
@@ -897,13 +898,16 @@ class ContractAggregationService:
             # Only INCLUDED items decide the flag, so only they classify the contract.
             if is_ship and item["is_included"]:
                 ship_contract_ids.add(item["contract_id"])
-            # An empty group means the category is UNKNOWN, not "not a ship": the group
-            # fetch failed, the payload had a surprise shape, or the type carried no
-            # group_id. Deliberately narrowed to INCLUDED items: only they decide the
-            # ship flag, and the narrowing bounds the retry-forever population. The
-            # accepted cost is that an EXCLUDED item's category can stay NULL
-            # permanently on an otherwise-COMPLETED contract (cosmetic: the detail
-            # page renders no Ship badge for that item).
-            elif not group and item["is_included"]:
+            # A NULL category_id means the category is UNKNOWN, not "not a ship": the
+            # group fetch failed, the payload arrived without a category_id, or the
+            # type carried no group_id. Testing the resolved value rather than the
+            # group dict is what covers that middle shape — a non-empty group payload
+            # missing category_id would otherwise read as success and stamp the
+            # contract COMPLETED with a permanently NULL category.
+            # Every item counts here, included or not: the requested side is rendered
+            # and summarized by category, so a NULL there is a blank half of the
+            # contract, not a missing badge. The ship-flag branch above stays
+            # offered-only — only included items decide what the contract IS.
+            elif item["category_id"] is None:
                 unresolved_category_contract_ids.add(item["contract_id"])
         return ship_contract_ids, unresolved_category_contract_ids, group_info

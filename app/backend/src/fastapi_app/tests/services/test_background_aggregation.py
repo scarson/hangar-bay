@@ -818,6 +818,77 @@ async def test_degraded_category_resolution_does_not_clear_a_ship_flag(
     assert row.is_ship_contract is True, "a degraded category read must not clear a flag"
 
 
+async def test_a_requested_items_failed_category_leaves_the_contract_retryable(
+    db_session: AsyncSession,
+):
+    """Want-to-buy side: an EXCLUDED item with no resolvable group must block
+    COMPLETED, or the contract is withheld from every future re-fetch with a
+    permanently blank requested side. The requested half is rendered and
+    summarized by category, so its taxonomy is load-bearing, not cosmetic."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 8411, "type_id": 587, "quantity": 1, "is_included": True},
+            {"record_id": 8412, "type_id": 99999, "quantity": 1, "is_included": False},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda tid: {
+            587: {"name": "Tristan", "group_id": 25},
+            99999: {"name": "Mystery Meat"},  # no group_id: the chain stops here
+        }[tid]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(841)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 841))
+    ).scalar_one()
+    assert row.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    assert row.enrichment_version == 0
+
+
+async def test_a_category_less_group_payload_leaves_the_contract_retryable(
+    db_session: AsyncSession,
+):
+    """A non-empty group payload that omits category_id is a resolution failure too.
+
+    Testing the group dict for emptiness passes on this shape, category_id lands NULL,
+    and the contract is stamped COMPLETED forever — the silent unenrichment the
+    predicate exists to prevent. The test that decides is the resolved category itself.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 8421, "type_id": 587, "quantity": 1, "is_included": True},
+            {"record_id": 8422, "type_id": 99999, "quantity": 1, "is_included": False},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda tid: {
+            587: {"name": "Tristan", "group_id": 25},
+            99999: {"name": "Mystery Meat", "group_id": 26},
+        }[tid]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda gid: {
+            25: {"name": "Frigate", "category_id": 6},
+            26: {"name": "Salvaged Materials"},  # no category_id
+        }[gid]
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(842)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 842))
+    ).scalar_one()
+    assert row.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    assert row.enrichment_version == 0
+
+
 async def test_skip_select_reads_across_the_chunk_boundary(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, caplog
 ):
