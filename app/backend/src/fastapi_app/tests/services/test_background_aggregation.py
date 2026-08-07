@@ -20,7 +20,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.background_aggregation as bg_agg
-from fastapi_app.models.contracts import Contract, ContractItem
+from fastapi_app.models.contracts import Contract, ContractItem, EsiTaxonomyCache
 from fastapi_app.services.background_aggregation import ContractAggregationService
 from fastapi_app.tests.core.test_esi_client import _etag_client, _etag_response
 from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
@@ -999,6 +999,92 @@ async def test_item_level_columns_persist_from_payload_and_enrichment(db_session
     assert copy.category_id == 9 and copy.group_id == 105
     assert original.runs is None and original.material_efficiency is None
     assert original.category_id == 9          # taxonomy resolves regardless of blueprint fields
+
+
+async def test_enrichment_fills_the_taxonomy_name_cache(db_session: AsyncSession):
+    """Group names ride the payloads enrichment already fetches; category names come
+    from the one new ESI call (spec §5.2), cache-first so the tiny immutable set is
+    fetched once, ever."""
+    service = _make_service()
+    contract = _ship_contract_dict(831)
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8311, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    service.esi_client.get_universe_category = AsyncMock(return_value={"name": "Ship"})
+    await service._process_contracts(db_session, [contract])
+
+    rows = {(r.kind, r.esi_id): r for r in (await db_session.execute(
+        select(EsiTaxonomyCache)
+    )).scalars()}
+    assert rows[("group", 25)].name == "Frigate"
+    assert rows[("group", 25)].parent_category_id == 6
+    assert rows[("category", 6)].name == "Ship"
+
+    # Second run: category already cached — the ESI call must not repeat.
+    service.esi_client.get_universe_category.reset_mock()
+    again = _ship_contract_dict(832)
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8321, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    await service._process_contracts(db_session, [again])
+    service.esi_client.get_universe_category.assert_not_awaited()
+
+
+async def test_a_failed_category_name_fetch_is_repaired_from_observed_items(
+    db_session: AsyncSession,
+):
+    """A category whose name fetch failed must be retried without re-enrichment.
+
+    The contract that carried it is stamped COMPLETED (a missing NAME is not a
+    missing category), so the item-fetch skip withholds it from every later run
+    and its group payload never reaches the cache writer again. The categories to
+    fetch therefore include the ones observed on stored items but absent from the
+    cache — which is what makes the repair happen on a run whose own batch carries
+    no items at all.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8411, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    service.esi_client.get_universe_category = AsyncMock(
+        side_effect=RuntimeError("ESI down")
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(841)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "category")
+    )).scalars().all() == []
+    contract = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 841)
+    )).scalar_one()
+    assert contract.item_processing_status == "COMPLETED"
+
+    # Next run: ESI recovers, but the batch is courier-only — no items are fetched,
+    # so nothing in this run's enrichment mentions category 6. The stored item does.
+    service.esi_client.get_universe_category = AsyncMock(return_value={"name": "Ship"})
+    courier = _ship_contract_dict(842)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    row = (await db_session.execute(
+        select(EsiTaxonomyCache).where(
+            EsiTaxonomyCache.kind == "category", EsiTaxonomyCache.esi_id == 6
+        )
+    )).scalar_one()
+    assert row.name == "Ship"
 
 
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
