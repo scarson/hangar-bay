@@ -73,7 +73,8 @@ notes and commit messages.
 | D — Frontend item-level surface (taxonomy UI, ME/TE/runs, BPC, composition) | ⬜ Not started | — | — |
 
 ### Deviations
-- (none yet)
+- **Task B2, test placement.** The plan sent the requested-only-BPC fixture to `test_contract_service.py`; the mixed-bundle partition test it names actually lives in `test_contract_filters.py` (`test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle`, region 99999954), so the new contract went there. Noted inline in B2 Step 1.
+- **Task B2, one test folded rather than migrated.** `test_item_response_omits_fields_public_ingestion_cannot_populate` asserted that list-row ITEMS omit `is_singleton`/`raw_quantity`. List rows no longer carry items at all, so the assertion has nothing to range over. Its coverage was folded into `test_detail_item_response_omits_fields_public_ingestion_cannot_populate`, which now sweeps all four fixture contracts (previously only 101) across the endpoint that does carry items — net coverage up, not down. Flagged here and in the PR body per Step 4's rule.
 
 ### Discoveries
 - (none yet)
@@ -785,18 +786,20 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
 - `reward_per_volume = reward / volume`, `None` when either is NULL or `volume == 0` (§9).
 - Category display names for composition come from one small SELECT over `EsiTaxonomyCache` (kind='category') per request; a missing name serves `name: null` rather than a fabricated string.
 
-- [ ] **Step 1: Failing tests.** In `test_contract_filters.py`, region 99999961 — seed one multi-item mixed contract (offered ship + offered BPC + **requested** module), one single-item contract, one courier; assert:
+- [x] **Step 1: Failing tests.** In `test_contract_filters.py`, region 99999961 — seed one multi-item mixed contract (offered ship + offered BPC + **requested** module), one single-item contract, one courier; assert:
   - list rows carry **no** `items` key at all (`"items" not in row` — the envelope's `items` is the page, the row must not have one);
   - the mixed contract: `is_blueprint_copy_contract is True`, `primary_label` is the ship's type_name, `composition.total_item_rows == 2` (requested module excluded), `blueprint_summary.copy_count == 1` with the BPC's runs/ME/TE;
   - the courier row: `primary_label == "Courier to <name>"`, `composition is None`;
   - the detail endpoint for the mixed contract still carries full `items` including the requested module, each item exposing `runs`/`category_id` fields;
   - a contract holding **two** offered BPCs serves `blueprint_summary == {"runs": None, "material_efficiency": None, "time_efficiency": None, "copy_count": 2}`.
   In `test_contract_service.py`: extend the existing mixed-bundle partition test's fixture family with a **requested-only BPC** contract and assert it matches `is_bpc=false` (offered-only semantics — the Story 8 disagreement, resolved).
-- [ ] **Step 2: FAIL.**
+  **As executed:** that mixed-bundle partition test is `test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle` in `test_contract_filters.py` (region 99999954), not `test_contract_service.py`; the requested-only BPC (`954003`) was added to its fixture family there. `test_contract_service.py`'s only `items`-reading assertion (`test_filter_by_is_bpc`) moved to `is_blueprint_copy_contract`.
+- [x] **Step 2: FAIL.**
 - [ ] **Step 3: Implement** — schemas first (all new response fields `Optional` per FASTAPI-3 except `is_blueprint_copy_contract`/`primary_label`, which the builder always supplies), then the service builder (explicit keyword construction, no `model_validate` on ORM for the split models), then rewire both `ContractListResponse` constructors, then the detail route. `ContractListResponse` becomes `PaginatedResponse[ContractListItemSchema]` keeping `unknown_system_excluded`. **The detail route needs the category-names lookup too** — composition on the detail response reads the same `EsiTaxonomyCache` SELECT the list path uses; extract it as `_category_names(db) -> dict[int, str]` and call it from both `get_contracts` and the detail handler, or detail composition serves `name: null` for every category and looks broken.
-- [ ] **Step 4: Green.** Then run the FULL backend suite — this task breaks every test that read `items` off list rows; fix each by moving it to the detail endpoint or the new fields (that migration of assertions is in-scope here, and any test whose meaning evaporates gets flagged in the PR body, never silently deleted).
-- [ ] **Step 5: Update `tests/test_export_openapi.py:30-33`** envelope assertion (still `{"total","page","size","items","unknown_system_excluded"}` here; B3/B4 extend it).
-- [ ] **Step 6: Commit** — `feat(api)!: split the contract list row from the detail response and serve derived summaries`
+- [x] **Step 4: Green.** Then run the FULL backend suite — this task breaks every test that read `items` off list rows; fix each by moving it to the detail endpoint or the new fields (that migration of assertions is in-scope here, and any test whose meaning evaporates gets flagged in the PR body, never silently deleted).
+- [x] **Step 5: Update `tests/test_export_openapi.py:30-33`** envelope assertion (still `{"total","page","size","items","unknown_system_excluded"}` here; B3/B4 extend it).
+  **As executed:** the envelope assertion needed no change (it is a subset check and the envelope model keeps its name). Added instead the assertions that make the split visible in the artifact the TS client is generated from: `ContractListItemSchema` has no `items` property and carries all nine new row fields, and `/contracts/{contract_id}` responds with `ContractDetailSchema`, which does.
+- [x] **Step 6: Commit** — `feat(api)!: split the contract list row from the detail response and serve derived summaries`
   (The `!` is honest: list rows stop carrying `items` — a breaking wire change, §6.4.)
 
 ### Task B3: Grouped segment counts + derived total (decision-log D2; §17.5, Criteria 1.3/1.8)

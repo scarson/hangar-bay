@@ -125,7 +125,7 @@ async def test_filter_by_is_bpc(db_session: AsyncSession, setup_contracts):
 
     assert result.total == 1
     assert result.items[0].contract_id == 102
-    assert result.items[0].items[0].is_blueprint_copy is True
+    assert result.items[0].is_blueprint_copy_contract is True
 
 
 async def test_sorting_by_price_asc(db_session: AsyncSession, setup_contracts):

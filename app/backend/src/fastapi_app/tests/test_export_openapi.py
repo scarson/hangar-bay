@@ -33,3 +33,19 @@ def test_export_openapi_writes_usable_schema(tmp_path):
     assert {"total", "page", "size", "items", "unknown_system_excluded"} <= set(
         envelope["properties"]
     )
+
+    # The row/detail split the generated TS client binds to. A row carries no item
+    # array — `items` on the envelope is the page — and everything a client would
+    # have derived by walking those items is a field on the row instead.
+    row = schema["components"]["schemas"]["ContractListItemSchema"]
+    assert "items" not in row["properties"]
+    assert {
+        "buyout", "days_to_complete", "reward_per_volume", "end_location_name",
+        "last_seen_at", "is_blueprint_copy_contract", "primary_label",
+        "composition", "blueprint_summary",
+    } <= set(row["properties"])
+
+    detail_op = schema["paths"]["/contracts/{contract_id}"]["get"]
+    detail_ref = detail_op["responses"]["200"]["content"]["application/json"]["schema"]
+    assert detail_ref["$ref"].endswith("/ContractDetailSchema")
+    assert "items" in schema["components"]["schemas"]["ContractDetailSchema"]["properties"]

@@ -29,10 +29,12 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi_app.models import Contract, ContractItem
+from fastapi_app.models.contracts import EsiTaxonomyCache
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -59,10 +61,10 @@ async def test_filter_by_is_bpc(client: AsyncClient, setup_contracts):
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) > 0
-    # Check that all returned contracts are BPCs
+    # Check that all returned contracts are BPCs. The row publishes the same
+    # contract-level classification the filter applies, so the two cannot disagree.
     for item in data["items"]:
-        # A contract is a BPC contract if it has at least one item that is a BPC
-        assert any(i.get("is_blueprint_copy") for i in item["items"])
+        assert item["is_blueprint_copy_contract"] is True
 
 
 async def test_filter_by_bpc_runs(client: AsyncClient, setup_contracts):
@@ -76,7 +78,7 @@ async def test_filter_by_bpc_runs(client: AsyncClient, setup_contracts):
     # raw_quantity is what the filter reads, but it is not served (ESI-3), so the
     # matched contract itself is the only observable the response can carry.
     assert data["items"][0]["contract_id"] == 102
-    assert any(i["is_blueprint_copy"] for i in data["items"][0]["items"])
+    assert data["items"][0]["is_blueprint_copy_contract"] is True
 
 
 async def test_response_omits_fields_public_ingestion_cannot_populate(
@@ -107,37 +109,30 @@ async def test_detail_response_omits_fields_public_ingestion_cannot_populate(
     assert "date_completed" not in contract
 
 
-async def test_item_response_omits_fields_public_ingestion_cannot_populate(
+async def test_detail_item_response_omits_fields_public_ingestion_cannot_populate(
     client: AsyncClient, setup_contracts
 ):
     """`is_singleton` and `raw_quantity` belong to ESI's authenticated character/corporation
     contract-ITEM routes. The public item route carries neither, so under public ingestion
-    is_singleton is the mapping default on every row and raw_quantity is NULL on every row."""
-    response = await client.get("/contracts/")
+    is_singleton is the mapping default on every row and raw_quantity is NULL on every row.
 
-    assert response.status_code == 200
-    contracts = response.json()["items"]
-    assert contracts, "fixture must reach the endpoint for this to mean anything"
-    items = [item for contract in contracts for item in contract["items"]]
-    assert items, "contracts must carry items for this to mean anything"
-    for item in items:
-        assert "is_singleton" not in item
-        assert "raw_quantity" not in item
+    Swept across every fixture contract rather than one: the detail endpoint is the only
+    place items reach the wire, so this is the whole surface those two fields could leak
+    through."""
+    seen_items = 0
+    for contract_id in (101, 102, 103, 104):
+        response = await client.get(f"/contracts/{contract_id}")
 
+        assert response.status_code == 200
+        contract = response.json()
+        assert contract["contract_id"] == contract_id
+        assert contract["items"], f"contract {contract_id} must carry items"
+        for item in contract["items"]:
+            assert "is_singleton" not in item
+            assert "raw_quantity" not in item
+            seen_items += 1
 
-async def test_detail_item_response_omits_fields_public_ingestion_cannot_populate(
-    client: AsyncClient, setup_contracts
-):
-    """The detail endpoint serializes the same item schema and must not drift from the list."""
-    response = await client.get("/contracts/101")
-
-    assert response.status_code == 200
-    contract = response.json()
-    assert contract["contract_id"] == 101
-    assert contract["items"], "fixture must carry items for this to mean anything"
-    for item in contract["items"]:
-        assert "is_singleton" not in item
-        assert "raw_quantity" not in item
+    assert seen_items == 5, f"fixture item count changed: {seen_items}"
 
 
 async def test_complex_filter_api(client: AsyncClient, setup_contracts):
@@ -154,7 +149,7 @@ async def test_complex_filter_api(client: AsyncClient, setup_contracts):
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) == 1
-    assert data["items"][0]["items"][0]["type_name"] == "Tristan"
+    assert data["items"][0]["primary_label"] == "Tristan"
     assert data["items"][0]["price"] < 1_500_000
 
 
@@ -685,6 +680,37 @@ async def test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle(
                     ),
                 ],
             ),
+            # A copy someone WANTS rather than offers. The served
+            # is_blueprint_copy_contract flag counts offered items only (§3.1), so
+            # the filter must agree: a want-to-buy ad is not a blueprint on sale,
+            # and matching it here would put it in front of every buyer browsing
+            # copies for sale.
+            Contract(
+                contract_id=954003,
+                title="Wanted: Caracal Blueprint Copy",
+                price=4_000_000,
+                collateral=0,
+                status="outstanding",
+                type="item_exchange",
+                issuer_id=954,
+                issuer_corporation_id=954,
+                start_location_id=60003760,
+                start_location_region_id=99999954,
+                for_corporation=False,
+                date_issued=now,
+                date_expired=now + timedelta(days=7),
+                items=[
+                    ContractItem(
+                        record_id=9540031,
+                        type_id=621,
+                        type_name="Caracal Blueprint",
+                        quantity=1,
+                        is_included=False,
+                        is_singleton=True,
+                        is_blueprint_copy=True,
+                    ),
+                ],
+            ),
             # A contract with no copy at all, to prove false is not simply empty.
             Contract(
                 contract_id=954002,
@@ -731,14 +757,20 @@ async def test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle(
 
     non_copies = await client.get("/contracts/?region_ids=99999954&is_bpc=false")
     assert non_copies.status_code == 200
-    # The bundle contains a copy, so it is NOT a non-copy contract.
-    assert [c["contract_id"] for c in non_copies.json()["items"]] == [954002]
+    # The bundle contains a copy, so it is NOT a non-copy contract; the
+    # want-to-buy ad offers no copy, so it is.
+    assert sorted(c["contract_id"] for c in non_copies.json()["items"]) == [
+        954002, 954003
+    ]
+    assert all(
+        c["is_blueprint_copy_contract"] is False for c in non_copies.json()["items"]
+    )
 
     # Exact complements: every contract lands in exactly one branch, and the two
     # totals sum to the unfiltered total rather than double-counting the bundle.
     unfiltered = await client.get("/contracts/?region_ids=99999954")
-    assert unfiltered.json()["total"] == 2
-    assert copies.json()["total"] + non_copies.json()["total"] == 2
+    assert unfiltered.json()["total"] == 3
+    assert copies.json()["total"] + non_copies.json()["total"] == 3
 
 
 # --- Location system exposure over the wire ---------------------------------
@@ -847,3 +879,323 @@ async def test_filter_by_contract_type(client: AsyncClient, db_session: AsyncSes
 
     bad = await client.get("/contracts/?region_ids=99999960&contract_type=barter")
     assert bad.status_code == 422
+
+
+# --- List row / detail split and the server-computed derived fields ---------
+#
+# Region 99999961. The list row and the detail response are separate models: the
+# row carries no item array at all, and everything a row used to derive from that
+# array (the blueprint flag, the headline label, the composition breakdown) is
+# computed on the server so every client agrees on it.
+
+
+def _derived_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+@pytest_asyncio.fixture(scope="function")
+async def derived_field_contracts(db_session: AsyncSession):
+    """One mixed contract, one single-item, one courier, one two-copy auction, and
+    one contract whose categories exercise the composition ordering rules.
+
+    The mixed contract's third item is REQUESTED (is_included=False): every
+    derived figure counts offered items only (spec §3.1), so it must be absent
+    from the composition and must not make the contract a blueprint contract on
+    its own.
+    """
+    now = _derived_now()
+    seen = now - timedelta(minutes=5)
+
+    db_session.add_all([
+        EsiTaxonomyCache(kind="category", esi_id=6, name="Ship", fetched_at=now),
+        EsiTaxonomyCache(kind="category", esi_id=7, name="Module", fetched_at=now),
+        EsiTaxonomyCache(kind="category", esi_id=9, name="Blueprint", fetched_at=now),
+    ])
+
+    def _contract(cid: int, **overrides) -> Contract:
+        fields = dict(
+            contract_id=cid, title=f"Derived {cid}", price=1_000_000, collateral=0,
+            status="outstanding", type="item_exchange", issuer_id=961,
+            issuer_corporation_id=961, start_location_id=60003760,
+            start_location_region_id=99999961, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7), last_seen_at=seen,
+        )
+        fields.update(overrides)
+        return Contract(**fields)
+
+    db_session.add_all([
+        # Offered ship + offered BPC + REQUESTED module.
+        _contract(
+            961001, volume=1500.0,
+            items=[
+                ContractItem(
+                    record_id=9610011, type_id=24698, type_name="Rokh", quantity=1,
+                    is_included=True, is_singleton=False, category="ship",
+                    category_id=6, group_id=27,
+                ),
+                ContractItem(
+                    record_id=9610012, type_id=621, type_name="Caracal Blueprint",
+                    quantity=1, is_included=True, is_singleton=True,
+                    is_blueprint_copy=True, runs=7, material_efficiency=8,
+                    time_efficiency=14, category_id=9, group_id=105,
+                ),
+                ContractItem(
+                    record_id=9610013, type_id=448, type_name="Warp Scrambler II",
+                    quantity=1, is_included=False, is_singleton=False, category_id=7,
+                    group_id=52,
+                ),
+            ],
+        ),
+        # One offered row: too few for a composition breakdown.
+        _contract(
+            961002,
+            items=[
+                ContractItem(
+                    record_id=9610021, type_id=587, type_name="Tristan", quantity=1,
+                    is_included=True, is_singleton=False, category="ship",
+                    category_id=6, group_id=25,
+                ),
+            ],
+        ),
+        # Courier: no title, so the label chain reaches the courier rule rather
+        # than stopping at the title.
+        _contract(
+            961003, type="courier", title=None, price=0, collateral=8_000_000_000,
+            end_location_id=60003145,
+            end_location_name="Amarr VIII (Oris) - Emperor Family Academy",
+            reward=80_000_000, volume=1000.0, days_to_complete=3,
+        ),
+        # Two offered copies: the summary reports the count, not one copy's terms.
+        _contract(
+            961004, type="auction", buyout=9_000_000.0,
+            items=[
+                ContractItem(
+                    record_id=9610041, type_id=621, type_name="Caracal Blueprint",
+                    quantity=1, is_included=True, is_singleton=True,
+                    is_blueprint_copy=True, runs=7, material_efficiency=8,
+                    time_efficiency=14, category_id=9, group_id=105,
+                ),
+                ContractItem(
+                    record_id=9610042, type_id=622, type_name="Moa Blueprint",
+                    quantity=1, is_included=True, is_singleton=True,
+                    is_blueprint_copy=True, runs=3, material_efficiency=2,
+                    time_efficiency=4, category_id=9, group_id=105,
+                ),
+            ],
+        ),
+        # Composition ordering: two unresolved categories, one category with no
+        # cached name, and two named ones that tie on count.
+        _contract(
+            961005,
+            items=[
+                ContractItem(
+                    record_id=9610051, type_id=587, type_name="Tristan", quantity=1,
+                    is_included=True, is_singleton=False, category="ship",
+                    category_id=6,
+                ),
+                ContractItem(
+                    record_id=9610052, type_id=448, type_name="Warp Scrambler II",
+                    quantity=1, is_included=True, is_singleton=False, category_id=7,
+                ),
+                ContractItem(
+                    record_id=9610053, type_id=34, type_name="Tritanium",
+                    quantity=100, is_included=True, is_singleton=False, category_id=42,
+                ),
+                ContractItem(
+                    record_id=9610054, type_id=35, type_name="Pyerite", quantity=100,
+                    is_included=True, is_singleton=False, category_id=None,
+                ),
+                ContractItem(
+                    record_id=9610055, type_id=36, type_name="Mexallon", quantity=100,
+                    is_included=True, is_singleton=False, category_id=None,
+                ),
+            ],
+        ),
+    ])
+    await db_session.flush()
+    return seen
+
+
+async def test_list_rows_carry_no_item_array(
+    client: AsyncClient, derived_field_contracts
+):
+    """The row is a summary, not a container: `items` on the envelope is the page.
+
+    A row that also carried an `items` array made the two meanings collide, and
+    shipped every item of every contract on the page to render one label.
+    """
+    listed = await client.get("/contracts/?region_ids=99999961")
+
+    assert listed.status_code == 200
+    rows = listed.json()["items"]
+    assert len(rows) == 5, "fixture must reach the endpoint for this to mean anything"
+    for row in rows:
+        assert "items" not in row, f"contract {row['contract_id']} still carries items"
+
+
+async def test_list_row_derives_blueprint_label_and_composition_from_offered_items(
+    client: AsyncClient, derived_field_contracts
+):
+    """The mixed contract: offered ship + offered BPC + requested module."""
+    listed = await client.get("/contracts/?region_ids=99999961")
+
+    assert listed.status_code == 200
+    rows = {c["contract_id"]: c for c in listed.json()["items"]}
+    mixed = rows[961001]
+
+    assert mixed["is_blueprint_copy_contract"] is True
+    # The hull is the headline, not whichever item happens to sort first.
+    assert mixed["primary_label"] == "Rokh"
+    # The requested module is excluded: two offered rows, not three.
+    assert mixed["composition"]["total_item_rows"] == 2
+    assert mixed["composition"]["total_volume"] == 1500.0
+    assert mixed["composition"]["categories"] == [
+        {"category_id": 9, "name": "Blueprint", "item_row_count": 1},
+        {"category_id": 6, "name": "Ship", "item_row_count": 1},
+    ]
+    assert mixed["blueprint_summary"] == {
+        "runs": 7, "material_efficiency": 8, "time_efficiency": 14, "copy_count": 1,
+    }
+    assert mixed["last_seen_at"] is not None
+    assert datetime.fromisoformat(mixed["last_seen_at"]) == derived_field_contracts
+
+
+async def test_single_item_contract_has_no_composition(
+    client: AsyncClient, derived_field_contracts
+):
+    """One offered row is not a composition — there is nothing to break down."""
+    listed = await client.get("/contracts/?region_ids=99999961")
+
+    rows = {c["contract_id"]: c for c in listed.json()["items"]}
+    single = rows[961002]
+
+    assert single["composition"] is None
+    assert single["is_blueprint_copy_contract"] is False
+    assert single["blueprint_summary"] is None
+    assert single["primary_label"] == "Tristan"
+
+
+async def test_courier_row_labels_its_destination_and_prices_by_volume(
+    client: AsyncClient, derived_field_contracts
+):
+    """A courier has no items, so its label and its terms come from the contract."""
+    listed = await client.get("/contracts/?region_ids=99999961")
+
+    rows = {c["contract_id"]: c for c in listed.json()["items"]}
+    courier = rows[961003]
+
+    assert courier["primary_label"] == (
+        "Courier to Amarr VIII (Oris) - Emperor Family Academy"
+    )
+    assert courier["end_location_name"] == "Amarr VIII (Oris) - Emperor Family Academy"
+    assert courier["composition"] is None
+    assert courier["days_to_complete"] == 3
+    assert courier["reward_per_volume"] == 80_000.0
+    assert courier["buyout"] is None
+
+
+async def test_auction_row_carries_its_buyout_and_counts_its_copies(
+    client: AsyncClient, derived_field_contracts
+):
+    """Two offered copies: the terms belong to no single copy, so only the count
+    is reported (spec §17.3)."""
+    listed = await client.get("/contracts/?region_ids=99999961")
+
+    rows = {c["contract_id"]: c for c in listed.json()["items"]}
+    auction = rows[961004]
+
+    assert auction["buyout"] == 9_000_000.0
+    assert auction["is_blueprint_copy_contract"] is True
+    assert auction["blueprint_summary"] == {
+        "runs": None, "material_efficiency": None, "time_efficiency": None,
+        "copy_count": 2,
+    }
+
+
+async def test_composition_orders_named_categories_first_and_unknowns_last(
+    client: AsyncClient, derived_field_contracts
+):
+    """Sort is item_row_count desc, then name asc; a category with no cached name
+    serves a null name rather than a fabricated one, and the rows whose category
+    is unknown aggregate into one trailing bucket the client renders as "other"."""
+    listed = await client.get("/contracts/?region_ids=99999961")
+
+    rows = {c["contract_id"]: c for c in listed.json()["items"]}
+    composition = rows[961005]["composition"]
+
+    assert composition["total_item_rows"] == 5
+    assert composition["categories"] == [
+        {"category_id": 7, "name": "Module", "item_row_count": 1},
+        {"category_id": 6, "name": "Ship", "item_row_count": 1},
+        {"category_id": 42, "name": None, "item_row_count": 1},
+        {"category_id": None, "name": None, "item_row_count": 2},
+    ]
+
+
+async def test_detail_response_carries_every_item_and_its_blueprint_terms(
+    client: AsyncClient, derived_field_contracts
+):
+    """The detail response is the row plus the full item array — REQUESTED items
+    included, because the detail page shows both sides of the trade."""
+    detail = await client.get("/contracts/961001")
+
+    assert detail.status_code == 200
+    body = detail.json()
+    items = {item["record_id"]: item for item in body["items"]}
+    assert set(items) == {9610011, 9610012, 9610013}
+
+    blueprint = items[9610012]
+    assert blueprint["runs"] == 7
+    assert blueprint["material_efficiency"] == 8
+    assert blueprint["time_efficiency"] == 14
+    assert blueprint["category_id"] == 9
+    assert blueprint["group_id"] == 105
+    assert items[9610011]["category_id"] == 6
+    # An original omits runs entirely rather than sending -1 (ESI-3).
+    assert items[9610013]["runs"] is None
+
+    # The detail response computes the same derived fields as the row, from the
+    # same category-name lookup — without it every category here reads as null.
+    assert body["primary_label"] == "Rokh"
+    assert body["composition"]["categories"][0]["name"] == "Blueprint"
+    assert body["is_blueprint_copy_contract"] is True
+
+
+async def test_reward_per_volume_is_null_when_the_division_is_undefined(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """A zero or absent volume has no per-m3 price, and 0.0 would read as free
+    hauling (spec §9)."""
+    now = _derived_now()
+
+    def _courier(cid: int, volume) -> Contract:
+        return Contract(
+            contract_id=cid, title=None, price=0, collateral=0, status="outstanding",
+            type="courier", issuer_id=961, issuer_corporation_id=961,
+            start_location_id=60003760, start_location_region_id=99999961,
+            for_corporation=False, date_issued=now,
+            date_expired=now + timedelta(days=7), reward=1_000_000.0, volume=volume,
+        )
+
+    db_session.add_all([_courier(961101, 0.0), _courier(961102, None)])
+    # A reward-less contract cannot have a per-volume price either.
+    db_session.add(
+        Contract(
+            contract_id=961103, title=None, price=5_000_000, collateral=0,
+            status="outstanding", type="item_exchange", issuer_id=961,
+            issuer_corporation_id=961, start_location_id=60003760,
+            start_location_region_id=99999961, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7), reward=None,
+            volume=250.0,
+        )
+    )
+    await db_session.flush()
+
+    listed = await client.get("/contracts/?region_ids=99999961")
+
+    assert listed.status_code == 200
+    rows = {c["contract_id"]: c for c in listed.json()["items"]}
+    assert len(rows) == 3
+    assert rows[961101]["reward_per_volume"] is None
+    assert rows[961102]["reward_per_volume"] is None
+    assert rows[961103]["reward_per_volume"] is None

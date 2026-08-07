@@ -8,11 +8,11 @@ from sqlalchemy.orm import selectinload
 from ..db import get_db
 from ..models.contracts import Contract
 from ..schemas.contracts import (
+    ContractDetailSchema,
     ContractFilters,
     ContractListResponse,
-    ContractSchema,
 )
-from ..services.contract_service import get_contracts
+from ..services.contract_service import _category_names, _detail_item, get_contracts
 
 router = APIRouter(
     prefix="/contracts",
@@ -38,7 +38,7 @@ async def list_public_contracts(
     return await get_contracts(db=db, filters=filters)
 
 
-@router.get("/{contract_id}", response_model=ContractSchema)
+@router.get("/{contract_id}", response_model=ContractDetailSchema)
 async def get_contract(
     contract_id: int,
     db: AsyncSession = Depends(get_db),
@@ -57,4 +57,6 @@ async def get_contract(
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
 
-    return contract
+    # The same category-name lookup the list path uses: composition is derived here
+    # too, and without the names every category on the detail page reads as null.
+    return _detail_item(contract, await _category_names(db))

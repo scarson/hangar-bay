@@ -7,12 +7,18 @@ from sqlalchemy.orm import aliased, selectinload
 
 from ..core.config import get_settings
 from ..core.logging import get_logger, log_key_event
-from ..models.contracts import Contract, ContractItem
+from ..models.contracts import Contract, ContractItem, EsiTaxonomyCache
 from ..schemas.contracts import (
+    BlueprintSummary,
+    CompositionCategory,
+    CompositionSummary,
+    ContractDetailSchema,
     ContractFilters,
+    ContractItemSchema,
+    ContractListItemSchema,
     ContractListResponse,
+    ContractType,
     SortDirection,
-    ContractSchema,
     SortableContractFields,
 )
 
@@ -155,11 +161,17 @@ def _has_blueprint_copy_item():
 
     Expressed once and negated for the false branch, so the branches are exact
     complements by construction rather than by two predicates kept in agreement.
+
+    Offered items only (§3.1): a want-to-buy ad asking for a copy offers none, and
+    matching it here would put it in front of every buyer browsing copies for sale.
+    This is the same rule the served is_blueprint_copy_contract flag applies, so the
+    filter and the flag agree by construction.
     """
     return (
         select(ContractItem.record_id)
         .where(
             ContractItem.contract_id == Contract.contract_id,
+            ContractItem.is_included.is_(True),
             # ESI sends is_blueprint_copy only for actual copies, so the column is
             # True-or-NULL and NULL means "not a copy" (pitfall ESI-3).
             ContractItem.is_blueprint_copy.is_(True),
@@ -360,6 +372,201 @@ async def _fetch_page_simple(
     return result.scalars().unique().all()
 
 
+async def _category_names(db: AsyncSession) -> dict[int, str]:
+    """Display names for every cached Dogma category, keyed by id.
+
+    One small SELECT per request over a table holding a few dozen rows. Both the list
+    and the detail path call it: composition carries category names, and a detail
+    response built without this lookup serves a null name for every category while
+    the list row beside it shows them.
+    """
+    result = await db.execute(
+        select(EsiTaxonomyCache.esi_id, EsiTaxonomyCache.name).where(
+            EsiTaxonomyCache.kind == "category"
+        )
+    )
+    return {esi_id: name for esi_id, name in result.all()}
+
+
+def _offered_items(contract: Contract) -> list[ContractItem]:
+    """The items the contract puts up, oldest record first.
+
+    is_included=False marks the items the issuer is ASKING FOR, so every derived
+    figure counts only the offered side (§3.1). Ordering by record_id makes "the
+    first item" a fact about the data rather than about row-return order.
+    """
+    return sorted(
+        (item for item in contract.items if item.is_included),
+        key=lambda item: item.record_id,
+    )
+
+
+def _reward_per_volume(contract: Contract) -> float | None:
+    """Reward per m3, the figure haulers compare offers on.
+
+    Undefined without both sides, and a zero volume gives nothing to divide by — so
+    both cases serve NULL rather than a number that reads as free hauling (§9).
+    """
+    if contract.reward is None or not contract.volume:
+        return None
+    return float(contract.reward) / float(contract.volume)
+
+
+def _primary_label(contract: Contract, offered: list[ContractItem]) -> str:
+    """The row's headline.
+
+    The hull is the headline on a ship marketplace, so an offered ship outranks
+    whatever module happens to come first in a fitted-hull contract. Real ESI titles
+    are frequently "" rather than NULL, so blank counts as absent. Computed here
+    rather than per client so the list row, the detail page, and any future consumer
+    name a contract the same way.
+    """
+    named = [item for item in offered if item.type_name]
+    ship = next((item for item in named if item.category == "ship"), None)
+    headline = ship or (named[0] if named else None)
+    if headline is not None:
+        return headline.type_name
+
+    if contract.title and contract.title.strip():
+        return contract.title.strip()
+
+    if contract.type == ContractType.courier.value:
+        if contract.end_location_name:
+            return f"Courier to {contract.end_location_name}"
+        return "Courier"
+
+    return f"Contract {contract.contract_id}"
+
+
+def _composition(
+    contract: Contract, offered: list[ContractItem], names: dict[int, str]
+) -> CompositionSummary | None:
+    """What a multi-item contract is made of, by category.
+
+    One offered row is not a breakdown — the row already names it — so composition is
+    NULL below two. Counts are item ROWS rather than summed quantities (Criterion
+    6.1). total_volume is the contract's own volume: the model holds no per-item
+    volume, so there is nothing to sum.
+    """
+    if len(offered) < 2:
+        return None
+
+    row_counts: dict[int | None, int] = {}
+    for item in offered:
+        row_counts[item.category_id] = row_counts.get(item.category_id, 0) + 1
+
+    categories = [
+        CompositionCategory(
+            category_id=category_id,
+            # A category the name cache has not resolved serves NULL rather than a
+            # fabricated string — the client can say "unnamed", we cannot invent.
+            name=names.get(category_id) if category_id is not None else None,
+            item_row_count=count,
+        )
+        for category_id, count in row_counts.items()
+    ]
+    # Rows whose category could not be determined are the "other" bucket and sit
+    # last however many there are; the rest sort by share, then name, with unnamed
+    # categories after named ones so the order is total rather than merely stable.
+    categories.sort(
+        key=lambda entry: (
+            entry.category_id is None,
+            -entry.item_row_count,
+            entry.name is None,
+            entry.name or "",
+        )
+    )
+
+    return CompositionSummary(
+        categories=categories,
+        total_item_rows=len(offered),
+        total_volume=float(contract.volume) if contract.volume is not None else None,
+    )
+
+
+def _blueprint_summary(offered: list[ContractItem]) -> BlueprintSummary | None:
+    """The blueprint terms of a contract offering copies.
+
+    With more than one copy the terms belong to individual copies, so reporting one
+    copy's runs would misdescribe the others: the count goes out alone and the client
+    sends the reader to the detail page for the rest (§17.3).
+    """
+    copies = [item for item in offered if item.is_blueprint_copy is True]
+    if not copies:
+        return None
+    if len(copies) > 1:
+        return BlueprintSummary(copy_count=len(copies))
+
+    copy = copies[0]
+    return BlueprintSummary(
+        runs=copy.runs,
+        material_efficiency=copy.material_efficiency,
+        time_efficiency=copy.time_efficiency,
+        copy_count=1,
+    )
+
+
+def _contract_fields(contract: Contract, names: dict[int, str]) -> dict:
+    """The fields shared by the list row and the detail response.
+
+    Written out rather than validated off the ORM object, so a column added to the
+    model does not silently become a wire field.
+    """
+    offered = _offered_items(contract)
+    return {
+        "contract_id": contract.contract_id,
+        "issuer_id": contract.issuer_id,
+        "issuer_corporation_id": contract.issuer_corporation_id,
+        "start_location_id": contract.start_location_id,
+        "start_location_system_id": contract.start_location_system_id,
+        "end_location_id": contract.end_location_id,
+        "type": contract.type,
+        "title": contract.title,
+        "for_corporation": contract.for_corporation,
+        "date_issued": contract.date_issued,
+        "date_expired": contract.date_expired,
+        "price": contract.price,
+        "collateral": contract.collateral,
+        "reward": contract.reward,
+        "volume": contract.volume,
+        "buyout": contract.buyout,
+        "days_to_complete": contract.days_to_complete,
+        "reward_per_volume": _reward_per_volume(contract),
+        "start_location_name": contract.start_location_name,
+        "end_location_name": contract.end_location_name,
+        "issuer_name": contract.issuer_name,
+        "issuer_corporation_name": contract.issuer_corporation_name,
+        "last_seen_at": contract.last_seen_at,
+        "is_ship_contract": contract.is_ship_contract,
+        "is_blueprint_copy_contract": any(
+            item.is_blueprint_copy is True for item in offered
+        ),
+        "primary_label": _primary_label(contract, offered),
+        "composition": _composition(contract, offered, names),
+        "blueprint_summary": _blueprint_summary(offered),
+    }
+
+
+def _list_item(contract: Contract, names: dict[int, str]) -> ContractListItemSchema:
+    """Build one list row."""
+    return ContractListItemSchema(**_contract_fields(contract, names))
+
+
+def _detail_item(contract: Contract, names: dict[int, str]) -> ContractDetailSchema:
+    """Build a detail response: the row plus the contract's full item array.
+
+    Ordered by record_id, the same order the derived fields treat as canonical, so
+    the item table renders identically on every request.
+    """
+    return ContractDetailSchema(
+        **_contract_fields(contract, names),
+        items=[
+            ContractItemSchema.model_validate(item)
+            for item in sorted(contract.items, key=lambda item: item.record_id)
+        ],
+    )
+
+
 async def get_contracts(
     db: AsyncSession, filters: ContractFilters
 ) -> ContractListResponse:
@@ -453,6 +660,8 @@ async def get_contracts(
         else:
             contracts = await _fetch_page_simple(db, query, filters, sort_column, descending)
 
+        names = await _category_names(db)
+
         # Calculate duration and log successful completion
         duration_ms = (time.time() - start_time) * 1000
 
@@ -460,7 +669,7 @@ async def get_contracts(
             total=total,
             page=filters.page,
             size=filters.size,
-            items=[ContractSchema.model_validate(c) for c in contracts],
+            items=[_list_item(c, names) for c in contracts],
             unknown_system_excluded=unknown_system_excluded,
         )
 

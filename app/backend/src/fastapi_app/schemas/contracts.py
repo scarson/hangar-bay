@@ -26,12 +26,65 @@ class ContractItemSchema(BaseModel):
     type_name: Optional[str] = None
     category: Optional[str] = None
     market_group_id: Optional[int] = None
+    # Blueprint-copy terms from ESI's public item route. A blueprint ORIGINAL omits
+    # `runs` entirely rather than sending -1, so absence means original (ESI-3).
+    runs: Optional[int] = None
+    material_efficiency: Optional[int] = None
+    time_efficiency: Optional[int] = None
+    # Dogma taxonomy ids; display names for categories live in esi_taxonomy_cache
+    # and reach the client through CompositionSummary.
+    category_id: Optional[int] = None
+    group_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class ContractSchema(BaseModel):
-    """Schema for a public contract.
+class CompositionCategory(BaseModel):
+    """One category's share of a contract's offered item rows.
+
+    `name` is NULL when the taxonomy name cache has not resolved that category yet,
+    and `category_id` is NULL for the bucket holding rows whose category could not be
+    determined at all — the client renders that bucket as "other".
+    """
+
+    category_id: Optional[int] = None
+    name: Optional[str] = None
+    item_row_count: int
+
+
+class CompositionSummary(BaseModel):
+    """What a multi-item contract is made of, structured rather than pre-rendered.
+
+    Counts are item ROWS, not summed quantities: "3 modules" describes a bundle far
+    better than "3,000 units of ammunition" does. Pluralization and truncation stay
+    with the client, which is the layer that knows how much room it has.
+    """
+
+    categories: List[CompositionCategory]
+    total_item_rows: int
+    total_volume: Optional[float] = None
+
+
+class BlueprintSummary(BaseModel):
+    """The blueprint terms of a contract offering copies.
+
+    With more than one copy on offer the three value fields are NULL: the terms belong
+    to individual copies, and picking one to report would misdescribe the others.
+    """
+
+    runs: Optional[int] = None
+    material_efficiency: Optional[int] = None
+    time_efficiency: Optional[int] = None
+    copy_count: int
+
+
+class ContractListItemSchema(BaseModel):
+    """A contract as it appears in a list row: a summary, carrying no item array.
+
+    Everything a client used to derive by walking the items — the blueprint flag, the
+    headline label, the composition breakdown — is computed here, so a row costs one
+    contract's worth of payload instead of all its items, and every client agrees on
+    what the row says.
 
     `status` and `date_completed` are deliberately absent. Both are fields of ESI's
     AUTHENTICATED character/corporation contract routes; the public route Hangar Bay
@@ -66,16 +119,42 @@ class ContractSchema(BaseModel):
     collateral: float
     reward: Optional[float] = None
     volume: Optional[float] = None
+    # Auction-only: the price that ends the auction immediately. ESI omits it for
+    # non-auctions and for auctions without one, so absence stays distinguishable
+    # from zero (ESI-3).
+    buyout: Optional[float] = None
+    # Courier-only: contracted days to deliver once accepted.
+    days_to_complete: Optional[int] = None
+    # reward / volume, the figure haulers compare offers on. NULL when either side
+    # is absent or the volume is zero — 0.0 would read as free hauling (§9).
+    reward_per_volume: Optional[float] = None
     start_location_name: Optional[str] = None
+    end_location_name: Optional[str] = None
     issuer_name: Optional[str] = None
     issuer_corporation_name: Optional[str] = None
+    # When ingestion last saw this contract in ESI's public list, so a client can say
+    # how fresh the row is rather than implying it is live.
+    last_seen_at: Optional[datetime] = None
     is_ship_contract: bool
-    items: List[ContractItemSchema] = []
+    # Offered items only (§3.1): a want-to-buy ad for a copy is not a copy on sale.
+    is_blueprint_copy_contract: bool
+    primary_label: str
+    # NULL for single-item and item-less contracts — one row is not a breakdown.
+    composition: Optional[CompositionSummary] = None
+    # NULL unless the contract offers at least one blueprint copy.
+    blueprint_summary: Optional[BlueprintSummary] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class ContractListResponse(PaginatedResponse[ContractSchema]):
+class ContractDetailSchema(ContractListItemSchema):
+    """A single contract with its full item array — REQUESTED items included, because
+    the detail page shows both sides of the trade."""
+
+    items: List[ContractItemSchema] = []
+
+
+class ContractListResponse(PaginatedResponse[ContractListItemSchema]):
     """A page of contracts plus the coverage figure the system_ids filter needs.
 
     A bare total hides that system_ids can only ever match the locations we resolved:
