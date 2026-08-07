@@ -223,9 +223,12 @@ export const COURIER_COLUMNS: Column[] = [
   },
   {
     key: 'days_to_complete',
+    // Never hidden at a breakpoint, unlike Collateral and Volume below: the
+    // detail page carries those two, but the days a hauler has to deliver in
+    // appear nowhere else in the app, so hiding the column deletes a field
+    // Criterion 5.3 requires. "7d" is also the narrowest cell in the set.
     label: 'Deadline',
     align: 'right',
-    hiddenClass: 'max-sm:hidden',
     cellClass: 'text-data text-ink-dim',
     cell: (contract) => formatDeadline(contract.days_to_complete),
   },

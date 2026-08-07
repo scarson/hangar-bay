@@ -183,6 +183,13 @@ test.describe('contract-type segments', () => {
     await expect(page.getByRole('columnheader', { name: 'Reward/m³', exact: true })).toBeVisible()
     await expect(page.getByRole('columnheader', { name: 'Location', exact: true })).toHaveCount(0)
 
+    // Criterion 5.3 names the deadline, and this project runs at 412px too: the
+    // days a hauler has to deliver in appear NOWHERE else in the app, so a
+    // breakpoint that drops the column drops the field entirely. It is also the
+    // narrowest cell the set has.
+    await expect(page.getByRole('columnheader', { name: 'Deadline', exact: true })).toBeVisible()
+    await expect(page.getByText('7d', { exact: true })).toBeVisible()
+
     const origin = 'Jita IV - Moon 4 - Caldari Navy Assembly Plant'
     await expect(
       page.getByText(`${origin} → Amarr VIII (Oris) - Emperor Family Academy`, { exact: true }),
