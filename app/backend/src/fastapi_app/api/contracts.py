@@ -11,8 +11,14 @@ from ..schemas.contracts import (
     ContractDetailSchema,
     ContractFilters,
     ContractListResponse,
+    TaxonomyResponse,
 )
-from ..services.contract_service import _category_names, _detail_item, get_contracts
+from ..services.contract_service import (
+    _category_names,
+    _detail_item,
+    get_contracts,
+    get_taxonomy,
+)
 
 router = APIRouter(
     prefix="/contracts",
@@ -36,6 +42,19 @@ async def list_public_contracts(
     and pagination to public contracts.
     """
     return await get_contracts(db=db, filters=filters)
+
+
+# Subject to the same ordering rule as the route above: defined BEFORE
+# /{contract_id}, or "taxonomy" is parsed as a contract id and the request 422s.
+@router.get("/taxonomy", response_model=TaxonomyResponse)
+async def list_contract_taxonomy(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retrieves the dogma category and group option lists for the item-level filters,
+    with a readiness signal saying whether those filters can be trusted yet.
+    """
+    return await get_taxonomy(db=db)
 
 
 @router.get("/{contract_id}", response_model=ContractDetailSchema)

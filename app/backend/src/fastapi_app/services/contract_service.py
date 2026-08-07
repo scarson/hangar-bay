@@ -21,7 +21,12 @@ from ..schemas.contracts import (
     CoverageInfo,
     SortDirection,
     SortableContractFields,
+    TaxonomyCategory,
+    TaxonomyCoverage,
+    TaxonomyGroup,
+    TaxonomyResponse,
 )
+from .background_aggregation import ENRICHMENT_VERSION
 
 # Initialize logger for this module
 logger = get_logger(__name__)
@@ -371,6 +376,19 @@ _ITEMLESS_CONTRACT_TYPES = frozenset({
     ContractType.loan.value,
     ContractType.unknown.value,
 })
+
+
+# The complement of _ITEMLESS_CONTRACT_TYPES over the enum, derived rather than
+# restated so a contract type can only ever be classified in one place.
+_ITEM_BEARING_CONTRACT_TYPES = frozenset(
+    contract_type.value for contract_type in ContractType
+) - _ITEMLESS_CONTRACT_TYPES
+
+# The share of the live item-bearing corpus that must be enriched at the current
+# version before the item-level filters are offered. Short of 1.0 because a resweep
+# finishes contract by contract and a handful of contracts whose ESI item fetch keeps
+# failing would otherwise hold the whole surface shut indefinitely.
+_ENRICHMENT_READINESS_RATIO = 0.99
 
 
 def _count_under_ships_filter(
@@ -789,6 +807,135 @@ def _detail_item(contract: Contract, names: dict[int, str]) -> ContractDetailSch
             ContractItemSchema.model_validate(item)
             for item in sorted(contract.items, key=lambda item: item.record_id)
         ],
+    )
+
+
+def _live_item_bearing_contracts():
+    """The population the readiness signal measures, as filter criteria.
+
+    Expired and delisted rows are out because ingestion never revisits them: their
+    items keep whatever enrichment they last received, so counting them would hold the
+    ratio below the threshold forever on a corpus that is entirely up to date. Couriers
+    and loans are out because ESI returns no items for them at all (Criterion 1.2) —
+    enrichment can never complete for one, and every courier in the corpus would
+    otherwise count as a contract still waiting to be enriched.
+    """
+    return (
+        Contract.date_expired > func.now(),
+        still_listed_by_esi(),
+        Contract.type.in_(sorted(_ITEM_BEARING_CONTRACT_TYPES)),
+    )
+
+
+async def _enrichment_is_current(db: AsyncSession) -> bool:
+    """Is the live corpus enriched at the enrichment version this code writes?
+
+    The denominator is EVERY live item-bearing contract, whatever its processing
+    status. Measured over COMPLETED rows alone, one enriched contract beside
+    ninety-nine that failed reads as 1/1 — the state the signal exists to warn about,
+    reported as the state it exists to permit. Rows still pending and rows whose
+    enrichment failed have to drag it; that is what the ratio measures.
+
+    An empty corpus is not ready either: there is nothing for the item-level filters
+    to act on, so a client that opened them would offer controls over no data.
+    """
+    counts = await db.execute(
+        select(
+            func.count(),
+            func.count().filter(
+                Contract.item_processing_status == "COMPLETED",
+                Contract.enrichment_version == ENRICHMENT_VERSION,
+            ),
+        )
+        .select_from(Contract)
+        .where(*_live_item_bearing_contracts())
+    )
+    live, enriched = counts.one()
+    return live > 0 and enriched / live >= _ENRICHMENT_READINESS_RATIO
+
+
+async def _live_category_ids(db: AsyncSession) -> set[int]:
+    """Every dogma category present on the items of live contracts.
+
+    Scoped to live contracts, and so deliberately narrower than ingestion's sweep of
+    observed categories, which is unscoped because fetching a name for a category seen
+    only on delisted rows is a harmless one-time cost. Here the scope is load-bearing
+    in the other direction: a category nobody can filter to any more must not hold the
+    item-level surface shut. Both sides of the trade are included — the name cache is
+    filled from the same unscoped sweep, so requiring requested-side categories to be
+    named delays nothing that ingestion is not already fetching.
+    """
+    rows = await db.execute(
+        select(ContractItem.category_id)
+        .join(Contract, Contract.contract_id == ContractItem.contract_id)
+        .where(*_live_item_bearing_contracts(), ContractItem.category_id.is_not(None))
+        .distinct()
+    )
+    return set(rows.scalars())
+
+
+async def _taxonomy_coverage(
+    db: AsyncSession, named_categories: set[int]
+) -> TaxonomyCoverage:
+    """Whether the item-level filter surface can be opened, from observed rows.
+
+    Two conditions, because either one alone can be satisfied while the surface is
+    broken. The ratio alone can read complete while a category-name fetch failure
+    leaves the option list unable to name what the corpus holds — a name failure does
+    not block COMPLETED stamping — so the endpoint would be gating the surface on
+    itself being intact. The name cache alone says nothing about whether the items
+    carry taxonomy ids at all.
+
+    Ordered and short-circuited deliberately: while a resweep is running the ratio
+    already settles the answer, and the category sweep is the more expensive query.
+    """
+    if not await _enrichment_is_current(db):
+        return TaxonomyCoverage.partial
+    if await _live_category_ids(db) - named_categories:
+        return TaxonomyCoverage.partial
+    return TaxonomyCoverage.complete
+
+
+async def get_taxonomy(db: AsyncSession) -> TaxonomyResponse:
+    """The dogma option lists behind the category and group filters, and their readiness.
+
+    Flat rather than nested (§17.6): every group names its category, so the client
+    scopes the group list to the selected categories without a second request.
+
+    Sorted in Python rather than by the database, so the order a client renders does
+    not change with the server's collation.
+    """
+    cached = (await db.execute(select(EsiTaxonomyCache))).scalars().all()
+
+    categories = sorted(
+        (
+            TaxonomyCategory(category_id=row.esi_id, name=row.name)
+            for row in cached
+            if row.kind == "category"
+        ),
+        key=lambda entry: (entry.name, entry.category_id),
+    )
+    groups = sorted(
+        (
+            TaxonomyGroup(
+                group_id=row.esi_id,
+                category_id=row.parent_category_id,
+                name=row.name,
+            )
+            for row in cached
+            if row.kind == "group"
+        ),
+        key=lambda entry: (entry.name, entry.group_id),
+    )
+
+    return TaxonomyResponse(
+        categories=categories,
+        groups=groups,
+        # Measured against the list this response actually carries, so "complete"
+        # cannot be claimed for a category the reader is not being offered.
+        coverage=await _taxonomy_coverage(
+            db, {entry.category_id for entry in categories}
+        ),
     )
 
 

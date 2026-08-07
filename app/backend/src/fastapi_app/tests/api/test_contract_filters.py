@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi_app.models import Contract, ContractItem
 from fastapi_app.models.contracts import EsiTaxonomyCache
+from fastapi_app.services.background_aggregation import ENRICHMENT_VERSION
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -1846,3 +1847,306 @@ async def test_a_category_absent_from_the_corpus_returns_an_empty_page(
     assert empty.status_code == 200
     assert empty.json()["total"] == 0
     assert empty.json()["items"] == []
+
+
+# --- Taxonomy options endpoint: GET /contracts/taxonomy (region 99999971) ---
+#
+# The endpoint takes no filters, so unlike every other block in this file its
+# population is the whole table. These tests therefore seed their own corpus and
+# deliberately do NOT use setup_contracts; db_session drops and recreates every
+# table per test function, so the corpus is exactly what each test writes. The
+# private region is claimed anyway, under the plan's 99999960-99999979
+# allocation, so the per-region delisting watermark has somewhere to work.
+#
+# `coverage` is the readiness signal the item-level UI gates on, and it asks two
+# questions at once. Is the live corpus enriched at the CURRENT enrichment
+# version — which is what makes the taxonomy columns on the items trustworthy —
+# and does the name cache actually name every category that corpus holds? Either
+# one failing leaves the filter rail unable to do its job, so either one failing
+# reports "partial".
+
+TAXONOMY_OPTIONS_REGION = 99999971
+
+
+def _cached_taxonomy(
+    kind: str, esi_id: int, name: str, parent_category_id: int | None = None
+) -> EsiTaxonomyCache:
+    """One name-cache row, shaped the way enrichment writes it: categories carry no
+    parent, groups carry the category they belong to."""
+    return EsiTaxonomyCache(
+        kind=kind,
+        esi_id=esi_id,
+        name=name,
+        parent_category_id=parent_category_id,
+        fetched_at=datetime.now(timezone.utc),
+    )
+
+
+def _taxonomy_item(record_id: int, *, category_id: int, group_id: int) -> ContractItem:
+    """An offered item carrying the dogma ids enrichment resolves for it."""
+    return ContractItem(
+        record_id=record_id,
+        type_id=587,
+        type_name="Rifter",
+        quantity=1,
+        is_included=True,
+        is_singleton=False,
+        category_id=category_id,
+        group_id=group_id,
+    )
+
+
+def _enriched_contract(
+    contract_id: int,
+    *,
+    version: int = ENRICHMENT_VERSION,
+    processing_status: str = "COMPLETED",
+    contract_type: str = "item_exchange",
+    seen: datetime | None = None,
+    items: list[ContractItem] | None = None,
+) -> Contract:
+    """A live contract carrying the enrichment bookkeeping the readiness ratio reads.
+
+    Every column set here is one ingestion writes (TEST-18): item_processing_status
+    and enrichment_version are stamped by the enrichment pass, last_seen_at by every
+    sighting, and the items' category_id/group_id by type resolution.
+    """
+    now = datetime.now(timezone.utc)
+    return Contract(
+        contract_id=contract_id,
+        title=f"Taxonomy Case {contract_id}",
+        price=1_000_000,
+        collateral=0,
+        status="unknown",
+        type=contract_type,
+        issuer_id=1,
+        issuer_corporation_id=1,
+        start_location_id=60003760,
+        start_location_region_id=TAXONOMY_OPTIONS_REGION,
+        for_corporation=False,
+        date_issued=now - timedelta(days=1),
+        date_expired=now + timedelta(days=7),
+        item_processing_status=processing_status,
+        enrichment_version=version,
+        last_seen_at=seen,
+        items=items or [],
+    )
+
+
+async def _taxonomy(client: AsyncClient) -> dict:
+    response = await client.get("/contracts/taxonomy")
+    assert response.status_code == 200
+    return response.json()
+
+
+async def test_taxonomy_on_a_cold_cache_is_empty_and_partial_rather_than_an_error(
+    client: AsyncClient,
+):
+    """Before the first enrichment run there are no names to serve. Two empty lists
+    and an honest "partial" is a state the client can render; a 500 is not.
+
+    This is also what proves the route is matched ahead of /{contract_id} — parsing
+    "taxonomy" as a contract id would 422 instead.
+    """
+    assert await _taxonomy(client) == {
+        "categories": [],
+        "groups": [],
+        "coverage": "partial",
+    }
+
+
+async def test_taxonomy_serves_name_sorted_flat_lists_with_each_group_naming_its_category(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Flat rather than nested (§17.6): the client scopes groups to the selected
+    categories locally, which needs every group to carry its category id.
+
+    Both lists are seeded in exactly REVERSE name order, so an endpoint that served
+    them in the order it read them would fail this assertion rather than pass it by
+    coincidence — seeding them already sorted makes the assertion agree with the sort
+    without constraining it (TEST-12).
+    """
+    db_session.add_all([
+        _cached_taxonomy("category", 6, "Ship"),
+        _cached_taxonomy("category", 7, "Module"),
+        _cached_taxonomy("group", 60, "Propulsion Module", 7),
+        _cached_taxonomy("group", 25, "Frigate", 6),
+        _cached_taxonomy("group", 26, "Cruiser", 6),
+        _enriched_contract(
+            971001, items=[_taxonomy_item(9710011, category_id=6, group_id=25)]
+        ),
+    ])
+    await db_session.flush()
+
+    body = await _taxonomy(client)
+
+    assert body["categories"] == [
+        {"category_id": 7, "name": "Module"},
+        {"category_id": 6, "name": "Ship"},
+    ]
+    assert body["groups"] == [
+        {"group_id": 26, "category_id": 6, "name": "Cruiser"},
+        {"group_id": 25, "category_id": 6, "name": "Frigate"},
+        {"group_id": 60, "category_id": 7, "name": "Propulsion Module"},
+    ]
+    assert body["coverage"] == "complete"
+
+
+@pytest.mark.parametrize(
+    "population, unstamped, expected",
+    [(200, 1, "complete"), (100, 5, "partial")],
+    ids=["0.995-clears", "0.95-does-not"],
+)
+async def test_the_readiness_ratio_gates_the_signal_at_ninety_nine_percent(
+    client: AsyncClient, db_session: AsyncSession, population, unstamped, expected
+):
+    """The corpus is resweept contract by contract after a version bump, so the
+    signal has to tolerate a tail without opening on a mostly-stale corpus. These
+    two populations sit either side of the 0.99 threshold.
+    """
+    seen = datetime.now(timezone.utc)
+    db_session.add_all([
+        _enriched_contract(
+            971100 + index,
+            version=ENRICHMENT_VERSION - 1 if index < unstamped else ENRICHMENT_VERSION,
+            seen=seen,
+        )
+        for index in range(population)
+    ])
+    await db_session.flush()
+
+    assert (await _taxonomy(client))["coverage"] == expected
+
+
+async def test_contracts_still_awaiting_or_failing_enrichment_stay_in_the_denominator(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The denominator is every live item-bearing contract, not just the COMPLETED
+    ones. Measured over COMPLETED rows alone, one enriched contract beside
+    ninety-nine broken ones reads as 1/1 — a fully enriched corpus — which is the
+    opposite of what the signal exists to say.
+
+    The failed rows keep the current version deliberately: an ENRICHMENT_INCOMPLETE
+    row holds whatever version it last stamped, so the numerator's status condition
+    is the only thing keeping them out of it.
+    """
+    db_session.add_all(
+        [_enriched_contract(971300 + index) for index in range(50)]
+        + [
+            _enriched_contract(971400 + index, processing_status="ENRICHMENT_INCOMPLETE")
+            for index in range(25)
+        ]
+        + [
+            _enriched_contract(971450 + index, processing_status="PENDING_ITEMS")
+            for index in range(25)
+        ]
+    )
+    await db_session.flush()
+
+    assert (await _taxonomy(client))["coverage"] == "partial"
+
+
+async def test_a_delisted_contract_does_not_drag_the_readiness_ratio(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """A contract that has left ESI's public list is never re-enriched, so counting
+    it would leave the ratio permanently short of the threshold — the signal would
+    read "partial" forever on a corpus that is entirely up to date."""
+    latest = datetime.now(timezone.utc)
+    db_session.add_all([
+        _enriched_contract(971501, seen=latest),
+        _enriched_contract(
+            971502,
+            version=ENRICHMENT_VERSION - 1,
+            processing_status="PENDING_ITEMS",
+            seen=latest - timedelta(hours=2),
+        ),
+    ])
+    await db_session.flush()
+
+    assert (await _taxonomy(client))["coverage"] == "complete"
+
+
+async def test_only_item_bearing_contract_types_count_in_the_denominator(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Couriers and loans carry no items by construction, so enrichment never
+    completes for them and including them would peg the ratio below the threshold
+    forever. Auctions DO carry items, so they belong — asserted by making one stale
+    and watching the signal degrade.
+    """
+    db_session.add_all([
+        _enriched_contract(971601),
+        _enriched_contract(971602, contract_type="auction"),
+        _enriched_contract(
+            971603, contract_type="courier", processing_status="PENDING_ITEMS", version=0
+        ),
+        _enriched_contract(
+            971604, contract_type="loan", processing_status="PENDING_ITEMS", version=0
+        ),
+    ])
+    await db_session.flush()
+
+    assert (await _taxonomy(client))["coverage"] == "complete"
+
+    auction = await db_session.get(Contract, 971602)
+    auction.enrichment_version = ENRICHMENT_VERSION - 1
+    await db_session.flush()
+
+    assert (await _taxonomy(client))["coverage"] == "partial"
+
+
+async def test_a_category_the_name_cache_is_missing_holds_the_signal_at_partial(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """A category-name fetch failure does not block COMPLETED stamping, so the ratio
+    can read 1.0 while the option list is missing names the filter rail renders.
+    Gating on the ratio alone would open the item-level surface on a list that
+    cannot describe the corpus behind it.
+    """
+    db_session.add_all([
+        _cached_taxonomy("category", 6, "Ship"),
+        _enriched_contract(
+            971701, items=[_taxonomy_item(9717011, category_id=6, group_id=25)]
+        ),
+        _enriched_contract(
+            971702, items=[_taxonomy_item(9717021, category_id=7, group_id=60)]
+        ),
+    ])
+    await db_session.flush()
+
+    body = await _taxonomy(client)
+    assert body["coverage"] == "partial"
+    assert [entry["category_id"] for entry in body["categories"]] == [6]
+
+    db_session.add(_cached_taxonomy("category", 7, "Module"))
+    await db_session.flush()
+
+    assert (await _taxonomy(client))["coverage"] == "complete"
+
+
+async def test_a_category_seen_only_on_delisted_rows_does_not_hold_the_signal(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The name-cache condition scopes to LIVE contracts, deliberately unlike
+    ingestion's unscoped sweep of observed categories. A category that appeared only
+    on rows since bought or withdrawn is not one the filter rail can return results
+    for, so waiting for its name would shut the surface over data nobody can reach.
+    """
+    latest = datetime.now(timezone.utc)
+    db_session.add_all([
+        _cached_taxonomy("category", 6, "Ship"),
+        _enriched_contract(
+            971801,
+            seen=latest,
+            items=[_taxonomy_item(9718011, category_id=6, group_id=25)],
+        ),
+        _enriched_contract(
+            971802,
+            seen=latest - timedelta(hours=2),
+            items=[_taxonomy_item(9718021, category_id=7, group_id=60)],
+        ),
+    ])
+    await db_session.flush()
+
+    assert (await _taxonomy(client))["coverage"] == "complete"

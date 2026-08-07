@@ -225,6 +225,68 @@ class ContractListResponse(PaginatedResponse[ContractListItemSchema]):
     )
 
 
+class TaxonomyCoverage(str, Enum):
+    """Whether the item-level surface can be opened yet.
+
+    "complete" means the corpus is enriched at the current enrichment version AND the
+    name cache names every category that corpus holds. Anything short of both is
+    "partial": a taxonomy filter offered over half-enriched items returns a page that
+    is missing contracts for reasons the reader cannot see, which is worse than a
+    control that is honestly not ready. Degrades on its own during any future
+    enrichment resweep and restores on its own afterwards.
+    """
+
+    partial = "partial"
+    complete = "complete"
+
+
+class TaxonomyCategory(BaseModel):
+    """One dogma category the filter rail can offer."""
+
+    category_id: int
+    name: str
+
+
+class TaxonomyGroup(BaseModel):
+    """One dogma group, carrying the category it belongs to so the client can scope
+    the group list to the selected categories without a second request."""
+
+    group_id: int
+    # The cache column is nullable, so a group whose category ESI did not report
+    # serves NULL rather than a fabricated parent — the client leaves it out of every
+    # scoped list rather than filing it under the wrong category.
+    category_id: Optional[int] = None
+    name: str
+
+
+class TaxonomyResponse(BaseModel):
+    """The option lists behind the category and group filters, plus their readiness.
+
+    Flat rather than nested (§17.6): the client filters groups down to the selected
+    categories locally, so changing a category selection costs no round trip.
+    """
+
+    categories: List[TaxonomyCategory] = Field(
+        ..., description="Every cached dogma category, ascending by name."
+    )
+    groups: List[TaxonomyGroup] = Field(
+        ...,
+        description=(
+            "Every cached dogma group, ascending by name, each naming its category "
+            "so the client can scope the list without refetching."
+        ),
+    )
+    coverage: TaxonomyCoverage = Field(
+        ...,
+        description=(
+            "Whether the item-level filters can be trusted yet, measured from observed "
+            "rows: 'complete' only when the live corpus is enriched at the current "
+            "enrichment version and every category on its items has a cached name. "
+            "'partial' while either is still true, including on a cold cache."
+        ),
+    )
+
+
 class ContractType(str, Enum):
     """Every contract type ESI can emit (confirmed against the committed spec
     snapshot). Typed as an enum so an unknown value 422s instead of silently
