@@ -202,6 +202,10 @@ test.describe('contract-type segments', () => {
     // 120,000,000 ISK over 60,000 m³. Criterion 5.6 — the rate is the only
     // normalization on the row, and nothing here reads as near or far.
     await expect(page.getByText('2,000', { exact: true })).toBeVisible()
+
+    // Criterion 5.7: the segment says where these routes can start from, named
+    // from the envelope's coverage rather than a region literal in the app.
+    await expect(page.getByText('Couriers originating in The Forge only.')).toBeVisible()
   })
 
   test('a shared courier URL restores the segment', async ({ page }) => {

@@ -113,6 +113,17 @@ describe('accessibility (axe)', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 
+  it('the uncovered-region empty state has no violations', async () => {
+    // A second heading-plus-explanation card in the results region, reached
+    // only by a region selection the corpus holds nothing for — a state the
+    // generic empty-state case above never renders.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+    const { container } = renderApp('/contracts?region_ids=10000043')
+    await screen.findByRole('heading', { name: 'No data for Domain yet' })
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
   it('empty and error states have no violations', async () => {
     stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
     const empty = renderApp('/contracts')

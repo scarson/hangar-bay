@@ -22,6 +22,9 @@ const ROW = {
   date_expired: daysFromNow(7),
   price: 1000000,
   start_location_name: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+  // Clock-anchored like date_expired: the detail view renders it through a
+  // relative formatter that reads the real Date.now() (TEST-17).
+  last_seen_at: minutesFromNow(-11),
   is_ship_contract: true,
   is_blueprint_copy_contract: false,
   primary_label: 'Tristan',
@@ -239,8 +242,17 @@ describe('ContractsPage', () => {
     // qss decode of ?region_ids=…&region_ids=… -> parseContractSearch array
     // coercion -> toApiQuery -> openapi-fetch's repeated-array serializer.
     // Guards the two-repeat case that single-value URL tests can't (TEST-5).
+    // Both regions are covered in this response so the empty state stays the
+    // ordinary one — an uncovered selection renders the coverage explanation
+    // instead, which is a different branch than the one this test waits on.
     const calls = stubFetch(
-      anonymousMe(() => jsonResponse(listPage([]))),
+      anonymousMe(() =>
+        jsonResponse(
+          listPage([], {
+            coverage: { ingested_region_ids: [10000002, 10000020], as_of: minutesFromNow(-5) },
+          }),
+        ),
+      ),
     )
 
     renderApp('/contracts?region_ids=10000002&region_ids=10000020')
@@ -410,6 +422,31 @@ describe('ContractDetailPage', () => {
       sort_direction: 'asc',
       ships_only: false,
     })
+  })
+
+  it('says when the contract was last seen in the corpus', async () => {
+    // Criterion 7.1: last_seen_at is computed at ingestion and, until now, was
+    // returned to nobody. A market row nobody can date is a row nobody can
+    // trust — the price could be from a minute ago or from last week.
+    stubFetch(anonymousMe(() => jsonResponse(CONTRACT)))
+
+    renderApp('/contracts/101')
+
+    await screen.findByRole('heading', { name: 'Tristan' })
+    expect(screen.getByText('Last seen')).toBeInTheDocument()
+    expect(screen.getByText('11m ago')).toBeInTheDocument()
+  })
+
+  it('omits the last-seen row entirely for a contract carrying no stamp', async () => {
+    // The field is nullable, and an unstamped row has no freshness to report.
+    // A dash there would read as "we looked and there is nothing", which is a
+    // different claim from "we never recorded when we looked".
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, last_seen_at: null })))
+
+    renderApp('/contracts/101')
+
+    await screen.findByRole('heading', { name: 'Tristan' })
+    expect(screen.queryByText('Last seen')).not.toBeInTheDocument()
   })
 
   it('back link falls back to the default list on a cold deep link (no in-app history)', async () => {
@@ -968,5 +1005,149 @@ describe('per-segment column sets', () => {
       const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
       expect(listCall).toContain('sort_by=reward_per_volume')
     })
+  })
+})
+
+describe('freshness and coverage', () => {
+  /** The results section alone: the filter rail carries a Clear filters button of its own. */
+  function results() {
+    return within(screen.getByRole('region', { name: 'Contract results' }))
+  }
+
+  it('states how fresh the corpus is beside the result count', async () => {
+    // Criterion 7.1. The stamp is the envelope's, not the row's: it describes
+    // the dataset the page was drawn from, so it belongs with the count rather
+    // than in a column.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+
+    renderApp('/contracts')
+
+    expect(await screen.findByText('Data as of 5m ago')).toBeInTheDocument()
+  })
+
+  it('claims no freshness at all when nothing has been stamped', async () => {
+    // coverage.as_of is null before the first ingestion run finishes. That is
+    // the absence of a freshness signal, and rendering a dash beside "Data as
+    // of" would dress the absence up as a reading.
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse(listPage([ROW], { coverage: { ingested_region_ids: [], as_of: null } })),
+      ),
+    )
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(screen.queryByText(/Data as of/)).not.toBeInTheDocument()
+  })
+
+  it('explains an empty result for a region the corpus does not cover', async () => {
+    // Criterion 7.2/7.3: "not covered" and "nothing matched" are different
+    // facts, and the region that separates them is named from the envelope's
+    // ids — the client embeds no region literal of its own.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?region_ids=10000043')
+
+    expect(await screen.findByRole('heading', { name: 'No data for Domain yet' })).toBeInTheDocument()
+    expect(screen.getByText(/currently covers The Forge/)).toBeInTheDocument()
+    // The covered-empty advice is a false lead here: no price bound loosens
+    // its way into a region that holds no rows at all.
+    expect(screen.queryByText(/Loosen a price bound/)).not.toBeInTheDocument()
+    expect(results().getByRole('button', { name: 'Clear filters' })).toBeInTheDocument()
+  })
+
+  it('keeps the loosen-your-filters copy when every selected region is covered', async () => {
+    // A covered region that happens to hold nothing matching is the ordinary
+    // empty, and the advice that fits it must not be replaced by a coverage
+    // story that would be false.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?region_ids=10000002')
+
+    expect(await screen.findByText(/no contracts match/i)).toBeInTheDocument()
+    expect(screen.getByText(/Loosen a price bound/)).toBeInTheDocument()
+    expect(screen.queryByText(/currently covers/)).not.toBeInTheDocument()
+  })
+
+  it('separates the uncovered half of a mixed selection from the covered half', async () => {
+    // With both kinds selected the empty result has two causes at once, and
+    // naming only the uncovered one would imply the covered selection was
+    // never consulted.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?region_ids=10000002&region_ids=10000043')
+
+    expect(await screen.findByRole('heading', { name: 'No data for Domain yet' })).toBeInTheDocument()
+    expect(screen.getByText(/also selected The Forge, which matched nothing/)).toBeInTheDocument()
+  })
+
+  it('names the covered regions in the empty state even before anything is ingested', async () => {
+    // A corpus with no rows yet covers nothing, so there is no covered set to
+    // name — the sentence has to change rather than read "currently covers .".
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse(listPage([], { coverage: { ingested_region_ids: [], as_of: null } })),
+      ),
+    )
+
+    renderApp('/contracts?region_ids=10000002')
+
+    expect(
+      await screen.findByRole('heading', { name: 'No data for The Forge yet' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/No region has been ingested yet/)).toBeInTheDocument()
+  })
+
+  it('keeps describing the result on screen while the next region loads', async () => {
+    // WEB-1: keepPreviousData holds the previous empty result through the whole
+    // of the next request, so an explanation read off the live URL would call
+    // Domain uncovered while the rows on screen came from a Forge query — a
+    // specific, confident falsehood for as long as the request takes.
+    let releaseDomain!: (page: Response) => void
+    const domainInFlight = new Promise<Response>((resolve) => {
+      releaseDomain = resolve
+    })
+    const calls = stubFetch(
+      anonymousMe((url) =>
+        url.includes('region_ids=10000043') ? domainInFlight : jsonResponse(listPage([])),
+      ),
+    )
+
+    renderApp('/contracts?region_ids=10000002')
+    await screen.findByText(/Loosen a price bound/)
+
+    await userEvent.click(screen.getByLabelText('Domain'))
+    await waitFor(() =>
+      expect(calls.some((url) => url.includes('region_ids=10000043'))).toBe(true),
+    )
+
+    expect(screen.getByText(/Loosen a price bound/)).toBeInTheDocument()
+    expect(screen.queryByText(/No data for Domain/)).not.toBeInTheDocument()
+
+    releaseDomain(jsonResponse(listPage([])))
+
+    expect(await screen.findByRole('heading', { name: 'No data for Domain yet' })).toBeInTheDocument()
+  })
+
+  it('states where couriers may originate, above the courier rows', async () => {
+    // Criterion 5.7. A hauler reading a route list has to know the origins are
+    // one region's worth rather than the whole cluster's.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([COURIER_ROW]))))
+
+    renderApp('/contracts?contract_type=courier')
+
+    expect(await screen.findByText('Couriers originating in The Forge only.')).toBeInTheDocument()
+  })
+
+  it('makes no origin claim outside the courier segment', async () => {
+    // The statement is about routes; a sale has an origin only in the sense
+    // that everything in the corpus does.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(screen.queryByText(/originating in/)).not.toBeInTheDocument()
   })
 })
