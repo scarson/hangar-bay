@@ -45,7 +45,25 @@ SORT_MAP = {
     SortableContractFields.volume: Contract.volume,
     # Note: Sorting by ship_name joins the items table.
     SortableContractFields.ship_name: ContractItem.type_name,
+    SortableContractFields.buyout: Contract.buyout,
+    SortableContractFields.days_to_complete: Contract.days_to_complete,
+    # Computed in SQL so the ratio sorts without loading the corpus into the
+    # application (§11). NULL when reward is NULL or volume is NULL/0 (§9).
+    SortableContractFields.reward_per_volume: (
+        Contract.reward / func.nullif(Contract.volume, 0.0)
+    ),
 }
+
+# Sorts whose column is NULL for most of the corpus: buyout belongs to auctions,
+# days_to_complete to couriers, and the ratio needs both a reward and a volume.
+# A missing value is not a low one — a contract with no reward per m3 must not
+# lead the best-value sort — so NULL goes to the end whichever way the sort runs.
+# The other sorts are non-null columns and keep their existing order expressions.
+NULLABLE_SORTS = frozenset({
+    SortableContractFields.buyout,
+    SortableContractFields.days_to_complete,
+    SortableContractFields.reward_per_volume,
+})
 
 
 def _needs_item_join(filters: ContractFilters) -> bool:
@@ -574,6 +592,8 @@ async def _fetch_page_joined(
     # tiebreaker.
     sort_aggregate = func.max(sort_column) if descending else func.min(sort_column)
     order_expr = sort_aggregate.desc() if descending else sort_aggregate.asc()
+    if filters.sort_by in NULLABLE_SORTS:
+        order_expr = order_expr.nulls_last()
     id_query = (
         query.with_only_columns(Contract.contract_id)
         .group_by(Contract.contract_id)
@@ -605,6 +625,8 @@ async def _fetch_page_simple(
     descending: bool,
 ) -> list[Contract]:
     order_expr = sort_column.desc() if descending else sort_column.asc()
+    if filters.sort_by in NULLABLE_SORTS:
+        order_expr = order_expr.nulls_last()
     data_query = (
         query.order_by(order_expr, Contract.contract_id.asc())
         .offset((filters.page - 1) * filters.size)

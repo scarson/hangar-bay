@@ -2150,3 +2150,179 @@ async def test_a_category_seen_only_on_delisted_rows_does_not_hold_the_signal(
     await db_session.flush()
 
     assert (await _taxonomy(client))["coverage"] == "complete"
+
+
+# --- New sortable fields: buyout, days_to_complete, reward_per_volume (region 99999966) ---
+#
+# Each of the three gets its own acceptance evidence (spec §6.2): a sort that
+# silently no-ops is the same defect class as a filter that silently no-ops, and
+# Criterion 5.4 only covers the ratio. Every test asserts the exact order in BOTH
+# directions, because a sort that ignores its column still produces two orders that
+# look plausible when only the first row is checked.
+#
+# All three columns are NULL on most of the corpus, so where NULL lands is part of
+# the contract: a row with no reward per m3 is not the best deal on offer, and a
+# contract with no buyout is not the cheapest way to end an auction (§15.2).
+
+SORTABLE_REGION = 99999966
+
+
+@pytest_asyncio.fixture
+async def sortable_field_contracts(db_session: AsyncSession):
+    """Nine contracts in region 99999966, spanning the three new sorts.
+
+    Each sort gets at least three distinct non-NULL values, and every value sits on
+    a row whose ingestion writer would actually produce it (TEST-18): ESI sends
+    `buyout` only for auctions and `days_to_complete` only for couriers, so no row
+    here carries a field its type cannot have.
+
+    The couriers' reward-per-m3 ratios are deliberately ordered differently from
+    both their rewards (1M, 6M, 4M) and their volumes (100, 100, 20), so an
+    implementation that sorts by either column instead of the ratio cannot agree
+    with the expected order by accident.
+
+    Every title shares the token the joined-path test searches on, and 966021 is the
+    only contract with items — two of them, so its joined rows duplicate and the
+    grouped-id pagination has something to collapse (SQLA-1).
+    """
+    now = datetime.now(timezone.utc)
+
+    def _contract(cid: int, **overrides) -> Contract:
+        fields = dict(
+            contract_id=cid, title=f"Freightpost {cid}", price=1_000_000,
+            collateral=0, status="outstanding", type="item_exchange", issuer_id=966,
+            issuer_corporation_id=966, start_location_id=60003760,
+            start_location_region_id=SORTABLE_REGION, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7), last_seen_at=now,
+        )
+        fields.update(overrides)
+        return Contract(**fields)
+
+    db_session.add_all([
+        _contract(966001, type="auction", buyout=1_000_000.0),
+        _contract(966002, type="auction", buyout=5_000_000.0),
+        _contract(966003, type="auction", buyout=9_000_000.0),
+        # An auction can run with no buy-it-now price at all; ESI omits the field.
+        _contract(966004, type="auction"),
+        # Ratios: 10k, 60k, 200k ISK per m3.
+        _contract(966011, type="courier", reward=1_000_000.0, volume=100.0,
+                  days_to_complete=1),
+        _contract(966012, type="courier", reward=6_000_000.0, volume=100.0,
+                  days_to_complete=3),
+        _contract(966013, type="courier", reward=4_000_000.0, volume=20.0,
+                  days_to_complete=7),
+        # Nothing to divide by, so no per-m3 price (§9) — but a real delivery window.
+        _contract(966014, type="courier", reward=2_000_000.0, volume=0.0,
+                  days_to_complete=10),
+        # No reward, no buyout, no delivery window: NULL under all three sorts.
+        _contract(966021, volume=250.0, items=[
+            ContractItem(record_id=9660211, type_id=587, type_name="Rifter",
+                         quantity=1, is_included=True, is_singleton=False),
+            ContractItem(record_id=9660212, type_id=12058,
+                         type_name="1MN Afterburner I", quantity=1,
+                         is_included=True, is_singleton=False),
+        ]),
+    ])
+    await db_session.flush()
+
+
+async def _sorted_ids(client: AsyncClient, field: str, direction: str) -> list[int]:
+    response = await client.get(
+        f"/contracts/?region_ids={SORTABLE_REGION}"
+        f"&sort_by={field}&sort_direction={direction}"
+    )
+    assert response.status_code == 200, response.text
+    return [row["contract_id"] for row in response.json()["items"]]
+
+
+async def test_buyout_sorts_both_ways_and_leaves_auctions_without_one_last(
+    client: AsyncClient, sortable_field_contracts
+):
+    """A contract with no buy-it-now price is not the cheapest way to end an
+    auction, so it belongs at the end of the sort in both directions."""
+    without_a_buyout = [966004, 966011, 966012, 966013, 966014, 966021]
+
+    ascending = await _sorted_ids(client, "buyout", "asc")
+    descending = await _sorted_ids(client, "buyout", "desc")
+
+    assert ascending == [966001, 966002, 966003] + without_a_buyout
+    assert descending == [966003, 966002, 966001] + without_a_buyout
+    assert ascending[0] != descending[0]
+
+
+async def test_days_to_complete_sorts_both_ways_and_leaves_non_couriers_last(
+    client: AsyncClient, sortable_field_contracts
+):
+    """Only a courier has a delivery window; the rest have no deadline rather than
+    an instant one, so they must not lead the shortest-first sort."""
+    without_a_window = [966001, 966002, 966003, 966004, 966021]
+
+    ascending = await _sorted_ids(client, "days_to_complete", "asc")
+    descending = await _sorted_ids(client, "days_to_complete", "desc")
+
+    assert ascending == [966011, 966012, 966013, 966014] + without_a_window
+    assert descending == [966014, 966013, 966012, 966011] + without_a_window
+    assert ascending[0] != descending[0]
+
+
+async def test_reward_per_volume_sorts_both_ways_and_leaves_unpriced_rows_last(
+    client: AsyncClient, sortable_field_contracts
+):
+    """The ratio haulers compare offers on (Criterion 5.4). A row without one is not
+    the best value on the board — it has no value to compare."""
+    without_a_ratio = [966001, 966002, 966003, 966004, 966014, 966021]
+
+    ascending = await _sorted_ids(client, "reward_per_volume", "asc")
+    descending = await _sorted_ids(client, "reward_per_volume", "desc")
+
+    assert ascending == [966011, 966012, 966013] + without_a_ratio
+    assert descending == [966013, 966012, 966011] + without_a_ratio
+    assert ascending[0] != descending[0]
+
+
+async def test_a_zero_volume_courier_sorts_as_unpriced_not_as_the_best_deal(
+    client: AsyncClient, sortable_field_contracts
+):
+    """A reward divided by a zero volume has no answer. Serving 0 or infinity would
+    park the row at one end of the value sort and call it the best or worst offer on
+    the board; the wire carries null and the row sorts with the other unpriced ones
+    (§9)."""
+    response = await client.get(
+        f"/contracts/?region_ids={SORTABLE_REGION}"
+        "&sort_by=reward_per_volume&sort_direction=desc"
+    )
+
+    assert response.status_code == 200
+    rows = response.json()["items"]
+    assert {row["contract_id"] for row in rows} == {
+        966001, 966002, 966003, 966004, 966011, 966012, 966013, 966014, 966021,
+    }
+    by_id = {row["contract_id"]: row for row in rows}
+    assert by_id[966014]["reward_per_volume"] is None
+    assert by_id[966013]["reward_per_volume"] == 200_000.0
+
+    ids = [row["contract_id"] for row in rows]
+    assert ids[:3] == [966013, 966012, 966011]
+    assert 966014 in ids[3:]
+
+
+async def test_a_new_sort_survives_the_grouped_joined_pagination_path(
+    client: AsyncClient, sortable_field_contracts
+):
+    """A search joins the item table, so the page is paginated over grouped contract
+    ids ordered by an AGGREGATE of the sort expression rather than the expression
+    itself (SQLA-1). 966021 has two items, so its joined rows duplicate and the
+    grouping has something to collapse."""
+    response = await client.get(
+        f"/contracts/?region_ids={SORTABLE_REGION}&search=Freightpost"
+        "&sort_by=reward_per_volume&sort_direction=desc"
+    )
+
+    assert response.status_code == 200
+    ids = [row["contract_id"] for row in response.json()["items"]]
+
+    assert len(ids) == len(set(ids)) == 9, "the joined rows must collapse per contract"
+    assert ids == [
+        966013, 966012, 966011,
+        966001, 966002, 966003, 966004, 966014, 966021,
+    ]

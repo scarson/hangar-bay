@@ -308,6 +308,9 @@ class SortableContractFields(str, Enum):
     collateral = "collateral"
     ship_name = "ship_name"
     volume = "volume"
+    reward_per_volume = "reward_per_volume"
+    days_to_complete = "days_to_complete"
+    buyout = "buyout"
 
 
 class SortDirection(str, Enum):

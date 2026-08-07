@@ -85,7 +85,7 @@ notes and commit messages.
 - **Task B5, four deviations** (details inline at the end of Task B5): a fourth test pinning that the three range families stay independent EXISTS clauses; a repair to `tests/conftest.py::setup_contracts`, outside the task's Files list, where `raw_quantity=10` had to become `runs=10` for `test_filter_by_bpc_runs` to keep meaning anything; past-tense corrections to pitfalls FASTAPI-2 and TEST-18, whose present-tense claims this task falsifies; and an offline re-projection of the ESI monitor snapshot instead of `--update`, to avoid accepting unreviewed live-spec drift while updating one manifest annotation.
 
 ### Discoveries
-- (none yet)
+- **Two pre-existing sorts are nullable and place NULL inconsistently with the rule Task B8 establishes.** `SortableContractFields.volume` maps to `Contract.volume` (`models/contracts.py`, `nullable=True`) and `ship_name` maps to `ContractItem.type_name`; neither carries `nulls_last()`, so on PostgreSQL a descending sort by volume leads with every volume-less contract and a descending sort by ship name leads with every item-less one. Task B8 deliberately did not touch them — the step directs that the existing sorts stay byte-identical, and changing a live sort's plan is outside an additive task — but the frontend now offers three sorts that put "no value" last beside two that put it first, which reads as a bug to anyone who tries both. Decide in PR-C/D whether to extend `NULLABLE_SORTS` (`services/contract_service.py`) to cover them.
 
 ---
 
@@ -1095,9 +1095,9 @@ Flat, not nested (§17.6 — the client filters groups locally). Lists come from
 
 **Files:** `schemas/contracts.py` (`SortableContractFields`), `services/contract_service.py` (`SORT_MAP` + null ordering), test `tests/api/test_contract_filters.py` (region **99999966**)
 
-- [ ] **Step 1: Failing tests — one per field, asc AND desc, distinct-value fixtures (TEST-3):** the fixture must give EACH sort a population with ≥3 distinct non-NULL values **on rows the production writer would actually give that value** (codex round-2 finding 11 — buyout is auction-only, so couriers cannot carry it without violating TEST-18): seed **three auctions with distinct `buyout` values plus one auction without** (the null case), and **three couriers with distinct reward/volume ratios and distinct `days_to_complete`** plus one courier with `volume=0` (guard case) and one item_exchange (`reward` NULL). For each of the three new sorts assert ascending and descending produce different first rows, the expected exact order, and that NULL-valued rows sort LAST in both directions (a null `reward_per_volume` row must not occupy the "best value" end — the §15.2 display rule applied to the one ratio this feature ships). Also: `volume=0` yields `reward_per_volume: null` on the wire, not infinity/error (§9), and one sort test runs with `search` set so the grouped joined path exercises the aggregate (SQLA-1).
-- [ ] **Step 2: FAIL** (enum rejects the values → 422).
-- [ ] **Step 3: Implement:** enum members `reward_per_volume`, `days_to_complete`, `buyout`; SORT_MAP entries:
+- [x] **Step 1: Failing tests — one per field, asc AND desc, distinct-value fixtures (TEST-3):** the fixture must give EACH sort a population with ≥3 distinct non-NULL values **on rows the production writer would actually give that value** (codex round-2 finding 11 — buyout is auction-only, so couriers cannot carry it without violating TEST-18): seed **three auctions with distinct `buyout` values plus one auction without** (the null case), and **three couriers with distinct reward/volume ratios and distinct `days_to_complete`** plus one courier with `volume=0` (guard case) and one item_exchange (`reward` NULL). For each of the three new sorts assert ascending and descending produce different first rows, the expected exact order, and that NULL-valued rows sort LAST in both directions (a null `reward_per_volume` row must not occupy the "best value" end — the §15.2 display rule applied to the one ratio this feature ships). Also: `volume=0` yields `reward_per_volume: null` on the wire, not infinity/error (§9), and one sort test runs with `search` set so the grouped joined path exercises the aggregate (SQLA-1).
+- [x] **Step 2: FAIL** — all five tests 422, the enum rejecting the three values exactly as predicted.
+- [x] **Step 3: Implement:** enum members `reward_per_volume`, `days_to_complete`, `buyout`; SORT_MAP entries:
   ```python
       SortableContractFields.buyout: Contract.buyout,
       SortableContractFields.days_to_complete: Contract.days_to_complete,
@@ -1105,8 +1105,13 @@ Flat, not nested (§17.6 — the client filters groups locally). Lists come from
       SortableContractFields.reward_per_volume: Contract.reward / func.nullif(Contract.volume, 0.0),
   ```
   Null ordering: in both fetch paths, when the resolved sort column is one of the three new (nullable) entries, append `.nulls_last()` to the order expression (`order_expr = order_expr.nulls_last()`), leaving the existing four sorts byte-identical (they are non-null columns; changing their plans without cause is scope creep). The grouped path's aggregate (`func.max`/`min` over the expression) already tolerates expressions.
-- [ ] **Step 4: Green.** Note the five-touchpoint rule: touchpoints 1–2 (SORT_MAP, enum) here; 3 (`SavedSearchParameters.sort_by`) widens automatically via the shared enum — B9's tests cover it; 4–5 (frontend `SORT_FIELDS`, regenerated types) are PR-C Task C2.
-- [ ] **Step 5: Commit** — `feat(api): sort by reward per volume, delivery window, and buyout`
+- [x] **Step 4: Green** (652 passed, flake8 clean). Note the five-touchpoint rule: touchpoints 1–2 (SORT_MAP, enum) here; 3 (`SavedSearchParameters.sort_by`) widens automatically via the shared enum — B9's tests cover it; 4–5 (frontend `SORT_FIELDS`, regenerated types) are PR-C Task C2.
+  Seven mutations run (TEST-12), each restored from a `cp` snapshot and ending on a green restore run: `nulls_last` dropped from the simple path (3 red) and from the joined path (1 red), the ratio replaced by the raw reward, by the raw volume, and by an unguarded `reward / volume` (division by zero), and each of the `buyout` / `days_to_complete` map entries repointed at `Contract.price`. All seven red, no survivors.
+- [x] **Step 5: Commit** — `feat(api): sort by reward per volume, delivery window, and buyout`
+
+**Executed deviations (Task B8):**
+- **The `volume=0` guard courier also carries a `days_to_complete`,** giving that sort four distinct non-NULL values rather than the three Step 1's phrasing implies. ESI sends a delivery window on every courier, so a courier without one is not a row the writer can produce (TEST-18); leaving it NULL to keep the count at three would have bought a rounder fixture with a shape that does not exist.
+- **The plan's "existing four sorts" is six.** `SORT_MAP` held `date_issued`, `date_expired`, `price`, `collateral`, `volume`, and `ship_name` before this task — the parenthetical "(they are non-null columns)" is true of four of them and false of `volume` (`models/contracts.py`, `nullable=True`) and of `ship_name` (`ContractItem.type_name`). All six are left byte-identical as the step directs, so the instruction stands; only its count and its stated reason were off. The consequence is recorded under Discoveries rather than fixed here.
 
 ### Task B9: `SavedSearchParameters` widening (decision-log D4; spec §14)
 
