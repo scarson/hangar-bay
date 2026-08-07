@@ -70,7 +70,7 @@ NPC_STATION_ID_MAX = 64_000_000
 # while a run stays under 2x the scheduler interval — so don't deploy again or
 # scale out mid-resweep, and re-derive that margin before shortening
 # AGGREGATION_SCHEDULER_INTERVAL_SECONDS.
-ENRICHMENT_VERSION = 1
+ENRICHMENT_VERSION = 2
 
 
 def _chunk_ids(ids: Iterable[int]) -> Iterator[list[int]]:
