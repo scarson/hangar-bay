@@ -17,6 +17,7 @@ export function toSavedSearchParameters(search: ContractSearch): SavedSearchPara
     min_price: search.min_price,
     max_price: search.max_price,
     region_ids: search.region_ids,
+    contract_type: search.contract_type,
     is_bpc: search.is_bpc,
     ships_only: search.ships_only,
     size: search.size,
