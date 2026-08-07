@@ -1,4 +1,4 @@
-// ABOUTME: Relative-time formatting for notification timestamps ("3h ago"); now is injectable for deterministic tests.
+// ABOUTME: Relative-time formatting for a past timestamp ("3h ago"); now is injectable for deterministic tests.
 // ABOUTME: Coarse by design — minutes, hours, then days — mirroring the list view's timeRemaining granularity.
 export function timeAgo(iso: string, now: number = Date.now()): string {
   const ms = now - new Date(iso).getTime()
