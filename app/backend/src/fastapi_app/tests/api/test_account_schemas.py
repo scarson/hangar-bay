@@ -1,5 +1,5 @@
 # ABOUTME: Unit tests for the SavedSearchParameters validation model + saved-search request/response schemas.
-# ABOUTME: Pins extra="forbid" (ME/TE + junk rejection), constraint bounds, and name trimming.
+# ABOUTME: Pins extra="forbid" junk rejection, the filter bounds (runs/ME/TE, taxonomy, contract_type), and name trimming.
 import pytest
 from pydantic import ValidationError
 
