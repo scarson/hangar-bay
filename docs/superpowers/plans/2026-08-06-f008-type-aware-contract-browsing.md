@@ -76,6 +76,7 @@ notes and commit messages.
 - **Task B2, test placement.** The plan sent the requested-only-BPC fixture to `test_contract_service.py`; the mixed-bundle partition test it names actually lives in `test_contract_filters.py` (`test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle`, region 99999954), so the new contract went there. Noted inline in B2 Step 1.
 - **Task B2, one test folded rather than migrated.** `test_item_response_omits_fields_public_ingestion_cannot_populate` asserted that list-row ITEMS omit `is_singleton`/`raw_quantity`. List rows no longer carry items at all, so the assertion has nothing to range over. Its coverage was folded into `test_detail_item_response_omits_fields_public_ingestion_cannot_populate`, which now sweeps all four fixture contracts (previously only 101) across the endpoint that does carry items — net coverage up, not down. Flagged here and in the PR body per Step 4's rule.
 - **Task B3, equivalence-corpus regions.** Step 1 called for the equivalence corpus to sit in "two private regions"; it was seeded into `DELISTED_REGION_A`/`DELISTED_REGION_B` (99999911/99999912) instead, because those are the two ids the `liveness_branch` fixture writes into `AGGREGATION_REGION_IDS`. A corpus in any other region takes the correlated fallback under *both* params, which would make the parametrisation vacuous and leave the watermark fast branch uncovered. `db_session` drops and recreates every table per test function, so sharing the ids with the delisting cases is safe. Noted inline in B3 Step 1. **Region 99999963 is untouched and remains Task B5's** (Global Constraint 23) — B3's service-level zero-fill test queries the empty 99999962, B3's own claim.
+- **Task B4, region claim and two tests beyond the three the step named.** B4's Files list assigned no private region, so it claims **99999967–99999970** under the plan's 99999960–99999979 allocation (A/B, a configured-but-uningested third, and a fourth whose rows carry no `last_seen_at`). Two tests were added past Step 1's three: one asserting the empty-page short-circuit carries `coverage` (Global Constraint 18 — the field threads through both `ContractListResponse` constructors, and only a non-empty corpus filtered to nothing distinguishes a threaded field from a hardcoded empty one), and one asserting a region whose rows are all unstamped still counts as covered without breaking `as_of` (`last_seen_at` is nullable, and an unguarded `max()` over the rows raises TypeError — mutation-verified). Test-only helper renamed to `_region_contract`: `_coverage_contract` was already taken in that module by the unknown-system residual tests, where "coverage" means location resolution.
 
 ### Discoveries
 - (none yet)
@@ -875,10 +876,10 @@ _OBSERVED_REGIONS_SQL = text("""
 ```
 `ingested_region_ids` = the returned ids sorted ascending; `as_of` = the max of `newest` (None on an empty corpus). Sourced from observed rows, never `Settings.AGGREGATION_REGION_IDS` (Criterion 7.4 — configured-but-not-ingested is exactly the misleading state).
 
-- [ ] **Step 1: Failing tests:** seed contracts in two regions → `coverage.ingested_region_ids` equals exactly those two, `as_of` equals the newest `last_seen_at` seeded; empty DB → `ingested_region_ids == []`, `as_of is None`; and the drift case: monkeypatch `AGGREGATION_REGION_IDS` to include a third, empty region → it must NOT appear (that assertion is the criterion).
-- [ ] **Step 2: FAIL. Step 3: Implement** (both constructors; computed once per request alongside the counts). **Step 4: Green.**
-- [ ] **Step 5:** Extend the export-openapi envelope assertion with `coverage`.
-- [ ] **Step 6: Commit** — `feat(api): report observed region coverage on the list envelope`
+- [x] **Step 1: Failing tests:** seed contracts in two regions → `coverage.ingested_region_ids` equals exactly those two, `as_of` equals the newest `last_seen_at` seeded; empty DB → `ingested_region_ids == []`, `as_of is None`; and the drift case: monkeypatch `AGGREGATION_REGION_IDS` to include a third, empty region → it must NOT appear (that assertion is the criterion).
+- [x] **Step 2: FAIL. Step 3: Implement** (both constructors; computed once per request alongside the counts). **Step 4: Green.**
+- [x] **Step 5:** Extend the export-openapi envelope assertion with `coverage`.
+- [x] **Step 6: Commit** — `feat(api): report observed region coverage on the list envelope`
 
 ### Task B5: Functional item-level range filters (runs, ME, TE) as offered-only per-family EXISTS (§3.1, Criteria 2.3/2.5)
 

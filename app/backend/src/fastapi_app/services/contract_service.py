@@ -1,6 +1,6 @@
 import asyncio
 import time
-from sqlalchemy import and_, case, func, or_
+from sqlalchemy import and_, case, func, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import aliased, selectinload
@@ -18,6 +18,7 @@ from ..schemas.contracts import (
     ContractListItemSchema,
     ContractListResponse,
     ContractType,
+    CoverageInfo,
     SortDirection,
     SortableContractFields,
 )
@@ -404,6 +405,44 @@ async def _segment_counts_and_total(
     return segment_counts, total
 
 
+# Loose index scan: SELECT DISTINCT over start_location_region_id is a 600ms
+# full index scan on the production corpus (perf audit 2026-08-02 §4 — PG18's
+# btree skip scan does not engage). The recursive CTE walks one index probe per
+# distinct region instead. as_of is the newest ingestion stamp across them.
+_OBSERVED_REGIONS_SQL = text("""
+    WITH RECURSIVE regions(region_id) AS (
+        SELECT min(start_location_region_id) FROM contracts
+        UNION ALL
+        SELECT (SELECT min(start_location_region_id) FROM contracts
+                WHERE start_location_region_id > regions.region_id)
+        FROM regions WHERE regions.region_id IS NOT NULL
+    )
+    SELECT r.region_id,
+           (SELECT max(c.last_seen_at) FROM contracts c
+             WHERE c.start_location_region_id = r.region_id) AS newest
+    FROM regions r WHERE r.region_id IS NOT NULL
+""")
+
+
+async def _observed_coverage(db: AsyncSession) -> CoverageInfo:
+    """Which regions the corpus holds, read off the rows themselves.
+
+    Never from Settings.AGGREGATION_REGION_IDS: that states what we mean to ingest,
+    and for the whole ingestion window after a coverage change it names a region
+    holding nothing — a reader told that region is covered and shown an empty page
+    learns the wrong thing about both.
+
+    A region with rows but no stamps yet contributes no candidate for as_of, so the
+    freshest real stamp still wins and a corpus with none reports None rather than
+    claiming freshness it cannot support.
+    """
+    rows = (await db.execute(_OBSERVED_REGIONS_SQL)).all()
+    return CoverageInfo(
+        ingested_region_ids=sorted(region_id for region_id, _ in rows),
+        as_of=max((newest for _, newest in rows if newest is not None), default=None),
+    )
+
+
 async def _count_unknown_system_excluded(
     db: AsyncSession, filters: ContractFilters, needs_item_join: bool
 ) -> int:
@@ -741,6 +780,10 @@ async def get_contracts(
             else None
         )
 
+        # Describes the dataset rather than the page, so it is computed once per
+        # request beside the counts and is the same figure whatever was filtered.
+        coverage = await _observed_coverage(db)
+
         if total == 0:
             duration_ms = (time.time() - start_time) * 1000
             log_key_event(
@@ -766,6 +809,9 @@ async def get_contracts(
                 # thing telling a reader who filtered into an empty segment that the
                 # corpus around it is not empty.
                 segment_counts=segment_counts,
+                # Likewise: an empty page is precisely where a reader needs to know
+                # whether the region they picked is ingested at all.
+                coverage=coverage,
             )
 
         # --- Data Query ---
@@ -794,6 +840,7 @@ async def get_contracts(
             items=[_list_item(c, names) for c in contracts],
             unknown_system_excluded=unknown_system_excluded,
             segment_counts=segment_counts,
+            coverage=coverage,
         )
 
         # Log successful contract search with key event schema

@@ -154,6 +154,34 @@ class ContractDetailSchema(ContractListItemSchema):
     items: List[ContractItemSchema] = []
 
 
+class CoverageInfo(BaseModel):
+    """Which regions the corpus actually holds, and how fresh the newest of them is.
+
+    Reported from observed rows rather than from the configured ingestion targets: the
+    two diverge for the whole ingestion window after a coverage change, and during that
+    window the configured value names a region holding nothing. A client that cannot
+    read this has to either embed a region literal — wrong the day coverage expands —
+    or infer coverage from an empty result, which reads a genuinely empty covered
+    region as uncovered.
+    """
+
+    ingested_region_ids: List[int] = Field(
+        ...,
+        description=(
+            "Every region id the contract corpus holds rows for, ascending. Empty "
+            "before the first ingestion run completes."
+        ),
+    )
+    as_of: Optional[datetime] = Field(
+        default=None,
+        description=(
+            "The newest ingestion stamp across all covered regions. Null when nothing "
+            "is ingested, and also when nothing carries a stamp yet — absence of a "
+            "freshness signal, not a claim of freshness at the epoch."
+        ),
+    )
+
+
 class ContractListResponse(PaginatedResponse[ContractListItemSchema]):
     """A page of contracts plus the figures that make the page readable in context.
 
@@ -184,6 +212,15 @@ class ContractListResponse(PaginatedResponse[ContractListItemSchema]):
             "contract_type filter lifted and every other filter applied, so a segment "
             "the reader is not on still reports what selecting it would show. A stored "
             "type outside the enum is counted under 'unknown'."
+        ),
+    )
+    coverage: CoverageInfo = Field(
+        ...,
+        description=(
+            "Which regions the corpus actually holds and how fresh they are. Independent "
+            "of the filters on this request — it describes the dataset, not the page, so "
+            "a client can tell an uncovered region apart from a covered one that matched "
+            "nothing."
         ),
     )
 

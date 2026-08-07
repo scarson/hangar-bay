@@ -1000,3 +1000,149 @@ async def test_a_stored_type_outside_the_enum_is_counted_under_unknown(
     assert result.segment_counts["unknown"] == 2
     assert 962015 in {item.contract_id for item in result.items}
     assert sum(result.segment_counts.values()) == result.total
+
+
+# --- Observed region coverage on the list envelope --------------------------
+#
+# Regions 99999967 (A), 99999968 (B), 99999969 (configured but never ingested),
+# 99999970 (ingested but never stamped) — Task B4's claim under the plan's
+# 99999960–99999979 allocation.
+#
+# The envelope reports which regions the corpus ACTUALLY holds, so a client can
+# distinguish "that region is not covered" from "nothing there matched" without
+# embedding a region literal of its own. The distinction only has teeth if the
+# figure is read off observed rows: AGGREGATION_REGION_IDS states intent, and for
+# the whole ingestion window after a coverage change it names a region holding
+# nothing at all.
+
+OBSERVED_REGION_A = 99999967
+OBSERVED_REGION_B = 99999968
+OBSERVED_REGION_CONFIGURED_ONLY = 99999969
+OBSERVED_REGION_UNSTAMPED = 99999970
+
+
+def _region_contract(
+    contract_id: int, *, region: int, seen: datetime | None
+) -> Contract:
+    now = datetime.now(timezone.utc)
+    return Contract(
+        contract_id=contract_id,
+        title=f"Coverage Case {contract_id}",
+        price=1_000_000,
+        collateral=0,
+        status="outstanding",
+        type="item_exchange",
+        issuer_id=967,
+        issuer_corporation_id=967,
+        start_location_id=60003760,
+        start_location_system_id=30000142,
+        start_location_region_id=region,
+        for_corporation=False,
+        date_issued=now - timedelta(days=1),
+        date_expired=now + timedelta(days=7),
+        last_seen_at=seen,
+    )
+
+
+async def test_coverage_reports_every_region_the_corpus_holds(db_session: AsyncSession):
+    """`ingested_region_ids` is every distinct region with rows, ascending, and
+    `as_of` is the newest ingestion stamp across all of them — not the newest in the
+    region the caller filtered on, which would read as staleness the corpus does not
+    have."""
+    newest = datetime.now(timezone.utc)
+    older = newest - timedelta(hours=3)
+    db_session.add_all([
+        _region_contract(967001, region=OBSERVED_REGION_A, seen=older),
+        _region_contract(967002, region=OBSERVED_REGION_A, seen=older),
+        _region_contract(968001, region=OBSERVED_REGION_B, seen=newest),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session, ContractFilters(region_ids=[OBSERVED_REGION_A])
+    )
+
+    # The page is region A alone; the coverage figure is corpus-wide.
+    assert {item.contract_id for item in result.items} == {967001, 967002}
+    assert result.coverage.ingested_region_ids == [OBSERVED_REGION_A, OBSERVED_REGION_B]
+    assert result.coverage.as_of == newest
+
+
+async def test_coverage_on_an_empty_corpus_is_empty_rather_than_absent(
+    db_session: AsyncSession,
+):
+    """Nothing ingested is a state the client must be able to render, so the field is
+    present and empty rather than omitted — and `as_of` is None, not the epoch."""
+    result = await get_contracts(db_session, ContractFilters())
+
+    assert result.total == 0
+    assert result.coverage.ingested_region_ids == []
+    assert result.coverage.as_of is None
+
+
+async def test_coverage_is_carried_onto_an_empty_page(db_session: AsyncSession):
+    """The empty-page short-circuit builds its own response, and coverage is exactly
+    what an empty page needs: a reader who filtered into an uncovered region can only
+    tell that apart from "covered but nothing matched" by reading this field."""
+    stamped = datetime.now(timezone.utc)
+    db_session.add(_region_contract(967101, region=OBSERVED_REGION_A, seen=stamped))
+    await db_session.flush()
+
+    result = await get_contracts(
+        db_session, ContractFilters(region_ids=[OBSERVED_REGION_CONFIGURED_ONLY])
+    )
+
+    assert result.total == 0
+    assert result.items == []
+    assert result.coverage.ingested_region_ids == [OBSERVED_REGION_A]
+    assert result.coverage.as_of == stamped
+
+
+async def test_a_configured_but_uningested_region_is_absent_from_coverage(
+    db_session: AsyncSession, monkeypatch
+):
+    """Coverage is observed reality, never configured intent. The two diverge for the
+    whole ingestion window after a coverage change, and during that window the
+    configured value would tell a reader a region is covered while it holds nothing —
+    the exact misreport this field exists to prevent."""
+    stamped = datetime.now(timezone.utc)
+    db_session.add_all([
+        _region_contract(967201, region=OBSERVED_REGION_A, seen=stamped),
+        _region_contract(968201, region=OBSERVED_REGION_B, seen=stamped),
+    ])
+    await db_session.flush()
+    monkeypatch.setattr(
+        contract_service.get_settings(),
+        "AGGREGATION_REGION_IDS",
+        [OBSERVED_REGION_A, OBSERVED_REGION_B, OBSERVED_REGION_CONFIGURED_ONLY],
+    )
+
+    result = await get_contracts(
+        db_session, ContractFilters(region_ids=[OBSERVED_REGION_A])
+    )
+
+    assert OBSERVED_REGION_CONFIGURED_ONLY not in result.coverage.ingested_region_ids
+    assert result.coverage.ingested_region_ids == [OBSERVED_REGION_A, OBSERVED_REGION_B]
+
+
+async def test_a_region_whose_rows_are_all_unstamped_still_counts_as_covered(
+    db_session: AsyncSession,
+):
+    """`last_seen_at` is nullable — rows predating the column carry no stamp, and
+    still_listed_by_esi keeps them visible. The region holds contracts, so it is
+    covered; its missing stamp must not remove it from the list nor collide with a
+    real stamp when the newest is picked."""
+    stamped = datetime.now(timezone.utc)
+    db_session.add_all([
+        _region_contract(967301, region=OBSERVED_REGION_A, seen=stamped),
+        _region_contract(970301, region=OBSERVED_REGION_UNSTAMPED, seen=None),
+    ])
+    await db_session.flush()
+
+    result = await get_contracts(db_session, ContractFilters())
+
+    assert result.coverage.ingested_region_ids == [
+        OBSERVED_REGION_A,
+        OBSERVED_REGION_UNSTAMPED,
+    ]
+    assert result.coverage.as_of == stamped
