@@ -58,7 +58,13 @@ SORT_MAP = {
 # days_to_complete to couriers, and the ratio needs both a reward and a volume.
 # A missing value is not a low one — a contract with no reward per m3 must not
 # lead the best-value sort — so NULL goes to the end whichever way the sort runs.
-# The other sorts are non-null columns and keep their existing order expressions.
+# The remaining six sorts keep their existing order expressions. Four of them
+# (date_issued, date_expired, price, collateral) are non-null columns; the other
+# two are not — volume is nullable, and ship_name resolves to ContractItem.type_name
+# across an outer join, so both lead with NULL under a descending sort. Their
+# absence here is deliberate scope, not a claim that they cannot be NULL; whether
+# to bring them under the same rule is an open decision, recorded under Discoveries
+# in docs/superpowers/plans/2026-08-06-f008-type-aware-contract-browsing.md.
 NULLABLE_SORTS = frozenset({
     SortableContractFields.buyout,
     SortableContractFields.days_to_complete,
