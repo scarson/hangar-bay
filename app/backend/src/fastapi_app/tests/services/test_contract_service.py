@@ -972,7 +972,7 @@ async def test_segment_counts_are_zero_filled_over_every_contract_type(
     """SQL emits no group for a type nothing matched, and a client rendering a
     stable set of segments needs the key anyway — so the zeros are filled in here
     rather than guessed at by each consumer."""
-    result = await get_contracts(db_session, ContractFilters(region_ids=[99999963]))
+    result = await get_contracts(db_session, ContractFilters(region_ids=[99999962]))
 
     assert result.total == 0
     assert result.segment_counts == {
