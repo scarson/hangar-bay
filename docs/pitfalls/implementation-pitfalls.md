@@ -64,7 +64,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 **The Fix:** Before exposing any filter in a client, verify the service layer actually applies it. Mark known-inert params in the schema description.
 
-**Where It Bit Us:** `min_me`/`max_me`/`min_te`/`max_te` are accepted and silently ignored (`contract_service.py` — ME/TE data not in the model).
+**Where It Bit Us:** `min_me`/`max_me`/`min_te`/`max_te` were accepted and silently ignored for as long as ME/TE were absent from the model, and `min_runs`/`max_runs` filtered `raw_quantity`, a column public ingestion never fills — three controls a client could offer that could only disappoint. Since fixed (F008): ingestion writes `runs`/`material_efficiency`/`time_efficiency`, and `_apply_item_filters` applies all three families as correlated EXISTS over offered items.
 
 ---
 

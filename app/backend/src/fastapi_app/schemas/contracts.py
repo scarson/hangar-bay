@@ -278,63 +278,57 @@ class ContractFilters(BaseModel):
     max_collateral: Optional[float] = Field(
         default=None, ge=0, description="Maximum collateral."
     )
-    # NOTE (ESI-3): min_runs/max_runs are applied, but against ContractItem.raw_quantity —
-    # a field ESI returns only on the AUTHENTICATED contract-item routes, not on the public
-    # one this ingestion reads. The column is NULL under public ingestion, so both bounds
-    # match zero rows until a user's own contracts are ingested.
-    # Making them work for PUBLIC contracts requires ingesting the public `runs` field; note
-    # that on that route an original OMITS `runs` rather than sending -1, so the documented
-    # sentinel never appears.
+    # Blueprint attribute ranges. Each of the three families (runs, ME, TE) is one
+    # correlated EXISTS over the contract's OFFERED items, so the bounds of a family
+    # land on the same item while separate families may be satisfied by different
+    # items (§3.1). A blueprint original omits `runs` rather than sending -1 (ESI-3),
+    # so it matches no runs bound in either direction.
     min_runs: Optional[int] = Field(
         default=None,
         ge=-1,
         description=(
-            "Minimum runs for BPCs. "
-            "(NO MATCHES — filters an always-NULL column; do not expose in clients)"
+            "Minimum runs for BPCs. Matches contracts with at least one offered "
+            "item satisfying every bound in this family."
         ),
     )
     max_runs: Optional[int] = Field(
         default=None,
         ge=-1,
         description=(
-            "Maximum runs for BPCs. "
-            "(NO MATCHES — filters an always-NULL column; do not expose in clients)"
+            "Maximum runs for BPCs. Matches contracts with at least one offered "
+            "item satisfying every bound in this family."
         ),
     )
-    # NOTE (FASTAPI-2): min_me/max_me/min_te/max_te are accepted but never applied
-    # by the service (ME/TE data is not in the model). The descriptions flag them as
-    # inert so generated clients (openapi.json → frontend codegen) do not surface them
-    # as functional controls.
     min_me: Optional[int] = Field(
         default=None,
         ge=0,
         description=(
-            "Minimum Material Efficiency for BPCs. "
-            "(NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients)"
+            "Minimum Material Efficiency for BPCs. Matches contracts with at least "
+            "one offered item satisfying every bound in this family."
         ),
     )
     max_me: Optional[int] = Field(
         default=None,
         ge=0,
         description=(
-            "Maximum Material Efficiency for BPCs. "
-            "(NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients)"
+            "Maximum Material Efficiency for BPCs. Matches contracts with at least "
+            "one offered item satisfying every bound in this family."
         ),
     )
     min_te: Optional[int] = Field(
         default=None,
         ge=0,
         description=(
-            "Minimum Time Efficiency for BPCs. "
-            "(NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients)"
+            "Minimum Time Efficiency for BPCs. Matches contracts with at least one "
+            "offered item satisfying every bound in this family."
         ),
     )
     max_te: Optional[int] = Field(
         default=None,
         ge=0,
         description=(
-            "Maximum Time Efficiency for BPCs. "
-            "(NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients)"
+            "Maximum Time Efficiency for BPCs. Matches contracts with at least one "
+            "offered item satisfying every bound in this family."
         ),
     )
     # ID lists — bound as repeated query params via Annotated[ContractFilters, Query()]

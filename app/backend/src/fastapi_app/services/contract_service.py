@@ -51,14 +51,13 @@ def _needs_item_join(filters: ContractFilters) -> bool:
     return bool(
         filters.search
         or filters.type_ids
-        or filters.min_runs is not None
-        or filters.max_runs is not None
         # Add sorting by ship name to the condition
         or filters.sort_by == SortableContractFields.ship_name
     )
-    # is_bpc is deliberately absent: it asks a question about the contract as a
-    # whole ("does it contain a copy?"), which a correlated EXISTS answers without
-    # multiplying rows. See _has_blueprint_copy_item.
+    # is_bpc and the runs/ME/TE ranges are deliberately absent: each asks a question
+    # about the contract as a whole ("does it hold an item like this?"), which a
+    # correlated EXISTS answers without multiplying rows. See
+    # _has_blueprint_copy_item and _offered_item_range_exists.
 
 
 def still_listed_by_esi():
@@ -182,6 +181,40 @@ def _has_blueprint_copy_item():
     )
 
 
+def _offered_item_range_exists(column, minimum, maximum):
+    """Contract-level classification: at least one OFFERED item whose `column`
+    satisfies every supplied bound (§3.1).
+
+    One EXISTS per filter family, holding both of that family's bounds, so the
+    bounds compose per ITEM rather than per contract: a contract offering a copy at
+    ME 5 and another at ME 15 does not satisfy min_me=10&max_me=12, because no
+    single copy sits inside that window. Two separate EXISTS would match it and
+    hand a buyer looking for one copy in a band a contract that holds none.
+
+    Separate families stay separate expressions, deliberately: different families
+    may be satisfied by different items, so ME and runs bounds can land on two
+    different copies of the same contract.
+
+    Offered items only, the same rule the boolean is_bpc family applies: a
+    want-to-buy ad asking for a 20-run copy offers nobody a 20-run copy.
+
+    NULL satisfies nothing in either direction. ESI omits `runs` entirely on a
+    blueprint original rather than sending -1 (ESI-3), so an original is absent
+    from both min_runs and max_runs results — absence is not zero.
+    """
+    conditions = [
+        ContractItem.contract_id == Contract.contract_id,
+        ContractItem.is_included.is_(True),
+    ]
+    if minimum is not None:
+        conditions.append(column >= minimum)
+    if maximum is not None:
+        conditions.append(column <= maximum)
+    return (
+        select(ContractItem.record_id).where(*conditions).correlate(Contract).exists()
+    )
+
+
 def _apply_contract_filters(query, filters: ContractFilters):
     """Apply the contract-level filters, narrowing the results."""
     # 0. Liveness. A contract past date_expired cannot be accepted in game, so listing
@@ -269,11 +302,27 @@ def _apply_item_filters(query, filters: ContractFilters):
     """Apply the Contract Item specific filters."""
     if filters.type_ids:
         query = query.filter(ContractItem.type_id.in_(filters.type_ids))
-    # BPC Run filters (Note: ME/TE not implemented as data is not in model)
-    if filters.min_runs is not None:
-        query = query.filter(ContractItem.raw_quantity >= filters.min_runs)
-    if filters.max_runs is not None:
-        query = query.filter(ContractItem.raw_quantity <= filters.max_runs)
+    # Blueprint attribute ranges. Each family is one correlated EXISTS over the
+    # contract's offered items, so it asks a question about the CONTRACT and its
+    # own bounds land on a single item (§3.1, SQLA-3).
+    if filters.min_runs is not None or filters.max_runs is not None:
+        query = query.filter(
+            _offered_item_range_exists(
+                ContractItem.runs, filters.min_runs, filters.max_runs
+            )
+        )
+    if filters.min_me is not None or filters.max_me is not None:
+        query = query.filter(
+            _offered_item_range_exists(
+                ContractItem.material_efficiency, filters.min_me, filters.max_me
+            )
+        )
+    if filters.min_te is not None or filters.max_te is not None:
+        query = query.filter(
+            _offered_item_range_exists(
+                ContractItem.time_efficiency, filters.min_te, filters.max_te
+            )
+        )
 
     return query
 

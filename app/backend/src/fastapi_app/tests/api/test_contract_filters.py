@@ -75,8 +75,8 @@ async def test_filter_by_bpc_runs(client: AsyncClient, setup_contracts):
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) == 1
-    # raw_quantity is what the filter reads, but it is not served (ESI-3), so the
-    # matched contract itself is the only observable the response can carry.
+    # The run count is not served on a list row, so the matched contract itself is
+    # the only observable the response can carry.
     assert data["items"][0]["contract_id"] == 102
     assert data["items"][0]["is_blueprint_copy_contract"] is True
 
@@ -1417,3 +1417,283 @@ async def test_a_contract_type_outside_the_enum_stays_counted_and_reachable(
     assert data["segment_counts"]["unknown"] == 2
     assert data["total"] == 3
     assert 962301 in {row["contract_id"] for row in data["items"]}
+
+
+# --- Item-level range families (runs / ME / TE) ------------------------------
+#
+# Each family is a contract-level classification over OFFERED items (§3.1), so
+# each is one correlated EXISTS holding every bound of that family — bounds
+# within a family must be satisfied by the SAME item (SQLA-3 / TEST-19).
+#
+# Ranges do not two-way partition the way the boolean is_bpc family does. is_bpc
+# false is the negation of is_bpc true, so the branches are complements by
+# construction; complementary range bounds are two independent existential
+# questions, and a contract offering items on both sides legitimately answers
+# yes to both. The identity below therefore names the overlap explicitly.
+
+
+async def test_runs_filter_is_a_contract_level_predicate_with_a_three_way_identity(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """min_runs/max_runs classify contracts by their OFFERED items (§3.1).
+
+    Complementary bounds do not two-way partition: NULL-runs items fall in
+    `neither`. Expected neither count is stated here, not derived: 2 — the
+    blueprint ORIGINAL (ESI omits `runs` on originals rather than sending -1, so
+    absence is not zero — ESI-3) and the requested-only copy.
+    """
+    now = datetime.now(timezone.utc)
+
+    def _c(cid, items):
+        return Contract(
+            contract_id=cid, title=f"t{cid}", price=1_000_000, collateral=0,
+            status="unknown", type="item_exchange", issuer_id=1,
+            issuer_corporation_id=1, start_location_id=60003760,
+            start_location_region_id=99999963, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7), items=items,
+        )
+
+    db_session.add_all([
+        # Mixed offered children: 5 runs and 15 runs. Each bound is satisfied by a
+        # different item, so this contract answers yes to both single-bound
+        # branches and no to the [10, 12] window.
+        _c(963001, [
+            ContractItem(record_id=9630011, type_id=621, type_name="BPC few",
+                         quantity=1, is_included=True, is_singleton=True,
+                         is_blueprint_copy=True, runs=5),
+            ContractItem(record_id=9630012, type_id=622, type_name="BPC many",
+                         quantity=1, is_included=True, is_singleton=True,
+                         is_blueprint_copy=True, runs=15),
+        ]),
+        # Single offered copy at 10 runs.
+        _c(963002, [ContractItem(record_id=9630021, type_id=623, type_name="BPC mid",
+                                 quantity=1, is_included=True, is_singleton=True,
+                                 is_blueprint_copy=True, runs=10)]),
+        # A blueprint ORIGINAL: ESI sends no `runs` at all, so the column is NULL.
+        # NULL satisfies no bound in either direction — it must not read as zero.
+        _c(963003, [ContractItem(record_id=9630031, type_id=624, type_name="BPO",
+                                 quantity=1, is_included=True, is_singleton=True,
+                                 is_blueprint_copy=None, runs=None)]),
+        # A copy on the REQUESTED side only → neither (offered-only, §3.1/8.1).
+        _c(963004, [ContractItem(record_id=9630041, type_id=625, type_name="WTB BPC",
+                                 quantity=1, is_included=False, is_singleton=True,
+                                 is_blueprint_copy=True, runs=20)]),
+    ])
+    await db_session.flush()
+    base = "/contracts/?region_ids=99999963"
+
+    low = await client.get(f"{base}&max_runs=9")
+    high = await client.get(f"{base}&min_runs=10")
+    unfiltered = await client.get(base)
+    assert low.status_code == 200
+    assert high.status_code == 200
+    low_ids = {c["contract_id"] for c in low.json()["items"]}
+    high_ids = {c["contract_id"] for c in high.json()["items"]}
+    assert low_ids == {963001}
+    assert high_ids == {963001, 963002}
+    # The original and the want-to-buy ad are in neither branch.
+    assert 963003 not in low_ids | high_ids
+    assert 963004 not in low_ids | high_ids
+
+    overlap = len(low_ids & high_ids)
+    assert overlap == 1
+    neither = 2
+    assert unfiltered.json()["total"] == 4
+    assert (
+        low.json()["total"] + high.json()["total"] - overlap + neither
+        == unfiltered.json()["total"]
+    )
+
+    # Bounds of one family compose per ITEM: no single item sits in [10, 12].
+    window = await client.get(f"{base}&min_runs=10&max_runs=12")
+    assert [c["contract_id"] for c in window.json()["items"]] == [963002]
+
+    # Criterion 2.5: the filtered count is STRICTLY LESS than unfiltered — the
+    # live defect returned an empty page off a permanently-NULL column, and an
+    # inert filter returns the identical count.
+    assert high.json()["total"] < unfiltered.json()["total"]
+
+
+async def test_me_filter_is_a_contract_level_predicate_with_a_three_way_identity(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """min_me/max_me classify contracts by their OFFERED items (§3.1). Complementary
+    bounds do not two-way partition: NULL-ME items (non-blueprints, originals) fall
+    in `neither`. Expected neither count is stated here, not derived: 2 — the
+    no-blueprint contract and the requested-only-BPC contract."""
+    now = datetime.now(timezone.utc)
+
+    def _c(cid, items):
+        return Contract(
+            contract_id=cid, title=f"t{cid}", price=1_000_000, collateral=0,
+            status="unknown", type="item_exchange", issuer_id=1,
+            issuer_corporation_id=1, start_location_id=60003760,
+            start_location_region_id=99999964, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7), items=items,
+        )
+
+    db_session.add_all([
+        # Mixed offered children: ME 5 and ME 15 — one item satisfies each bound,
+        # and no single item satisfies a min_me=10&max_me=12 range.
+        _c(964001, [
+            ContractItem(record_id=9640011, type_id=621, type_name="BPC lo",
+                         quantity=1, is_included=True, is_singleton=True,
+                         is_blueprint_copy=True, material_efficiency=5),
+            ContractItem(record_id=9640012, type_id=622, type_name="BPC hi",
+                         quantity=1, is_included=True, is_singleton=True,
+                         is_blueprint_copy=True, material_efficiency=15),
+        ]),
+        # Single offered BPC at ME 10.
+        _c(964002, [ContractItem(record_id=9640021, type_id=623, type_name="BPC mid",
+                                 quantity=1, is_included=True, is_singleton=True,
+                                 is_blueprint_copy=True, material_efficiency=10)]),
+        # No blueprint at all → neither.
+        _c(964003, [ContractItem(record_id=9640031, type_id=587, type_name="Tristan",
+                                 quantity=1, is_included=True, is_singleton=False,
+                                 is_blueprint_copy=None)]),
+        # BPC on the REQUESTED side only → neither (offered-only, §3.1/8.1).
+        _c(964004, [ContractItem(record_id=9640041, type_id=624, type_name="WTB BPC",
+                                 quantity=1, is_included=False, is_singleton=True,
+                                 is_blueprint_copy=True, material_efficiency=20)]),
+    ])
+    await db_session.flush()
+    base = "/contracts/?region_ids=99999964"
+
+    low = await client.get(f"{base}&max_me=9")          # branch_a: ME <= 9
+    high = await client.get(f"{base}&min_me=10")        # branch_b: ME >= 10
+    unfiltered = await client.get(base)
+    assert low.status_code == 200
+    assert high.status_code == 200
+    low_ids = {c["contract_id"] for c in low.json()["items"]}
+    high_ids = {c["contract_id"] for c in high.json()["items"]}
+    # The straddler appears in BOTH branches — existential semantics: each bound
+    # is satisfied by a different offered item.
+    assert low_ids == {964001}
+    assert high_ids == {964001, 964002}
+    # Three-way identity with the overlap named: |A| + |B| - |A and B| + neither
+    # == unfiltered. neither == 2 as stated in the docstring (964003, 964004).
+    overlap = len(low_ids & high_ids)
+    assert overlap == 1
+    neither = 2
+    assert unfiltered.json()["total"] == 4
+    assert (
+        low.json()["total"] + high.json()["total"] - overlap + neither
+        == unfiltered.json()["total"]
+    )
+
+    # Range composes per item: no single item sits in [10, 12].
+    window = await client.get(f"{base}&min_me=10&max_me=12")
+    window_ids = {c["contract_id"] for c in window.json()["items"]}
+    assert [c["contract_id"] for c in window.json()["items"]] == [964002]
+    assert 964001 not in window_ids
+
+    # Criterion 2.5's harsher assertion: the filtered count is STRICTLY LESS than
+    # unfiltered — the live defect returned the identical count.
+    assert high.json()["total"] < unfiltered.json()["total"]
+
+
+async def test_te_filter_is_a_contract_level_predicate_with_a_three_way_identity(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """min_te/max_te classify contracts by their OFFERED items (§3.1). Expected
+    neither count is stated here, not derived: 2 — the no-blueprint contract and
+    the requested-only-BPC contract."""
+    now = datetime.now(timezone.utc)
+
+    def _c(cid, items):
+        return Contract(
+            contract_id=cid, title=f"t{cid}", price=1_000_000, collateral=0,
+            status="unknown", type="item_exchange", issuer_id=1,
+            issuer_corporation_id=1, start_location_id=60003760,
+            start_location_region_id=99999964, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7), items=items,
+        )
+
+    db_session.add_all([
+        # Mixed offered children: TE 5 and TE 15.
+        _c(964101, [
+            ContractItem(record_id=9641011, type_id=621, type_name="BPC lo",
+                         quantity=1, is_included=True, is_singleton=True,
+                         is_blueprint_copy=True, time_efficiency=5),
+            ContractItem(record_id=9641012, type_id=622, type_name="BPC hi",
+                         quantity=1, is_included=True, is_singleton=True,
+                         is_blueprint_copy=True, time_efficiency=15),
+        ]),
+        # Single offered BPC at TE 10.
+        _c(964102, [ContractItem(record_id=9641021, type_id=623, type_name="BPC mid",
+                                 quantity=1, is_included=True, is_singleton=True,
+                                 is_blueprint_copy=True, time_efficiency=10)]),
+        # No blueprint at all → neither.
+        _c(964103, [ContractItem(record_id=9641031, type_id=587, type_name="Tristan",
+                                 quantity=1, is_included=True, is_singleton=False,
+                                 is_blueprint_copy=None)]),
+        # BPC on the REQUESTED side only → neither (offered-only, §3.1/8.1).
+        _c(964104, [ContractItem(record_id=9641041, type_id=624, type_name="WTB BPC",
+                                 quantity=1, is_included=False, is_singleton=True,
+                                 is_blueprint_copy=True, time_efficiency=20)]),
+    ])
+    await db_session.flush()
+    base = "/contracts/?region_ids=99999964"
+
+    low = await client.get(f"{base}&max_te=9")
+    high = await client.get(f"{base}&min_te=10")
+    unfiltered = await client.get(base)
+    assert low.status_code == 200
+    assert high.status_code == 200
+    low_ids = {c["contract_id"] for c in low.json()["items"]}
+    high_ids = {c["contract_id"] for c in high.json()["items"]}
+    assert low_ids == {964101}
+    assert high_ids == {964101, 964102}
+
+    overlap = len(low_ids & high_ids)
+    assert overlap == 1
+    neither = 2
+    assert unfiltered.json()["total"] == 4
+    assert (
+        low.json()["total"] + high.json()["total"] - overlap + neither
+        == unfiltered.json()["total"]
+    )
+
+    window = await client.get(f"{base}&min_te=10&max_te=12")
+    assert [c["contract_id"] for c in window.json()["items"]] == [964102]
+
+    assert high.json()["total"] < unfiltered.json()["total"]
+
+
+async def test_range_families_are_independent_of_each_other(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Separate families may be satisfied by DIFFERENT items (§3.1): one EXISTS
+    per family, not one EXISTS holding every bound of every family. A contract
+    whose ME comes from one copy and whose runs come from another still matches
+    both — collapsing the families into a single EXISTS would drop it."""
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        Contract(
+            contract_id=964201, title="t964201", price=1_000_000, collateral=0,
+            status="unknown", type="item_exchange", issuer_id=1,
+            issuer_corporation_id=1, start_location_id=60003760,
+            start_location_region_id=99999964, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7),
+            items=[
+                # High ME, no runs recorded.
+                ContractItem(record_id=9642011, type_id=621, type_name="BPC me",
+                             quantity=1, is_included=True, is_singleton=True,
+                             is_blueprint_copy=True, material_efficiency=10,
+                             runs=None),
+                # Many runs, no ME recorded.
+                ContractItem(record_id=9642012, type_id=622, type_name="BPC runs",
+                             quantity=1, is_included=True, is_singleton=True,
+                             is_blueprint_copy=True, material_efficiency=None,
+                             runs=50),
+            ],
+        )
+    )
+    await db_session.flush()
+
+    both = await client.get(
+        "/contracts/?region_ids=99999964&min_me=10&min_runs=50"
+    )
+
+    assert both.status_code == 200
+    assert [c["contract_id"] for c in both.json()["items"]] == [964201]
