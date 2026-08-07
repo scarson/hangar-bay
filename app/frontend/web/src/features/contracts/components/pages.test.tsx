@@ -648,7 +648,7 @@ describe('contract-type segments', () => {
     const { router } = renderApp('/contracts?contract_type=courier&ships_only=false')
     await screen.findByText('Jita to Amarr rush')
 
-    await userEvent.click(screen.getByRole('button', { name: /^All 1,300$/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^All$/ }))
 
     // Criterion 1.9: the patch REMOVES ships_only rather than setting it true,
     // so the restored state is whatever the default is rather than a value
@@ -679,7 +679,7 @@ describe('contract-type segments', () => {
     )
     await screen.findByText('Jita to Amarr rush')
 
-    await userEvent.click(screen.getByRole('button', { name: /^All 1,300$/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^All$/ }))
 
     await waitFor(() =>
       expect(router.state.location.search).toMatchObject({ sort_by: 'date_issued' }),
@@ -692,9 +692,11 @@ describe('contract-type segments', () => {
     })
   })
 
-  it('resets the ship-name sort on the way into the courier segment', async () => {
-    // The courier Contract column deliberately drops the ship_name sortField,
-    // so the sort must not survive the switch invisibly.
+  it('resets the ship-name sort to a field the courier set can disclose', async () => {
+    // The courier Contract column deliberately drops the ship_name sortField —
+    // and the courier set has no Issued column either, so the parser's fallback
+    // is the Time-left field every set shares. The sort must end VISIBLE: a
+    // header carrying aria-sort, not an invisible default.
     const calls = stubFetch(anonymousMe(segmentedPage))
 
     const { router } = renderApp('/contracts?sort_by=ship_name&sort_direction=asc')
@@ -703,12 +705,72 @@ describe('contract-type segments', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Courier 115$/ }))
 
     await waitFor(() =>
-      expect(router.state.location.search).toMatchObject({ sort_by: 'date_issued' }),
+      expect(router.state.location.search).toMatchObject({ sort_by: 'date_expired' }),
     )
     await waitFor(() => {
       const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
       expect(listCall).not.toContain('ship_name')
+      expect(listCall).toContain('sort_by=date_expired')
     })
+    await screen.findByText('Jita to Amarr rush')
+    const sortedHeaders = screen
+      .getAllByRole('columnheader')
+      .filter((th) => th.getAttribute('aria-sort') !== null)
+    expect(sortedHeaders).toHaveLength(1)
+    expect(sortedHeaders[0]).toHaveTextContent(/Time left/)
+  })
+
+  it('gives a courier deep link a sort its own columns disclose', async () => {
+    // Codex PR-C finding: the parser default was date_issued, which no courier
+    // header carries — every default courier view was invisibly sorted.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=date_expired')
+    })
+    const sortedHeaders = screen
+      .getAllByRole('columnheader')
+      .filter((th) => th.getAttribute('aria-sort') !== null)
+    expect(sortedHeaders).toHaveLength(1)
+  })
+
+  it('clears an orphaned sort when Clear filters drops the segment that offered it', async () => {
+    // Reconciliation lives in the parser, so it also covers routes that never
+    // touch the segment buttons — Clear filters keeps the sort keys but drops
+    // the auction segment, and buyout has no header outside it.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp(
+      '/contracts?contract_type=auction&sort_by=buyout&sort_direction=asc',
+    )
+    await screen.findByText('Vargur')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ sort_by: 'date_issued' }),
+    )
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).not.toContain('buyout')
+    })
+  })
+
+  it('shows the All control without a count while an item-less segment is active', async () => {
+    // The request that produced this envelope carried no ships-only filter, so
+    // the item-bearing counts are lifted — but clicking All restores ships-only,
+    // a population those counts cannot describe. No numeral beats a wrong one.
+    stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    const all = screen.getByRole('button', { name: /^All$/ })
+    expect(all.textContent).toBe('All')
   })
 
   it('keeps a sort both segments can express', async () => {
@@ -1098,6 +1160,23 @@ describe('freshness and coverage', () => {
     expect(screen.getByText('Couriers originating in The Forge only.')).toBeInTheDocument()
   })
 
+  it('says nothing is ingested yet when the corpus is empty, instead of blaming filters', async () => {
+    // Codex PR-C finding: with ingested_region_ids empty and no region filter,
+    // the covered-empty branch advised loosening filters no filter can help.
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse(listPage([], { coverage: { ingested_region_ids: [], as_of: null } })),
+      ),
+    )
+
+    renderApp('/contracts')
+
+    expect(await screen.findByRole('heading', { name: 'No data ingested yet' })).toBeInTheDocument()
+    expect(screen.queryByText(/Loosen a price bound/)).not.toBeInTheDocument()
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('No region has been ingested yet')
+  })
+
   it('keeps the loosen-your-filters copy when every selected region is covered', async () => {
     // A covered region that happens to hold nothing matching is the ordinary
     // empty, and the advice that fits it must not be replaced by a coverage
@@ -1137,7 +1216,9 @@ describe('freshness and coverage', () => {
     expect(
       await screen.findByRole('heading', { name: 'No data for The Forge yet' }),
     ).toBeInTheDocument()
-    expect(screen.getByText(/No region has been ingested yet/)).toBeInTheDocument()
+    // The sentence appears twice on purpose: in the visible card AND in the
+    // polite live region, so assistive tech hears the same truth it shows.
+    expect(screen.getAllByText(/No region has been ingested yet/)).toHaveLength(2)
   })
 
   it('keeps describing the result on screen while the next region loads', async () => {

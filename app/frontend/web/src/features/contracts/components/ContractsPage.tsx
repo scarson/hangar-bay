@@ -49,6 +49,22 @@ function EmptyResults({
   const uncovered = selectedRegionIds.filter((id) => !coveredRegionIds.includes(id))
   const coveredSelection = selectedRegionIds.filter((id) => coveredRegionIds.includes(id))
 
+  if (coveredRegionIds.length === 0 && selectedRegionIds.length === 0) {
+    // Nothing ingested and nothing selected — no filter can reach any data, so
+    // the loosen-your-filters advice would be a false lead. With a region
+    // SELECTED, the uncovered branch below already tells the truer story
+    // (that region has no data yet, and no covered region exists).
+    return (
+      <div className="flex flex-col items-start gap-3 rounded-md border border-line bg-surface px-5 py-8">
+        <h2 className="text-base font-medium text-ink">No data ingested yet</h2>
+        <p className="max-w-[52ch] text-sm text-ink-dim">
+          The corpus is empty right now. Contracts appear a few minutes after
+          ingestion starts; no filter change can hurry that along.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col items-start gap-3 rounded-md border border-line bg-surface px-5 py-8">
       {uncovered.length > 0 ? (
@@ -175,9 +191,11 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
               // A bare zero is misleading when the cause is coverage, and the
               // explanation must ride the same announcement assistive tech
               // hears — not sit in a card the listener has to go find.
-              (data.total === 0 && uncoveredSelection.length > 0
-                ? ` ${regionNames(uncoveredSelection)} ${uncoveredSelection.length === 1 ? 'is' : 'are'} not covered yet.`
-                : '')
+              (data.total === 0 && data.coverage.ingested_region_ids.length === 0
+                ? ' No region has been ingested yet.'
+                : data.total === 0 && uncoveredSelection.length > 0
+                  ? ` ${regionNames(uncoveredSelection)} ${uncoveredSelection.length === 1 ? 'is' : 'are'} not covered yet.`
+                  : '')
             : ''}
         </p>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

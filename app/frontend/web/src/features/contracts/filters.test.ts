@@ -136,9 +136,22 @@ describe('parseContractSearch', () => {
       'days_to_complete',
       'buyout',
     ])
-    expect(parseContractSearch({ sort_by: 'reward_per_volume' }).sort_by).toBe('reward_per_volume')
-    expect(parseContractSearch({ sort_by: 'buyout' }).sort_by).toBe('buyout')
-    expect(parseContractSearch({ sort_by: 'days_to_complete' }).sort_by).toBe('days_to_complete')
+    // A widened sort is accepted WITH the segment whose columns disclose it,
+    // and reconciled to a visible default without one — a sort no header can
+    // show or clear is the invisible-ordering defect (codex PR-C finding).
+    expect(
+      parseContractSearch({ sort_by: 'reward_per_volume', contract_type: 'courier' }).sort_by,
+    ).toBe('reward_per_volume')
+    expect(parseContractSearch({ sort_by: 'buyout', contract_type: 'auction' }).sort_by).toBe(
+      'buyout',
+    )
+    expect(
+      parseContractSearch({ sort_by: 'days_to_complete', contract_type: 'courier' }).sort_by,
+    ).toBe('days_to_complete')
+    expect(parseContractSearch({ sort_by: 'buyout' }).sort_by).toBe('date_issued')
+    expect(parseContractSearch({ sort_by: 'ship_name', contract_type: 'courier' }).sort_by).toBe(
+      'date_expired',
+    )
   })
 
   it('falls back to defaults on invalid page/size/sort values instead of throwing', () => {

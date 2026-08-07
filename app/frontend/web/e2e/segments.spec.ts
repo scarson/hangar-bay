@@ -116,7 +116,10 @@ test.describe('contract-type segments', () => {
     await page.goto('/contracts?contract_type=courier&ships_only=false')
     await expect(rowLinks(page)).toHaveCount(COURIER_CONTRACTS.length)
 
-    await segment(page, `All ${ALL_SHIPS_ONLY}`).click()
+    // While the courier segment is active the All control carries NO count: the
+    // envelope's item-bearing counts were computed without ships-only, and All
+    // restores it — a population those numbers cannot describe.
+    await segment(page, 'All').click()
 
     // Criterion 1.9: the patch removes ships_only rather than setting it true,
     // and validateSearch re-derives the default on the way into the URL — the
@@ -216,7 +219,9 @@ test.describe('contract-type segments', () => {
 
     await expect(rowLinks(page)).toHaveCount(COURIER_CONTRACTS.length)
     await expect(segment(page, 'Courier 3')).toHaveAttribute('aria-pressed', 'true')
-    await expect(segment(page, `All ${ALL_SHIPS_ONLY}`)).toHaveAttribute('aria-pressed', 'false')
+    // Count-less while an item-less segment is active — see the note in the
+    // returning-to-All test.
+    await expect(segment(page, 'All')).toHaveAttribute('aria-pressed', 'false')
 
     const first = calls[0]
     expect(first.params.getAll('contract_type')).toEqual(['courier'])

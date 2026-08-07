@@ -113,9 +113,16 @@ export function SegmentTabs({
       {SEGMENTS.map((segment) => {
         const active =
           segment.type === undefined ? search.contract_type === undefined : segment.type === selected
+        // While an item-less segment is active the request carried no ships-only
+        // filter, so the envelope's item-bearing counts are lifted — but All's
+        // destination RESTORES ships-only, a population those counts cannot
+        // describe. No numeral beats a wrong one; the count returns with the
+        // next response after switching.
         const count =
           segment.type === undefined
-            ? sumCounts(counts, allCountsEveryType ? CONTRACT_TYPES : ITEM_BEARING_TYPES)
+            ? leavingItemLess
+              ? undefined
+              : sumCounts(counts, allCountsEveryType ? CONTRACT_TYPES : ITEM_BEARING_TYPES)
             : (counts[segment.type] ?? 0)
         return (
           <button
@@ -131,8 +138,13 @@ export function SegmentTabs({
                 : 'border-line-strong text-ink-body hover:bg-raised'
             }`}
           >
-            {segment.label}{' '}
-            <span className="font-mono text-xs">{count.toLocaleString('en-US')}</span>
+            {segment.label}
+            {count !== undefined ? (
+              <>
+                {' '}
+                <span className="font-mono text-xs">{count.toLocaleString('en-US')}</span>
+              </>
+            ) : null}
           </button>
         )
       })}

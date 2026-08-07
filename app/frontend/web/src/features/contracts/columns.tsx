@@ -228,6 +228,10 @@ export const COURIER_COLUMNS: Column[] = [
     // appear nowhere else in the app, so hiding the column deletes a field
     // Criterion 5.3 requires. "7d" is also the narrowest cell in the set.
     label: 'Deadline',
+    // The server sorts on it (§6.2), so the header must disclose it — a sort
+    // reachable only by URL with no header to show or clear it is the
+    // invisible-ordering defect.
+    sortField: 'days_to_complete',
     align: 'right',
     cellClass: 'text-data text-ink-dim',
     cell: (contract) => formatDeadline(contract.days_to_complete),
@@ -245,4 +249,11 @@ export function columnsFor(type: ContractTypeValue | undefined): Column[] {
   if (type === 'auction') return AUCTION_COLUMNS
   if (type === 'courier') return COURIER_COLUMNS
   return DEFAULT_COLUMNS
+}
+
+/** The sort fields a segment's column set can actually disclose in a header. */
+export function sortableFieldsFor(type: ContractTypeValue | undefined): ReadonlySet<SortField> {
+  return new Set(
+    columnsFor(type).flatMap((column) => (column.sortField ? [column.sortField] : [])),
+  )
 }

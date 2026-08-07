@@ -184,7 +184,12 @@ test.describe('contract filters', () => {
     await expect(page).toHaveURL(/[?&]ships_only=true(&|$)/)
     await expect(page).toHaveURL(/[?&]page=1(&|$)/)
     await expect(page).toHaveURL(/[?&]size=50(&|$)/)
-    await expect(page).toHaveURL(/[?&]sort_by=date_issued(&|$)/)
+    // Time left, not Issued: the courier detour above reconciled the sort to a
+    // field the courier set can disclose (its header showed it, aria-sort and
+    // all), and Clear preserves the current sort — sort is not a filter. Had
+    // the flow never entered a segment, the default Issued sort would survive
+    // untouched instead.
+    await expect(page).toHaveURL(/[?&]sort_by=date_expired(&|$)/)
     await expect(page).toHaveURL(/[?&]sort_direction=desc(&|$)/)
     await expect(page).not.toHaveURL(/search=/)
     await expect(page).not.toHaveURL(/min_price=/)

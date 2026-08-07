@@ -1,4 +1,7 @@
 import type { components } from '../../lib/api/schema'
+// Runtime-safe despite the apparent cycle: columns.tsx imports only TYPES from
+// this module, so the erased edge leaves filters → columns acyclic.
+import { sortableFieldsFor } from './columns'
 
 export const SORT_FIELDS = [
   'date_issued',
@@ -180,13 +183,32 @@ export function parseContractSearch(raw: Record<string, unknown>): ContractSearc
     ships_only: itemLessOnly ? false : raw.ships_only !== false,
     page: toBoundedInt(raw.page, 1, Number.MAX_SAFE_INTEGER, DEFAULT_PAGE),
     size: toBoundedInt(raw.size, 1, MAX_SIZE, DEFAULT_SIZE),
-    sort_by: SORT_FIELDS.includes(raw.sort_by as SortField)
-      ? (raw.sort_by as SortField)
-      : 'date_issued',
+    sort_by: reconcileSort(raw.sort_by, contractTypes),
     sort_direction: SORT_DIRECTIONS.includes(raw.sort_direction as SortDirection)
       ? (raw.sort_direction as SortDirection)
       : 'desc',
   }
+}
+
+/**
+ * A sort no column of the active segment can disclose would order the list
+ * invisibly — no header, no aria-sort, nothing to clear. Reconciled in the
+ * parser so deep links, saved-search apply, Clear filters, and every
+ * navigation get the identical treatment (the same reasoning as the
+ * item-less ships-only widening above). The courier set carries no Issued
+ * column, so its fallback is the Time-left field every set shares.
+ */
+function reconcileSort(
+  rawSort: unknown,
+  contractTypes: ContractTypeValue[] | undefined,
+): SortField {
+  const requested = SORT_FIELDS.includes(rawSort as SortField)
+    ? (rawSort as SortField)
+    : 'date_issued'
+  const segment = contractTypes?.length === 1 ? contractTypes[0] : undefined
+  const expressible = sortableFieldsFor(segment)
+  if (expressible.has(requested)) return requested
+  return expressible.has('date_issued') ? 'date_issued' : 'date_expired'
 }
 
 /**
