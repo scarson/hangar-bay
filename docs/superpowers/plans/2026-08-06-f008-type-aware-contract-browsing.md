@@ -1117,9 +1117,9 @@ Flat, not nested (§17.6 — the client filters groups locally). Lists come from
 
 **Files:** `schemas/account.py`, tests `tests/api/test_account_schemas.py`, `tests/api/test_saved_searches.py`
 
-- [ ] **Step 1: Failing tests first, as edits to the pins:** replace the two `min_me` 422 cases (`test_saved_searches.py:125`, `test_account_schemas.py:57`) with a still-rejected key (`{"min_me_typo": 5}`-style junk) AND add acceptance cases: a blob carrying `contract_type=["courier"]`, `category_id=[6]`, `group_id=[25]`, `min_runs=1`, `min_me=10`, `max_te=20` validates and round-trips. Keep the `page` and `is_ship_contract` rejection pins (`test_account_schemas.py:58-59`) — both stay rejected. `test_saved_searches.py:168` (`additionalProperties is False`) stays green because `extra="forbid"` stays.
-- [ ] **Step 2: Run — the acceptance cases FAIL** (extra=forbid rejects them today).
-- [ ] **Step 3: Implement:** add to `SavedSearchParameters`, bounds copied from `ContractFilters` exactly:
+- [x] **Step 1: Failing tests first, as edits to the pins:** replace the two `min_me` 422 cases (`test_saved_searches.py:125`, `test_account_schemas.py:57`) with a still-rejected key (`{"min_me_typo": 5}`-style junk) AND add acceptance cases: a blob carrying `contract_type=["courier"]`, `category_id=[6]`, `group_id=[25]`, `min_runs=1`, `min_me=10`, `max_te=20` validates and round-trips. Keep the `page` and `is_ship_contract` rejection pins (`test_account_schemas.py:58-59`) — both stay rejected. `test_saved_searches.py:168` (`additionalProperties is False`) stays green because `extra="forbid"` stays.
+- [x] **Step 2: Run — the acceptance cases FAIL** (extra=forbid rejects them today).
+- [x] **Step 3: Implement:** add to `SavedSearchParameters`, bounds copied from `ContractFilters` exactly:
   ```python
       contract_type: Optional[List[ContractType]] = Field(default=None)
       category_id: Optional[List[PositiveInt]] = Field(default=None)
@@ -1132,7 +1132,7 @@ Flat, not nested (§17.6 — the client filters groups locally). Lists come from
       max_te: Optional[int] = Field(default=None, ge=0)
   ```
   Rewrite the docstring: it no longer rejects ME/TE (they are functional as of F008); it still rejects `page`, the wire-only `is_ship_contract`, and junk.
-- [ ] **Step 4: Green** (all three saved-search test modules). **Step 5: Commit** — `feat(api): let saved searches hold the type, taxonomy, and blueprint filters`
+- [x] **Step 4: Green** (all three saved-search test modules). **Step 5: Commit** — `feat(api): let saved searches hold the type, taxonomy, and blueprint filters`
 
 ### Task B10: PII log fix + regeneration + phase gate
 

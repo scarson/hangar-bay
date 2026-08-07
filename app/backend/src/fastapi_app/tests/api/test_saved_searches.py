@@ -34,6 +34,28 @@ async def test_create_and_list_roundtrip(authed_user):
 
 
 @pytest.mark.asyncio
+async def test_type_taxonomy_and_blueprint_filters_roundtrip(authed_user):
+    """A blob carrying the F008 filters survives storage and comes back on the list read."""
+    user, client = authed_user
+    resp = await client.post("/me/saved-searches/", json=_body(
+        name="Courier BPCs", contract_type=["courier"], category_id=[6], group_id=[25],
+        min_runs=1, min_me=10, max_te=20,
+    ))
+    assert resp.status_code == 201
+    created = resp.json()["search_parameters"]
+    assert created["contract_type"] == ["courier"]
+    assert created["category_id"] == [6] and created["group_id"] == [25]
+    assert created["min_runs"] == 1 and created["min_me"] == 10 and created["max_te"] == 20
+
+    listed = (await client.get("/me/saved-searches/")).json()
+    assert len(listed) == 1
+    stored = listed[0]["search_parameters"]
+    assert stored["contract_type"] == ["courier"]
+    assert stored["category_id"] == [6] and stored["group_id"] == [25]
+    assert stored["min_runs"] == 1 and stored["min_me"] == 10 and stored["max_te"] == 20
+
+
+@pytest.mark.asyncio
 async def test_rename_happy(authed_user):
     user, client = authed_user
     a = (await client.post("/me/saved-searches/", json=_body(name="Old"))).json()
@@ -122,7 +144,9 @@ async def test_validation_422(authed_user):
     user, client = authed_user
     assert (await client.post("/me/saved-searches/", json=_body(search="ab"))).status_code == 422       # short search
     assert (await client.post("/me/saved-searches/", json=_body(min_price=-1))).status_code == 422      # negative price
-    assert (await client.post("/me/saved-searches/", json=_body(min_me=5))).status_code == 422          # unknown key (extra=forbid)
+    assert (await client.post("/me/saved-searches/", json=_body(min_me_typo=5))).status_code == 422     # unknown key (extra=forbid)
+    assert (await client.post("/me/saved-searches/", json=_body(min_me=-1))).status_code == 422         # ge 0
+    assert (await client.post("/me/saved-searches/", json=_body(contract_type=["bogus"]))).status_code == 422  # closed enum
     assert (await client.post("/me/saved-searches/", json={"search_parameters": {}})).status_code == 422  # missing name
     assert (await client.post("/me/saved-searches/", json=_body(name="   "))).status_code == 422         # blank name
 
