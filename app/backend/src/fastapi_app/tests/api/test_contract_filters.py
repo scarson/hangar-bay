@@ -700,6 +700,20 @@ async def test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle(
                 date_issued=now,
                 date_expired=now + timedelta(days=7),
                 items=[
+                    # Two requested rows and nothing offered. The ship carries the
+                    # lowest record_id and category='ship', so every branch of the
+                    # label chain that reads items would fire on it — which is the
+                    # point: the label must fall through to the title instead.
+                    ContractItem(
+                        record_id=9540030,
+                        type_id=621,
+                        type_name="Caracal",
+                        quantity=1,
+                        is_included=False,
+                        is_singleton=False,
+                        is_blueprint_copy=None,
+                        category="ship",
+                    ),
                     ContractItem(
                         record_id=9540031,
                         type_id=621,
@@ -765,6 +779,18 @@ async def test_is_bpc_is_a_contract_level_predicate_on_a_mixed_bundle(
     assert all(
         c["is_blueprint_copy_contract"] is False for c in non_copies.json()["items"]
     )
+
+    # Every derived summary describes what the contract OFFERS, and the
+    # want-to-buy ad offers nothing. Built from all of its items instead, it would
+    # advertise the copy it is asking for as a copy for sale, headline itself with
+    # the hull it wants to buy, and publish a breakdown of someone else's goods —
+    # a shopping list dressed up as inventory (§3.1, Criterion 8.1).
+    wanted = next(
+        c for c in non_copies.json()["items"] if c["contract_id"] == 954003
+    )
+    assert wanted["blueprint_summary"] is None
+    assert wanted["composition"] is None
+    assert wanted["primary_label"] == "Wanted: Caracal Blueprint Copy"
 
     # Exact complements: every contract lands in exactly one branch, and the two
     # totals sum to the unfiltered total rather than double-counting the bundle.
