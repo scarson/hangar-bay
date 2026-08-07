@@ -63,11 +63,11 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** Phase A in progress.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| A — Data layer (migration, ingestion, taxonomy cache) | ⬜ Not started | — | — |
+| A — Data layer (migration, ingestion, taxonomy cache) | 🚧 In progress | — | Claimed 2026-08-07T11:40Z on `feat/f008-data-layer`. A1 done (migration `685dab7d6df5`). |
 | B — API contract (model split, counts, filters, taxonomy endpoint) | ⬜ Not started | — | — |
 | C — Frontend contract-level surface (renderer refactor, segments, auction/courier) | ⬜ Not started | — | — |
 | D — Frontend item-level surface (taxonomy UI, ME/TE/runs, BPC, composition) | ⬜ Not started | — | — |
@@ -130,7 +130,7 @@ Every task implicitly includes all of these. Verbatim values are copied from the
 
 # Phase A — Data layer (branch `feat/f008-data-layer`, PR-A, `Review — database schema`)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-07T11:40Z on branch `feat/f008-data-layer`.
 
 Everything ingestion-side: the single migration, contract-level and item-level writes, end-location resolution, the taxonomy name cache, the completion-predicate widening, the manifest, and the version bump. After this phase merges, an ordinary ingestion run populates every contract-level column and a resweep populates every item-level column. **No API or frontend change in this phase.**
 
@@ -146,8 +146,8 @@ Everything ingestion-side: the single migration, contract-level and item-level w
 - `ContractItem.category_id / group_id / runs / material_efficiency / time_efficiency: Mapped[Optional[int]]` (Integer), `ContractItem.item_id: Mapped[Optional[int]]` (BigInteger)
 - `EsiTaxonomyCache` model: `kind: Mapped[str]` (String, PK part), `esi_id: Mapped[int]` (Integer, PK part), `name: Mapped[str]` (String, non-null), `parent_category_id: Mapped[Optional[int]]`, `fetched_at: Mapped[datetime]` (DateTime(timezone=True), non-null)
 
-- [ ] **Step 1: Confirm the chain has one head** — `cd app/backend/src && ../.venv/bin/python -m alembic heads` prints exactly `ea2491c47a9f (head)`. If it prints anything else, STOP: another migration landed; re-anchor `down_revision` before proceeding.
-- [ ] **Step 2: Make the equivalence test the failing test.** Add all model changes (below), run
+- [x] **Step 1: Confirm the chain has one head** — `cd app/backend/src && ../.venv/bin/python -m alembic heads` prints exactly `ea2491c47a9f (head)`. If it prints anything else, STOP: another migration landed; re-anchor `down_revision` before proceeding.
+- [x] **Step 2: Make the equivalence test the failing test.** Add all model changes (below), run
   `pytest fastapi_app/tests/test_migrations.py::test_migrated_schema_matches_model_metadata -q` → expect FAIL with a non-empty schema diff (models ahead of migrations). This is the red step.
 
   Model additions — `Contract`, inserted after `volume` (`models/contracts.py:64`), matching sibling style:
@@ -218,7 +218,7 @@ Everything ingestion-side: the single migration, contract-level and item-level w
           Index('ix_contract_items_material_efficiency', 'material_efficiency'),
           Index('ix_contract_items_time_efficiency', 'time_efficiency'),
   ```
-- [ ] **Step 3: Author the migration** (green step). `pdm run makemigration f008_type_aware_columns` may scaffold it, but hand-verify against house style — required shape (fill the generated revision id; `down_revision = 'ea2491c47a9f'`):
+- [x] **Step 3: Author the migration** (green step). `pdm run makemigration f008_type_aware_columns` may scaffold it, but hand-verify against house style — required shape (fill the generated revision id; `down_revision = 'ea2491c47a9f'`):
   ```python
   """f008 type-aware columns
 
@@ -302,9 +302,9 @@ Everything ingestion-side: the single migration, contract-level and item-level w
       op.drop_column('contracts', 'days_to_complete')
       op.drop_column('contracts', 'buyout')
   ```
-- [ ] **Step 4: Run the equivalence test green**, then the whole migration file lane: `pytest fastapi_app/tests/test_migrations.py -q` → PASS. `alembic heads` → exactly one head (the new revision).
-- [ ] **Step 5: Do NOT hand-edit `openapi.json`/`schema.d.ts`** — nothing wire-visible changed yet (schemas change in PR-B).
-- [ ] **Step 6: Commit** — `feat(api): add type-aware contract and item columns with taxonomy name cache`
+- [x] **Step 4: Run the equivalence test green**, then the whole migration file lane: `pytest fastapi_app/tests/test_migrations.py -q` → PASS. `alembic heads` → exactly one head (the new revision).
+- [x] **Step 5: Do NOT hand-edit `openapi.json`/`schema.d.ts`** — nothing wire-visible changed yet (schemas change in PR-B).
+- [x] **Step 6: Commit** — `feat(api): add type-aware contract and item columns with taxonomy name cache`
 
 **Do NOT:** add response-schema fields, filters, or any read path here; touch `ENRICHMENT_VERSION`; add a server_default to any new column (absence must remain NULL); reuse `EsiMarketGroupCache`.
 
