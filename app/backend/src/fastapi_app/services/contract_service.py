@@ -213,6 +213,13 @@ def _apply_contract_filters(query, filters: ContractFilters):
     if filters.is_ship_contract is not None:
         query = query.filter(Contract.is_ship_contract == filters.is_ship_contract)
 
+    # Contract.type leads ix_contracts_type_status, so the composite serves a
+    # type-only predicate as a prefix; no companion index is needed.
+    if filters.contract_type:
+        query = query.filter(
+            Contract.type.in_([t.value for t in filters.contract_type])
+        )
+
     # 2c. Blueprint-copy classification. "Contains a copy" and its negation, so a
     # contract bundling a copy with ordinary items counts as a BPC contract and
     # appears in exactly one of the two branches.

@@ -249,7 +249,9 @@ async def test_id_list_filters_are_query_params_in_openapi_schema():
 
     assert "requestBody" not in operation
     param_names = {p["name"] for p in operation["parameters"]}
-    assert {"region_ids", "system_ids", "station_ids", "type_ids"} <= param_names
+    assert {
+        "region_ids", "system_ids", "station_ids", "type_ids", "contract_type"
+    } <= param_names
 
 
 async def test_pagination_with_search_returns_full_distinct_pages(
@@ -812,3 +814,36 @@ async def test_the_detail_endpoint_carries_the_start_location_system(
     detail = await client.get("/contracts/952011")
     assert detail.status_code == 200
     assert detail.json()["start_location_system_id"] == 30002187
+
+
+async def test_filter_by_contract_type(client: AsyncClient, db_session: AsyncSession):
+    """contract_type narrows to the named types; repeated params combine; an
+    unknown value 422s instead of silently matching nothing (spec §17.8)."""
+    now = datetime.now(timezone.utc)
+
+    def _c(cid, ctype):
+        return Contract(
+            contract_id=cid, title=f"t{cid}", price=1_000_000, collateral=0,
+            status="unknown", type=ctype, issuer_id=1, issuer_corporation_id=1,
+            start_location_id=60003760, start_location_region_id=99999960,
+            for_corporation=False, date_issued=now,
+            date_expired=now + timedelta(days=7),
+        )
+
+    db_session.add_all([_c(960001, "item_exchange"), _c(960002, "auction"),
+                        _c(960003, "courier"), _c(960004, "loan")])
+    await db_session.flush()
+
+    one = await client.get("/contracts/?region_ids=99999960&contract_type=courier")
+    assert one.status_code == 200
+    assert [c["contract_id"] for c in one.json()["items"]] == [960003]
+
+    two = await client.get(
+        "/contracts/?region_ids=99999960&contract_type=auction&contract_type=loan"
+    )
+    assert two.status_code == 200
+    assert {c["contract_id"] for c in two.json()["items"]} == {960002, 960004}
+    assert two.json()["total"] == 2
+
+    bad = await client.get("/contracts/?region_ids=99999960&contract_type=barter")
+    assert bad.status_code == 422

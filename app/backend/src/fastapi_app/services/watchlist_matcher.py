@@ -18,6 +18,7 @@ from ..core.logging import get_logger, log_key_event
 from ..models.account import Notification, WatchlistItem
 from ..models.contracts import Contract, ContractItem
 from ..models.user import User
+from ..schemas.contracts import ContractType
 from .contract_service import still_listed_by_esi
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,10 @@ _RELEASE_LOCK_LUA = (
     "return redis.call('del', KEYS[1]) else return 0 end"
 )
 
-_SHIP_TYPE_LABELS = {"item_exchange": "an item exchange", "auction": "an auction"}
+_SHIP_TYPE_LABELS = {
+    ContractType.item_exchange.value: "an item exchange",
+    ContractType.auction.value: "an auction",
+}
 
 
 class ConcurrencyLockError(Exception):
@@ -148,7 +152,9 @@ class WatchlistMatcherService:
             .where(
                 User.watchlist_alerts_enabled.is_(True),
                 ContractItem.is_included.is_(True),
-                Contract.type.in_(("item_exchange", "auction")),
+                Contract.type.in_(
+                    (ContractType.item_exchange.value, ContractType.auction.value)
+                ),
                 Contract.date_expired > func.now(),
                 Contract.date_completed.is_(None),
                 # "Outstanding" is the same question the contracts list asks, so it gets

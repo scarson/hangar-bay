@@ -699,7 +699,7 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
 
 **Interfaces — Produces:** `ContractType(str, Enum)` with members `item_exchange, auction, courier, loan, unknown` (the full ESI set, spec Criterion 1.1); `ContractFilters.contract_type: Optional[List[ContractType]]`.
 
-- [ ] **Step 1: Failing tests** (HTTP-level per TEST-1; region 99999960):
+- [x] **Step 1: Failing tests** (HTTP-level per TEST-1; region 99999960):
   ```python
   async def test_filter_by_contract_type(client, db_session):
       """contract_type narrows to the named types; repeated params combine; an
@@ -731,8 +731,8 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
       assert bad.status_code == 422
   ```
   Plus the FASTAPI-1 sentinel: extend `test_id_list_filters_are_query_params_in_openapi_schema` (`test_contract_filters.py:243`) to assert `contract_type` appears as a query parameter.
-- [ ] **Step 2: FAIL** (unknown param today is ignored → 200).
-- [ ] **Step 3: Implement.** In `schemas/contracts.py`, above `SortableContractFields`:
+- [x] **Step 2: FAIL** (unknown param today is ignored → 200).
+- [x] **Step 3: Implement.** In `schemas/contracts.py`, above `SortableContractFields`:
   ```python
   class ContractType(str, Enum):
       """Every contract type ESI can emit (confirmed against the committed spec
@@ -760,8 +760,8 @@ Everything wire-visible: the §17 model split, the contract-type filter and grou
   ```
   (Applied inside `_apply_contract_filters` so the residual count stays synchronized — Global Constraint 19. `Contract.type` leads `ix_contracts_type_status`, so the composite serves a type-only predicate as a prefix; no new index.)
   `watchlist_matcher.py:151`: replace the tuple literal with `(ContractType.item_exchange.value, ContractType.auction.value)` (import from `..schemas.contracts`) — same behavior, one authority for the vocabulary.
-- [ ] **Step 4: Green**; run the watchlist matcher module too (`pytest -q fastapi_app/tests/services/test_watchlist_matcher.py`).
-- [ ] **Step 5: Commit** — `feat(api): filter contracts by type with a closed enum`
+- [x] **Step 4: Green**; run the watchlist matcher module too (`pytest -q fastapi_app/tests/services/test_watchlist_matcher.py`).
+- [x] **Step 5: Commit** — `feat(api): filter contracts by type with a closed enum`
 
 ### Task B2: Response-model split + server-computed derived fields (§17.1–§17.4)
 

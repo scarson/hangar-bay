@@ -98,6 +98,18 @@ class ContractListResponse(PaginatedResponse[ContractSchema]):
     )
 
 
+class ContractType(str, Enum):
+    """Every contract type ESI can emit (confirmed against the committed spec
+    snapshot). Typed as an enum so an unknown value 422s instead of silently
+    matching nothing — the defect class this feature exists to remove (§17.8)."""
+
+    item_exchange = "item_exchange"
+    auction = "auction"
+    courier = "courier"
+    loan = "loan"
+    unknown = "unknown"
+
+
 class SortableContractFields(str, Enum):
     """Fields that can be used for sorting contracts."""
 
@@ -224,6 +236,9 @@ class ContractFilters(BaseModel):
     )
     type_ids: Optional[List[int]] = Field(
         default=None, description="List of ship type IDs to filter by."
+    )
+    contract_type: Optional[List[ContractType]] = Field(
+        default=None, description="Contract types to include (repeatable)."
     )
     # Boolean
     is_bpc: Optional[bool] = Field(
