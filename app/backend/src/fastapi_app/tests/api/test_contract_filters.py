@@ -1292,6 +1292,26 @@ async def test_an_item_less_segment_reports_its_true_count_under_ships_only(
     assert {row["contract_id"] for row in data["items"]} == {962101, 962102}
 
 
+async def test_an_item_bearing_segment_reports_the_complement_under_ships_excluded(
+    client: AsyncClient, segment_count_contracts
+):
+    """The other half of Criterion 1.8. Excluding ships is not the same lift as
+    selecting them: an item-bearing segment must report the non-ships it would
+    actually show (all minus ships), not its full population — the number beside
+    `Item Exchange` has to be the number of rows behind it. Item-less segments stay
+    lifted here too, since they have no ships to subtract."""
+    listed = await client.get("/contracts/?region_ids=99999962&is_ship_contract=false")
+
+    assert listed.status_code == 200
+    data = listed.json()
+    assert set(data["segment_counts"]) == SEGMENT_KEYS
+    # 962103 is the only non-ship item exchange; 962101/962102 are ships.
+    assert data["segment_counts"]["item_exchange"] == 1
+    assert data["segment_counts"]["courier"] == 1
+    assert data["total"] == 2
+    assert {row["contract_id"] for row in data["items"]} == {962103, 962104}
+
+
 async def test_segment_counts_read_every_type_with_the_type_filter_lifted(
     client: AsyncClient, segment_count_contracts
 ):
