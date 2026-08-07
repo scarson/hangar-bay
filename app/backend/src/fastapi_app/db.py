@@ -15,6 +15,11 @@ async_engine = create_async_engine(
     pool_pre_ping=True,   # managed-PG restarts/pooler idle-kills must not surface as request 500s
     pool_size=5,          # Render Basic's connection budget is small; scheduler + API share it
     max_overflow=5,
+    # Bind values carry user-typed search text. Without this, every error wrapping a
+    # failed statement renders `[parameters: {...}]` into its str(), and that string
+    # reaches logs from several places at once — a service's own failure log, and
+    # main.py's generic_exception_handler, which logs str(exc) and the traceback.
+    hide_parameters=True,
 )
 
 AsyncSessionLocal = async_sessionmaker(

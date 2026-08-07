@@ -23,6 +23,7 @@
 
 import pytest
 import pytest_asyncio
+from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -355,9 +356,13 @@ async def test_no_search_log_site_echoes_the_raw_query_text(
         payloads = [c["search_terms"] for c in captured if "search_terms" in c]
         assert payloads, "no search_terms payload was captured"
         for payload in payloads:
-            assert secret not in repr(payload)
             assert "search" not in payload
             assert payload["search_len"] == len(secret)
+        # The whole record, not just its `search_terms`: the failure site logs an
+        # `error_message` in the SAME call, and a scrub that covers one key while a
+        # sibling key re-publishes the text is not a scrub.
+        for record in captured:
+            assert secret not in repr(record)
 
     # Start log + zero-result short-circuit.
     no_match = "Tristan sale"
@@ -384,6 +389,50 @@ async def test_no_search_log_site_echoes_the_raw_query_text(
         await get_contracts(db_session, ContractFilters(search=no_match, page=1, size=10))
     assert len(captured) == 2
     assert_length_only(no_match)
+
+
+async def test_a_failing_statement_does_not_log_its_bound_search_text(
+    db_session: AsyncSession, setup_contracts, monkeypatch
+):
+    """The failure log renders its exception without the statement's bind values.
+
+    `search_terms` is scrubbed at all four sites, but the failure site logs the
+    exception in the SAME record — and the exception a contract search realistically
+    fails with is a `StatementError` (statement timeout, dropped connection,
+    deadlock). Its `str()` appends `[parameters: ...]`, and the statement that failed
+    is the one carrying the `ILIKE` bind holding the raw search text, so an
+    unscrubbed rendering re-publishes into `error_message` exactly the text
+    `search_terms` withheld one key earlier.
+    """
+    captured = _record_search_logs(monkeypatch)
+
+    secret = "Tristan sale"
+    statement_error = StatementError(
+        "canceling statement due to statement timeout",
+        "SELECT contracts.contract_id FROM contracts WHERE contracts.title ILIKE %(title_1)s",
+        {"title_1": f"%{secret}%"},
+        Exception("canceling statement due to statement timeout"),
+    )
+    # Guard against a vacuous run: the leak only exists because the default rendering
+    # carries the binds. If that ever stopped being true the test would pass without
+    # the service doing anything.
+    assert secret in str(statement_error)
+
+    async def boom(*args, **kwargs):
+        raise statement_error
+
+    monkeypatch.setattr(db_session, "execute", boom)
+    with pytest.raises(StatementError):
+        await get_contracts(db_session, ContractFilters(search=secret, page=1, size=10))
+
+    assert captured, "no log record was captured"
+    for record in captured:
+        assert secret not in repr(record)
+
+    # Scrubbed, not discarded: the driver's diagnosis is the reason the field exists.
+    failures = [r for r in captured if r.get("success") is False]
+    assert len(failures) == 1
+    assert "statement timeout" in failures[0]["error_message"]
 
 
 async def test_full_dimension_logs_carry_the_type_and_taxonomy_filters(

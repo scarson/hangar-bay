@@ -1,6 +1,7 @@
 import asyncio
 import time
 from sqlalchemy import and_, case, func, or_, text
+from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import aliased, selectinload
@@ -967,6 +968,29 @@ async def get_taxonomy(db: AsyncSession) -> TaxonomyResponse:
     )
 
 
+def _error_without_bound_parameters(exc: BaseException) -> str:
+    """Render `exc` for a log line without the bind values of the statement that failed.
+
+    `StatementError.__str__` appends `[parameters: {...}]`, and on the search path the
+    failing statement is the one carrying the `ILIKE` bind that holds the user's raw
+    query text — the same text `search_terms` reports only the length of. SQLAlchemy
+    substitutes a placeholder when the error carries `hide_parameters`, so the flag is
+    flipped for the duration of the render and restored afterwards.
+
+    The application engine already sets `hide_parameters=True` (`db.py`), so errors it
+    raises arrive scrubbed; this holds the guarantee at the log site for an exception
+    that reaches it from a session built anywhere else.
+    """
+    if not isinstance(exc, StatementError):
+        return str(exc)
+    previously_hidden = exc.hide_parameters
+    exc.hide_parameters = True
+    try:
+        return str(exc)
+    finally:
+        exc.hide_parameters = previously_hidden
+
+
 async def get_contracts(
     db: AsyncSession, filters: ContractFilters
 ) -> ContractListResponse:
@@ -1132,7 +1156,7 @@ async def get_contracts(
             event="contract_search_executed",
             success=False,
             duration_ms=duration_ms,
-            error_message=str(e),
+            error_message=_error_without_bound_parameters(e),
             search_terms={
                 "search_len": len(filters.search) if filters.search else 0,
                 "type_ids": filters.type_ids,
