@@ -187,7 +187,7 @@ async def test_zero_results_returns_empty_page(
     Deleting the early return would still yield an empty response through the normal
     pagination path, so the response assertions cannot tell the two branches apart. The
     early return's search_terms payload carries exactly four keys; the normal path's
-    carries eight, which is the difference this test locks.
+    carries eleven, which is the difference this test locks.
     """
     events = []
     real_log_key_event = contract_service.log_key_event
@@ -211,8 +211,8 @@ async def test_zero_results_returns_empty_page(
     assert events[0]["event"] == "contract_search_executed"
     assert events[0]["success"] is True
     assert events[0]["results_count"] == 0
-    assert set(events[0]["search_terms"]) == {"search", "type_ids", "page", "size"}
-    assert events[0]["search_terms"]["search"] == "no-such-ship-name-anywhere"
+    assert set(events[0]["search_terms"]) == {"search_len", "type_ids", "page", "size"}
+    assert events[0]["search_terms"]["search_len"] == len("no-such-ship-name-anywhere")
     assert events[0]["search_terms"]["page"] == 1
     assert events[0]["search_terms"]["size"] == 10
 
@@ -301,13 +301,140 @@ async def test_db_error_logs_failure_and_reraises(
     assert failure_events[0]["event"] == "contract_search_executed"
     assert failure_events[0]["error_message"] == "simulated db failure"
     assert set(failure_events[0]["search_terms"]) == {
-        "search",
+        "search_len",
         "type_ids",
         "min_price",
         "max_price",
         "page",
         "size",
     }
+
+
+def _record_search_logs(monkeypatch) -> list:
+    """Record every payload the service logs, and return the growing list.
+
+    Recording `contract_service.logger` (rather than `log_key_event`) is what catches
+    all four `search_terms` sites: `log_key_event` renders through `logger.info` /
+    `logger.error`, so one seam sees the plain start log and the three key events alike.
+    """
+    captured = []
+    real_logger = contract_service.logger
+
+    class RecordingLogger:
+        def info(self, *args, **kwargs):
+            captured.append(kwargs)
+            return real_logger.info(*args, **kwargs)
+
+        def error(self, *args, **kwargs):
+            captured.append(kwargs)
+            return real_logger.error(*args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(real_logger, name)
+
+    monkeypatch.setattr(contract_service, "logger", RecordingLogger())
+    return captured
+
+
+async def test_no_search_log_site_echoes_the_raw_query_text(
+    db_session: AsyncSession, setup_contracts, monkeypatch
+):
+    """Every search log reports the query's LENGTH, never the query text itself.
+
+    A search string is user-typed free text and can carry anything the user pasted, so
+    it is treated as PII and never lands in a log line; the length is the dimension the
+    latency/quality analysis actually needs.
+
+    Four sites emit a `search_terms` payload — the start log, the zero-result
+    short-circuit, the success log, and the failure log — and no single call reaches
+    more than two of them, so all three reachable paths are driven here.
+    """
+    captured = _record_search_logs(monkeypatch)
+
+    def assert_length_only(secret: str) -> None:
+        payloads = [c["search_terms"] for c in captured if "search_terms" in c]
+        assert payloads, "no search_terms payload was captured"
+        for payload in payloads:
+            assert secret not in repr(payload)
+            assert "search" not in payload
+            assert payload["search_len"] == len(secret)
+
+    # Start log + zero-result short-circuit.
+    no_match = "Tristan sale"
+    await get_contracts(db_session, ContractFilters(search=no_match, page=1, size=10))
+    assert len(captured) == 2
+    assert_length_only(no_match)
+
+    # Start log + success log.
+    captured.clear()
+    a_match = "Tristan"
+    result = await get_contracts(db_session, ContractFilters(search=a_match, page=1, size=10))
+    assert result.total > 0
+    assert len(captured) == 2
+    assert_length_only(a_match)
+
+    # Start log + failure log. Driven last: it disables the session's execute.
+    captured.clear()
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("simulated db failure")
+
+    monkeypatch.setattr(db_session, "execute", boom)
+    with pytest.raises(RuntimeError, match="simulated db failure"):
+        await get_contracts(db_session, ContractFilters(search=no_match, page=1, size=10))
+    assert len(captured) == 2
+    assert_length_only(no_match)
+
+
+async def test_full_dimension_logs_carry_the_type_and_taxonomy_filters(
+    db_session: AsyncSession, setup_contracts, monkeypatch
+):
+    """The start log and the success log report contract type and taxonomy as dimensions.
+
+    Two of the four sites carry the whole filter shape; the type and taxonomy families
+    are part of it, so a slow or empty search can be attributed to the segment and the
+    category/group it was scoped to. Only the ids and the closed type enum travel — the
+    taxonomy names, like the search text, do not.
+    """
+    tristan = (
+        await db_session.execute(
+            select(ContractItem).where(ContractItem.record_id == 1011)
+        )
+    ).scalar_one()
+    tristan.category_id = 6
+    tristan.group_id = 25
+    await db_session.flush()
+
+    captured = _record_search_logs(monkeypatch)
+
+    filters = ContractFilters(
+        contract_type=[ContractType.item_exchange],
+        category_id=[6],
+        group_id=[25, 26],
+        page=1,
+        size=10,
+    )
+    result = await get_contracts(db_session, filters)
+    assert result.total > 0
+
+    start_payload, success_payload = (c["search_terms"] for c in captured)
+    for payload in (start_payload, success_payload):
+        assert set(payload) == {
+            "search_len",
+            "type_ids",
+            "contract_type",
+            "category_id",
+            "group_id",
+            "min_price",
+            "max_price",
+            "page",
+            "size",
+            "sort_by",
+            "sort_direction",
+        }
+        assert payload["contract_type"] == ["item_exchange"]
+        assert payload["category_id"] == [6]
+        assert payload["group_id"] == [25, 26]
 
 
 async def test_joined_pagination_tiebreaks_equal_sort_keys_by_contract_id(

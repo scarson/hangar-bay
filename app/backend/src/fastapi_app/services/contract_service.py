@@ -980,12 +980,19 @@ async def get_contracts(
     """
     start_time = time.time()
 
-    # Log the start of the contract search operation
+    # Log the start of the contract search operation. `search` is user-typed free text,
+    # so only its length travels: the analysis these logs feed needs the dimension, and
+    # the text itself is whatever the user happened to paste.
     logger.info(
         "Starting contract search",
         search_terms={
-            "search": filters.search,
+            "search_len": len(filters.search) if filters.search else 0,
             "type_ids": filters.type_ids,
+            "contract_type": (
+                [t.value for t in filters.contract_type] if filters.contract_type else None
+            ),
+            "category_id": filters.category_id,
+            "group_id": filters.group_id,
             "min_price": filters.min_price,
             "max_price": filters.max_price,
             "page": filters.page,
@@ -1040,7 +1047,7 @@ async def get_contracts(
                 duration_ms=duration_ms,
                 results_count=0,
                 search_terms={
-                    "search": filters.search,
+                    "search_len": len(filters.search) if filters.search else 0,
                     "type_ids": filters.type_ids,
                     "page": filters.page,
                     "size": filters.size,
@@ -1098,8 +1105,13 @@ async def get_contracts(
             duration_ms=duration_ms,
             results_count=len(contracts),
             search_terms={
-                "search": filters.search,
+                "search_len": len(filters.search) if filters.search else 0,
                 "type_ids": filters.type_ids,
+                "contract_type": (
+                    [t.value for t in filters.contract_type] if filters.contract_type else None
+                ),
+                "category_id": filters.category_id,
+                "group_id": filters.group_id,
                 "min_price": filters.min_price,
                 "max_price": filters.max_price,
                 "page": filters.page,
@@ -1122,7 +1134,7 @@ async def get_contracts(
             duration_ms=duration_ms,
             error_message=str(e),
             search_terms={
-                "search": filters.search,
+                "search_len": len(filters.search) if filters.search else 0,
                 "type_ids": filters.type_ids,
                 "min_price": filters.min_price,
                 "max_price": filters.max_price,
