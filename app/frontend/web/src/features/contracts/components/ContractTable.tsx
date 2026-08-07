@@ -1,39 +1,10 @@
-import { Link } from '@tanstack/react-router'
 import type { Contract } from '../../../lib/api/client'
-import { Badge } from '../../../components/Badge'
-import {
-  contractTypeLabel,
-  formatDate,
-  formatIsk,
-  locationLabel,
-  primaryLabel,
-  timeRemaining,
-} from '../format'
+import { DEFAULT_COLUMNS, rowContext, type Column, type RowContext } from '../columns'
 import type { ContractSearch, SortField } from '../filters'
 
-const COLUMNS: {
-  key: string
-  label: string
-  sortField?: SortField
-  align?: 'right'
-  headerClass?: string
-}[] = [
-  { key: 'name', label: 'Ship / Contract', sortField: 'ship_name' },
-  { key: 'type', label: 'Type' },
-  { key: 'price', label: 'Price (ISK)', sortField: 'price', align: 'right' },
-  { key: 'location', label: 'Location', headerClass: 'max-lg:hidden' },
-  { key: 'expires', label: 'Time left', sortField: 'date_expired', align: 'right' },
-  {
-    key: 'issued',
-    label: 'Issued',
-    sortField: 'date_issued',
-    align: 'right',
-    headerClass: 'max-sm:hidden',
-  },
-]
-
-function contractIsBpc(contract: Contract): boolean {
-  return contract.items.some((item) => item.is_included && item.is_blueprint_copy)
+function cellClass(column: Column, contract: Contract, ctx: RowContext): string {
+  if (typeof column.cellClass === 'function') return column.cellClass(contract, ctx)
+  return column.cellClass ?? ''
 }
 
 export function ContractTable({
@@ -60,7 +31,7 @@ export function ContractTable({
       >
         <thead>
           <tr>
-            {COLUMNS.map((column) => {
+            {DEFAULT_COLUMNS.map((column) => {
               const sorted = column.sortField !== undefined && search.sort_by === column.sortField
               const alignment = column.align === 'right' ? 'text-right' : 'text-left'
               return (
@@ -76,7 +47,7 @@ export function ContractTable({
                   }
                   // Solid bg (rows scroll UNDER the header) + the semantic
                   // --z-sticky token keeps the header above the tbody cells.
-                  className={`sticky top-0 z-(--z-sticky) border-b border-line bg-surface p-0 ${alignment} ${column.headerClass ?? ''}`}
+                  className={`sticky top-0 z-(--z-sticky) border-b border-line bg-surface p-0 ${alignment} ${column.hiddenClass ?? ''}`}
                 >
                   {column.sortField ? (
                     <button
@@ -100,55 +71,24 @@ export function ContractTable({
         </thead>
         <tbody>
           {contracts.map((contract) => {
-            const expiry = timeRemaining(contract.date_expired)
+            const ctx = rowContext(contract)
             return (
               <tr
                 key={contract.contract_id}
                 className="border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-raised"
               >
-                {/* The ship-name link is the only click target (no full-row
-                    ::after overlay) so the spreadsheet-minded audience can still
-                    select/copy the price, location, and time-left cell text. */}
-                <td className="px-3 py-2 text-sm">
-                  <Link
-                    to="/contracts/$contractId"
-                    params={{ contractId: String(contract.contract_id) }}
-                    className="font-medium text-ink hover:text-brand-bright"
+                {DEFAULT_COLUMNS.map((column) => (
+                  <td
+                    key={column.key}
+                    className={`px-3 py-2 ${column.align === 'right' ? 'text-right' : ''} ${cellClass(
+                      column,
+                      contract,
+                      ctx,
+                    )} ${column.hiddenClass ?? ''}`}
                   >
-                    {primaryLabel(contract)}
-                  </Link>
-                  {contract.items.length > 1 ? (
-                    <span className="ml-1.5 text-xs text-ink-faint">
-                      +{contract.items.length - 1} more
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-3 py-2">
-                  <span className="inline-flex gap-1">
-                    <Badge tone="neutral">{contractTypeLabel(contract.type)}</Badge>
-                    {contractIsBpc(contract) ? <Badge tone="copper">BPC</Badge> : null}
-                  </span>
-                </td>
-                <td className="text-data px-3 py-2 text-right text-ink">
-                  {formatIsk(contract.price)}
-                </td>
-                <td className="px-3 py-2 text-sm text-ink-dim max-lg:hidden">
-                  {/* truncate needs a block child: `max-width` on a table cell
-                      does not cap a nowrap string's min-content width, so long
-                      Upwell structure names would stretch the column and shove
-                      the price/time-left protagonists into horizontal scroll. */}
-                  <div className="max-w-64 truncate">{locationLabel(contract)}</div>
-                </td>
-                <td
-                  className={`text-data px-3 py-2 text-right ${
-                    expiry === 'Expired' ? 'text-warn' : 'text-ink-dim'
-                  }`}
-                >
-                  {expiry}
-                </td>
-                <td className="text-data px-3 py-2 text-right text-ink-dim max-sm:hidden">
-                  {formatDate(contract.date_issued)}
-                </td>
+                    {column.cell(contract, ctx)}
+                  </td>
+                ))}
               </tr>
             )
           })}
