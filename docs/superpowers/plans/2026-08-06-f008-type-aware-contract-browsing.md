@@ -63,14 +63,14 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phases A and B MERGED to dev; C (C3-C6) in progress; D not started.
+**Overall:** Phases A, B, and C MERGED to dev. Phase D (item-level surface) deferred to a follow-up session — see its banner.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | A — Data layer (migration, ingestion, taxonomy cache) | ✅ Shipped | `a7cd7ba`..`c0e3d85` | PR #138 merged at `8303e15` 2026-08-07; migration `685dab7d6df5`; ENRICHMENT_VERSION→2; 582 tests green; codex-reviewed (D10 deferral logged). |
 | B — API contract (model split, counts, filters, taxonomy endpoint) | ✅ Shipped | `ecb1352`..`8da5588` | PR #139 merged 2026-08-07; incl. Tasks C1/C2; 669 backend tests, all frontend lanes; codex-reviewed (3 P2s taken). |
 | C — Frontend contract-level surface (segments, auction/courier, coverage states) | 🚧 In progress | — | C1/C2 shipped with PR-B; C3-C5 done on `feat/f008-contract-surface` 2026-08-07; C6 gate remains. |
-| D — Frontend item-level surface (taxonomy UI, ME/TE/runs, BPC, composition) | ⬜ Not started | — | — |
+| D — Frontend item-level surface (taxonomy UI, ME/TE/runs, BPC, composition) | ⏸ Deferred | — | Fully unblocked on dev; see the Phase D banner for the pickup state. |
 
 ### Deviations
 - Task C1: the binding `Column` interface gained `cellClass?: string | ((contract, ctx) => string)` and a `rowContext(contract)` helper, and the default set is named `DEFAULT_COLUMNS` (not `COLUMNS`) — the plan's literal interface could not carry the existing per-cell classes; C4 builds per-segment sets beside it.
@@ -1305,7 +1305,7 @@ The six existing columns move into renderers with their exact current JSX (link 
 
 # Phase D — Frontend item-level surface (branch `feat/f008-item-surface` off merged `dev`, PR-D, `Routine`)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ⏸ DEFERRED (2026-08-07) pending nothing upstream — every prerequisite is merged: the taxonomy endpoint with its readiness signal (PR #139), the column-definition module and segment plumbing (PRs #139/#140). A follow-up session executes D1–D5 from this plan directly, branching `feat/f008-item-surface` off `dev`. Two corrections for that executor, recorded in Deviations/D-log: `toSavedSearchParameters` needs EIGHT params (contract_type landed with C3), and the D2 UI should prevent a taxonomy selection from zeroing a clickable item-less segment (B6 review advisory). Production activation stays automatic via the coverage signal regardless of when D lands (decision log D1).
 
 Everything gated on the taxonomy readiness signal (decision-log D1): the cascading taxonomy filter, ME/TE/runs controls, blueprint columns, composition rendering, and the want-to-buy split. The gate is data-driven — this PR merges to `dev` whenever it is done; production shows the controls only when `GET /contracts/taxonomy` reports `coverage: "complete"` (which follows the resweep automatically).
 
