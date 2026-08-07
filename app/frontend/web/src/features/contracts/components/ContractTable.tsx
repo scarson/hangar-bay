@@ -1,5 +1,5 @@
 import type { Contract } from '../../../lib/api/client'
-import { DEFAULT_COLUMNS, rowContext, type Column, type RowContext } from '../columns'
+import { rowContext, type Column, type RowContext } from '../columns'
 import type { ContractSearch, SortField } from '../filters'
 
 function cellClass(column: Column, contract: Contract, ctx: RowContext): string {
@@ -9,11 +9,14 @@ function cellClass(column: Column, contract: Contract, ctx: RowContext): string 
 
 export function ContractTable({
   contracts,
+  columns,
   search,
   onSort,
   isRefreshing,
 }: {
   contracts: Contract[]
+  /** The active segment's column set — one frame, per-segment columns (spec §8). */
+  columns: Column[]
   search: ContractSearch
   onSort: (field: SortField) => void
   isRefreshing: boolean
@@ -31,7 +34,7 @@ export function ContractTable({
       >
         <thead>
           <tr>
-            {DEFAULT_COLUMNS.map((column) => {
+            {columns.map((column) => {
               const sorted = column.sortField !== undefined && search.sort_by === column.sortField
               const alignment = column.align === 'right' ? 'text-right' : 'text-left'
               return (
@@ -77,7 +80,7 @@ export function ContractTable({
                 key={contract.contract_id}
                 className="border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-raised"
               >
-                {DEFAULT_COLUMNS.map((column) => (
+                {columns.map((column) => (
                   <td
                     key={column.key}
                     className={`px-3 py-2 ${column.align === 'right' ? 'text-right' : ''} ${cellClass(

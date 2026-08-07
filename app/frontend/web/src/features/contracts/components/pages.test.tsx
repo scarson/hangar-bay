@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { anonymousMe, jsonResponse } from '../../../test/http'
+import { anonymousMe, jsonResponse, type FetchHandler } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
@@ -22,6 +22,9 @@ const ROW = {
   date_expired: daysFromNow(7),
   price: 1000000,
   start_location_name: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+  // Clock-anchored like date_expired: the detail view renders it through a
+  // relative formatter that reads the real Date.now() (TEST-17).
+  last_seen_at: minutesFromNow(-11),
   is_ship_contract: true,
   is_blueprint_copy_contract: false,
   primary_label: 'Tristan',
@@ -69,7 +72,16 @@ function listPage(rows: { type: string }[], overrides: Record<string, unknown> =
   }
 }
 
-function stubFetch(handler: (url: string) => Response) {
+/**
+ * The rendered column labels, in order. The ▲/▼ glyph on the active header is
+ * aria-hidden decoration rather than part of the label, so it is stripped here
+ * instead of leaking into every expected column set.
+ */
+function headerNames(): string[] {
+  return screen.getAllByRole('columnheader').map((th) => th.textContent!.replace(/[▲▼]/g, '').trim())
+}
+
+function stubFetch(handler: FetchHandler) {
   const calls: string[] = []
   vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
     const url =
@@ -230,8 +242,17 @@ describe('ContractsPage', () => {
     // qss decode of ?region_ids=…&region_ids=… -> parseContractSearch array
     // coercion -> toApiQuery -> openapi-fetch's repeated-array serializer.
     // Guards the two-repeat case that single-value URL tests can't (TEST-5).
+    // Both regions are covered in this response so the empty state stays the
+    // ordinary one — an uncovered selection renders the coverage explanation
+    // instead, which is a different branch than the one this test waits on.
     const calls = stubFetch(
-      anonymousMe(() => jsonResponse(listPage([]))),
+      anonymousMe(() =>
+        jsonResponse(
+          listPage([], {
+            coverage: { ingested_region_ids: [10000002, 10000020], as_of: minutesFromNow(-5) },
+          }),
+        ),
+      ),
     )
 
     renderApp('/contracts?region_ids=10000002&region_ids=10000020')
@@ -403,6 +424,31 @@ describe('ContractDetailPage', () => {
     })
   })
 
+  it('says when the contract was last seen in the corpus', async () => {
+    // Criterion 7.1: last_seen_at is computed at ingestion and, until now, was
+    // returned to nobody. A market row nobody can date is a row nobody can
+    // trust — the price could be from a minute ago or from last week.
+    stubFetch(anonymousMe(() => jsonResponse(CONTRACT)))
+
+    renderApp('/contracts/101')
+
+    await screen.findByRole('heading', { name: 'Tristan' })
+    expect(screen.getByText('Last seen')).toBeInTheDocument()
+    expect(screen.getByText('11m ago')).toBeInTheDocument()
+  })
+
+  it('omits the last-seen row entirely for a contract carrying no stamp', async () => {
+    // The field is nullable, and an unstamped row has no freshness to report.
+    // A dash there would read as "we looked and there is nothing", which is a
+    // different claim from "we never recorded when we looked".
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, last_seen_at: null })))
+
+    renderApp('/contracts/101')
+
+    await screen.findByRole('heading', { name: 'Tristan' })
+    expect(screen.queryByText('Last seen')).not.toBeInTheDocument()
+  })
+
   it('back link falls back to the default list on a cold deep link (no in-app history)', async () => {
     // A shared /contracts/$id opened fresh has nothing behind it, so the back
     // control is a plain link to the list rather than a history button.
@@ -456,8 +502,11 @@ describe('courier contracts', () => {
 
     renderApp('/contracts?ships_only=false')
 
-    expect(await screen.findByText('Courier')).toBeInTheDocument()
-    expect(screen.queryByText('Exchange')).not.toBeInTheDocument()
+    // Scoped to the row: the segment toolbar above the table carries a Courier
+    // control of its own, and the assertion is about the row's type badge.
+    const row = within(await screen.findByRole('row', { name: /Jita to Amarr rush/ }))
+    expect(row.getByText('Courier')).toBeInTheDocument()
+    expect(row.queryByText('Exchange')).not.toBeInTheDocument()
   })
 
   it('shows the courier badge and its collateral on the detail view', async () => {
@@ -482,5 +531,745 @@ describe('courier contracts', () => {
 
     expect(await screen.findByText('Unknown location')).toBeInTheDocument()
     expect(screen.queryByText(/Location null/)).not.toBeInTheDocument()
+  })
+})
+
+const AUCTION_ROW = {
+  ...ROW,
+  contract_id: 303,
+  type: 'auction',
+  title: 'Vargur, no reserve',
+  primary_label: 'Vargur',
+}
+
+// Loans carry no items, exactly like couriers, so nothing in one can satisfy
+// ships-only. They get no segment control (spec Criterion 1.1) but stay
+// reachable by URL and counted.
+const LOAN_ROW = {
+  ...ROW,
+  contract_id: 404,
+  type: 'loan',
+  title: 'Capital fleet float',
+  is_ship_contract: false,
+  primary_label: 'Capital fleet float',
+}
+
+/**
+ * Per-type counts as the server computes them: over the whole matching
+ * population with the contract_type predicate lifted, and — for the item-less
+ * types — with ships-only lifted too, so the courier figure is its true total
+ * rather than the zero a ships-only view would return (Criterion 1.8). Nothing
+ * here is derived from the page's own rows.
+ */
+const SEGMENT_COUNTS = { item_exchange: 1240, auction: 60, courier: 115, loan: 2, unknown: 1 }
+
+/** Rows keyed off the requested segment, so a render can't drift from the request. */
+function segmentedPage(url: string) {
+  const type = new URL(url, 'http://localhost').searchParams.get('contract_type')
+  const rows =
+    type === 'courier'
+      ? [COURIER_ROW]
+      : type === 'auction'
+        ? [AUCTION_ROW]
+        : type === 'loan'
+          ? [LOAN_ROW]
+          : [ROW]
+  return jsonResponse(listPage(rows, { segment_counts: SEGMENT_COUNTS }))
+}
+
+describe('contract-type segments', () => {
+  it('counts All over the item-bearing types only while ships-only is on', async () => {
+    // The item-less counts beside it are deliberately lifted figures (Criterion
+    // 1.8) describing a view ships-only cannot show, so summing all five would
+    // overstate what All actually renders: 1240 + 60, not + 115 + 2 + 1.
+    stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts')
+
+    expect(await screen.findByRole('button', { name: /^All 1,300$/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: /^Item exchange 1,240$/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Auction 60$/ })).toBeInTheDocument()
+    // The courier control advertises its true total rather than the 0 the
+    // ships-only view would return — the label must not flip on click.
+    expect(screen.getByRole('button', { name: /^Courier 115$/ })).toBeInTheDocument()
+    // loan and unknown are counted but get no control of their own.
+    expect(screen.queryByRole('button', { name: /Loan/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Unknown/ })).not.toBeInTheDocument()
+  })
+
+  it('counts All over every type once the view is already widened', async () => {
+    // ships_only=false with no segment selected: the item-less types are part of
+    // what All renders, so they are part of what it claims — 1240+60+115+2+1.
+    stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts?ships_only=false')
+
+    expect(await screen.findByRole('button', { name: /^All 1,418$/ })).toBeInTheDocument()
+  })
+
+  it('selecting Courier clears ships-only visibly and asks the API for couriers', async () => {
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp('/contracts')
+    await screen.findByText('Tristan')
+
+    await userEvent.click(screen.getByRole('button', { name: /^Courier 115$/ }))
+
+    // One navigation carries both halves: the segment AND the cleared checkbox
+    // (Criterion 1.7 — the combination must be unreachable, and visibly so).
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        contract_type: ['courier'],
+        ships_only: false,
+      }),
+    )
+    expect(screen.getByLabelText(/ships only/i)).not.toBeChecked()
+    expect(screen.getByRole('button', { name: /^Courier 115$/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    // The segment names the view, in the heading and the tab label alike.
+    expect(screen.getByRole('heading', { level: 1, name: 'Courier Contracts' })).toBeInTheDocument()
+    await waitFor(() => expect(document.title).toBe('Courier Contracts — Hangar Bay'))
+
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('contract_type=courier')
+      expect(listCall).not.toContain('is_ship_contract')
+    })
+  })
+
+  it('returning to All removes both parameters and restores the ships-only default', async () => {
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    await userEvent.click(screen.getByRole('button', { name: /^All$/ }))
+
+    // Criterion 1.9: the patch REMOVES ships_only rather than setting it true,
+    // so the restored state is whatever the default is rather than a value
+    // frozen at the call site. The route's validateSearch then re-derives that
+    // default and writes it back out, exactly as Clear filters already does —
+    // what must not survive is the explicit false that "cleared" is stored as.
+    await waitFor(() => expect(router.state.location.searchStr).not.toContain('contract_type'))
+    expect(router.state.location.searchStr).not.toContain('ships_only=false')
+    expect(router.state.location.search).toMatchObject({ ships_only: true })
+    expect(screen.getByLabelText(/ships only/i)).toBeChecked()
+    expect(screen.getByRole('heading', { level: 1, name: 'Ship Contracts' })).toBeInTheDocument()
+
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('is_ship_contract=true')
+      expect(listCall).not.toContain('contract_type')
+    })
+  })
+
+  it('resets a sort the destination segment cannot express', async () => {
+    // Reward/m³ exists only on the courier column set. Carrying it into All
+    // would order the list by a criterion no on-screen header discloses or can
+    // clear — an invisible sort is the silent-control defect in sort form.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp(
+      '/contracts?contract_type=courier&ships_only=false&sort_by=reward_per_volume&sort_direction=asc',
+    )
+    await screen.findByText('Jita to Amarr rush')
+
+    await userEvent.click(screen.getByRole('button', { name: /^All$/ }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ sort_by: 'date_issued' }),
+    )
+    expect(router.state.location.searchStr).not.toContain('reward_per_volume')
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=date_issued')
+      expect(listCall).not.toContain('reward_per_volume')
+    })
+  })
+
+  it('resets the ship-name sort to a field the courier set can disclose', async () => {
+    // The courier Contract column deliberately drops the ship_name sortField —
+    // and the courier set has no Issued column either, so the parser's fallback
+    // is the Time-left field every set shares. The sort must end VISIBLE: a
+    // header carrying aria-sort, not an invisible default.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp('/contracts?sort_by=ship_name&sort_direction=asc')
+    await screen.findByText('Tristan')
+
+    await userEvent.click(screen.getByRole('button', { name: /^Courier 115$/ }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ sort_by: 'date_expired' }),
+    )
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).not.toContain('ship_name')
+      expect(listCall).toContain('sort_by=date_expired')
+    })
+    await screen.findByText('Jita to Amarr rush')
+    const sortedHeaders = screen
+      .getAllByRole('columnheader')
+      .filter((th) => th.getAttribute('aria-sort') !== null)
+    expect(sortedHeaders).toHaveLength(1)
+    expect(sortedHeaders[0]).toHaveTextContent(/Time left/)
+  })
+
+  it('gives a courier deep link a sort its own columns disclose', async () => {
+    // Codex PR-C finding: the parser default was date_issued, which no courier
+    // header carries — every default courier view was invisibly sorted.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=date_expired')
+    })
+    const sortedHeaders = screen
+      .getAllByRole('columnheader')
+      .filter((th) => th.getAttribute('aria-sort') !== null)
+    expect(sortedHeaders).toHaveLength(1)
+  })
+
+  it('clears an orphaned sort when Clear filters drops the segment that offered it', async () => {
+    // Reconciliation lives in the parser, so it also covers routes that never
+    // touch the segment buttons — Clear filters keeps the sort keys but drops
+    // the auction segment, and buyout has no header outside it.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp(
+      '/contracts?contract_type=auction&sort_by=buyout&sort_direction=asc',
+    )
+    await screen.findByText('Vargur')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ sort_by: 'date_issued' }),
+    )
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).not.toContain('buyout')
+    })
+  })
+
+  it('shows the All control without a count while an item-less segment is active', async () => {
+    // The request that produced this envelope carried no ships-only filter, so
+    // the item-bearing counts are lifted — but clicking All restores ships-only,
+    // a population those counts cannot describe. No numeral beats a wrong one.
+    stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    const all = screen.getByRole('button', { name: /^All$/ })
+    expect(all.textContent).toBe('All')
+  })
+
+  it('keeps a sort both segments can express', async () => {
+    // Price is sortable in All and in Auction alike — resetting it would throw
+    // away the user's choice for no disclosure gain.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp('/contracts?sort_by=price&sort_direction=asc')
+    await screen.findByText('Tristan')
+
+    await userEvent.click(screen.getByRole('button', { name: /^Auction 60$/ }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        contract_type: ['auction'],
+        sort_by: 'price',
+        sort_direction: 'asc',
+      }),
+    )
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=price')
+      expect(listCall).toContain('sort_direction=asc')
+    })
+  })
+
+  it('keeps the default column set for All and for item exchange', async () => {
+    // The segment selects the columns (spec §8 axis 1), so the two segments
+    // that describe a fixed-price sale keep the set the table has always had —
+    // the auction and courier sets below are departures from THIS.
+    stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts')
+    await screen.findByText('Tristan')
+    expect(headerNames()).toEqual([
+      'Ship / Contract',
+      'Type',
+      'Price (ISK)',
+      'Location',
+      'Time left',
+      'Issued',
+    ])
+
+    await userEvent.click(screen.getByRole('button', { name: /^Item exchange 1,240$/ }))
+
+    await waitFor(() =>
+      expect(headerNames()).toEqual([
+        'Ship / Contract',
+        'Type',
+        'Price (ISK)',
+        'Location',
+        'Time left',
+        'Issued',
+      ]),
+    )
+  })
+
+  it('reaches a loan segment by URL alone, without a control and without ships-only', async () => {
+    // Criterion 1.1: a type with no control is still reachable and counted. The
+    // parser's item-less normalization has to hold at the wire, not just in its
+    // own unit test — a shared ?contract_type=loan URL that still sent
+    // is_ship_contract would be a guaranteed-empty request.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts?contract_type=loan')
+
+    expect(await screen.findByText('Capital fleet float')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Loan Contracts' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Loan/ })).not.toBeInTheDocument()
+    // No control claims the view: All is not selected either.
+    expect(screen.getByRole('button', { name: /^All/ })).toHaveAttribute('aria-pressed', 'false')
+
+    const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+    expect(listCall).toContain('contract_type=loan')
+    expect(listCall).not.toContain('is_ship_contract')
+  })
+})
+
+/**
+ * Two auctions with distinct bids and buyouts, one of them with no buyout at
+ * all — the case Criterion 4.3 says the row must state in words.
+ */
+const AUCTION_ROWS = [
+  {
+    ...ROW,
+    contract_id: 301,
+    type: 'auction',
+    title: 'Vargur, no reserve',
+    primary_label: 'Vargur',
+    price: 1_900_000_000,
+    buyout: 2_600_000_000,
+  },
+  {
+    ...ROW,
+    contract_id: 302,
+    type: 'auction',
+    title: '',
+    primary_label: 'Cynabal',
+    price: 240_000_000,
+    buyout: null,
+  },
+]
+
+/**
+ * Two couriers: one fully resolved, and one whose destination is a player
+ * structure nothing could name, carrying no rate and no deadline either.
+ */
+const COURIER_ROWS = [
+  COURIER_ROW,
+  {
+    ...COURIER_ROW,
+    contract_id: 506,
+    title: 'Bulk ore run',
+    primary_label: 'Bulk ore run',
+    end_location_name: null,
+    reward: 5_000_000,
+    collateral: 0,
+    volume: 0,
+    reward_per_volume: null,
+    days_to_complete: null,
+  },
+]
+
+/** Rows keyed off the requested segment, so a column set can't drift from its rows. */
+function typedPage(url: string) {
+  const type = new URL(url, 'http://localhost').searchParams.get('contract_type')
+  const rows = type === 'auction' ? AUCTION_ROWS : type === 'courier' ? COURIER_ROWS : [ROW]
+  return jsonResponse(listPage(rows))
+}
+
+describe('per-segment column sets', () => {
+  it('gives the auction segment a starting bid and a buyout instead of one price', async () => {
+    // Criterion 4.2: a bid is not a price, and a buyout is a third thing again.
+    // The Type column goes with them — every row in this segment is an auction,
+    // so the badge would repeat the segment control back at the reader.
+    stubFetch(anonymousMe(typedPage))
+
+    renderApp('/contracts?contract_type=auction')
+
+    await screen.findByText('Vargur')
+    expect(headerNames()).toEqual([
+      'Ship / Contract',
+      'Starting bid',
+      'Buyout',
+      'Location',
+      'Time left',
+      'Issued',
+    ])
+
+    const vargur = within(screen.getByRole('row', { name: /Vargur/ }))
+    expect(vargur.getByText('1,900,000,000')).toBeInTheDocument()
+    expect(vargur.getByText('2,600,000,000')).toBeInTheDocument()
+  })
+
+  it('says a buyout-less auction has none rather than leaving the cell blank', async () => {
+    // Criterion 4.3: not 0 (which reads as "buy it for nothing"), not a dash
+    // (which reads as missing data), but the fact that the seller set none.
+    stubFetch(anonymousMe(typedPage))
+
+    renderApp('/contracts?contract_type=auction')
+
+    const cynabal = within(await screen.findByRole('row', { name: /Cynabal/ }))
+    expect(cynabal.getByText('No buyout')).toBeInTheDocument()
+    expect(cynabal.queryByText('—')).not.toBeInTheDocument()
+    expect(cynabal.queryByText('0')).not.toBeInTheDocument()
+  })
+
+  it('sorts the auction segment on buyout from its own header', async () => {
+    const calls = stubFetch(anonymousMe(typedPage))
+
+    const { router } = renderApp('/contracts?contract_type=auction')
+    await screen.findByText('Vargur')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Buyout' }))
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ sort_by: 'buyout' }))
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=buyout')
+    })
+  })
+
+  it('gives the courier segment route, reward, collateral, volume, rate and deadline', async () => {
+    // Criterion 5.3 in full, plus 5.4's rate. There is no Location column: the
+    // origin is half the route, and repeating it would cost a column the
+    // deadline needs. Criterion 5.6 — nothing here is or implies a distance.
+    stubFetch(anonymousMe(typedPage))
+
+    renderApp('/contracts?contract_type=courier')
+
+    await screen.findByText('Jita to Amarr rush')
+    expect(headerNames()).toEqual([
+      'Contract',
+      'Route',
+      'Reward',
+      'Collateral',
+      'Volume',
+      'Reward/m³',
+      'Deadline',
+      'Time left',
+    ])
+
+    const rush = within(screen.getByRole('row', { name: /Jita to Amarr rush/ }))
+    expect(
+      rush.getByText('Airaken V - Moon 6 - Impro Warehouse → Amarr VIII (Oris) - Emperor Family Academy'),
+    ).toBeInTheDocument()
+    expect(rush.getByText('80,000,000')).toBeInTheDocument()
+    expect(rush.getByText('8,000,000,000')).toBeInTheDocument()
+    expect(rush.getByText('899,999')).toBeInTheDocument()
+    expect(rush.getByText('88.89')).toBeInTheDocument()
+    expect(rush.getByText('3d')).toBeInTheDocument()
+  })
+
+  it('names an unresolvable courier destination instead of blanking the route', async () => {
+    // Spec §8: about 5% of Forge courier destinations are player structures no
+    // public token can resolve. The row says so; the rate and deadline it also
+    // lacks fall back to the dash, which is a different statement.
+    stubFetch(anonymousMe(typedPage))
+
+    renderApp('/contracts?contract_type=courier')
+
+    const bulk = within(await screen.findByRole('row', { name: /Bulk ore run/ }))
+    expect(
+      bulk.getByText('Airaken V - Moon 6 - Impro Warehouse → Unknown structure'),
+    ).toBeInTheDocument()
+    expect(bulk.queryByText(/Location \d/)).not.toBeInTheDocument()
+    expect(bulk.getAllByText('—')).toHaveLength(2)
+  })
+
+  it('describes the rows still on screen with their own columns while the next segment loads', async () => {
+    // The table holds the previous segment's rows until the new response lands
+    // (keepPreviousData), and the unfiltered list takes seconds in production —
+    // this window is not a sub-frame flicker. Columns taken from the URL rather
+    // than from the rows would describe THIS sale as a hauling job: its price
+    // read as a reward, its hull volume read as cargo, and a destination
+    // invented for a contract that has no route at all.
+    let releaseCouriers!: (page: Response) => void
+    const couriersInFlight = new Promise<Response>((resolve) => {
+      releaseCouriers = resolve
+    })
+    const calls = stubFetch(
+      anonymousMe((url) =>
+        url.includes('contract_type=courier') ? couriersInFlight : typedPage(url),
+      ),
+    )
+
+    renderApp('/contracts')
+    await screen.findByText('Tristan')
+
+    await userEvent.click(screen.getByRole('button', { name: /^Courier/ }))
+    await waitFor(() => expect(calls.some((url) => url.includes('contract_type=courier'))).toBe(true))
+
+    expect(screen.getByRole('row', { name: /Tristan/ })).toBeInTheDocument()
+    expect(headerNames()).toEqual([
+      'Ship / Contract',
+      'Type',
+      'Price (ISK)',
+      'Location',
+      'Time left',
+      'Issued',
+    ])
+    // Spec §8 reserves this wording for a courier endpoint no public token can
+    // resolve; a sale has no endpoint to fail to resolve.
+    expect(screen.queryByText(/Unknown structure/)).not.toBeInTheDocument()
+
+    releaseCouriers(jsonResponse(listPage(COURIER_ROWS)))
+
+    expect(await screen.findByText('Jita to Amarr rush')).toBeInTheDocument()
+    expect(headerNames()).toEqual([
+      'Contract',
+      'Route',
+      'Reward',
+      'Collateral',
+      'Volume',
+      'Reward/m³',
+      'Deadline',
+      'Time left',
+    ])
+    expect(screen.queryByRole('row', { name: /Tristan/ })).not.toBeInTheDocument()
+  })
+
+  it('sorts the courier segment on reward per m³ from its own header', async () => {
+    const calls = stubFetch(anonymousMe(typedPage))
+
+    const { router } = renderApp('/contracts?contract_type=courier')
+    await screen.findByText('Jita to Amarr rush')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reward/m³' }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ sort_by: 'reward_per_volume' }),
+    )
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=reward_per_volume')
+    })
+  })
+})
+
+describe('freshness and coverage', () => {
+  /** The results section alone: the filter rail carries a Clear filters button of its own. */
+  function results() {
+    return within(screen.getByRole('region', { name: 'Contract results' }))
+  }
+
+  it('states how fresh the corpus is beside the result count', async () => {
+    // Criterion 7.1. The stamp is the envelope's, not the row's: it describes
+    // the dataset the page was drawn from, so it belongs with the count rather
+    // than in a column.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+
+    renderApp('/contracts')
+
+    expect(await screen.findByText('Data as of 5m ago')).toBeInTheDocument()
+  })
+
+  it('claims no freshness at all when nothing has been stamped', async () => {
+    // coverage.as_of is null before the first ingestion run finishes. That is
+    // the absence of a freshness signal, and rendering a dash beside "Data as
+    // of" would dress the absence up as a reading.
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse(listPage([ROW], { coverage: { ingested_region_ids: [], as_of: null } })),
+      ),
+    )
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(screen.queryByText(/Data as of/)).not.toBeInTheDocument()
+  })
+
+  it('explains an empty result for a region the corpus does not cover', async () => {
+    // Criterion 7.2/7.3: "not covered" and "nothing matched" are different
+    // facts, and the region that separates them is named from the envelope's
+    // ids — the client embeds no region literal of its own.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?region_ids=10000043')
+
+    expect(await screen.findByRole('heading', { name: 'No data for Domain yet' })).toBeInTheDocument()
+    expect(screen.getByText(/currently covers The Forge/)).toBeInTheDocument()
+    // The covered-empty advice is a false lead here: no price bound loosens
+    // its way into a region that holds no rows at all.
+    expect(screen.queryByText(/Loosen a price bound/)).not.toBeInTheDocument()
+    expect(results().getByRole('button', { name: 'Clear filters' })).toBeInTheDocument()
+  })
+
+  it('pluralizes the coverage explanation for several uncovered regions', async () => {
+    // Only the singular ternary arm was pinned before; a swapped pair would
+    // have shipped green.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?region_ids=10000043&region_ids=10000030')
+
+    expect(
+      await screen.findByRole('heading', { name: /No data for (Domain and Heimatar|Heimatar and Domain) yet/ }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Those regions hold nothing here yet/)).toBeInTheDocument()
+    expect(screen.queryByText(/That region holds/)).not.toBeInTheDocument()
+  })
+
+  it('announces the coverage gap in the same breath as the zero count', async () => {
+    // The polite live region is what assistive tech hears. "0 contracts match"
+    // alone is misleading when the real story is "that region is not covered" —
+    // the explanation must ride the same announcement, not sit in a card the
+    // listener has to go find.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?region_ids=10000043')
+
+    await screen.findByRole('heading', { name: 'No data for Domain yet' })
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('0 contracts match your filters')
+    expect(status).toHaveTextContent('Domain is not covered yet')
+  })
+
+  it('keeps the courier coverage statement on an empty courier view', async () => {
+    // Criterion 5.7's reader is exactly the hauler staring at zero jobs: the
+    // statement that origins are one region's worth must not vanish with the
+    // rows.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?contract_type=courier&ships_only=false')
+
+    await screen.findByText(/no contracts match/i)
+    expect(screen.getByText('Couriers originating in The Forge only.')).toBeInTheDocument()
+  })
+
+  it('says nothing is ingested yet when the corpus is empty, instead of blaming filters', async () => {
+    // Codex PR-C finding: with ingested_region_ids empty and no region filter,
+    // the covered-empty branch advised loosening filters no filter can help.
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse(listPage([], { coverage: { ingested_region_ids: [], as_of: null } })),
+      ),
+    )
+
+    renderApp('/contracts')
+
+    expect(await screen.findByRole('heading', { name: 'No data ingested yet' })).toBeInTheDocument()
+    expect(screen.queryByText(/Loosen a price bound/)).not.toBeInTheDocument()
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('No region has been ingested yet')
+  })
+
+  it('keeps the loosen-your-filters copy when every selected region is covered', async () => {
+    // A covered region that happens to hold nothing matching is the ordinary
+    // empty, and the advice that fits it must not be replaced by a coverage
+    // story that would be false.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?region_ids=10000002')
+
+    expect(await screen.findByText(/no contracts match/i)).toBeInTheDocument()
+    expect(screen.getByText(/Loosen a price bound/)).toBeInTheDocument()
+    expect(screen.queryByText(/currently covers/)).not.toBeInTheDocument()
+  })
+
+  it('separates the uncovered half of a mixed selection from the covered half', async () => {
+    // With both kinds selected the empty result has two causes at once, and
+    // naming only the uncovered one would imply the covered selection was
+    // never consulted.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+
+    renderApp('/contracts?region_ids=10000002&region_ids=10000043')
+
+    expect(await screen.findByRole('heading', { name: 'No data for Domain yet' })).toBeInTheDocument()
+    expect(screen.getByText(/also selected The Forge, which matched nothing/)).toBeInTheDocument()
+  })
+
+  it('names the covered regions in the empty state even before anything is ingested', async () => {
+    // A corpus with no rows yet covers nothing, so there is no covered set to
+    // name — the sentence has to change rather than read "currently covers .".
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse(listPage([], { coverage: { ingested_region_ids: [], as_of: null } })),
+      ),
+    )
+
+    renderApp('/contracts?region_ids=10000002')
+
+    expect(
+      await screen.findByRole('heading', { name: 'No data for The Forge yet' }),
+    ).toBeInTheDocument()
+    // The sentence appears twice on purpose: in the visible card AND in the
+    // polite live region, so assistive tech hears the same truth it shows.
+    expect(screen.getAllByText(/No region has been ingested yet/)).toHaveLength(2)
+  })
+
+  it('keeps describing the result on screen while the next region loads', async () => {
+    // WEB-1: keepPreviousData holds the previous empty result through the whole
+    // of the next request, so an explanation read off the live URL would call
+    // Domain uncovered while the rows on screen came from a Forge query — a
+    // specific, confident falsehood for as long as the request takes.
+    let releaseDomain!: (page: Response) => void
+    const domainInFlight = new Promise<Response>((resolve) => {
+      releaseDomain = resolve
+    })
+    const calls = stubFetch(
+      anonymousMe((url) =>
+        url.includes('region_ids=10000043') ? domainInFlight : jsonResponse(listPage([])),
+      ),
+    )
+
+    renderApp('/contracts?region_ids=10000002')
+    await screen.findByText(/Loosen a price bound/)
+
+    await userEvent.click(screen.getByLabelText('Domain'))
+    await waitFor(() =>
+      expect(calls.some((url) => url.includes('region_ids=10000043'))).toBe(true),
+    )
+
+    expect(screen.getByText(/Loosen a price bound/)).toBeInTheDocument()
+    expect(screen.queryByText(/No data for Domain/)).not.toBeInTheDocument()
+
+    releaseDomain(jsonResponse(listPage([])))
+
+    expect(await screen.findByRole('heading', { name: 'No data for Domain yet' })).toBeInTheDocument()
+  })
+
+  it('states where couriers may originate, above the courier rows', async () => {
+    // Criterion 5.7. A hauler reading a route list has to know the origins are
+    // one region's worth rather than the whole cluster's.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([COURIER_ROW]))))
+
+    renderApp('/contracts?contract_type=courier')
+
+    expect(await screen.findByText('Couriers originating in The Forge only.')).toBeInTheDocument()
+  })
+
+  it('makes no origin claim outside the courier segment', async () => {
+    // The statement is about routes; a sale has an origin only in the sense
+    // that everything in the corpus does.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(screen.queryByText(/originating in/)).not.toBeInTheDocument()
   })
 })

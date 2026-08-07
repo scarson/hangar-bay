@@ -158,6 +158,13 @@ test.describe('contract filters', () => {
     // The active filters reached the wire before we clear them.
     expect(calls.some((c) => c.params.get('search') === 'drake')).toBe(true)
 
+    // A segment too — it lives above the table rather than in the rail, but
+    // Clear filters owns it like every other param, and selecting an item-less
+    // one also clears Ships only, so the reset has both to put back.
+    await page.getByRole('button', { name: 'Courier' }).click()
+    await expect(page).toHaveURL(/contract_type=/)
+    await expect(page).toHaveURL(/[?&]ships_only=false(&|$)/)
+
     const clear = page.getByRole('button', { name: 'Clear filters' })
     await expect(clear).toBeVisible()
     await clear.click()
@@ -177,13 +184,28 @@ test.describe('contract filters', () => {
     await expect(page).toHaveURL(/[?&]ships_only=true(&|$)/)
     await expect(page).toHaveURL(/[?&]page=1(&|$)/)
     await expect(page).toHaveURL(/[?&]size=50(&|$)/)
-    await expect(page).toHaveURL(/[?&]sort_by=date_issued(&|$)/)
+    // Time left, not Issued: the courier detour above reconciled the sort to a
+    // field the courier set can disclose (its header showed it, aria-sort and
+    // all), and Clear preserves the current sort — sort is not a filter. Had
+    // the flow never entered a segment, the default Issued sort would survive
+    // untouched instead.
+    await expect(page).toHaveURL(/[?&]sort_by=date_expired(&|$)/)
     await expect(page).toHaveURL(/[?&]sort_direction=desc(&|$)/)
     await expect(page).not.toHaveURL(/search=/)
     await expect(page).not.toHaveURL(/min_price=/)
     await expect(page).not.toHaveURL(/max_price=/)
     await expect(page).not.toHaveURL(/region_ids=/)
     await expect(page).not.toHaveURL(/is_bpc=/)
+    // Every filter param the URL layer parses, whether or not this test set it:
+    // Clear filters rebuilds the search from scratch, so a param that survives
+    // it is one resetFilters forgot to drop.
+    await expect(page).not.toHaveURL(/contract_type=/)
+    await expect(page).not.toHaveURL(/category_id=/)
+    await expect(page).not.toHaveURL(/group_id=/)
+    for (const bound of ['runs', 'me', 'te']) {
+      await expect(page).not.toHaveURL(new RegExp(`min_${bound}=`))
+      await expect(page).not.toHaveURL(new RegExp(`max_${bound}=`))
+    }
   })
 
   test('applying a filter resets pagination to page 1', async ({ page }) => {

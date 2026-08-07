@@ -120,6 +120,21 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 
 ---
 
+## D11 — Sort visibility is enforced in the parser; the All count hides when it cannot be known
+
+**Background.** Codex's PR-C review found three P1s in one family: a sort could outlive the segment whose columns disclosed it (via deep links, saved-search apply, and Clear filters — the click-handler reset covered only segment buttons), the courier DEFAULT sort (`date_issued`) had no courier header at all, and the All control summed lifted item-less counts into a number describing a view All does not restore.
+
+**Decisions.**
+1. **Sort reconciliation moved into `parseContractSearch`** (the same pure-parser home as the item-less ships-only normalization), so every route into a view gets the identical rule: a sort no active-segment header can disclose falls back to `date_issued`, or `date_expired` where the set lacks an Issued column (courier). The courier Deadline column also gained its missing `sortField` — the API sorted on `days_to_complete` with no header disclosing it, one more instance of the same defect.
+2. **The All control renders without a numeral while an item-less segment is active.** The envelope's item-bearing counts were computed without ships-only, and All's destination restores it — a population those numbers cannot describe. No numeral beats a wrong one. Follow-up if the numeral is wanted: serve Criterion 1.8's mirror (ships-respecting item-bearing counts) on item-less-segment requests.
+3. **A segment-reconciled sort persists through Clear filters.** Sort is not a filter and Clear has always preserved it; by the time it persists it was visibly disclosed (header + aria-sort) on the segment that set it. The alternative — tracking whether a sort was user-chosen vs parser-derived — is hidden state for a marginal nicety.
+
+**Reversibility: cheap** (all client-side; the wire is untouched).
+
+**Codex review:** it raised all three; dispositions on PR #140.
+
+---
+
 ## D10 — PR-A codex finding on name NULL-overwrite: deferred as a pre-existing, self-healing defect class
 
 **Background.** Codex's PR-A review flagged as P1: a transient `/universe/names` failure yields a partial name map, every upsert row still supplies `end_location_name=None`, and `bulk_upsert` copies supplied columns on conflict — blanking previously-resolved courier destinations for the re-sighted batch.

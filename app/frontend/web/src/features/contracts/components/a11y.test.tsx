@@ -31,6 +31,16 @@ const ROW = {
   composition: null,
 }
 
+/** An item-less row, so the segmented view under test is one with a cleared ships-only. */
+const COURIER_ROW = {
+  ...ROW,
+  contract_id: 505,
+  type: 'courier',
+  title: 'Jita to Amarr rush',
+  is_ship_contract: false,
+  primary_label: 'Jita to Amarr rush',
+}
+
 const CONTRACT = {
   ...ROW,
   items: [
@@ -88,6 +98,28 @@ describe('accessibility (axe)', () => {
     stubFetch(anonymousMe(() => jsonResponse(CONTRACT)))
     const { container } = renderApp('/contracts/101')
     await screen.findByRole('heading', { name: 'Tristan' })
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('the contract-type segments have no violations with one selected', async () => {
+    // The segment toolbar exposes its selected state with aria-pressed on plain
+    // buttons inside a labelled fieldset (Criterion 12), which axe checks for
+    // name/role/value coherence as well as the surrounding grouping.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([COURIER_ROW]))))
+    const { container } = renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('the uncovered-region empty state has no violations', async () => {
+    // A second heading-plus-explanation card in the results region, reached
+    // only by a region selection the corpus holds nothing for — a state the
+    // generic empty-state case above never renders.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+    const { container } = renderApp('/contracts?region_ids=10000043')
+    await screen.findByRole('heading', { name: 'No data for Domain yet' })
 
     expect(await axe(container)).toHaveNoViolations()
   })

@@ -22,11 +22,15 @@ export function FilterRail({
     ? REGIONS.filter((region) => region.name.toLowerCase().includes(query))
     : REGIONS
 
+  // A segment counts as an active filter even though its control lives above
+  // the table rather than in this rail: Clear filters resets it along with
+  // everything else, so offering the button is what makes that discoverable.
   const hasActiveFilters =
     search.search !== undefined ||
     search.min_price !== undefined ||
     search.max_price !== undefined ||
     search.region_ids !== undefined ||
+    search.contract_type !== undefined ||
     search.is_bpc !== undefined ||
     !search.ships_only
 

@@ -88,6 +88,12 @@ test.describe('contract detail (F003)', () => {
     // Price renders with grouping separators and a trailing " ISK".
     await expect(page.getByRole('region', { name: 'Economics' }).getByText('1,750,000,000 ISK')).toBeVisible()
 
+    // Criterion 7.1: when ingestion last saw this contract still listed. The
+    // fixture stamps eleven minutes back off the live clock (TEST-17).
+    const identification = page.getByRole('region', { name: 'Identification' })
+    await expect(identification.getByText('Last seen', { exact: true })).toBeVisible()
+    await expect(identification.getByText('11m ago', { exact: true })).toBeVisible()
+
     // TEST-5: assert the wire path too, not just the render.
     expect(detailCalls.some((call) => call.url.pathname === `/api/v1/contracts/${CONTRACT_ID}`)).toBe(
       true,

@@ -1,4 +1,7 @@
 import type { components } from '../../lib/api/schema'
+// Runtime-safe despite the apparent cycle: columns.tsx imports only TYPES from
+// this module, so the erased edge leaves filters → columns acyclic.
+import { sortableFieldsFor } from './columns'
 
 export const SORT_FIELDS = [
   'date_issued',
@@ -54,6 +57,14 @@ export type UnmirroredContractTypes = Exhausted<
  */
 export const ITEM_LESS_TYPES: readonly ContractTypeValue[] = ['courier', 'loan', 'unknown']
 
+/**
+ * The types that carry items, and so the only ones a ships-only view can show.
+ * They are what the All segment counts while ships-only is on: the item-less
+ * counts served beside them are computed with ships-only lifted, so they
+ * describe a view All is not — adding them in would overstate it.
+ */
+export const ITEM_BEARING_TYPES: readonly ContractTypeValue[] = ['item_exchange', 'auction']
+
 /** Backend ContractFilters.search has min_length=3; shorter values 422. */
 export const MIN_SEARCH_LENGTH = 3
 export const DEFAULT_PAGE = 1
@@ -81,6 +92,18 @@ export interface ContractSearch {
   size: number
   sort_by: SortField
   sort_direction: SortDirection
+}
+
+/**
+ * The one type in effect, or undefined for no selection — or for several, which
+ * only a hand-edited URL produces. It names the view and, through `columnsFor`,
+ * selects the columns the rows are described with (spec §8). It lives beside
+ * the search it reads rather than beside either consumer: the segment control
+ * asks what the URL selects, while the list asks what the rows on screen were
+ * fetched under, and those are the same question at two different moments.
+ */
+export function activeSegment(search: ContractSearch): ContractTypeValue | undefined {
+  return search.contract_type?.length === 1 ? search.contract_type[0] : undefined
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -160,13 +183,32 @@ export function parseContractSearch(raw: Record<string, unknown>): ContractSearc
     ships_only: itemLessOnly ? false : raw.ships_only !== false,
     page: toBoundedInt(raw.page, 1, Number.MAX_SAFE_INTEGER, DEFAULT_PAGE),
     size: toBoundedInt(raw.size, 1, MAX_SIZE, DEFAULT_SIZE),
-    sort_by: SORT_FIELDS.includes(raw.sort_by as SortField)
-      ? (raw.sort_by as SortField)
-      : 'date_issued',
+    sort_by: reconcileSort(raw.sort_by, contractTypes),
     sort_direction: SORT_DIRECTIONS.includes(raw.sort_direction as SortDirection)
       ? (raw.sort_direction as SortDirection)
       : 'desc',
   }
+}
+
+/**
+ * A sort no column of the active segment can disclose would order the list
+ * invisibly — no header, no aria-sort, nothing to clear. Reconciled in the
+ * parser so deep links, saved-search apply, Clear filters, and every
+ * navigation get the identical treatment (the same reasoning as the
+ * item-less ships-only widening above). The courier set carries no Issued
+ * column, so its fallback is the Time-left field every set shares.
+ */
+function reconcileSort(
+  rawSort: unknown,
+  contractTypes: ContractTypeValue[] | undefined,
+): SortField {
+  const requested = SORT_FIELDS.includes(rawSort as SortField)
+    ? (rawSort as SortField)
+    : 'date_issued'
+  const segment = contractTypes?.length === 1 ? contractTypes[0] : undefined
+  const expressible = sortableFieldsFor(segment)
+  if (expressible.has(requested)) return requested
+  return expressible.has('date_issued') ? 'date_issued' : 'date_expired'
 }
 
 /**

@@ -106,6 +106,39 @@ test.describe('states', () => {
     await expect(liveRegion(page)).toHaveText(/0 contracts? match/)
   })
 
+  test('an empty result for an uncovered region explains coverage instead of blaming the filters', async ({
+    page,
+  }) => {
+    // Criteria 7.2/7.3. Domain is not in the fixture's coverage block, so no
+    // filter change could ever produce a row there — the "loosen a price bound"
+    // card would send the reader hunting a market that was never ingested. The
+    // region is named from the envelope's ids, not from a literal in the app.
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptContractList(page, pageOf([]))
+
+    await page.goto('/contracts?region_ids=10000043')
+
+    const results = page.getByRole('region', { name: 'Contract results' })
+    await expect(results.getByRole('heading', { name: 'No data for Domain yet' })).toBeVisible()
+    await expect(results.getByText(/currently covers The Forge/)).toBeVisible()
+    await expect(
+      results.getByRole('heading', { name: 'No contracts match these filters' }),
+    ).toHaveCount(0)
+    await expect(results.getByRole('button', { name: 'Clear filters' })).toBeVisible()
+  })
+
+  test('the list states how fresh the corpus behind it is', async ({ page }) => {
+    // Criterion 7.1, from the envelope's coverage stamp rather than any row's.
+    // The fixture stamps six minutes back off the live clock (TEST-17).
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptContractList(page, pageOf(SEVEN_SHIPS))
+
+    await page.goto('/contracts')
+    await expect(rowLinks(page)).toHaveCount(7)
+
+    await expect(page.getByText('Data as of 6m ago')).toBeVisible()
+  })
+
   test('error state shows the failure alert + Retry; retry recovers to rows', async ({ page }) => {
     // Production QueryClient runs retry:1, so the initial load makes TWO attempts
     // before surfacing an error — failing only call 0 would auto-recover on call 1

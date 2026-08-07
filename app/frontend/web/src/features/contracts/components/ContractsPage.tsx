@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Button } from '../../../components/Button'
+import { timeAgo } from '../../../lib/timeAgo'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
+import { columnsFor } from '../columns'
+import { regionNames } from '../format'
 import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
 import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'
 import { useContracts } from '../hooks/useContracts'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
 import { FilterRail } from './FilterRail'
 import { Pagination } from './Pagination'
+import { SegmentTabs, listTitle } from './SegmentTabs'
 
 /** New sort field starts in its most useful direction: newest/soonest for dates, cheap-first for ISK. */
 const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
@@ -24,11 +28,87 @@ const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
   buyout: 'asc',
 }
 
+/**
+ * Why the page is empty, and which of the two reasons it is (Criterion 7.2).
+ * A region the corpus holds no rows for cannot match anything whatever the rest
+ * of the filters say, so telling that reader to loosen a price bound sends them
+ * looking for a market that was never there. Which regions those are is read
+ * from the response's coverage block rather than a literal here (Criterion 7.3
+ * — a literal becomes wrong the day coverage expands), and the selection is the
+ * one the response was fetched under rather than the live URL (WEB-1).
+ */
+function EmptyResults({
+  selectedRegionIds,
+  coveredRegionIds,
+  onReset,
+}: {
+  selectedRegionIds: number[]
+  coveredRegionIds: number[]
+  onReset: () => void
+}) {
+  const uncovered = selectedRegionIds.filter((id) => !coveredRegionIds.includes(id))
+  const coveredSelection = selectedRegionIds.filter((id) => coveredRegionIds.includes(id))
+
+  if (coveredRegionIds.length === 0 && selectedRegionIds.length === 0) {
+    // Nothing ingested and nothing selected — no filter can reach any data, so
+    // the loosen-your-filters advice would be a false lead. With a region
+    // SELECTED, the uncovered branch below already tells the truer story
+    // (that region has no data yet, and no covered region exists).
+    return (
+      <div className="flex flex-col items-start gap-3 rounded-md border border-line bg-surface px-5 py-8">
+        <h2 className="text-base font-medium text-ink">No data ingested yet</h2>
+        <p className="max-w-[52ch] text-sm text-ink-dim">
+          The corpus is empty right now. Contracts appear a few minutes after
+          ingestion starts; no filter change can hurry that along.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-3 rounded-md border border-line bg-surface px-5 py-8">
+      {uncovered.length > 0 ? (
+        <>
+          <h2 className="text-base font-medium text-ink">
+            No data for {regionNames(uncovered)} yet
+          </h2>
+          <p className="max-w-[52ch] text-sm text-ink-dim">
+            {coveredRegionIds.length > 0
+              ? `Hangar Bay currently covers ${regionNames(coveredRegionIds)}.`
+              : 'No region has been ingested yet.'}{' '}
+            {uncovered.length === 1 ? 'That region holds' : 'Those regions hold'} nothing here yet,
+            so no filter can reach into {uncovered.length === 1 ? 'it' : 'them'}.
+            {coveredSelection.length > 0
+              ? ` You also selected ${regionNames(coveredSelection)}, which matched nothing.`
+              : ''}
+          </p>
+        </>
+      ) : (
+        <>
+          <h2 className="text-base font-medium text-ink">No contracts match these filters</h2>
+          <p className="max-w-[52ch] text-sm text-ink-dim">
+            Loosen a price bound, widen the region selection, or clear everything to see the
+            full market.
+          </p>
+        </>
+      )}
+      <Button onClick={onReset}>Clear filters</Button>
+    </div>
+  )
+}
+
 export function ContractsPage({ search, from }: { search: ContractSearch; from: '/contracts/' }) {
   const navigate = useNavigate({ from })
   const { data, isPending, isError, isFetching, refetch } = useContracts(search)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  useDocumentTitle(search.ships_only ? 'Ship Contracts' : 'All Contracts')
+  const title = listTitle(search)
+  useDocumentTitle(title)
+  // The selection the RESPONSE was fetched under (WEB-1), for the live-region
+  // coverage sentence; EmptyResults derives the same split for the visible card.
+  const uncoveredSelection =
+    data !== undefined
+      ? data.regionIds.filter((id) => !data.coverage.ingested_region_ids.includes(id))
+      : []
 
   // Text inputs (search, min/max price) fire on every keystroke, so they
   // navigate with { replace: true } to avoid one history entry per character
@@ -107,20 +187,41 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
             label to avoid a double read. */}
         <p className="sr-only" role="status" aria-live="polite">
           {data !== undefined
-            ? `${data.total.toLocaleString('en-US')} ${data.total === 1 ? 'contract matches' : 'contracts match'} your filters`
+            ? `${data.total.toLocaleString('en-US')} ${data.total === 1 ? 'contract matches' : 'contracts match'} your filters` +
+              // A bare zero is misleading when the cause is coverage, and the
+              // explanation must ride the same announcement assistive tech
+              // hears — not sit in a card the listener has to go find.
+              (data.total === 0 && data.coverage.ingested_region_ids.length === 0
+                ? ' No region has been ingested yet.'
+                : data.total === 0 && uncoveredSelection.length > 0
+                  ? ` ${regionNames(uncoveredSelection)} ${uncoveredSelection.length === 1 ? 'is' : 'are'} not covered yet.`
+                  : '')
             : ''}
         </p>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-h1 font-semibold">
-            {search.ships_only ? 'Ship Contracts' : 'All Contracts'}
-          </h1>
+          <h1 className="text-h1 font-semibold">{title}</h1>
           {data !== undefined ? (
             <p className="text-data text-ink-dim">
               {data.total.toLocaleString('en-US')} matching
             </p>
           ) : null}
+          {/* Criterion 7.1. The stamp describes the corpus the page was drawn
+              from, so it sits with the count rather than in a column. A null
+              as_of is the absence of a freshness signal — nothing has been
+              stamped yet — and gets no line at all: a dash beside "Data as of"
+              would dress that absence up as a reading. */}
+          {data?.coverage.as_of ? (
+            <p className="text-xs text-ink-faint">Data as of {timeAgo(data.coverage.as_of)}</p>
+          ) : null}
           <SaveSearchControl search={search} />
         </div>
+
+        {/* The segments need the envelope's counts, so they appear with the
+            first response and stay through later ones (keepPreviousData holds
+            the previous page while a new segment loads). */}
+        {data !== undefined ? (
+          <SegmentTabs search={search} counts={data.segment_counts} onSelect={update} />
+        ) : null}
 
         {isPending ? (
           <ContractTableSkeleton />
@@ -137,29 +238,47 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
         ) : pageOutOfRange ? (
           // Transient: the effect above is navigating to the last valid page.
           <ContractTableSkeleton />
-        ) : data.total === 0 ? (
-          <div className="flex flex-col items-start gap-3 rounded-md border border-line bg-surface px-5 py-8">
-            <h2 className="text-base font-medium text-ink">No contracts match these filters</h2>
-            <p className="max-w-[52ch] text-sm text-ink-dim">
-              Loosen a price bound, widen the region selection, or clear everything to see the
-              full market.
-            </p>
-            <Button onClick={resetFilters}>Clear filters</Button>
-          </div>
         ) : (
           <>
-            <ContractTable
-              contracts={data.items}
-              search={search}
-              onSort={handleSort}
-              isRefreshing={isFetching}
-            />
-            <Pagination
-              page={search.page}
-              size={data.size ?? DEFAULT_SIZE}
-              total={data.total}
-              onPage={goToPage}
-            />
+            {/* Criterion 5.7: a hauler reading a list of routes has to know the
+                origins are one region's worth rather than the cluster's — and
+                the hauler staring at ZERO jobs needs it most, so the line sits
+                above the empty/populated split. Named from the envelope, so it
+                follows coverage instead of freezing today's into this file
+                (Criterion 7.3). */}
+            {data.segment === 'courier' && data.coverage.ingested_region_ids.length > 0 ? (
+              <p className="text-xs text-ink-dim">
+                Couriers originating in {regionNames(data.coverage.ingested_region_ids)} only.
+              </p>
+            ) : null}
+            {data.total === 0 ? (
+              <EmptyResults
+                selectedRegionIds={data.regionIds}
+                coveredRegionIds={data.coverage.ingested_region_ids}
+                onReset={resetFilters}
+              />
+            ) : (
+              <>
+                <ContractTable
+                  contracts={data.items}
+                  // The segment picks the columns; the table frame is the same one
+                  // every segment renders through (spec §8). It comes off the
+                  // response rather than the URL so the columns always describe the
+                  // rows beneath them — the two disagree for the whole of a segment
+                  // switch, which `keepPreviousData` renders with the old rows.
+                  columns={columnsFor(data.segment)}
+                  search={search}
+                  onSort={handleSort}
+                  isRefreshing={isFetching}
+                />
+                <Pagination
+                  page={search.page}
+                  size={data.size ?? DEFAULT_SIZE}
+                  total={data.total}
+                  onPage={goToPage}
+                />
+              </>
+            )}
           </>
         )}
       </section>

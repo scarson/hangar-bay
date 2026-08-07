@@ -3,13 +3,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { anonymousMe, jsonResponse } from '../../../test/http'
+import { anonymousMe, emptyContractPage, jsonResponse } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 
 interface Call { url: string; method?: string; body?: string }
 
 const AUTHED = { character_id: 91000001, character_name: 'Sesta Hound' }
-const EMPTY_PAGE = { total: 0, page: 1, size: 50, items: [] }
+const EMPTY_PAGE = emptyContractPage()
 
 function stubFetch(handler: (url: string, call: Call) => Response): Call[] {
   const calls: Call[] = []
@@ -39,7 +39,7 @@ describe('SaveSearchControl', () => {
       if (/\/me\/saved-searches\//.test(url)) return jsonResponse({ id: 1, name: 'Cheap', search_parameters: {}, created_at: 'x', updated_at: 'x' }, 201)
       return jsonResponse(EMPTY_PAGE)
     })
-    renderApp('/contracts?min_price=1000&sort_by=price&sort_direction=asc')
+    renderApp('/contracts?min_price=1000&contract_type=auction&sort_by=price&sort_direction=asc')
     await userEvent.click(await screen.findByRole('button', { name: /save search/i }))
     await userEvent.type(screen.getByLabelText(/search name/i), 'Cheap')
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
@@ -47,8 +47,34 @@ describe('SaveSearchControl', () => {
     const post = calls.find((c) => /\/me\/saved-searches\//.test(c.url) && c.method === 'POST')!
     const payload = JSON.parse(post.body!)
     expect(payload.name).toBe('Cheap')
-    expect(payload.search_parameters).toMatchObject({ min_price: 1000, ships_only: true, sort_by: 'price', sort_direction: 'asc' })
+    expect(payload.search_parameters).toMatchObject({
+      min_price: 1000,
+      contract_type: ['auction'],
+      ships_only: true,
+      sort_by: 'price',
+      sort_direction: 'asc',
+    })
     expect(payload.search_parameters).not.toHaveProperty('page')
+  })
+
+  it('persists an item-less segment and the widening it forces, so applying it restores the same view', async () => {
+    const calls = stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/saved-searches\//.test(url)) return jsonResponse({ id: 1, name: 'Hauls', search_parameters: {}, created_at: 'x', updated_at: 'x' }, 201)
+      return jsonResponse(EMPTY_PAGE)
+    })
+    renderApp('/contracts?contract_type=courier&ships_only=false')
+    await userEvent.click(await screen.findByRole('button', { name: /save search/i }))
+    await userEvent.type(screen.getByLabelText(/search name/i), 'Hauls')
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() => expect(calls.some((c) => /\/me\/saved-searches\//.test(c.url) && c.method === 'POST')).toBe(true))
+    const post = calls.find((c) => /\/me\/saved-searches\//.test(c.url) && c.method === 'POST')!
+    // Dropping the segment while keeping ships_only:false would persist a strictly
+    // WIDER view than the one saved: every type, ships-only off.
+    expect(JSON.parse(post.body!).search_parameters).toMatchObject({
+      contract_type: ['courier'],
+      ships_only: false,
+    })
   })
 
   it('drops a sub-3-character search from the persisted payload (mirrors toApiQuery)', async () => {

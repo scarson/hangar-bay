@@ -9,7 +9,7 @@ import { useDocumentTitle } from '../../../lib/useDocumentTitle'
 import { RequireSignIn } from '../../auth/components/RequireSignIn'
 import { useCurrentUser } from '../../auth/hooks/useCurrentUser'
 import { Pagination } from '../../contracts/components/Pagination'
-import { timeAgo } from '../format'
+import { timeAgo } from '../../../lib/timeAgo'
 import {
   useMarkAllRead,
   useMarkRead,

@@ -2,6 +2,7 @@ import { Link, useRouter } from '@tanstack/react-router'
 import { Badge } from '../../../components/Badge'
 import { Button } from '../../../components/Button'
 import { ApiError } from '../../../lib/api/client'
+import { timeAgo } from '../../../lib/timeAgo'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
 import { contractTypeLabel, formatIsk, locationLabel, timeRemaining } from '../format'
 import { useContract } from '../hooks/useContract'
@@ -169,6 +170,14 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
                 <span className="ml-2 text-ink-dim">({expiry})</span>
               ) : null}
             </Field>
+            {/* Criterion 7.1: when ingestion last saw this contract still
+                listed. A price nobody can date is a price nobody can act on.
+                An unstamped row gets no row at all rather than a dash, which
+                would read as "we looked and found nothing" instead of "we
+                never recorded when we looked". */}
+            {data.last_seen_at ? (
+              <Field label="Last seen">{timeAgo(data.last_seen_at)}</Field>
+            ) : null}
           </dl>
         </section>
       </div>
