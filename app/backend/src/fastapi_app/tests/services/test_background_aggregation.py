@@ -970,6 +970,37 @@ async def test_type_specific_contract_fields_land_on_persisted_rows(db_session: 
     assert bare_row.buyout is None and bare_row.days_to_complete is None
 
 
+async def test_item_level_columns_persist_from_payload_and_enrichment(db_session: AsyncSession):
+    """runs/ME/TE/item_id come off the item payload; category_id/group_id off the
+    type→group chain the ship flag already walks. A blueprint ORIGINAL omits runs
+    entirely (ESI-3) and must persist NULL, not zero."""
+    service = _make_service()
+    contract = _ship_contract_dict(821)
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8211, "type_id": 621, "quantity": 1, "is_included": True,
+         "is_blueprint_copy": True, "runs": 10, "material_efficiency": 8,
+         "time_efficiency": 14, "item_id": 1_000_000_001},
+        {"record_id": 8212, "type_id": 621, "quantity": 1, "is_included": True},  # original: runs absent
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Caracal Blueprint", "group_id": 105, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Cruiser Blueprint", "category_id": 9}
+    )
+    await service._process_contracts(db_session, [contract])
+
+    rows = {r.record_id: r for r in (await db_session.execute(
+        select(ContractItem).where(ContractItem.contract_id == 821)
+    )).scalars()}
+    copy, original = rows[8211], rows[8212]
+    assert (copy.runs, copy.material_efficiency, copy.time_efficiency) == (10, 8, 14)
+    assert copy.item_id == 1_000_000_001
+    assert copy.category_id == 9 and copy.group_id == 105
+    assert original.runs is None and original.material_efficiency is None
+    assert original.category_id == 9          # taxonomy resolves regardless of blueprint fields
+
+
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
     """A contract whose item fetch failed is retried by the NEXT run, with no sweep.
 

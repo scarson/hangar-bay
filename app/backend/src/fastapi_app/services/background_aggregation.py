@@ -668,6 +668,13 @@ class ContractAggregationService:
                         # dead on real data (same class as the ship-flag gap).
                         "is_blueprint_copy": i.get("is_blueprint_copy"),
                         "raw_quantity": i.get("raw_quantity"),
+                        # Blueprint stats and the dynamic-item join key. A blueprint
+                        # ORIGINAL omits `runs` rather than sending a sentinel, so
+                        # absence must stay NULL (ESI-3).
+                        "runs": i.get("runs"),
+                        "material_efficiency": i.get("material_efficiency"),
+                        "time_efficiency": i.get("time_efficiency"),
+                        "item_id": i.get("item_id"),
                     }
                     for i in items
                 ]
@@ -796,6 +803,11 @@ class ContractAggregationService:
             item["type_name"] = info.get("name")
             item["market_group_id"] = info.get("market_group_id")
             item["category"] = "ship" if is_ship else None
+            # The taxonomy ids the ship flag already walked past, kept for the
+            # category/group filter families. No extra ESI call: both payloads
+            # are in hand.
+            item["group_id"] = info.get("group_id")
+            item["category_id"] = group.get("category_id")
             # Only INCLUDED items decide the flag, so only they classify the contract.
             if is_ship and item["is_included"]:
                 ship_contract_ids.add(item["contract_id"])
