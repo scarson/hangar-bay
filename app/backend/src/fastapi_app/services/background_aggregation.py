@@ -196,8 +196,11 @@ def _build_contract_rows(
             "last_seen_at": seen_at,
             "reward": c.get("reward"),
             "volume": c.get("volume"),
+            "buyout": c.get("buyout"),
+            "days_to_complete": c.get("days_to_complete"),
             # Denormalized data for search performance
             "start_location_name": id_to_name_map.get(c.get("start_location_id")),
+            "end_location_name": id_to_name_map.get(c.get("end_location_id")),
             "issuer_name": id_to_name_map.get(c.get('issuer_id')),
             "issuer_corporation_name": id_to_name_map.get(c.get('issuer_corporation_id')),
             # is_ship_contract, item_processing_status and enrichment_version are

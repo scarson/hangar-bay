@@ -933,6 +933,43 @@ async def test_resolved_location_names_land_on_persisted_contract_rows(db_sessio
     assert row.issuer_corporation_name == "Test Issuer Corp"
 
 
+async def test_type_specific_contract_fields_land_on_persisted_rows(db_session: AsyncSession):
+    """buyout / days_to_complete / end_location_name persist from the ESI payload.
+
+    _build_contract_rows is only exercised end-to-end (nothing unit-tests its dict
+    literal), so each new key needs a persisted-row assertion or its wiring can
+    silently drop (same rationale as the location-names test above).
+    """
+    service = _make_service()
+    contract = _ship_contract_dict(801)
+    contract["type"] = "auction"
+    contract["buyout"] = 950_000_000.0
+    contract["days_to_complete"] = 3          # ESI sends it on couriers; mapping is type-agnostic
+    contract["end_location_id"] = 60008494
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            60008494: "Amarr VIII (Oris) - Emperor Family Academy",
+        }
+    )
+    await service._process_contracts(db_session, [contract])
+
+    row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 801)
+    )).scalar_one()
+    assert row.buyout == 950_000_000
+    assert row.days_to_complete == 3
+    assert row.end_location_name == "Amarr VIII (Oris) - Emperor Family Academy"
+
+    # Absence stays NULL (ESI-3): a payload without the fields must not write zeros.
+    bare = _ship_contract_dict(802)
+    await service._process_contracts(db_session, [bare])
+    bare_row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 802)
+    )).scalar_one()
+    assert bare_row.buyout is None and bare_row.days_to_complete is None
+
+
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
     """A contract whose item fetch failed is retried by the NEXT run, with no sweep.
 
