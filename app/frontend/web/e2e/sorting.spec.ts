@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { expiryInDays, makeContract, makeShipItem, paginate, type WireContract } from './fixtures/contracts'
+import {
+  COURIER_CONTRACTS,
+  expiryInDays,
+  makeContract,
+  makeShipItem,
+  pageOf,
+  paginate,
+  type WireContract,
+} from './fixtures/contracts'
 import { interceptContractList, interceptCurrentUser, type ListResponder } from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
@@ -244,5 +252,69 @@ test.describe('column-header sorting', () => {
     expect(first.params.get('sort_by')).toBe('price')
     expect(first.params.get('sort_direction')).toBe('asc')
     expect(first.params.get('is_ship_contract')).toBe('true')
+  })
+})
+
+/**
+ * The courier segment brings sortable columns of its own (Criterion 5.4).
+ * Reward/m³ is the one it adds, and the fixture's three rates order the rows
+ * differently from date_issued, reward, volume, and collateral alike — so an
+ * assertion on this order fails if the sort silently falls back to any of them.
+ */
+const byRate = (direction: 'asc' | 'desc'): string[] => {
+  const factor = direction === 'asc' ? 1 : -1
+  return [...COURIER_CONTRACTS]
+    .sort((a, b) => ((a.reward_per_volume ?? 0) - (b.reward_per_volume ?? 0)) * factor)
+    .map((contract) => contract.primary_label)
+}
+
+// The order the backend would return, for the two keys this block exercises.
+const courierResponder: ListResponder = (params) => {
+  const factor = params.get('sort_direction') === 'asc' ? 1 : -1
+  const ordered = [...COURIER_CONTRACTS].sort((a, b) => {
+    const delta =
+      params.get('sort_by') === 'reward_per_volume'
+        ? (a.reward_per_volume ?? 0) - (b.reward_per_volume ?? 0)
+        : a.date_issued.localeCompare(b.date_issued)
+    return delta * factor
+  })
+  return pageOf(ordered)
+}
+
+const rateHeader = (page: import('@playwright/test').Page) =>
+  page.getByRole('columnheader', { name: 'Reward/m³', exact: true })
+
+test.describe('courier column sorting', () => {
+  test('Reward/m³ sorts on reward_per_volume, best-paying first, and renders server order', async ({
+    page,
+  }) => {
+    await interceptCurrentUser(page, { status: 401 })
+    const calls = await interceptContractList(page, courierResponder)
+
+    await page.goto('/contracts?contract_type=courier&ships_only=false')
+    await expect(page.getByRole('heading', { level: 1, name: 'Courier Contracts' })).toBeVisible()
+    // Default sort, date_issued desc, which the fixture declares in array order.
+    await expect(rowLinks(page)).toHaveText(COURIER_CONTRACTS.map((c) => c.primary_label))
+
+    await page.getByRole('button', { name: 'Reward/m³', exact: true }).click()
+
+    // A hauling rate reads best-offer-first, so this column's initial direction
+    // is descending rather than the ISK columns' cheap-first ascending.
+    await expect(rowLinks(page)).toHaveText(byRate('desc'))
+    await expect(rateHeader(page)).toHaveAttribute('aria-sort', 'descending')
+    await expect(page).toHaveURL(/sort_by=reward_per_volume/)
+    await expect(page).toHaveURL(/sort_direction=desc/)
+
+    // Re-clicking the active field flips it, exactly as the shared columns do.
+    await page.getByRole('button', { name: 'Reward/m³', exact: true }).click()
+    await expect(rowLinks(page)).toHaveText(byRate('asc'))
+    await expect(rateHeader(page)).toHaveAttribute('aria-sort', 'ascending')
+
+    const rateCalls = calls.filter((c) => c.params.get('sort_by') === 'reward_per_volume')
+    expect(rateCalls.length).toBeGreaterThan(0)
+    expect(rateCalls.at(-1)!.params.get('sort_direction')).toBe('asc')
+    expect(rateCalls.at(-1)!.params.get('page')).toBe('1')
+    // The segment travels with the sort — a sorted courier view is still couriers.
+    expect(rateCalls.at(-1)!.params.getAll('contract_type')).toEqual(['courier'])
   })
 })

@@ -148,6 +148,55 @@ test.describe('contract-type segments', () => {
     await expect(segment(page, 'Courier 3')).toBeVisible()
   })
 
+  test('the auction segment splits the price into a starting bid and a buyout', async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptContractList(page, respond)
+
+    await page.goto('/contracts?contract_type=auction')
+    await expect(rowLinks(page)).toHaveCount(AUCTION_CONTRACTS.length)
+
+    // Criterion 4.2: a bid is not a price, and a buyout is neither. The type
+    // badge goes with the split — every row here is an auction already.
+    await expect(page.getByRole('columnheader', { name: 'Starting bid', exact: true })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: 'Buyout', exact: true })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: 'Price (ISK)', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('columnheader', { name: 'Type', exact: true })).toHaveCount(0)
+
+    await expect(page.getByText('1,900,000,000', { exact: true })).toBeVisible()
+    await expect(page.getByText('2,600,000,000', { exact: true })).toBeVisible()
+    // Criterion 4.3: the auction whose seller set no buyout says so in words.
+    await expect(page.getByText('No buyout', { exact: true })).toBeVisible()
+  })
+
+  test('the courier segment shows the route and the reward per m³, naming an unresolved endpoint', async ({
+    page,
+  }) => {
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptContractList(page, respond)
+
+    await page.goto('/contracts?contract_type=courier&ships_only=false')
+    await expect(rowLinks(page)).toHaveCount(COURIER_CONTRACTS.length)
+
+    // Criteria 5.3/5.4. Location is gone because the origin is half the route.
+    await expect(page.getByRole('columnheader', { name: 'Route', exact: true })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: 'Reward', exact: true })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: 'Reward/m³', exact: true })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: 'Location', exact: true })).toHaveCount(0)
+
+    const origin = 'Jita IV - Moon 4 - Caldari Navy Assembly Plant'
+    await expect(
+      page.getByText(`${origin} → Amarr VIII (Oris) - Emperor Family Academy`, { exact: true }),
+    ).toBeVisible()
+    // Spec §8: a destination no public token can resolve reads as unknown —
+    // never blank, never the raw id, never a plausible-looking station.
+    await expect(page.getByText(`${origin} → Unknown structure`, { exact: true })).toBeVisible()
+    await expect(page.getByText(/1038000000/)).toHaveCount(0)
+
+    // 120,000,000 ISK over 60,000 m³. Criterion 5.6 — the rate is the only
+    // normalization on the row, and nothing here reads as near or far.
+    await expect(page.getByText('2,000', { exact: true })).toBeVisible()
+  })
+
   test('a shared courier URL restores the segment', async ({ page }) => {
     await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, respond)

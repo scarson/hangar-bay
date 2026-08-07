@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Button } from '../../../components/Button'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
+import { columnsFor } from '../columns'
 import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
 import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'
 import { useContracts } from '../hooks/useContracts'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
 import { FilterRail } from './FilterRail'
 import { Pagination } from './Pagination'
-import { SegmentTabs, listTitle } from './SegmentTabs'
+import { SegmentTabs, activeSegment, listTitle } from './SegmentTabs'
 
 /** New sort field starts in its most useful direction: newest/soonest for dates, cheap-first for ISK. */
 const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
@@ -157,6 +158,9 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
           <>
             <ContractTable
               contracts={data.items}
+              // The segment picks the columns; the table frame is the same one
+              // every segment renders through (spec §8).
+              columns={columnsFor(activeSegment(search))}
               search={search}
               onSort={handleSort}
               isRefreshing={isFetching}

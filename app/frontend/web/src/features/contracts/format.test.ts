@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { Contract } from '../../lib/api/client'
-import { contractTypeLabel, formatDate, formatIsk, locationLabel, timeRemaining } from './format'
+import {
+  contractTypeLabel,
+  formatDate,
+  formatDeadline,
+  formatIsk,
+  formatRewardPerVolume,
+  locationLabel,
+  routeLabel,
+  timeRemaining,
+} from './format'
 
 function contract(): Contract {
   return {
@@ -110,6 +119,60 @@ describe('contractTypeLabel', () => {
   })
 })
 
+describe('formatRewardPerVolume', () => {
+  it('keeps the fractional part a hauling rate turns on, and dashes an absent one', () => {
+    // Rates are compared between jobs, so the two decimals are the difference
+    // between "88.89 and 88.12" and two identical-looking rows. Whole rates
+    // still group like every other figure in the table.
+    expect(formatRewardPerVolume(2000)).toBe('2,000')
+    expect(formatRewardPerVolume(80_000_000 / 899_999)).toBe('88.89')
+    // The server serves NULL when volume is 0 or missing (nothing to divide
+    // by), so the cell has to say "no rate" rather than print 0 or Infinity.
+    expect(formatRewardPerVolume(null)).toBe('—')
+    expect(formatRewardPerVolume(undefined)).toBe('—')
+  })
+})
+
+describe('routeLabel', () => {
+  it('reads origin to destination, and names an endpoint nothing could resolve', () => {
+    // Player structures need an ACL-scoped token to resolve, so ~5% of courier
+    // destinations have no name. The cell must read as unknown rather than go
+    // blank or invent a station (spec §8).
+    expect(routeLabel(courierBetween('Jita IV - Moon 4', 'Amarr VIII'))).toBe(
+      'Jita IV - Moon 4 → Amarr VIII',
+    )
+    expect(routeLabel(courierBetween('Jita IV - Moon 4', null))).toBe(
+      'Jita IV - Moon 4 → Unknown structure',
+    )
+    // The origin is unresolvable about 3% of the time and gets the same reading.
+    expect(routeLabel(courierBetween(null, 'Amarr VIII'))).toBe('Unknown structure → Amarr VIII')
+  })
+
+  it('never falls back to the raw id the way the Location column does', () => {
+    // locationLabel prints "Location 60003760" for an unnamed start. A route
+    // must not: an id in a route reads as a place the reader could look up.
+    const anonymous = {
+      ...courierBetween(null, null),
+      start_location_id: 60003760,
+      end_location_id: 1038000000001,
+    }
+    expect(routeLabel(anonymous)).toBe('Unknown structure → Unknown structure')
+    expect(routeLabel(anonymous)).not.toContain('60003760')
+    expect(routeLabel(anonymous)).not.toContain('1038000000001')
+  })
+})
+
+describe('formatDeadline', () => {
+  it('renders whole days and distinguishes no deadline from a zero-day one', () => {
+    expect(formatDeadline(7)).toBe('7d')
+    // ESI absence is not zero (pitfall ESI-3): a contract carrying no
+    // days_to_complete has nothing to show, while a stored 0 is a real value.
+    expect(formatDeadline(0)).toBe('0d')
+    expect(formatDeadline(null)).toBe('—')
+    expect(formatDeadline(undefined)).toBe('—')
+  })
+})
+
 describe('locationLabel', () => {
   it('prefers the resolved name, falls back to the id, and never prints "null"', () => {
     // start_location_id is optional in ESI's schema, so the id fallback has to
@@ -122,4 +185,16 @@ describe('locationLabel', () => {
 
 function contractAt(name: string | null, id: number | null): Contract {
   return { ...contract(), start_location_name: name, start_location_id: id }
+}
+
+function courierBetween(origin: string | null, destination: string | null): Contract {
+  return {
+    ...contract(),
+    type: 'courier',
+    price: 0,
+    start_location_name: origin,
+    start_location_id: null,
+    end_location_name: destination,
+    end_location_id: null,
+  }
 }

@@ -69,6 +69,15 @@ function listPage(rows: { type: string }[], overrides: Record<string, unknown> =
   }
 }
 
+/**
+ * The rendered column labels, in order. The ▲/▼ glyph on the active header is
+ * aria-hidden decoration rather than part of the label, so it is stripped here
+ * instead of leaking into every expected column set.
+ */
+function headerNames(): string[] {
+  return screen.getAllByRole('columnheader').map((th) => th.textContent!.replace(/[▲▼]/g, '').trim())
+}
+
 function stubFetch(handler: (url: string) => Response) {
   const calls: string[] = []
   vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
@@ -622,6 +631,37 @@ describe('contract-type segments', () => {
     })
   })
 
+  it('keeps the default column set for All and for item exchange', async () => {
+    // The segment selects the columns (spec §8 axis 1), so the two segments
+    // that describe a fixed-price sale keep the set the table has always had —
+    // the auction and courier sets below are departures from THIS.
+    stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts')
+    await screen.findByText('Tristan')
+    expect(headerNames()).toEqual([
+      'Ship / Contract',
+      'Type',
+      'Price (ISK)',
+      'Location',
+      'Time left',
+      'Issued',
+    ])
+
+    await userEvent.click(screen.getByRole('button', { name: /^Item exchange 1,240$/ }))
+
+    await waitFor(() =>
+      expect(headerNames()).toEqual([
+        'Ship / Contract',
+        'Type',
+        'Price (ISK)',
+        'Location',
+        'Time left',
+        'Issued',
+      ]),
+    )
+  })
+
   it('reaches a loan segment by URL alone, without a control and without ships-only', async () => {
     // Criterion 1.1: a type with no control is still reachable and counted. The
     // parser's item-less normalization has to hold at the wire, not just in its
@@ -640,5 +680,174 @@ describe('contract-type segments', () => {
     const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
     expect(listCall).toContain('contract_type=loan')
     expect(listCall).not.toContain('is_ship_contract')
+  })
+})
+
+/**
+ * Two auctions with distinct bids and buyouts, one of them with no buyout at
+ * all — the case Criterion 4.3 says the row must state in words.
+ */
+const AUCTION_ROWS = [
+  {
+    ...ROW,
+    contract_id: 301,
+    type: 'auction',
+    title: 'Vargur, no reserve',
+    primary_label: 'Vargur',
+    price: 1_900_000_000,
+    buyout: 2_600_000_000,
+  },
+  {
+    ...ROW,
+    contract_id: 302,
+    type: 'auction',
+    title: '',
+    primary_label: 'Cynabal',
+    price: 240_000_000,
+    buyout: null,
+  },
+]
+
+/**
+ * Two couriers: one fully resolved, and one whose destination is a player
+ * structure nothing could name, carrying no rate and no deadline either.
+ */
+const COURIER_ROWS = [
+  COURIER_ROW,
+  {
+    ...COURIER_ROW,
+    contract_id: 506,
+    title: 'Bulk ore run',
+    primary_label: 'Bulk ore run',
+    end_location_name: null,
+    reward: 5_000_000,
+    collateral: 0,
+    volume: 0,
+    reward_per_volume: null,
+    days_to_complete: null,
+  },
+]
+
+/** Rows keyed off the requested segment, so a column set can't drift from its rows. */
+function typedPage(url: string) {
+  const type = new URL(url, 'http://localhost').searchParams.get('contract_type')
+  const rows = type === 'auction' ? AUCTION_ROWS : type === 'courier' ? COURIER_ROWS : [ROW]
+  return jsonResponse(listPage(rows))
+}
+
+describe('per-segment column sets', () => {
+  it('gives the auction segment a starting bid and a buyout instead of one price', async () => {
+    // Criterion 4.2: a bid is not a price, and a buyout is a third thing again.
+    // The Type column goes with them — every row in this segment is an auction,
+    // so the badge would repeat the segment control back at the reader.
+    stubFetch(anonymousMe(typedPage))
+
+    renderApp('/contracts?contract_type=auction')
+
+    await screen.findByText('Vargur')
+    expect(headerNames()).toEqual([
+      'Ship / Contract',
+      'Starting bid',
+      'Buyout',
+      'Location',
+      'Time left',
+      'Issued',
+    ])
+
+    const vargur = within(screen.getByRole('row', { name: /Vargur/ }))
+    expect(vargur.getByText('1,900,000,000')).toBeInTheDocument()
+    expect(vargur.getByText('2,600,000,000')).toBeInTheDocument()
+  })
+
+  it('says a buyout-less auction has none rather than leaving the cell blank', async () => {
+    // Criterion 4.3: not 0 (which reads as "buy it for nothing"), not a dash
+    // (which reads as missing data), but the fact that the seller set none.
+    stubFetch(anonymousMe(typedPage))
+
+    renderApp('/contracts?contract_type=auction')
+
+    const cynabal = within(await screen.findByRole('row', { name: /Cynabal/ }))
+    expect(cynabal.getByText('No buyout')).toBeInTheDocument()
+    expect(cynabal.queryByText('—')).not.toBeInTheDocument()
+    expect(cynabal.queryByText('0')).not.toBeInTheDocument()
+  })
+
+  it('sorts the auction segment on buyout from its own header', async () => {
+    const calls = stubFetch(anonymousMe(typedPage))
+
+    const { router } = renderApp('/contracts?contract_type=auction')
+    await screen.findByText('Vargur')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Buyout' }))
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ sort_by: 'buyout' }))
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=buyout')
+    })
+  })
+
+  it('gives the courier segment route, reward, collateral, volume, rate and deadline', async () => {
+    // Criterion 5.3 in full, plus 5.4's rate. There is no Location column: the
+    // origin is half the route, and repeating it would cost a column the
+    // deadline needs. Criterion 5.6 — nothing here is or implies a distance.
+    stubFetch(anonymousMe(typedPage))
+
+    renderApp('/contracts?contract_type=courier')
+
+    await screen.findByText('Jita to Amarr rush')
+    expect(headerNames()).toEqual([
+      'Contract',
+      'Route',
+      'Reward',
+      'Collateral',
+      'Volume',
+      'Reward/m³',
+      'Deadline',
+      'Time left',
+    ])
+
+    const rush = within(screen.getByRole('row', { name: /Jita to Amarr rush/ }))
+    expect(
+      rush.getByText('Airaken V - Moon 6 - Impro Warehouse → Amarr VIII (Oris) - Emperor Family Academy'),
+    ).toBeInTheDocument()
+    expect(rush.getByText('80,000,000')).toBeInTheDocument()
+    expect(rush.getByText('8,000,000,000')).toBeInTheDocument()
+    expect(rush.getByText('899,999')).toBeInTheDocument()
+    expect(rush.getByText('88.89')).toBeInTheDocument()
+    expect(rush.getByText('3d')).toBeInTheDocument()
+  })
+
+  it('names an unresolvable courier destination instead of blanking the route', async () => {
+    // Spec §8: about 5% of Forge courier destinations are player structures no
+    // public token can resolve. The row says so; the rate and deadline it also
+    // lacks fall back to the dash, which is a different statement.
+    stubFetch(anonymousMe(typedPage))
+
+    renderApp('/contracts?contract_type=courier')
+
+    const bulk = within(await screen.findByRole('row', { name: /Bulk ore run/ }))
+    expect(
+      bulk.getByText('Airaken V - Moon 6 - Impro Warehouse → Unknown structure'),
+    ).toBeInTheDocument()
+    expect(bulk.queryByText(/Location \d/)).not.toBeInTheDocument()
+    expect(bulk.getAllByText('—')).toHaveLength(2)
+  })
+
+  it('sorts the courier segment on reward per m³ from its own header', async () => {
+    const calls = stubFetch(anonymousMe(typedPage))
+
+    const { router } = renderApp('/contracts?contract_type=courier')
+    await screen.findByText('Jita to Amarr rush')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reward/m³' }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ sort_by: 'reward_per_volume' }),
+    )
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=reward_per_volume')
+    })
   })
 })

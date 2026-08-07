@@ -30,8 +30,12 @@ const SEGMENT_TITLES: Record<ContractTypeValue, string> = {
   unknown: 'Unknown Contracts',
 }
 
-/** The one type in effect, or undefined for no selection — or for several, which only a hand-edited URL produces. */
-function activeType(search: ContractSearch): ContractTypeValue | undefined {
+/**
+ * The one type in effect, or undefined for no selection — or for several, which
+ * only a hand-edited URL produces. It names the view and, through
+ * `columnsFor`, selects the columns the rows are described with (spec §8).
+ */
+export function activeSegment(search: ContractSearch): ContractTypeValue | undefined {
   return search.contract_type?.length === 1 ? search.contract_type[0] : undefined
 }
 
@@ -50,7 +54,7 @@ function itemLessOnly(search: ContractSearch): boolean {
  * view still reads.
  */
 export function listTitle(search: ContractSearch): string {
-  const type = activeType(search)
+  const type = activeSegment(search)
   if (type !== undefined) return SEGMENT_TITLES[type]
   return search.ships_only ? 'Ship Contracts' : 'All Contracts'
 }
@@ -95,7 +99,7 @@ export function SegmentTabs({
   onSelect: (patch: Partial<ContractSearch>) => void
 }) {
   const leavingItemLess = itemLessOnly(search)
-  const selected = activeType(search)
+  const selected = activeSegment(search)
   // What All would land on decides what All may claim: every route into it from
   // an item-less segment restores ships-only, so only a view the reader has
   // already widened counts the item-less types in.

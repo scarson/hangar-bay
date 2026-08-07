@@ -8,9 +8,23 @@ const ISK = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 // date_issued in the viewer's local zone (a UTC-midnight timestamp reads as the
 // previous day for anyone west of UTC), an off-by-a-day the audience must trust.
 const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+// A hauling rate is a comparison figure, and the comparison is often decided
+// inside the ISK: two jobs at 88.89 and 88.12 ISK/m³ are a real difference that
+// the whole-ISK formatter above would render as one number twice.
+const RATE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
 
 export function formatIsk(value: number | null | undefined): string {
   return value == null ? '—' : ISK.format(value)
+}
+
+/** Reward per m³. NULL arrives whenever there was no volume to divide by (§9). */
+export function formatRewardPerVolume(value: number | null | undefined): string {
+  return value == null ? '—' : RATE.format(value)
+}
+
+/** A courier's delivery window, in whole days. Absent is not zero (ESI-3). */
+export function formatDeadline(days: number | null | undefined): string {
+  return days == null ? '—' : `${days}d`
 }
 
 export function formatDate(iso: string): string {
@@ -55,6 +69,25 @@ export function contractTypeLabel(type: string): string {
   // A stored type outside the map is served under the unknown segment, so the
   // label must say so rather than masquerade as an exchange.
   return TYPE_LABELS[type] ?? 'Unknown'
+}
+
+/**
+ * What an endpoint of a courier route is called. Player structures need an
+ * ACL-scoped token to resolve, so some of them have no name at all — and the
+ * cell has to say that rather than go blank, print the id, or invent a station
+ * that reads like a real one.
+ */
+function endpointLabel(name: string | null | undefined): string {
+  return name ?? 'Unknown structure'
+}
+
+/**
+ * A courier's route, origin to destination. Deliberately NOT locationLabel's
+ * id fallback: an id in a route reads as somewhere the reader could look up,
+ * and the honest reading of an unresolvable endpoint is that it is unknown.
+ */
+export function routeLabel(contract: Contract): string {
+  return `${endpointLabel(contract.start_location_name)} → ${endpointLabel(contract.end_location_name)}`
 }
 
 /**
