@@ -127,7 +127,8 @@ test.describe('contract filters', () => {
 
     await expect(page).toHaveURL(/[?&]is_bpc=true(&|$)/)
     await expect(rowLinks(page)).toHaveCount(BPC_CONTRACTS.length)
-    // The copper BPC badge renders once per row (ContractTable.contractIsBpc).
+    // The copper BPC badge renders once per row, off the row's own
+    // is_blueprint_copy_contract flag.
     const results = page.getByRole('region', { name: 'Contract results' })
     await expect(results.getByText('BPC', { exact: true })).toHaveCount(BPC_CONTRACTS.length)
 

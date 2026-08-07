@@ -19,9 +19,10 @@ const pagination = (page: import('@playwright/test').Page) =>
 test.describe('pagination', () => {
   test('walks every page across boundaries with no gaps or duplicates', async ({ page }) => {
     const all = bigDataset(120)
-    // Hull labels are the row-link text (primaryLabel prefers the ship item);
-    // derive the expected set from the fixture so it stays coupled to the builder.
-    const expectedLabels = all.map((c) => c.items[0].type_name as string)
+    // Hull labels are the row-link text (the server's primary_label, which
+    // prefers the offered ship); derive the expected set from the fixture so it
+    // stays coupled to the builder.
+    const expectedLabels = all.map((c) => c.primary_label)
     await interceptCurrentUser(page, { status: 401 })
     const calls = await interceptContractList(page, (params) =>
       paginate(all, Number(params.get('page')), Number(params.get('size'))),
@@ -76,12 +77,12 @@ test.describe('pagination', () => {
     )
 
     await page.goto('/contracts')
-    await expect(rowLinks(page).first()).toHaveText(all[0].items[0].type_name as string)
+    await expect(rowLinks(page).first()).toHaveText(all[0].primary_label)
     await expect(page.getByRole('button', { name: /Previous/ })).toBeDisabled()
     await expect(page.getByRole('button', { name: /Next/ })).toBeEnabled()
 
     await page.goto('/contracts?page=3')
-    await expect(rowLinks(page).first()).toHaveText(all[100].items[0].type_name as string)
+    await expect(rowLinks(page).first()).toHaveText(all[100].primary_label)
     await expect(page.getByRole('button', { name: /Next/ })).toBeDisabled()
     await expect(page.getByRole('button', { name: /Previous/ })).toBeEnabled()
   })
@@ -96,7 +97,7 @@ test.describe('pagination', () => {
     )
 
     await page.goto('/contracts')
-    await expect(rowLinks(page).first()).toHaveText(all[0].items[0].type_name as string)
+    await expect(rowLinks(page).first()).toHaveText(all[0].primary_label)
 
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
     const before = await page.evaluate(() => window.scrollY)
@@ -105,7 +106,7 @@ test.describe('pagination', () => {
 
     await page.getByRole('button', { name: /Next/ }).click()
     await expect(page).toHaveURL(/[?&]page=2(?:&|$)/)
-    await expect(rowLinks(page).first()).toHaveText(all[50].items[0].type_name as string)
+    await expect(rowLinks(page).first()).toHaveText(all[50].primary_label)
 
     // The reset fires on onRendered, a tick after the row swap — poll, never sleep.
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
@@ -124,7 +125,7 @@ test.describe('pagination', () => {
     await page.goto('/contracts?page=9')
 
     await expect(page).toHaveURL(/[?&]page=3(?:&|$)/)
-    await expect(rowLinks(page).first()).toHaveText(all[100].items[0].type_name as string)
+    await expect(rowLinks(page).first()).toHaveText(all[100].primary_label)
     await expect(rowLinks(page)).toHaveCount(20)
     await expect(pagination(page)).toContainText('Page 3 of 3 · 120 contracts')
 
@@ -143,7 +144,7 @@ test.describe('pagination', () => {
     await page.goto('/contracts?page=2')
 
     await expect(page).toHaveURL(/[?&]page=2(?:&|$)/)
-    await expect(rowLinks(page).first()).toHaveText(all[50].items[0].type_name as string)
+    await expect(rowLinks(page).first()).toHaveText(all[50].primary_label)
     await expect(rowLinks(page)).toHaveCount(50)
     await expect(pagination(page)).toContainText('Page 2 of 3 · 120 contracts')
 

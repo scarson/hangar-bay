@@ -4,14 +4,7 @@ import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import type { Contract } from '../../lib/api/client'
 import { Badge } from '../../components/Badge'
-import {
-  contractTypeLabel,
-  formatDate,
-  formatIsk,
-  locationLabel,
-  primaryLabel,
-  timeRemaining,
-} from './format'
+import { contractTypeLabel, formatDate, formatIsk, locationLabel, timeRemaining } from './format'
 import type { SortField } from './filters'
 
 /** Values shared by more than one renderer on the same row, computed once. */
@@ -42,10 +35,6 @@ export function rowContext(contract: Contract): RowContext {
   return { expiry: timeRemaining(contract.date_expired) }
 }
 
-function contractIsBpc(contract: Contract): boolean {
-  return contract.items.some((item) => item.is_included && item.is_blueprint_copy)
-}
-
 export const DEFAULT_COLUMNS: Column[] = [
   {
     key: 'name',
@@ -62,10 +51,16 @@ export const DEFAULT_COLUMNS: Column[] = [
           params={{ contractId: String(contract.contract_id) }}
           className="font-medium text-ink hover:text-brand-bright"
         >
-          {primaryLabel(contract)}
+          {contract.primary_label}
         </Link>
-        {contract.items.length > 1 ? (
-          <span className="ml-1.5 text-xs text-ink-faint">+{contract.items.length - 1} more</span>
+        {/* Composition is served only for a contract offering more than one item
+            row, so its presence IS the "there is more in here" signal. Counts are
+            item rows rather than summed quantities — "+2 more" describes a bundle,
+            "+3,000 more" would describe an ammunition stack. */}
+        {contract.composition && contract.composition.total_item_rows > 1 ? (
+          <span className="ml-1.5 text-xs text-ink-faint">
+            +{contract.composition.total_item_rows - 1} more
+          </span>
         ) : null}
       </>
     ),
@@ -76,7 +71,7 @@ export const DEFAULT_COLUMNS: Column[] = [
     cell: (contract) => (
       <span className="inline-flex gap-1">
         <Badge tone="neutral">{contractTypeLabel(contract.type)}</Badge>
-        {contractIsBpc(contract) ? <Badge tone="copper">BPC</Badge> : null}
+        {contract.is_blueprint_copy_contract ? <Badge tone="copper">BPC</Badge> : null}
       </span>
     ),
   },

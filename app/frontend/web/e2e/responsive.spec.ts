@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { BPC_CONTRACTS, SEVEN_SHIPS, makeContract, makeShipItem, pageOf } from './fixtures/contracts'
+import { BPC_CONTRACTS, SEVEN_SHIPS, makeContractDetail, makeShipItem, pageOf } from './fixtures/contracts'
 import { interceptContractDetail, interceptContractList, interceptCurrentUser } from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
@@ -150,7 +150,7 @@ test.describe('responsive filter-rail disclosure', () => {
     await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf(SEVEN_SHIPS))
     await interceptContractDetail(page, (contractId) =>
-      makeContract({ contract_id: contractId, items: [makeShipItem('Revelation')] }),
+      makeContractDetail({ contract_id: contractId, items: [makeShipItem('Revelation')] }),
     )
 
     await page.goto('/contracts')

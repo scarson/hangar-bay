@@ -3,7 +3,7 @@ import { Badge } from '../../../components/Badge'
 import { Button } from '../../../components/Button'
 import { ApiError } from '../../../lib/api/client'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
-import { contractTypeLabel, formatIsk, locationLabel, primaryLabel, timeRemaining } from '../format'
+import { contractTypeLabel, formatIsk, locationLabel, timeRemaining } from '../format'
 import { useContract } from '../hooks/useContract'
 import { WatchButton } from '../../watchlists/components/WatchButton'
 
@@ -66,7 +66,7 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
     !Number.isInteger(contractId) ||
     contractId <= 0 ||
     (isError && error instanceof ApiError && error.status === 404)
-  useDocumentTitle(notFound ? 'Contract not found' : data ? primaryLabel(data) : 'Contract')
+  useDocumentTitle(notFound ? 'Contract not found' : data ? data.primary_label : 'Contract')
 
   if (!Number.isInteger(contractId) || contractId <= 0) {
     return <NotFound />
@@ -97,7 +97,6 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
     )
   }
 
-  const isBpc = data.items.some((item) => item.is_included && item.is_blueprint_copy)
   const expiry = timeRemaining(data.date_expired)
 
   return (
@@ -105,18 +104,19 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
       <BackLink />
       <header className="mt-3 mb-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          {/* Hull-first, matching the list (primaryLabel prefers the included
-              ship, then first item, then the seller's title, then the id). */}
-          <h1 className="text-h1 font-semibold">{primaryLabel(data)}</h1>
+          {/* Hull-first, matching the list: the server names a contract once
+              (offered ship, then first offered item, then the seller's title,
+              then a courier's destination, then the id) so every view agrees. */}
+          <h1 className="text-h1 font-semibold">{data.primary_label}</h1>
           <span className="inline-flex gap-1.5">
             <Badge tone="neutral">{contractTypeLabel(data.type)}</Badge>
-            {isBpc ? <Badge tone="copper">BPC</Badge> : null}
+            {data.is_blueprint_copy_contract ? <Badge tone="copper">BPC</Badge> : null}
             {expiry === 'Expired' ? <Badge tone="neutral">Expired</Badge> : null}
           </span>
         </div>
         {/* The seller's own words, when they wrote any and they aren't already
             the heading. */}
-        {data.title?.trim() && data.title.trim() !== primaryLabel(data) ? (
+        {data.title?.trim() && data.title.trim() !== data.primary_label ? (
           <p className="mt-1 text-sm text-ink-dim">“{data.title.trim()}”</p>
         ) : null}
       </header>
