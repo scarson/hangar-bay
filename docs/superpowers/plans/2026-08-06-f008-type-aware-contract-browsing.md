@@ -67,8 +67,8 @@ notes and commit messages.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| A — Data layer (migration, ingestion, taxonomy cache) | 🚧 In progress | `a7cd7ba`..gate fixes | All 8 tasks implemented + per-task reviewed (migration `685dab7d6df5`, ENRICHMENT_VERSION→2); 581 tests green; PR-A open, codex review pending. |
-| B — API contract (model split, counts, filters, taxonomy endpoint) | ⬜ Not started | — | — |
+| A — Data layer (migration, ingestion, taxonomy cache) | ✅ Shipped | `a7cd7ba`..`c0e3d85` | PR #138 merged at `8303e15` 2026-08-07; migration `685dab7d6df5`; ENRICHMENT_VERSION→2; 582 tests green; codex-reviewed (D10 deferral logged). |
+| B — API contract (model split, counts, filters, taxonomy endpoint) | 🚧 In progress | — | Claimed 2026-08-07 on `feat/f008-api-contract` (includes Tasks C1/C2 per the PR-boundary correction). |
 | C — Frontend contract-level surface (renderer refactor, segments, auction/courier) | ⬜ Not started | — | — |
 | D — Frontend item-level surface (taxonomy UI, ME/TE/runs, BPC, composition) | ⬜ Not started | — | — |
 
@@ -130,7 +130,7 @@ Every task implicitly includes all of these. Verbatim values are copied from the
 
 # Phase A — Data layer (branch `feat/f008-data-layer`, PR-A, `Review — database schema`)
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-07T11:40Z on branch `feat/f008-data-layer`; tasks A1–A8 shipped (`a7cd7ba`, `fc60be8`, `551704b`, `49b15b8`, `492a7b1`, `699ee3f` + fix `679b9e8`, `1cb8d40`, `bb95eed`) plus gate fixes; awaiting PR-A codex review + merge.
+**Execution Status:** ✅ SHIPPED at `c0e3d85` on 2026-08-07 (PR #138 merged at `8303e15`). Tasks A1–A8: `a7cd7ba`, `fc60be8`, `551704b`, `49b15b8`, `492a7b1`, `699ee3f`+`679b9e8`, `1cb8d40`, `bb95eed`; gate fixes `b7b7bda`, codex dispositions `c0e3d85` (group-name DB-observed retry added; name NULL-overwrite deferred per decision-log D10).
 
 Everything ingestion-side: the single migration, contract-level and item-level writes, end-location resolution, the taxonomy name cache, the completion-predicate widening, the manifest, and the version bump. After this phase merges, an ordinary ingestion run populates every contract-level column and a resweep populates every item-level column. **No API or frontend change in this phase.**
 
@@ -680,14 +680,14 @@ No TDD exemption issues — this is tooling config, but the monitor's tests run 
 
 - [x] **Step 1:** Full verification: backend suite green on the scratch DB, `pdm run lint`, `alembic heads` = 1, `pytest fastapi_app/tests/test_migrations.py -q` green.
 - [x] **Step 2:** Three self-review rounds with distinct lenses: (a) spec §4.1/§5/§7 coverage — every data-layer claim implemented; (b) ESI-3 sweep — every new mapping uses `.get()`, no default masquerading as data; (c) bulk-upsert semantics — uniform keys, no enrichment-maintained column added to `_build_contract_rows`, read-back covers both location roles. Fix everything found; extra rounds until clean.
-- [ ] **Step 3:** Push branch, open PR-A against `dev` (`## Merge classification` → `Review — database schema`, note Sam's 2026-08-06 merge grant). Run the backgrounded codex review; address findings (fix or rebut in PR comments); record any consequential choice in the decision log.
-- [ ] **Step 4:** CI green (verify explicitly) → `gh pr merge <n> --merge --delete-branch --body ""`. Update this plan's banner + table with SHAs. (The local branch survives in-worktree; expected — the `gh` exit-1 on local cleanup after a successful remote merge is a known worktree artifact.)
+- [x] **Step 3:** Push branch, open PR-A against `dev` (`## Merge classification` → `Review — database schema`, note Sam's 2026-08-06 merge grant). Run the backgrounded codex review; address findings (fix or rebut in PR comments); record any consequential choice in the decision log.
+- [x] **Step 4:** CI green (verify explicitly) → `gh pr merge <n> --merge --delete-branch --body ""`. Update this plan's banner + table with SHAs. (The local branch survives in-worktree; expected — the `gh` exit-1 on local cleanup after a successful remote merge is a known worktree artifact.)
 
 ---
 
 # Phase B — API contract (branch `feat/f008-api-contract` off merged `dev`, PR-B, `Review — public API contract`)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-07T14:05Z on branch `feat/f008-api-contract` (carries Tasks C1/C2 per the codex round-2 PR-boundary correction).
 
 Everything wire-visible: the §17 model split, the contract-type filter and grouped counts, coverage, functional item-level filters, new sorts, the taxonomy endpoint, the saved-search widening, the PII log fix, and the regenerated client artifacts. Rebase onto `dev` after PR-A merges before starting.
 
