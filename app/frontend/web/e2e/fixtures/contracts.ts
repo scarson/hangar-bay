@@ -159,6 +159,47 @@ export interface WirePage {
   coverage: WireCoverage
 }
 
+export interface WireTaxonomyCategory {
+  category_id: number
+  name: string
+}
+
+export interface WireTaxonomyGroup {
+  group_id: number
+  category_id: number | null
+  name: string
+}
+
+export interface WireTaxonomy {
+  categories: WireTaxonomyCategory[]
+  groups: WireTaxonomyGroup[]
+  coverage: 'partial' | 'complete'
+}
+
+/**
+ * The taxonomy the corpus behind these fixtures would report: the categories
+ * and groups its items carry, flat so the client scopes groups locally.
+ * `partial` is the default because it is the cold-cache state — a spec that
+ * wants the item-level surface open has to say so, rather than inheriting it.
+ */
+export function taxonomy(overrides: Partial<WireTaxonomy> = {}): WireTaxonomy {
+  return {
+    categories: [
+      { category_id: 6, name: 'Ship' },
+      { category_id: 7, name: 'Module' },
+      { category_id: 9, name: 'Blueprint' },
+    ],
+    groups: [
+      { group_id: 27, category_id: 6, name: 'Battleship' },
+      { group_id: 25, category_id: 6, name: 'Frigate' },
+      { group_id: 105, category_id: 9, name: 'Ship Blueprint' },
+      { group_id: 77, category_id: 7, name: 'Shield Booster' },
+    ],
+    coverage: 'partial',
+    ...overrides,
+  }
+}
+
 /** The Forge, the region the dev corpus ingests — matches what filter specs select. */
 export const COVERED_REGION_ID = 10000002
 

@@ -106,6 +106,30 @@ export function activeSegment(search: ContractSearch): ContractTypeValue | undef
   return search.contract_type?.length === 1 ? search.contract_type[0] : undefined
 }
 
+/**
+ * The filter params that read the item columns F008 added — taxonomy ids and
+ * the three blueprint ranges. They are the only filters a half-enriched corpus
+ * answers short, so they are the only ones a readiness warning may be about.
+ *
+ * `is_bpc` is deliberately absent even though it is an item-level filter:
+ * `is_blueprint_copy` has been ingested since M1, so it answers exactly as
+ * completely mid-resweep as it does after one.
+ */
+const ENRICHMENT_DEPENDENT_FILTERS = [
+  'category_id',
+  'group_id',
+  'min_runs',
+  'max_runs',
+  'min_me',
+  'max_me',
+  'min_te',
+  'max_te',
+] as const satisfies readonly (keyof ContractSearch)[]
+
+export function hasEnrichmentDependentFilters(search: ContractSearch): boolean {
+  return ENRICHMENT_DEPENDENT_FILTERS.some((key) => search[key] !== undefined)
+}
+
 function toNumber(value: unknown): number | undefined {
   const n =
     typeof value === 'number' ? value : typeof value === 'string' && value !== '' ? Number(value) : NaN

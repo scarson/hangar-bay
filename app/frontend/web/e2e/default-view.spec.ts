@@ -1,12 +1,21 @@
 import { expect, test } from '@playwright/test'
 import { SEVEN_SHIPS, pageOf } from './fixtures/contracts'
-import { interceptContractList, interceptCurrentUser } from './helpers/api'
+import { interceptContractList, interceptCurrentUser, interceptTaxonomy } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
 /**
  * F002 Criterion 1.1 / PRODUCT.md: the default view is ship contracts ONLY —
  * non-ship contracts are reachable by an explicit toggle, never the default.
  */
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
+
 test.describe('default view', () => {
   test('root redirects to /contracts and shows ships-only by default', async ({ page }) => {
     await interceptCurrentUser(page, { status: 401 })

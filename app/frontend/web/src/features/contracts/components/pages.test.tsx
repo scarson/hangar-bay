@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { anonymousMe, jsonResponse, type FetchHandler } from '../../../test/http'
+import {
+  anonymousMe,
+  jsonResponse,
+  taxonomyResponse,
+  withTaxonomy,
+  type FetchHandler,
+} from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
@@ -79,6 +85,17 @@ function listPage(rows: { type: string }[], overrides: Record<string, unknown> =
  */
 function headerNames(): string[] {
   return screen.getAllByRole('columnheader').map((th) => th.textContent!.replace(/[▲▼]/g, '').trim())
+}
+
+/**
+ * The contract-LIST request among the captured calls. `/contracts/taxonomy` is
+ * a sibling path under the same prefix and every contracts view queries it, so
+ * a substring match on `/api/v1/contracts/` returns whichever fired first
+ * rather than the one the assertion is about. The list request always carries a
+ * query string — `toApiQuery` emits page, size and both sort keys unconditionally.
+ */
+function listCall(calls: string[]): string {
+  return calls.find((url) => /\/api\/v1\/contracts\/\?/.test(url))!
 }
 
 function stubFetch(handler: FetchHandler) {
@@ -229,12 +246,12 @@ describe('ContractsPage', () => {
     renderApp('/contracts?region_ids=10000002&is_bpc=true&sort_by=price&sort_direction=asc')
 
     await screen.findByText(/no contracts match/i)
-    // Order-independent: whether /me or the contracts query fires first is
-    // scheduling, not contract (the header now issues its own /me request).
-    const listCall = calls.find((u) => u.includes('/api/v1/contracts/'))!
-    expect(listCall).toContain('region_ids=10000002')
-    expect(listCall).toContain('is_bpc=true')
-    expect(listCall).toContain('sort_by=price')
+    // Order-independent: whether /me, the taxonomy query or the contracts query
+    // fires first is scheduling, not contract.
+    const request = listCall(calls)
+    expect(request).toContain('region_ids=10000002')
+    expect(request).toContain('is_bpc=true')
+    expect(request).toContain('sort_by=price')
   })
 
   it('carries a repeated region_ids URL through to repeated API params (shareable-URL contract)', async () => {
@@ -259,8 +276,7 @@ describe('ContractsPage', () => {
 
     await screen.findByText(/no contracts match/i)
     // Order-independent: see the rationale above.
-    const listCall = calls.find((u) => u.includes('/api/v1/contracts/'))!
-    expect(listCall).toContain('region_ids=10000002&region_ids=10000020')
+    expect(listCall(calls)).toContain('region_ids=10000002&region_ids=10000020')
   })
 
   it('redirects an out-of-range page to the last page instead of a false empty state', async () => {
@@ -1271,5 +1287,112 @@ describe('freshness and coverage', () => {
 
     await screen.findByText('Tristan')
     expect(screen.queryByText(/originating in/)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * The item-level surface waits on observed reality rather than on a flag
+ * (decision log D1): `GET /contracts/taxonomy` reports `complete` only once the
+ * corpus is enriched at the current enrichment version, which follows the
+ * post-release resweep on its own. Until then the controls are honestly absent
+ * and a filter that arrived by URL says the results may be short.
+ */
+const INDEXING_LINE = 'Item filters are still indexing.'
+const INCOMPLETE_NOTICE = 'Item filters are still indexing; results may be incomplete.'
+
+/** A taxonomy the resweep has finished with — the state that opens the surface. */
+const READY_TAXONOMY = taxonomyResponse({
+  coverage: 'complete',
+  categories: [
+    { category_id: 6, name: 'Ship' },
+    { category_id: 7, name: 'Module' },
+  ],
+  groups: [
+    { group_id: 25, category_id: 6, name: 'Frigate' },
+    { group_id: 60, category_id: 7, name: 'Shield Booster' },
+  ],
+})
+
+describe('item-level surface gate', () => {
+  it('asks the taxonomy endpoint for the readiness signal, at its schema path', async () => {
+    const calls = stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(calls.filter((url) => /\/api\/v1\/contracts\/taxonomy$/.test(url))).toHaveLength(1)
+  })
+
+  it('offers no item filters while the corpus is still being enriched', async () => {
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(await screen.findByText(INDEXING_LINE)).toBeInTheDocument()
+  })
+
+  it('opens the item filters once the corpus is enriched', async () => {
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW]))), READY_TAXONOMY))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    await waitFor(() => expect(screen.queryByText(INDEXING_LINE)).not.toBeInTheDocument())
+  })
+
+  it('treats an unreachable taxonomy endpoint as still indexing, without a retry control', async () => {
+    // A 500 leaves the readiness unknown, and unknown is not ready: offering
+    // controls whose option list never arrived would be worse than saying so.
+    // No spinner and no Retry — the state is expected for the ~80 minutes after
+    // a release, and inviting a retry frames it as a failure of this page.
+    stubFetch(
+      anonymousMe((url) =>
+        /\/contracts\/taxonomy$/.test(url)
+          ? jsonResponse({ detail: 'boom' }, 500)
+          : jsonResponse(listPage([ROW])),
+      ),
+    )
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(await screen.findByText(INDEXING_LINE)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('warns that a deep-linked item filter may be answered from a half-enriched corpus', async () => {
+    // The request still goes out: the rows it matches are real, and a 422 here
+    // would break every saved search the moment a future resweep starts.
+    const calls = stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts?category_id=6')
+
+    expect(await screen.findByText(INCOMPLETE_NOTICE)).toBeInTheDocument()
+    expect(calls.some((url) => /[?&]category_id=6(&|$)/.test(url))).toBe(true)
+  })
+
+  it('drops the incomplete-results warning once the corpus is enriched', async () => {
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW]))), READY_TAXONOMY))
+
+    renderApp('/contracts?min_me=5')
+
+    await screen.findByText('Tristan')
+    await waitFor(() => expect(screen.queryByText(INCOMPLETE_NOTICE)).not.toBeInTheDocument())
+  })
+
+  it('warns only when a filter that reads the new item columns is in play', async () => {
+    // is_bpc reads is_blueprint_copy, which ingestion has written since M1, so
+    // it answers just as completely mid-resweep as it does after one. Warning
+    // about it would cry wolf on the one item filter that was never at risk.
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts?is_bpc=true')
+
+    await screen.findByText('Tristan')
+    expect(screen.queryByText(INCOMPLETE_NOTICE)).not.toBeInTheDocument()
+    // The rail still says the controls are not ready — that claim is about the
+    // controls, not about this request.
+    expect(screen.getByText(INDEXING_LINE)).toBeInTheDocument()
   })
 })

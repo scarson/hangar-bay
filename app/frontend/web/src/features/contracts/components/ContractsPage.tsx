@@ -5,9 +5,16 @@ import { timeAgo } from '../../../lib/timeAgo'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
 import { columnsFor } from '../columns'
 import { regionNames } from '../format'
-import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
+import {
+  DEFAULT_PAGE,
+  DEFAULT_SIZE,
+  hasEnrichmentDependentFilters,
+  type ContractSearch,
+  type SortField,
+} from '../filters'
 import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'
 import { useContracts } from '../hooks/useContracts'
+import { useItemSurfaceReady } from '../hooks/useTaxonomy'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
 import { FilterRail } from './FilterRail'
 import { Pagination } from './Pagination'
@@ -100,6 +107,7 @@ function EmptyResults({
 export function ContractsPage({ search, from }: { search: ContractSearch; from: '/contracts/' }) {
   const navigate = useNavigate({ from })
   const { data, isPending, isError, isFetching, refetch } = useContracts(search)
+  const itemSurfaceReady = useItemSurfaceReady()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const title = listTitle(search)
   useDocumentTitle(title)
@@ -221,6 +229,20 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
             the previous page while a new segment loads). */}
         {data !== undefined ? (
           <SegmentTabs search={search} counts={data.segment_counts} onSelect={update} />
+        ) : null}
+
+        {/* A shared URL can carry a taxonomy or blueprint filter into a corpus
+            that is still being enriched — the rows it matches are real, so the
+            request goes out unchanged, but the page it returns is short by
+            however much is not yet restamped and has to say so (Criterion 7.2's
+            explain-rather-than-empty rule, applied to a temporary population
+            rather than an uncovered region). Rejecting the params server-side
+            was declined: it would break every saved search the moment a future
+            resweep started. */}
+        {!itemSurfaceReady && hasEnrichmentDependentFilters(search) ? (
+          <p className="text-xs text-ink-dim">
+            Item filters are still indexing; results may be incomplete.
+          </p>
         ) : null}
 
         {isPending ? (

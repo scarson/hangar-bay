@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { BPC_CONTRACTS, SEVEN_SHIPS, makeContractDetail, makeShipItem, pageOf } from './fixtures/contracts'
-import { interceptContractDetail, interceptContractList, interceptCurrentUser } from './helpers/api'
+import { interceptContractDetail, interceptContractList, interceptCurrentUser, interceptTaxonomy } from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
 /**
@@ -14,6 +14,15 @@ import { rowLinks } from './helpers/ui'
  * the disclosure mobile-only tests skip on desktop, and the desktop-column test
  * skips on mobile. Scenario 5 (table usability) runs on both.
  */
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
+
 test.describe('responsive filter-rail disclosure', () => {
   const isMobile = () => test.info().project.name === 'mobile'
 

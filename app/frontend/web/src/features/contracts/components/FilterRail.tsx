@@ -3,6 +3,7 @@ import { Button } from '../../../components/Button'
 import { CheckboxField } from '../../../components/Checkbox'
 import { Input } from '../../../components/Input'
 import { MIN_SEARCH_LENGTH, type ContractSearch } from '../filters'
+import { useItemSurfaceReady } from '../hooks/useTaxonomy'
 import { REGIONS } from '../regions'
 
 export function FilterRail({
@@ -16,6 +17,7 @@ export function FilterRail({
   onReset: () => void
 }) {
   const [regionQuery, setRegionQuery] = useState('')
+  const itemSurfaceReady = useItemSurfaceReady()
   const selectedRegions = new Set(search.region_ids ?? [])
   const query = regionQuery.trim().toLowerCase()
   const visibleRegions = query
@@ -150,6 +152,19 @@ export function FilterRail({
           )}
         </div>
       </fieldset>
+
+      {/* The item-level controls sit below the region list rather than above
+          it: the list's desktop height is sized against the rail content that
+          precedes it, and this region's height changes with the readiness
+          signal. They come last for the same reason they are gated — they are
+          the specialist's filters, and until the corpus is enriched they are
+          the ones that cannot answer.
+
+          No spinner and no retry while it is closed (decision log D1): the
+          state is expected for the ~80 minutes after a release and briefly on
+          a fresh dev boot, and dressing it as a failure of this page would
+          invite the reader to fix something that is already fixing itself. */}
+      {itemSurfaceReady ? null : <p className="text-xs text-ink-faint">Item filters are still indexing.</p>}
 
       {hasActiveFilters ? (
         <Button onClick={onReset} className="self-start">

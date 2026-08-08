@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { BPC_CONTRACTS, SEVEN_SHIPS, bigDataset, pageOf, paginate } from './fixtures/contracts'
-import { interceptContractList, interceptCurrentUser } from './helpers/api'
+import { interceptContractList, interceptCurrentUser, interceptTaxonomy } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
 /**
@@ -13,6 +13,15 @@ import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
  * visible rows so the render can't drift from the request. All fixtures return
  * non-empty pages so the only "Clear filters" button in the tree is the rail's.
  */
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
+
 test.describe('contract filters', () => {
   test('search gate: sub-3-char stays in the URL but is never sent; the 3rd char fires it', async ({
     page,

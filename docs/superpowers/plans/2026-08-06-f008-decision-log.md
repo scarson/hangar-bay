@@ -104,7 +104,9 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 
 ---
 
-## D11 — The search-text PII scrub is closed at the engine, not only at the log site
+## D12 — The search-text PII scrub is closed at the engine, not only at the log site
+
+*(Numbered D12 on 2026-08-08. It was written as a second D11 during the overnight build, colliding with the sort-visibility entry below; both external references — the 2026-08-07 handoff's PR #140 row and the 2026-08-08 handoff's spot-check item — mean the sort-visibility entry, so that one keeps D11 and this one moves.)*
 
 **Background.** Task B10 replaced the raw search string with its length in all four `search_terms` payloads and its commit claimed the text "never lands in a log line". Review found the claim false: the failure site logs `error_message=str(e)` in the same record, and the exception a contract search realistically fails with is a SQLAlchemy `StatementError` — statement timeout, dropped connection, deadlock — whose `str()` appends `[SQL: ...]\n[parameters: {...}]`. The failing statement is the one carrying the `ILIKE '%<search text>%'` bind, so `error_message` re-published the exact string `search_terms` had just withheld. `create_async_engine` in `db.py` set no `hide_parameters`, so the default `False` applied. The shipped test could not see any of this: it injected `RuntimeError("simulated db failure")`, whose `str()` carries no parameters.
 
@@ -172,6 +174,23 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 **Codex review:** yes — and codex **objected** (round-2 finding 8): it agrees the spec is internally inconsistent but holds that changing acceptance behavior against a binding spec's literal text needs the spec owner, not a plan-local ruling. Proceeding anyway under Sam's explicit 2026-08-06 decision-making grant, because the alternative (enforcing "exactly one branch" on ranges) would reject implementations that are *correct under the spec's own existential rule* — but this entry is the one flagged most prominently for Sam's morning ratification, and §3.1's wording should be amended once ratified. If Sam overrules, the change is confined to the B5 test fixtures.
 
 **Outcome: RATIFIED by Sam, 2026-08-08.** Spec §3.1 and §16.3 amended in the same change: the identity gains its explicit overlap term (`branch_a + branch_b - both + neither == unfiltered`), "exactly one branch" is scoped to the negation-derived boolean family, and the range-family fixture's three discriminating assertions (both-branch membership, same-item window exclusion, stated-count identity) are now the spec's own text. Codex's objection is resolved the way it asked: by the spec owner.
+
+---
+
+## D13 — The item-level readiness gate is read live, not carried on the list response
+
+**Background.** Task D1 gates the whole item-dependent surface — taxonomy and blueprint controls, the blueprint column, the composition cell, and the deep-link warning — on `GET /contracts/taxonomy`'s `coverage` field. WEB-1 (added by Task C4 four days earlier) says anything *describing the rows* must be derived inside the list query function so it travels with the rows through `keepPreviousData`. The column set and the warning both describe the rows, so the rule appears to apply.
+
+**Alternatives considered.**
+1. *Put readiness in the list query key* (`['contracts','list', query, ready]`) — correct by construction, and wrong on cost: taxonomy and the list fire together on a cold load, taxonomy resolves first, the key changes, and the app issues a **second corpus-scale list request** on every cold load. The unfiltered count path is the one PR #130 spent a release fighting down; doubling it to close a seconds-long cosmetic window is a bad trade.
+2. *Capture readiness in the query function's closure* (no key change) — free, and correct for every steady state, but wrong exactly when it matters most: on a cold load the taxonomy query has not resolved when the list query function runs, so the first page of a fully-enriched production corpus would render with the item surface closed until the reader navigated. That is the common case, not an edge.
+3. *Read the live query in both consumers (chosen)* — `useItemSurfaceReady()` reads the taxonomy cache directly wherever the gate is needed.
+
+**Decision.** Alternative 3. Readiness is not a function of the list request: it is a property of the corpus that changes at most once per `ENRICHMENT_VERSION` resweep, on a timescale of ~80 minutes, in one direction each way. Its stale window under alternative 3 is the seconds between the flip and the next list fetch, and its worst rendering in that window is a blueprint column that is empty for rows whose enrichment has not landed — which is byte-identical to the legitimate rendering for every non-blueprint row (spec §8: "none ⇒ empty"). No number moves under a wrong header, no unit changes, and no placeholder reserved for a real absence gets attached to a field that does not exist — the three failure modes WEB-1 exists to prevent.
+
+**Boundary WEB-1 still governs, and this does not weaken:** the *segment* stays on the response, because it is a function of the request and its stale window renders a sale's price as a hauling reward. The readiness signal is a different kind of value and gets a different treatment; the pitfall's own rule ("anything describing the rows follows the rows") is narrowed here by the observation that this value describes the *corpus*, and both alternatives that tie it to the rows cost more than the window is worth.
+
+**Reversibility: cheap** — one hook call site each in `FilterRail` and `ContractsPage`; alternative 1 is a two-line change if the window is ever observed to matter.
 
 ---
 
