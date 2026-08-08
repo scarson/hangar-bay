@@ -31,7 +31,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8, ENV-9, ENV-10 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status, spec drift | ESI-1, ESI-2, ESI-3, ESI-4 | §4.C |
 | 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4, DEPLOY-5, DEPLOY-6 | §5.C |
-| 6 | [Frontend State & Rendering](#section-6-frontend-state--rendering) | React SPA — URL state vs cached server data, and what the screen claims while they disagree | WEB-1 | §6.C |
+| 6 | [Frontend State & Rendering](#section-6-frontend-state--rendering) | React SPA — URL state vs cached server data, and what the screen claims while they disagree | WEB-1, WEB-2 | §6.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -513,7 +513,7 @@ GitHub's Dependabot alerts cover `app/frontend/web/package-lock.json` but not th
 
 > **Reader context:** I'm building or reviewing the React SPA — how URL state, cached server data, and what the user actually sees line up.
 >
-> The theme here is a mismatch in TIME: URL state changes on click, server data changes when the request lands, and anything derived from the wrong one of those describes the screen wrongly for the whole gap between them.
+> The shared theme is a screen that states something false while every individual line of code looks right. WEB-1 is a mismatch in TIME — URL state changes on click, server data changes when the request lands, and anything derived from the wrong one describes the screen wrongly for the whole gap between them. WEB-2 is a mismatch in SCALE — a formatter that cannot represent the value it was handed rounds a real measurement into a specific wrong number. Neither renders as an error, and neither is caught by a test whose fixtures were invented rather than taken from a live payload.
 
 ---
 
@@ -541,9 +541,33 @@ return useQuery({
 
 ---
 
+### WEB-2: A formatter borrowed from another quantity rounds a real measurement into a false claim
+
+**The Flaw:** Reusing a number formatter across quantities whose plausible ranges do not overlap. `formatIsk` is `maximumFractionDigits: 0`, which is exactly right for ISK — nobody prices a hull to the hundredth — and exactly wrong for m³, where a blueprint copy is **0.01**. Every sub-0.005 volume it touches comes out as `0`.
+
+**Why It Matters:** The output is not blank, not a dash, and not an error — it is a **specific wrong number**, and one that reads as a fact about the contract: `2 Blueprints · 0 m³` says this lot occupies no space. Unit tests do not catch it, because the fixture author reaches for a plausible-looking round number (120,000) drawn from the same magnitude the formatter was designed for; the failing inputs are precisely the ones nobody thinks to write down. It survives review for the same reason: the call site reads `formatIsk(volume)` and the reviewer checks that a volume is being formatted, not that this formatter can represent this volume.
+
+**The Fix:** Give each quantity a formatter chosen for **its own** range, and decide explicitly what happens below the smallest value that range can show. Where a value can be legitimately zero, a rounded-down zero and a measured zero must not render alike:
+
+```ts
+export function formatVolume(value: number | null | undefined): string {
+  if (value == null) return '—'
+  // Non-zero but unrepresentable is not zero; say so rather than round to a claim.
+  if (value !== 0 && Math.abs(value) < 0.005) return '<0.01'
+  return (Math.abs(value) < 100 ? SMALL_VOLUME : WHOLE).format(value)
+}
+```
+
+Two habits that make the class visible before production does: when adding a formatter call, state the value's actual range out loud and check the formatter against **both** ends of it; and take fixture numbers from a live payload rather than inventing round ones — the real corpus is where the small values live. `Intl.NumberFormat` also absorbs the float noise a summed value arrives with (`0.060000000000000005` → `0.06`), which a hand-rolled `toFixed`/`round` will not.
+
+**Where It Bit Us:** F008 Task D4 (2026-08-08). The composition summary took the plan's "`formatIsk`-style m³ formatting" literally. Six of the ten composition-bearing contracts in the live dev corpus measured under 1 m³ — blueprint lots, which are exactly what that line most often describes — and every one rendered `0 m³`. Caught by the Task D5 full-stack verification against real ESI data; the whole unit suite was green, and stayed green under a mutation that reverted the fix, because no test carried a small volume until one was added. The courier Volume column had the identical exposure and moved to the same formatter. Pairs with testing-pitfalls TEST-3 (fixtures must carry the values the code will actually meet).
+
+---
+
 ### §6.C — Review Checklist
 
 - [ ] **Anything that describes the rows is derived from the response, not from live URL state** — column sets, units, labels, and empty-state copy come off the query result; only the user's own selection state reads the URL (WEB-1)
+- [ ] **Every formatter is checked against both ends of its value's real range, and a rounded-down zero is distinguishable from a measured one** — a formatter borrowed from another quantity renders a specific wrong number, not a blank (WEB-2)
 - [ ] **A newly-varying derived value was audited at its existing read sites** — a value that used to be constant has read sites nobody checked, because until now they could not be wrong (WEB-1)
 - [ ] **The in-flight window has a test** — one lane holds a response open across the transition rather than asserting only the settled states on either side (WEB-1)
 
@@ -572,6 +596,11 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 ---
 
 # Appendix A: Historical Changelog
+
+## 2026-08-08 — WEB-2 added: a borrowed formatter rounds a measurement into a false claim
+
+- Added WEB-2. Found by F008 Task D5's full-stack verification, not by any test: the new composition summary formatted total volume with `formatIsk` (`maximumFractionDigits: 0`), so `2 Blueprints · 0.02 m³` rendered as `2 Blueprints · 0 m³`. Six of the ten composition-bearing contracts in the live dev corpus measured under 1 m³, because a blueprint copy is 0.01 m³ and blueprint lots are what that line most often describes.
+- It earned an entry rather than a fix-and-move-on because the whole unit suite was green throughout and *stayed* green under a mutation reverting the fix — the fixtures carried 120,000 m³, a number drawn from the magnitude the formatter was built for. The failing inputs are the ones nobody thinks to write down, which is why the entry's fix half is as much about where fixture numbers come from as about the formatter.
 
 ## 2026-08-07 — SQLA-5 added: on-conflict copy decays enrichment-derived values
 
