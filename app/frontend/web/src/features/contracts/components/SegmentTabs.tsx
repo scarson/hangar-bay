@@ -107,6 +107,12 @@ export function SegmentTabs({
   // them, not of the URL: while an item-less selection's envelope is on
   // screen, the item-bearing figures in it are ships-lifted.
   const countsFromItemLess = isItemLessSelection(countsSearch)
+  // A numeral has to be honest about two things at once — what the on-screen
+  // figures ARE (the captured search) and what clicking would DELIVER (the
+  // live one). Either being an item-less selection poisons the pairing:
+  // captured item-less means the figures are lifted, live item-less means the
+  // click restores ships-only. Hide on either, in both transition directions.
+  const suppressLiftedNumerals = countsFromItemLess || leavingItemLess
   const selected = activeSegment(search)
   // What All would land on decides what All may claim: every route into it from
   // an item-less segment restores ships-only, so only a view the reader has
@@ -133,10 +139,10 @@ export function SegmentTabs({
         // honest, and the empty state it leads to explains itself.
         const count =
           segment.type === undefined
-            ? countsFromItemLess
+            ? suppressLiftedNumerals
               ? undefined
               : sumCounts(counts, allCountsEveryType ? CONTRACT_TYPES : ITEM_BEARING_TYPES)
-            : countsFromItemLess && ITEM_BEARING_TYPES.includes(segment.type)
+            : suppressLiftedNumerals && ITEM_BEARING_TYPES.includes(segment.type)
               ? undefined
               : (counts[segment.type] ?? 0)
         return (

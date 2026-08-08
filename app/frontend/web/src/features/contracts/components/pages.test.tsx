@@ -845,6 +845,44 @@ describe('contract-type segments', () => {
     )
   })
 
+  it('drops the numerals the moment an item-less segment is clicked from a widened view', async () => {
+    // The reverse transition: the widened envelope's numerals are still on
+    // screen when Courier is clicked, but the live URL is already the
+    // item-less selection — so clicking All or a typed control from here
+    // RESTORES ships-only, a population the widened figures do not describe.
+    // Either context being item-less poisons the numeral's meaning: the
+    // captured one says what the figures are, the live one says what a click
+    // delivers, and the numeral must be honest about both.
+    let releaseCourier!: (page: Response) => void
+    const courierInFlight = new Promise<Response>((resolve) => {
+      releaseCourier = resolve
+    })
+    const calls = stubFetch(
+      anonymousMe((url) =>
+        url.includes('contract_type=courier') ? courierInFlight : segmentedPage(url),
+      ),
+    )
+
+    renderApp('/contracts?ships_only=false')
+    await screen.findByText('Tristan')
+    expect(screen.getByRole('button', { name: /^Item exchange 1,240$/ })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Courier 115$/ }))
+    await waitFor(() =>
+      expect(calls.some((url) => url.includes('contract_type=courier'))).toBe(true),
+    )
+
+    expect(screen.getByRole('button', { name: /^Courier/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /^Item exchange$/ }).textContent).toBe('Item exchange')
+    expect(screen.getByRole('button', { name: /^All$/ }).textContent).toBe('All')
+
+    releaseCourier(jsonResponse(listPage([COURIER_ROW], { segment_counts: SEGMENT_COUNTS })))
+    // Settled on courier, the item-less control's own (honest) numeral is back.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Courier 115$/ })).toBeInTheDocument(),
+    )
+  })
+
   it('keeps a sort both segments can express', async () => {
     // Price is sortable in All and in Auction alike — resetting it would throw
     // away the user's choice for no disclosure gain.
