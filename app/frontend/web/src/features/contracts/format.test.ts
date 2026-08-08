@@ -8,6 +8,7 @@ import {
   formatDeadline,
   formatIsk,
   formatRewardPerVolume,
+  formatVolume,
   locationLabel,
   regionNames,
   routeLabel,
@@ -268,6 +269,18 @@ describe('formatComposition', () => {
     ).toBe('2 Modules · 1 Ship · 120,000 m³')
   })
 
+  it('keeps a blueprint lot’s sub-1 m³ volume rather than calling it zero', () => {
+    // The live dev corpus's own numbers (2026-08-08): two blueprint copies at
+    // 0.01 m³ each. Through the whole-ISK formatter this line read
+    // "2 Blueprints · 0 m³" — a lot claiming to have no volume — on six of the
+    // ten composition-bearing contracts in the sample.
+    expect(
+      formatComposition(
+        composition([{ category_id: 9, name: 'Blueprint', item_row_count: 2 }], 0.02),
+      ),
+    ).toBe('2 Blueprints · 0.02 m³')
+  })
+
   it('says nothing about volume when there is no measurement', () => {
     // A contract whose volume the corpus does not carry gets no "0 m³", which
     // would be a reading rather than the absence of one.
@@ -279,6 +292,42 @@ describe('formatComposition', () => {
         ]),
       ),
     ).toBe('2 Modules · 1 Ship')
+  })
+})
+
+describe('formatVolume', () => {
+  it('keeps a small cargo distinguishable from no cargo at all', () => {
+    // Live dev corpus, 2026-08-08: 6 of the 10 composition-bearing contracts
+    // measured under 1 m³, because a blueprint copy is 0.01 m³ and blueprint
+    // lots are exactly what the composition line most often describes. The ISK
+    // formatter rendered every one of them as "0" — a lot that says it has no
+    // volume, which is a reading rather than the absence of one.
+    expect(formatVolume(0.02)).toBe('0.02')
+    expect(formatVolume(0.05)).toBe('0.05')
+  })
+
+  it('does not leak the float noise a summed volume arrives with', () => {
+    // The server sums per-item volumes, so 3 × 0.02 crosses the wire as
+    // 0.060000000000000005.
+    expect(formatVolume(0.060000000000000005)).toBe('0.06')
+    expect(formatVolume(0.20000000000000004)).toBe('0.2')
+  })
+
+  it('drops the decimals once they stop carrying information', () => {
+    expect(formatVolume(100)).toBe('100')
+    expect(formatVolume(470_000)).toBe('470,000')
+    expect(formatVolume(12_345.67)).toBe('12,346')
+  })
+
+  it('says a volume is below the shown precision rather than calling it zero', () => {
+    expect(formatVolume(0.001)).toBe('<0.01')
+    // A measured zero is a real reading and keeps its numeral.
+    expect(formatVolume(0)).toBe('0')
+  })
+
+  it('dashes an absent measurement, like every other figure', () => {
+    expect(formatVolume(null)).toBe('—')
+    expect(formatVolume(undefined)).toBe('—')
   })
 })
 

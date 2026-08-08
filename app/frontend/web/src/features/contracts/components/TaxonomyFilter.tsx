@@ -31,7 +31,11 @@ function IdFieldset({
         ) : null}
       </legend>
       {description !== undefined ? (
-        <p id={describedBy} className="mb-1.5 text-xs text-ink-faint">
+        // Polite live region, not just a description: a described-by sentence is
+        // read when focus reaches the fieldset, and the reader who just changed
+        // the category is standing on a checkbox two fieldsets up. Criterion 12
+        // asks for the change itself to be announced.
+        <p id={describedBy} role="status" aria-live="polite" className="mb-1.5 text-xs text-ink-faint">
           {description}
         </p>
       ) : null}
@@ -123,14 +127,17 @@ export function TaxonomyFilter({
         legend="Group"
         selectedCount={selectedGroups.size}
         describedBy="group-filter-scope"
-        // Criterion 12 wants the cascade announced; plain described-by text says
-        // it to everyone rather than to screen readers alone. It follows the
-        // selection because a static "within the selected categories" is simply
-        // false while none are selected.
+        // Criterion 12 wants the cascade announced; plain text says it to
+        // everyone rather than to screen readers alone. It follows the selection
+        // because a static "within the selected categories" is simply false
+        // while none are selected — and it carries the count because that is
+        // what makes each category change audible rather than only the first.
+        // The count is the CATEGORY scope, not the type-ahead's visible list:
+        // one announcement per click, not one per keystroke.
         description={
           selectedCategories.size > 0
-            ? 'Groups within the selected categories'
-            : 'Every group; select a category to narrow this list'
+            ? `${scopedGroups.length} group${scopedGroups.length === 1 ? '' : 's'} within the selected categories`
+            : `All ${groups.length} group${groups.length === 1 ? '' : 's'}; select a category to narrow this list`
         }
       >
         <label className="mb-1.5 block">

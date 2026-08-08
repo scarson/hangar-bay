@@ -5,13 +5,7 @@ import { timeAgo } from '../../../lib/timeAgo'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
 import { columnsFor } from '../columns'
 import { regionNames } from '../format'
-import {
-  DEFAULT_PAGE,
-  DEFAULT_SIZE,
-  hasEnrichmentDependentFilters,
-  type ContractSearch,
-  type SortField,
-} from '../filters'
+import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
 import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'
 import { useContracts } from '../hooks/useContracts'
 import { useItemSurfaceReady } from '../hooks/useTaxonomy'
@@ -238,8 +232,12 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
             explain-rather-than-empty rule, applied to a temporary population
             rather than an uncovered region). Rejecting the params server-side
             was declined: it would break every saved search the moment a future
-            resweep started. */}
-        {!itemSurfaceReady && hasEnrichmentDependentFilters(search) ? (
+            resweep started.
+
+            Whether a filter was in play comes off the response, not the live
+            URL (WEB-1): the claim is about the rows on screen, and those are
+            the previous request's for the whole of the next one. */}
+        {!itemSurfaceReady && data?.enrichmentFiltered ? (
           <p className="text-xs text-ink-dim">
             Item filters are still indexing; results may be incomplete.
           </p>

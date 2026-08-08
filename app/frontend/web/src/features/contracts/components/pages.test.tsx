@@ -1372,6 +1372,42 @@ describe('item-level surface gate', () => {
     expect(calls.some((url) => /[?&]category_id=6(&|$)/.test(url))).toBe(true)
   })
 
+  it('keeps warning about the rows on screen while an unfiltered page loads over them', async () => {
+    // WEB-1: the warning is a claim about the RESULTS, and `keepPreviousData`
+    // holds the filtered rows on screen for the whole of the request that drops
+    // the filter. Reading the live URL would withdraw the warning while the
+    // rows it was about are still the ones being read.
+    let releaseUnfiltered: (() => void) | undefined
+    stubFetch(
+      withTaxonomy(
+        anonymousMe((url) => {
+          if (/\/contracts\/\?/.test(url) && !/[?&]min_me=/.test(url)) {
+            return new Promise<Response>((resolve) => {
+              releaseUnfiltered = () => resolve(jsonResponse(listPage([ROW])))
+            })
+          }
+          return jsonResponse(listPage([ROW]))
+        }),
+      ),
+    )
+
+    // Navigated rather than typed: the rail's ME control is itself gated shut
+    // while the corpus is partial, and a shared link is exactly how a filter
+    // reaches this state anyway.
+    const { router } = renderApp('/contracts?min_me=5')
+    expect(await screen.findByText(INCOMPLETE_NOTICE)).toBeInTheDocument()
+
+    await router.navigate({ to: '/contracts', search: {} })
+
+    // The unfiltered response is still in flight; the filtered rows are still
+    // what the reader is looking at, so the warning about them stands.
+    await waitFor(() => expect(releaseUnfiltered).toBeDefined())
+    expect(screen.getByText(INCOMPLETE_NOTICE)).toBeInTheDocument()
+
+    releaseUnfiltered!()
+    await waitFor(() => expect(screen.queryByText(INCOMPLETE_NOTICE)).not.toBeInTheDocument())
+  })
+
   it('drops the incomplete-results warning once the corpus is enriched', async () => {
     stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW]))), READY_TAXONOMY))
 
@@ -1530,7 +1566,7 @@ describe('taxonomy filters', () => {
     renderApp('/contracts?category_id=6')
 
     const groups = await screen.findByRole('group', { name: /^Group/ })
-    expect(groups).toHaveAccessibleDescription('Groups within the selected categories')
+    expect(groups).toHaveAccessibleDescription('1 group within the selected categories')
   })
 
   it('describes an unscoped group list as the whole taxonomy', async () => {
@@ -1539,7 +1575,26 @@ describe('taxonomy filters', () => {
     renderApp('/contracts')
 
     const groups = await screen.findByRole('group', { name: /^Group/ })
-    expect(groups).toHaveAccessibleDescription('Every group; select a category to narrow this list')
+    expect(groups).toHaveAccessibleDescription(
+      'All 2 groups; select a category to narrow this list',
+    )
+  })
+
+  it('announces the new scope when a category change resizes the group list', async () => {
+    // A described-by sentence is read when focus reaches the fieldset — which
+    // is not where the reader is when they tick a category. Criterion 12 asks
+    // for the CHANGE to be announced, so the sentence is a polite live region
+    // and carries the count that makes each change audible.
+    const user = userEvent.setup()
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+    const scope = await screen.findByText('All 2 groups; select a category to narrow this list')
+    expect(scope).toHaveAttribute('aria-live', 'polite')
+
+    await user.click(screen.getByRole('checkbox', { name: 'Ship' }))
+
+    expect(await screen.findByText('1 group within the selected categories')).toBeInTheDocument()
   })
 
   it('offers no taxonomy controls while the corpus is still being enriched', async () => {

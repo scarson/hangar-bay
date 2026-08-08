@@ -12,6 +12,7 @@ import {
   formatDeadline,
   formatIsk,
   formatRewardPerVolume,
+  formatVolume,
   locationLabel,
   routeLabel,
   timeRemaining,
@@ -266,7 +267,9 @@ export const COURIER_COLUMNS: Column[] = [
     align: 'right',
     hiddenClass: 'max-lg:hidden',
     cellClass: 'text-data text-ink-dim',
-    cell: (contract) => formatIsk(contract.volume),
+    // Not formatIsk: a sub-1 m³ cargo would render as "0" beside a non-zero
+    // Reward/m³ computed from it, which reads as a division by nothing.
+    cell: (contract) => formatVolume(contract.volume),
   },
   {
     key: 'reward_per_volume',

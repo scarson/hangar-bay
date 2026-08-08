@@ -31,6 +31,32 @@ export function formatIsk(value: number | null | undefined): string {
   return value == null ? '—' : ISK.format(value)
 }
 
+// Cargo is measured across nine orders of magnitude — a blueprint copy is
+// 0.01 m³ and a freighter load is hundreds of thousands — so one fixed
+// precision cannot serve both. Two decimals below 100, none above.
+const SMALL_VOLUME = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
+/** Below this the decimals carry the information; above it they are noise. */
+const VOLUME_PRECISION_THRESHOLD = 100
+/** The smallest volume two decimals can state. */
+const SMALLEST_SHOWN_VOLUME = 0.005
+
+/**
+ * A cargo volume, unit-less so each caller says m³ where it fits.
+ *
+ * Not `formatIsk`: that formatter drops every fraction, which is right for ISK
+ * and wrong here. Measured on the live dev corpus (2026-08-08), six of the ten
+ * composition-bearing contracts held less than 1 m³ — blueprint lots, which are
+ * exactly what the composition line most often describes — and every one of
+ * them rendered as "0 m³": a lot claiming to have no volume at all. A volume
+ * too small even for two decimals says so rather than rounding to that claim.
+ */
+export function formatVolume(value: number | null | undefined): string {
+  if (value == null) return '—'
+  if (value !== 0 && Math.abs(value) < SMALLEST_SHOWN_VOLUME) return '<0.01'
+  const format = Math.abs(value) < VOLUME_PRECISION_THRESHOLD ? SMALL_VOLUME : ISK
+  return format.format(value)
+}
+
 /** Reward per m³. NULL arrives whenever there was no volume to divide by (§9). */
 export function formatRewardPerVolume(value: number | null | undefined): string {
   return value == null ? '—' : RATE.format(value)
@@ -145,7 +171,7 @@ export function formatComposition(composition: CompositionSummary): string {
   if (other > 0) parts.push(`${other} other`)
   // A corpus that carries no volume for the contract gets no figure: "0 m³"
   // would be a measurement rather than the absence of one.
-  if (composition.total_volume != null) parts.push(`${ISK.format(composition.total_volume)} m³`)
+  if (composition.total_volume != null) parts.push(`${formatVolume(composition.total_volume)} m³`)
   return parts.join(' · ')
 }
 
