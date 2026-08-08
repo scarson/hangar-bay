@@ -313,8 +313,12 @@ test.describe('courier column sorting', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Courier Contracts' })).toBeVisible()
     // Sortless courier entry reconciles to the Time-left field (no Issued
     // column here), in that column's own default direction: expiring soonest
-    // first — the same direction its header click gives.
+    // first — the same direction its header click gives. The fixture's issued
+    // and expiry orders coincide, so the wire params are asserted too — the
+    // render alone could not tell date_expired asc from date_issued asc.
     await expect(rowLinks(page)).toHaveText(byExpiry('asc'))
+    expect(calls[0].params.get('sort_by')).toBe('date_expired')
+    expect(calls[0].params.get('sort_direction')).toBe('asc')
 
     await page.getByRole('button', { name: 'Reward/m³', exact: true }).click()
 
