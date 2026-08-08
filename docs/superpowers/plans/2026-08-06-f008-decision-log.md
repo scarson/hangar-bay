@@ -171,6 +171,8 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 
 **Codex review:** yes — and codex **objected** (round-2 finding 8): it agrees the spec is internally inconsistent but holds that changing acceptance behavior against a binding spec's literal text needs the spec owner, not a plan-local ruling. Proceeding anyway under Sam's explicit 2026-08-06 decision-making grant, because the alternative (enforcing "exactly one branch" on ranges) would reject implementations that are *correct under the spec's own existential rule* — but this entry is the one flagged most prominently for Sam's morning ratification, and §3.1's wording should be amended once ratified. If Sam overrules, the change is confined to the B5 test fixtures.
 
+**Outcome: RATIFIED by Sam, 2026-08-08.** Spec §3.1 and §16.3 amended in the same change: the identity gains its explicit overlap term (`branch_a + branch_b - both + neither == unfiltered`), "exactly one branch" is scoped to the negation-derived boolean family, and the range-family fixture's three discriminating assertions (both-branch membership, same-item window exclusion, stated-count identity) are now the spec's own text. Codex's objection is resolved the way it asked: by the spec owner.
+
 ---
 
 ## D7 — `min_me` handoff question resolved by construction

@@ -2,7 +2,7 @@
 
 **Feature ID:** F008
 **Creation Date:** 2026-08-01
-**Last Updated:** 2026-08-01
+**Last Updated:** 2026-08-08 (§3.1/§16.3 range-family branch semantics ratified)
 **Status:** Draft
 
 ## 0. Authoritative ESI & EVE SSO References (Required Reading for ESI/SSO Integration)
@@ -108,12 +108,14 @@ The motivating analysis, including competitive evidence and the measured composi
 **The assertion is a three-way identity, not a two-way partition.** Two complementary bounds do **not** sum to the unfiltered total, for two independent reasons: range bounds leave gaps (`max_me=5` and `min_me=10` exclude ME 6–9), and NULL-valued items fall outside both (blueprint originals omit `runs` entirely per ESI-3, and non-blueprint items have no ME at all). A test demanding a two-way sum cannot pass under any correct implementation. Assert instead:
 
 ```
-count(branch_a) + count(branch_b) + count(neither) == count(unfiltered)
+count(branch_a) + count(branch_b) - count(both) + count(neither) == count(unfiltered)
 ```
 
-where **`neither`** is contracts with no offered item satisfying either bound — including every contract holding no blueprint at all. Choose the two branches to be genuinely complementary over the *non-NULL* population (`max_runs=10` and `min_runs=11`), and state the expected `neither` count explicitly in the fixture rather than deriving it.
+where **`neither`** is contracts with no offered item satisfying either bound — including every contract holding no blueprint at all — and **`both`** is contracts holding offered items on each side of the boundary. Choose the two branches to be genuinely complementary over the *non-NULL* population (`max_runs=10` and `min_runs=11`), and state the expected `neither` and `both` counts explicitly in the fixture rather than deriving them.
 
-**The mixed-child fixture is still required** (TEST-19, SQLA-3). Seed a contract holding two offered items with different values in the same family. Under a naive per-row predicate it matches a bound and its complement simultaneously; the test must assert it lands in exactly one branch. A single-item fixture cannot distinguish the contract-level rule from the per-row one and proves nothing.
+**The overlap term is real for range families and empty for the boolean one, and the difference is the existential rule itself.** `is_bpc=false` is the *negation* of `is_bpc=true`, so those branches partition by construction and `both` is always zero. Complementary range bounds are two independent existential questions: a contract offering an ME-5 item and an ME-15 item genuinely satisfies `max_me=9` AND `min_me=10` — each bound by a different offered item — so it legitimately appears under both, and a test demanding it appear under exactly one would reject a correct implementation. (Ratified 2026-08-08 after implementation surfaced the conflict with this section's earlier "exactly one branch" wording; the reasoning record is the build decision log, `docs/superpowers/plans/2026-08-06-f008-decision-log.md`, entry on range-family branch membership.)
+
+**The mixed-child fixture is still required** (TEST-19, SQLA-3), and what it must assert differs by family shape. For the boolean family: seed a contract holding an offered copy alongside an offered non-copy and assert it lands in **exactly one** branch — under a naive per-row predicate it matches both. For a range family: seed the straddling contract described above and assert (a) it appears in **both** single-bound branches (pinning existential semantics), (b) a window whose bounds no single item satisfies excludes it (pinning same-item composition — `min_me=10&max_me=12` must not match the ME-5/ME-15 contract), and (c) the identity above holds with `both` stated. A single-item fixture cannot distinguish the contract-level rule from the per-row one and proves nothing.
 
 ## 4. Scope (Required)
 
@@ -455,7 +457,7 @@ Also directly load-bearing: **ESI-3** (originals omit `runs`), **FASTAPI-1** (`A
 
 TDD is mandatory for all production code here. Specific traps this feature is prone to:
 
-*   **Every item-level filter test needs a mixed-child parent (TEST-19)** — taxonomy, runs, ME, and TE alike, not taxonomy alone. A fixture whose contract holds exactly one item passes identically whether the query classifies the *contract* or the *row*; the readings diverge only when one contract holds children of both kinds. So for each filter: seed a contract holding both a matching and a non-matching offered item, and assert it appears under exactly one branch. **The assertion form is §3.1's three-way identity — `branch_a + branch_b + neither == unfiltered`, with the expected `neither` count stated in the fixture.** A two-way sum is wrong for every filter in this feature except the boolean `is_bpc`. Coverage built from single-item contracts says nothing about the semantics that matter.
+*   **Every item-level filter test needs a mixed-child parent (TEST-19)** — taxonomy, runs, ME, and TE alike, not taxonomy alone. A fixture whose contract holds exactly one item passes identically whether the query classifies the *contract* or the *row*; the readings diverge only when one contract holds children of both kinds. So for each filter: seed a contract holding both a matching and a non-matching offered item. What it must assert differs by family — the boolean `is_bpc` fixture lands in exactly one branch (negation-derived complements); a range family's straddling fixture appears in both single-bound branches and is excluded by a same-item window, per §3.1. **The assertion form is §3.1's identity — `branch_a + branch_b - both + neither == unfiltered`, with the expected `neither` and `both` counts stated in the fixture.** A two-way sum is wrong for every filter in this feature except the boolean `is_bpc`. Coverage built from single-item contracts says nothing about the semantics that matter.
 *   **Fixtures must carry the production data shape.** Backend fixtures previously hand-wrote three columns ingestion never writes, which gave dead filters green tests. Any fixture asserting on `runs`, `is_blueprint_copy`, or taxonomy must reflect what ESI actually sends — including omitting `runs` on originals, and leaving `status` at its `"unknown"` placeholder rather than inventing a value.
 *   **Assert the filters return rows.** The defect class this feature is fixing is filters that match nothing. A test asserting a 200 and an empty list would have passed against every one of those bugs.
 *   **Both `tests/api/test_contracts.py` and `tests/api/test_contract_filters.py` are safe to write into.** Their `pytestmark` is `asyncio` only. The VCR markers and all five cassettes were removed on 2026-08-01 after the cassettes were found to have recorded the app talking to itself; `tests/marker_guards.py` now aborts collection if any test pairs the `vcr` marker with an app-client fixture. **Do not reinstate a `vcr` marker on either module** — that is what TEST-14 forbids, and it is enforced rather than merely documented.
