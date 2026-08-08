@@ -347,8 +347,13 @@ describe('ContractDetailPage', () => {
     renderApp('/contracts/779')
 
     await screen.findByRole('heading', { name: 'Tristan' })
-    expect(screen.queryByText(/—\s*ISK/)).not.toBeInTheDocument()
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    // Scoped to the Price row itself: the label's own definition-list row must
+    // hold the bare dash, and no ISK unit may appear anywhere in Economics —
+    // other rows' dashes cannot satisfy either assertion.
+    const economics = within(screen.getByRole('region', { name: 'Economics' }))
+    const priceRow = economics.getByText('Price').closest('div')!
+    expect(within(priceRow).getByText('—')).toBeInTheDocument()
+    expect(economics.queryByText(/ISK/)).not.toBeInTheDocument()
   })
 
   it('heads with the label the server derived, "Contract <id>" last resort included', async () => {

@@ -2070,3 +2070,4 @@ async def test_a_spec_minimal_contract_persists_with_absent_optionals_null_or_de
     assert row.buyout is None
     assert row.days_to_complete is None
     assert row.start_location_id is None
+    assert row.end_location_id is None

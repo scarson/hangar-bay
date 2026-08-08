@@ -34,14 +34,16 @@ def test_migrated_schema_matches_model_metadata(blank_migrated_sync_connection):
 def test_downgrade_refuses_while_priceless_contracts_exist(blank_migrated_sync_connection):
     """The price-nullable migration's downgrade must fail with a stated reason, not an
     incidental NotNullViolation: restoring NOT NULL would require deleting or zero-filling
-    contracts ESI legitimately sent without a price (ESI-3). Only the refusal path is
-    testable from the suite; a clean-database downgrade stays inspection-verified."""
+    contracts ESI legitimately sent without a price (ESI-3). The guard is emitted SQL
+    (a DO block), so the refusal surfaces as the database's RaiseException carrying the
+    stated message."""
     from pathlib import Path
 
     import pytest
     from alembic import command
     from alembic.config import Config
     from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
 
     conn = blank_migrated_sync_connection
     conn.execute(
@@ -62,5 +64,43 @@ def test_downgrade_refuses_while_priceless_contracts_exist(blank_migrated_sync_c
 
     cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     cfg.attributes["connection"] = conn
-    with pytest.raises(RuntimeError, match="cannot restore NOT NULL on contracts.price"):
+    with pytest.raises(DBAPIError, match="cannot restore NOT NULL on contracts.price"):
         command.downgrade(cfg, "-1")
+    # The fixture is SESSION-scoped: one database and one connection shared by
+    # every consumer. Leave both exactly as found — clear the aborted
+    # transaction the refusal left open, then remove the row this test
+    # committed, or the sibling clean-downgrade test meets a corpus with a
+    # price-less contract and is refused too.
+    conn.rollback()
+    conn.execute(text("DELETE FROM contracts WHERE contract_id = 990001"))
+    conn.commit()
+
+
+def test_clean_downgrade_restores_not_null_on_price(blank_migrated_sync_connection):
+    """With no price-less rows the downgrade must actually restore the constraint —
+    the guard test alone would stay green if the alteration itself were dropped."""
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    conn = blank_migrated_sync_connection
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    cfg.attributes["connection"] = conn
+    command.downgrade(cfg, "-1")
+    conn.commit()
+
+    try:
+        nullable = conn.execute(
+            text(
+                "SELECT is_nullable FROM information_schema.columns "
+                "WHERE table_name = 'contracts' AND column_name = 'price'"
+            )
+        ).scalar_one()
+        assert nullable == "NO"
+    finally:
+        # Session-scoped fixture: restore head so any later consumer sees the
+        # schema the fixture promises, whatever this test's outcome.
+        command.upgrade(cfg, "head")
+        conn.commit()

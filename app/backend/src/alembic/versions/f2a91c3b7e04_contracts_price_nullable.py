@@ -40,18 +40,27 @@ def downgrade() -> None:
     Restoring NOT NULL is impossible once the corpus holds price-less
     contracts, and inventing 0.0 for them would publish prices the corpus
     does not have (ESI-3). The guard turns the incidental NotNullViolation
-    into a stated refusal. The suite exercises upgrades plus this guard's
-    refusal path; a clean-database downgrade remains untested by the suite.
+    into a stated refusal; it runs as emitted SQL under an exclusive table
+    lock so it works offline (--sql) and cannot race a concurrent writer.
+    The suite exercises both the refusal path and the clean downgrade.
     """
     op.execute("SET lock_timeout = '30s'")
-    null_prices = op.get_bind().execute(
-        sa.text("SELECT COUNT(*) FROM contracts WHERE price IS NULL")
-    ).scalar_one()
-    if null_prices:
-        raise RuntimeError(
-            f"cannot restore NOT NULL on contracts.price: {null_prices} stored "
-            "contract(s) have no price. ESI omits price on some spec-conformant "
-            "contracts; deleting or zero-filling those rows is a data decision "
-            "this migration refuses to make."
-        )
+    # The guard is emitted SQL, not a Python-side query: `alembic downgrade --sql`
+    # (offline mode) has no connection to query, and an exclusive lock ahead of
+    # the check makes guard + alteration atomic against a concurrent ingestion
+    # inserting a price-less row between them.
+    op.execute("LOCK TABLE contracts IN ACCESS EXCLUSIVE MODE")
+    op.execute(
+        """
+        DO $$
+        DECLARE null_prices bigint;
+        BEGIN
+            SELECT COUNT(*) INTO null_prices FROM contracts WHERE price IS NULL;
+            IF null_prices > 0 THEN
+                RAISE EXCEPTION 'cannot restore NOT NULL on contracts.price: % stored contract(s) have no price. ESI omits price on some spec-conformant contracts; deleting or zero-filling those rows is a data decision this migration refuses to make.', null_prices;
+            END IF;
+        END
+        $$
+        """
+    )
     op.alter_column('contracts', 'price', existing_type=sa.Numeric(), nullable=False)
