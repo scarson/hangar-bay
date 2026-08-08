@@ -1951,3 +1951,78 @@ async def test_a_known_end_station_survives_an_esi_outage(db_session: AsyncSessi
         await db_session.execute(select(Contract).where(Contract.contract_id == 813))
     ).scalar_one()
     assert row.end_location_system_id == 30002187
+
+
+async def test_resolved_names_survive_a_degraded_name_resolution_run(
+    db_session: AsyncSession,
+):
+    """A transient /universe/names failure makes resolve_ids_to_names return a
+    partial map (per-chunk errors are swallowed in the ESI client). Re-sighted
+    contracts must keep their previously-resolved display names rather than
+    having them blanked until the next successful run (F008 decision log D10)."""
+    service = _make_service()
+    first = _ship_contract_dict(814)
+    first["type"] = "courier"  # skips item fetching; carries both location columns
+    first["end_location_id"] = 60008494
+    first["issuer_id"] = 91000001
+    first["issuer_corporation_id"] = 98000001
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            60008494: "Amarr VIII (Oris) - Emperor Family Academy",
+            91000001: "Resolved Pilot",
+            98000001: "Resolved Corp",
+        }
+    )
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: {
+            60003760: {"system_id": 30000142},
+            60008494: {"system_id": 30002187},
+        }[sid]
+    )
+    await service._process_contracts(db_session, [first])
+
+    # Second sighting: the names outage yields an empty map for every ID.
+    service.esi_client.resolve_ids_to_names = AsyncMock(return_value={})
+    again = dict(first)
+    await service._process_contracts(db_session, [again])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 814))
+    ).scalar_one()
+    assert row.start_location_name == "Jita IV - Moon 4 - Caldari Navy Assembly Plant"
+    assert row.end_location_name == "Amarr VIII (Oris) - Emperor Family Academy"
+    assert row.issuer_name == "Resolved Pilot"
+    assert row.issuer_corporation_name == "Resolved Corp"
+
+
+async def test_a_renamed_entity_updates_on_the_next_successful_run(
+    db_session: AsyncSession,
+):
+    """Preserving names on NULL must not freeze them: a successful resolution
+    carrying a genuinely changed name still overwrites the stored one."""
+    service = _make_service()
+    contract = _ship_contract_dict(815)
+    contract["issuer_corporation_id"] = 98000001
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            1: "Resolved Pilot",
+            98000001: "Old Corp Name",
+        }
+    )
+    await service._process_contracts(db_session, [contract])
+
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            1: "Resolved Pilot",
+            98000001: "New Corp Name",
+        }
+    )
+    await service._process_contracts(db_session, [dict(contract)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 815))
+    ).scalar_one()
+    assert row.issuer_corporation_name == "New Corp Name"

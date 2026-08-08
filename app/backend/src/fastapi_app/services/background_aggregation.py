@@ -210,6 +210,19 @@ def _npc_station_ids(contracts: List[dict]) -> set[int]:
     }
 
 
+# Denormalized display names re-resolve from /universe/names on every sighting,
+# and the ESI client swallows per-chunk failures into a partial map — so a
+# degraded run supplies NULL for anything it couldn't resolve. These columns
+# upsert with preserve_on_null so that NULL keeps the last resolved value
+# instead of blanking it until the next successful run (F008 decision log D10).
+NAME_COLUMNS_PRESERVED_ON_NULL = frozenset({
+    "start_location_name",
+    "end_location_name",
+    "issuer_name",
+    "issuer_corporation_name",
+})
+
+
 def _build_contract_rows(
     contracts: List[dict],
     id_to_name_map: dict,
@@ -535,7 +548,10 @@ class ContractAggregationService:
         for i in range(0, total_contracts, batch_size):
             batch = contract_values[i:i + batch_size]
             logger.info(f"Processing batch {i // batch_size + 1}/{(total_contracts + batch_size - 1) // batch_size} ({len(batch)} contracts)")
-            await bulk_upsert(db_session, Contract, batch)
+            await bulk_upsert(
+                db_session, Contract, batch,
+                preserve_on_null=NAME_COLUMNS_PRESERVED_ON_NULL,
+            )
             logger.info(f"Successfully upserted batch {i // batch_size + 1}.")
 
         logger.info(f"Finished upserting all {total_contracts} contracts.")
