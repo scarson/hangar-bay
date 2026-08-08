@@ -2110,3 +2110,65 @@ describe('ContractDetailPage item sides', () => {
     expect(offered.getByText('3 runs · ME 2 · TE 0')).toBeInTheDocument()
   })
 })
+
+describe('search request debouncing', () => {
+  const listCalls = (calls: string[]) => calls.filter((url) => url.includes('/api/v1/contracts/?'))
+
+  it('sends one search request for a typed word, not one per keystroke', async () => {
+    // The search field updates the URL per keystroke (the URL is the
+    // interface), but the DATA layer debounces the search param feeding the
+    // query key — typing "raven" must cost one corpus-scale request, not one
+    // per keystroke from the third character on.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts')
+    await screen.findByText('Tristan')
+
+    await userEvent.type(screen.getByLabelText('Search', { exact: true }), 'raven')
+
+    await waitFor(() =>
+      expect(calls.some((url) => url.includes('search=raven'))).toBe(true),
+    )
+    const searchRequests = listCalls(calls).filter((url) => url.includes('search='))
+    expect(searchRequests).toHaveLength(1)
+  })
+
+  it('typing from a later page costs one settled request, not an immediate old-search one', async () => {
+    // The keystroke resets page to 1 in the URL immediately; the REQUEST must
+    // not follow until the text settles — otherwise every search begun from
+    // page 2+ fires a page-1 request under the OLD text and a second one
+    // 300ms later under the new. The whole effective query freezes while the
+    // text is mid-edit.
+    const calls = stubFetch(
+      anonymousMe((url) => {
+        const params = new URL(url, 'http://localhost').searchParams
+        return jsonResponse(
+          listPage([ROW], { total: 10, page: Number(params.get('page') ?? '1'), size: 3 }),
+        )
+      }),
+    )
+
+    renderApp('/contracts?page=2&size=3')
+    await screen.findByText('Tristan')
+    const before = listCalls(calls).length
+
+    await userEvent.type(screen.getByLabelText('Search', { exact: true }), 'raven')
+    await waitFor(() => expect(calls.some((url) => url.includes('search=raven'))).toBe(true))
+
+    const after = listCalls(calls).slice(before)
+    expect(after).toHaveLength(1)
+    expect(after[0]).toContain('search=raven')
+    expect(after[0]).toContain('page=1')
+  })
+
+  it('sends a deep-linked search with the first request, not after a debounce delay', async () => {
+    // Cold loads have nothing to debounce: the hook's debounced value starts
+    // AT the incoming value, so a shared URL's search rides request one.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts?search=drake')
+
+    await waitFor(() => expect(listCalls(calls).length).toBeGreaterThan(0))
+    expect(listCalls(calls)[0]).toContain('search=drake')
+  })
+})

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../../../lib/api/client'
 import {
@@ -8,15 +9,66 @@ import {
   toApiQuery,
   type ContractSearch,
 } from '../filters'
+import { useDebouncedValue } from '../../../lib/useDebouncedValue'
 import { useTaxonomy } from './useTaxonomy'
 
+// Long enough to bridge keystrokes, short enough that the pause before results
+// reads as responsiveness rather than loss. Only the search text is debounced:
+// pagination, sorting, and every other filter fire immediately.
+const SEARCH_DEBOUNCE_MS = 300
+
+// Field-wise equality over ContractSearch: scalars by Object.is, the id-list
+// params elementwise. Generic over the keys so a future param cannot silently
+// fall outside the comparison.
+function sameSearch(a: ContractSearch, b: ContractSearch): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof ContractSearch>
+  for (const key of keys) {
+    const left = a[key]
+    const right = b[key]
+    if (Array.isArray(left) && Array.isArray(right)) {
+      if (left.length !== right.length || left.some((value, i) => !Object.is(value, right[i]))) return false
+    } else if (!Object.is(left, right)) {
+      return false
+    }
+  }
+  return true
+}
+
 export function useContracts(search: ContractSearch) {
-  const query = toApiQuery(search)
-  const segment = activeSegment(search)
-  const enrichmentFiltered = hasEnrichmentDependentFilters(search)
+  // The URL updates per keystroke (the URL is the interface), but the request
+  // does not: the search text settles for SEARCH_DEBOUNCE_MS before it may
+  // change the query key, so typing a word costs one corpus-scale request
+  // instead of one per keystroke past MIN_SEARCH_LENGTH. While the text is
+  // mid-edit the WHOLE effective query freezes at the last settled one — the
+  // keystroke's own side effects (the page-1 reset the search field
+  // navigates with) must not fire a request under the OLD text, and a sort
+  // click mid-word folds into the settled request instead of doubling it.
+  // Everything derived below uses the effective search — the one the request
+  // is actually made under — so the fetch-time captures describe the rows
+  // they ride with.
+  const debouncedSearchText = useDebouncedValue(search.search, SEARCH_DEBOUNCE_MS)
+  const searchTextSettled = search.search === debouncedSearchText
+  // Settled renders use the live search directly (so every non-search param
+  // stays immediate); unsettled renders read the search as of the last
+  // settled moment, recorded via the documented adjust-state-during-render
+  // pattern. The comparison is by VALUE, so callers that pass a fresh search
+  // object every render converge instead of looping. Accepted residual: a
+  // sort/segment/Clear click mid-word updates the page chrome (heading,
+  // pressed states, sort indicator) from live state while the rows stay
+  // under the frozen query for the rest of the debounce window — the
+  // row-describing surfaces themselves read fetch-time captures (WEB-1), and
+  // the ordinary keepPreviousData refresh indication takes over the moment
+  // the text settles.
+  const [lastSettled, setLastSettled] = useState(search)
+  if (searchTextSettled && !sameSearch(lastSettled, search)) setLastSettled(search)
+  const effectiveSearch = searchTextSettled ? search : lastSettled
+  const query = toApiQuery(effectiveSearch)
+  const segment = activeSegment(effectiveSearch)
+  const enrichmentFiltered = hasEnrichmentDependentFilters(effectiveSearch)
   // A filter that needs an offered item, asked of a type that has none. Both
   // halves are functions of the request, so the pair travels with the rows.
-  const itemFilteredItemLessSegment = isItemLessSelection(search) && requiresOfferedItem(search)
+  const itemFilteredItemLessSegment =
+    isItemLessSelection(effectiveSearch) && requiresOfferedItem(effectiveSearch)
 
   // Readiness has to be KNOWN before the rows are fetched, and then travel with
   // them (WEB-1). Two mechanisms, and both are needed:
@@ -54,7 +106,7 @@ export function useContracts(search: ContractSearch) {
       // columns over rows whose terms had not been written yet.
       return {
         ...data,
-        countsSearch: search,
+        countsSearch: effectiveSearch,
         segment,
         regionIds: query.region_ids ?? [],
         enrichmentFiltered,
