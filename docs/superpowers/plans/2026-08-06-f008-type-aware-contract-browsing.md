@@ -63,14 +63,14 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phases A, B, and C MERGED to dev. Phase D (item-level surface) deferred to a follow-up session — see its banner.
+**Overall:** ALL FOUR PHASES MERGED to dev. The feature is complete on `dev`; production activation follows the `dev` → `main` release and is automatic thereafter (decision log D1).
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | A — Data layer (migration, ingestion, taxonomy cache) | ✅ Shipped | `a7cd7ba`..`c0e3d85` | PR #138 merged at `8303e15` 2026-08-07; migration `685dab7d6df5`; ENRICHMENT_VERSION→2; 582 tests green; codex-reviewed (D10 deferral logged). |
 | B — API contract (model split, counts, filters, taxonomy endpoint) | ✅ Shipped | `ecb1352`..`8da5588` | PR #139 merged 2026-08-07; incl. Tasks C1/C2; 669 backend tests, all frontend lanes; codex-reviewed (3 P2s taken). |
 | C — Frontend contract-level surface (segments, auction/courier, coverage states) | 🚧 In progress | — | C1/C2 shipped with PR-B; C3-C5 done on `feat/f008-contract-surface` 2026-08-07; C6 gate remains. |
-| D — Frontend item-level surface (taxonomy UI, ME/TE/runs, BPC, composition) | 🚧 In progress | — | Claimed 2026-08-08 on `feat/f008-item-surface` off `dev` @ `5cebd4b`. |
+| D — Frontend item-level surface (taxonomy UI, ME/TE/runs, BPC, composition) | ✅ Shipped | `2eb6b17`..`8b74aa5` | PR #145 merged at `b961d8d` 2026-08-08. Four codex rounds (5+1+1+0 P1s); decision D13 reversed; pitfall WEB-2 added; 310 frontend tests ×2 lanes, 138 e2e. |
 
 ### Deviations
 - Task C1: the binding `Column` interface gained `cellClass?: string | ((contract, ctx) => string)` and a `rowContext(contract)` helper, and the default set is named `DEFAULT_COLUMNS` (not `COLUMNS`) — the plan's literal interface could not carry the existing per-cell classes; C4 builds per-segment sets beside it.
@@ -1317,7 +1317,7 @@ The six existing columns move into renderers with their exact current JSX (link 
 
 # Phase D — Frontend item-level surface (branch `feat/f008-item-surface` off merged `dev`, PR-D, `Routine`)
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-08T00:00Z on branch `feat/f008-item-surface` (off `dev` @ `5cebd4b`). Prior state, retained for context: deferred 2026-08-07 pending nothing upstream — every prerequisite is merged: the taxonomy endpoint with its readiness signal (PR #139), the column-definition module and segment plumbing (PRs #139/#140). Two corrections carried into this execution, recorded in Deviations/D-log: `toSavedSearchParameters` needs EIGHT params (contract_type landed with C3), and the D2 UI should prevent a taxonomy selection from zeroing a clickable item-less segment (B6 review advisory). Production activation stays automatic via the coverage signal regardless of when D lands (decision log D1).
+**Execution Status:** ✅ SHIPPED at `8b74aa5` on 2026-08-08 (PR #145 merged at `b961d8d`). Tasks D1–D5: `2eb6b17`, `01f57f4`, `549b1da`, `d0a7102`; review fixes `63a61a2`, `cd26332`, `dd11e38`, `447092b`, `10d4a07`; closeout `8b74aa5`. Four codex rounds returned 5, 1, 1 and 0 P1s — each of the first three found a defect inside the previous round's fix, and **decision D13 was reversed** as a result (the readiness signal is captured with the rows and keyed, not read live). Pitfall **WEB-2** came out of the full-stack verification. Production activation stays automatic via the coverage signal (decision log D1): the gate was observed flipping `partial` → `complete` on its own against live ESI data.
 
 Everything gated on the taxonomy readiness signal (decision-log D1): the cascading taxonomy filter, ME/TE/runs controls, blueprint columns, composition rendering, and the want-to-buy split. The gate is data-driven — this PR merges to `dev` whenever it is done; production shows the controls only when `GET /contracts/taxonomy` reports `coverage: "complete"` (which follows the resweep automatically).
 
