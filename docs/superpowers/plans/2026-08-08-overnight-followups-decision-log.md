@@ -138,6 +138,14 @@ that is a new spec decision (a D8-style ratification) and a small feature, not a
 
 **Reversibility.** Total — nothing was changed; the analysis is the artifact.
 
+**Ratified 2026-08-08:** Sam delegated the decision ("You decide on OD4"); decided as (c) — no code
+change, Discovery closed as working-as-designed. The deciding weight beyond the honesty argument:
+clearing a user's accumulated taxonomy/blueprint selection as a side effect of a segment click
+destroys more user intent than the `ships_only` parallel saves — `ships_only` is one restorable
+toggle (Criterion 1.9 restores it), while a taxonomy selection is built-up work with no restore
+rule. If item-less segment counts under offered-item filters ever matter enough to revisit, the
+clear-on-entry spec amendment in alternative (b) is the only coherent shape for it.
+
 ---
 
 ## OD5 — jsdom noise fix (PR #149): TDD-exempt, codex review skipped as below the meaningful-PR bar
