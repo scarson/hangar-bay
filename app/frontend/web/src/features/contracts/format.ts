@@ -90,8 +90,8 @@ export function timeRemaining(dateExpired: string, now: number = Date.now()): st
 }
 
 // ESI's public-contracts `type` is a closed enum, so every member gets a name.
-// Anything unrecognised keeps the historical "Exchange" reading rather than
-// surfacing a raw wire value.
+// Anything unrecognised is served under the unknown segment, so its badge says
+// Unknown too rather than surfacing a raw wire value.
 const TYPE_LABELS: Record<string, string> = {
   item_exchange: 'Exchange',
   auction: 'Auction',
@@ -147,6 +147,14 @@ export function regionNames(ids: readonly number[]): string {
 /** How many category names a cell has room for before the rest becomes "other". */
 const NAMED_CATEGORIES = 2
 
+// Dogma category names include already-plural forms (Accessories, SKINs) and
+// consonant-y singulars (Commodity); a blanket +s garbles all three shapes.
+function pluralize(name: string, count: number): string {
+  if (count === 1 || /s$/i.test(name)) return name
+  if (/[^aeiou]y$/i.test(name)) return `${name.slice(0, -1)}ies`
+  return `${name}s`
+}
+
 /**
  * What a mixed lot is made of, in one line (Criterion 6.1). The server sends
  * the categories sorted by share and does NOT truncate — how many fit is the
@@ -164,7 +172,7 @@ export function formatComposition(composition: CompositionSummary): string {
   const named = composition.categories.filter((category) => category.name)
   const parts = named
     .slice(0, NAMED_CATEGORIES)
-    .map((category) => `${category.item_row_count} ${category.name}${category.item_row_count === 1 ? '' : 's'}`)
+    .map((category) => `${category.item_row_count} ${pluralize(category.name!, category.item_row_count)}`)
   const other = composition.categories
     .filter((category) => !named.slice(0, NAMED_CATEGORIES).includes(category))
     .reduce((rows, category) => rows + category.item_row_count, 0)
