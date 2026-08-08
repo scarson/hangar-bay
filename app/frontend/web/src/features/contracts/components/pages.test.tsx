@@ -1417,24 +1417,6 @@ describe('item-level surface gate', () => {
     await waitFor(() => expect(screen.queryByText(INCOMPLETE_NOTICE)).not.toBeInTheDocument())
   })
 
-  it('shows an item-less segment without a count while an offered-item filter is active', async () => {
-    // The envelope's courier figure was computed with the category filter
-    // applied, but arriving at the courier segment drops that filter (nothing
-    // item-less can satisfy it), so the number describes a view the click does
-    // not deliver. No numeral beats a wrong one — the same rule the All control
-    // already follows from an item-less segment.
-    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
-
-    renderApp('/contracts?category_id=6')
-
-    expect(await screen.findByRole('button', { name: /^Courier$/ })).toBeInTheDocument()
-    // The item-bearing segments keep theirs: their counts were computed under
-    // the same filter their destination keeps.
-    expect(screen.getByRole('button', { name: /^Item exchange 1,240$/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Auction 60$/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^All 1,300$/ })).toBeInTheDocument()
-  })
-
   it('warns only when a filter that reads the new item columns is in play', async () => {
     // is_bpc reads is_blueprint_copy, which ingestion has written since M1, so
     // it answers just as completely mid-resweep as it does after one. Warning
@@ -1607,82 +1589,89 @@ describe('taxonomy filters', () => {
     expect(screen.queryByRole('group', { name: /^Group/ })).not.toBeInTheDocument()
   })
 
-  it('offers no taxonomy controls on an item-less segment, which no item can satisfy', async () => {
+  it('keeps the taxonomy controls on an item-less segment, and says why they cannot match', async () => {
+    // Hiding a control whose parameter is still set hides an ACTIVE filter: the
+    // reader gets an empty page with no way to find or clear the cause. The
+    // controls stay, and a sentence explains what the segment cannot do.
     stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
 
-    renderApp('/contracts?contract_type=courier')
+    renderApp('/contracts?contract_type=courier&category_id=6')
 
-    await screen.findByText('Jita to Amarr rush')
-    expect(screen.queryByRole('checkbox', { name: 'Ship' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('checkbox', { name: 'Ship' })).toBeChecked()
     expect(
-      screen.getByText('Item filters do not apply to contracts that carry no items.'),
+      screen.getByText('These match on a contract’s items, and this type carries none.'),
     ).toBeInTheDocument()
   })
 
-  it('offers the blueprint stat bounds beside the taxonomy lists', async () => {
-    stubFetch(readyList())
+  it('explains an empty item-less segment rather than blaming the price bounds', async () => {
+    // Criterion 7.2's explain-rather-than-empty rule. The generic card would
+    // tell this reader to loosen a price bound, which cannot help: no courier
+    // has an item for the category filter to match.
+    stubFetch(
+      withTaxonomy(
+        anonymousMe(() => jsonResponse(listPage([], { segment_counts: SEGMENT_COUNTS }))),
+        READY_TAXONOMY,
+      ),
+    )
 
-    renderApp('/contracts')
+    renderApp('/contracts?contract_type=courier&category_id=6')
 
-    // Criterion 2.5's four ME/TE params and Criterion 2.3's runs pair, each a
-    // separate control rather than one "blueprint" box: the three families are
-    // independent EXISTS clauses on the wire, and a reader filtering on ME
-    // must not be made to state a runs window they do not care about.
-    for (const label of [
-      'Minimum runs',
-      'Maximum runs',
-      'Minimum material efficiency',
-      'Maximum material efficiency',
-      'Minimum time efficiency',
-      'Maximum time efficiency',
-    ]) {
-      expect(await screen.findByLabelText(label)).toHaveAttribute('min', '0')
-    }
+    expect(
+      await screen.findByRole('heading', { name: 'These contracts carry no items to filter on' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Loosen a price bound/)).not.toBeInTheDocument()
   })
 
-  it('sends a blueprint stat window to the API and puts it in the URL', async () => {
+  it('does not claim an item-less mismatch for is_bpc=false, which such contracts satisfy', async () => {
+    // `is_bpc=false` is NOT EXISTS(offered copy), so every courier satisfies it.
+    // An empty result there is an ordinary empty result, not a mismatch.
+    stubFetch(
+      withTaxonomy(
+        anonymousMe(() => jsonResponse(listPage([], { segment_counts: SEGMENT_COUNTS }))),
+        READY_TAXONOMY,
+      ),
+    )
+
+    renderApp('/contracts?contract_type=courier&is_bpc=false')
+
+    expect(await screen.findByText(/Loosen a price bound/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'These contracts carry no items to filter on' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps an item-less segment’s served count under an item-level filter', async () => {
+    // The count is computed with every filter but contract_type applied, so a
+    // zero is what selecting the segment delivers, and the empty state above
+    // explains it. An earlier revision suppressed the numeral to cover for a
+    // parser that destroyed the filter on the way in; that parser change is gone.
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+    renderApp('/contracts?category_id=6')
+
+    expect(await screen.findByRole('button', { name: /^Courier 115$/ })).toBeInTheDocument()
+  })
+
+  it('carries a taxonomy filter through an item-less segment and back out again', async () => {
+    // The round trip an earlier revision broke: it dropped the filter on the
+    // way in, so returning to All silently produced a wider view than the one
+    // the reader left.
     const user = userEvent.setup()
-    const calls = stubFetch(readyList())
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
 
-    const { router } = renderApp('/contracts')
-    await screen.findByLabelText('Minimum material efficiency')
+    const { router } = renderApp('/contracts?category_id=6')
+    await screen.findByRole('button', { name: /^Courier/ })
 
-    await user.type(screen.getByLabelText('Minimum material efficiency'), '5')
+    await user.click(screen.getByRole('button', { name: /^Courier/ }))
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        contract_type: ['courier'],
+        category_id: [6],
+      }),
+    )
 
-    await waitFor(() => expect(router.state.location.search).toMatchObject({ min_me: 5 }))
-    await waitFor(() => expect(calls.some((url) => /[?&]min_me=5(&|$)/.test(url))).toBe(true))
-  })
-
-  it('clears a blueprint bound out of the URL when its input is emptied', async () => {
-    // An empty box means "no bound", not zero: min_me=0 matches every blueprint
-    // with any ME at all, which is a filter, not the absence of one.
-    const user = userEvent.setup()
-    stubFetch(readyList())
-
-    const { router } = renderApp('/contracts?max_runs=20')
-    await screen.findByLabelText('Maximum runs')
-
-    await user.clear(screen.getByLabelText('Maximum runs'))
-
-    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('max_runs'))
-  })
-
-  it('offers no blueprint stat bounds while the corpus is still being enriched', async () => {
-    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
-
-    renderApp('/contracts')
-
-    await screen.findByText(INDEXING_LINE)
-    expect(screen.queryByLabelText('Minimum runs')).not.toBeInTheDocument()
-  })
-
-  it('offers no taxonomy or blueprint controls while a taxonomy request is unanswered', async () => {
-    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
-
-    renderApp('/contracts')
-
-    await screen.findByText(INDEXING_LINE)
-    expect(screen.queryByLabelText('Filter group list')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^All/ }))
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ category_id: [6] }))
   })
 
   it('offers Clear filters for a taxonomy selection that arrived by URL', async () => {
@@ -1732,19 +1721,23 @@ describe('blueprint and composition cells', () => {
     },
   }
 
-  function blueprintCell(rowName: RegExp): string {
+  /** The Runs / ME / TE cells of a row, in order. */
+  function blueprintCells(rowName: RegExp): string[] {
     const cells = within(screen.getByRole('row', { name: rowName })).getAllByRole('cell')
-    const index = headerNames().indexOf('Blueprint')
-    return cells[index].textContent!
+    const headers = headerNames()
+    return ['Runs', 'ME', 'TE'].map((label) => cells[headers.indexOf(label)].textContent!)
   }
 
-  it('reads a single offered copy’s terms in the row', async () => {
+  it('reads a single offered copy’s terms across the three columns', async () => {
     stubFetch(readyList([ONE_COPY]))
 
     renderApp('/contracts')
 
     await screen.findByText('Draugur Blueprint')
-    expect(blueprintCell(/Draugur Blueprint/)).toBe('10 runs · ME 4 · TE 8')
+    expect(headerNames()).toEqual(
+      expect.arrayContaining(['Runs', 'ME', 'TE']),
+    )
+    expect(blueprintCells(/Draugur Blueprint/)).toEqual(['10', '4', '8'])
   })
 
   it('counts several copies instead of reporting one of them, and links to the detail', async () => {
@@ -1756,6 +1749,9 @@ describe('blueprint and composition cells', () => {
 
     const link = await screen.findByRole('link', { name: '3 BPCs' })
     expect(link).toHaveAttribute('href', '/contracts/822')
+    // The count lands in Runs alone. Repeating it under ME and TE would claim
+    // three figures where the contract supports none.
+    expect(blueprintCells(/Blueprint lot/)).toEqual(['3 BPCs', '', ''])
   })
 
   it('leaves the blueprint cell empty for a contract offering no copy', async () => {
@@ -1766,7 +1762,7 @@ describe('blueprint and composition cells', () => {
     renderApp('/contracts')
 
     await screen.findByText('Tristan')
-    expect(blueprintCell(/Tristan/)).toBe('')
+    expect(blueprintCells(/Tristan/)).toEqual(['', '', ''])
   })
 
   it('omits the blueprint column entirely while the corpus is still being enriched', async () => {
@@ -1777,7 +1773,7 @@ describe('blueprint and composition cells', () => {
     renderApp('/contracts')
 
     await screen.findByText('Draugur Blueprint')
-    expect(headerNames()).not.toContain('Blueprint')
+    for (const label of ['Runs', 'ME', 'TE']) expect(headerNames()).not.toContain(label)
   })
 
   it('gives the auction segment the blueprint column too, and the courier segment never', async () => {
@@ -1787,14 +1783,26 @@ describe('blueprint and composition cells', () => {
 
     const auction = renderApp('/contracts?contract_type=auction')
     await screen.findByText('Vargur')
-    expect(headerNames()).toContain('Blueprint')
+    expect(headerNames()).toEqual(expect.arrayContaining(['Runs', 'ME', 'TE']))
     auction.unmount()
     vi.unstubAllGlobals()
 
     stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
     renderApp('/contracts?contract_type=courier')
     await screen.findByText('Jita to Amarr rush')
-    expect(headerNames()).not.toContain('Blueprint')
+    for (const label of ['Runs', 'ME', 'TE']) expect(headerNames()).not.toContain(label)
+  })
+
+  it('gives no blueprint columns to loan or unknown, which carry no items either', async () => {
+    // Criterion 1.2: ingestion fetches items for loan and unknown exactly as it
+    // does for courier, so these columns would be blank on those segments
+    // forever rather than until the next resweep.
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+    renderApp('/contracts?contract_type=loan')
+
+    await screen.findByText('Capital fleet float')
+    for (const label of ['Runs', 'ME', 'TE']) expect(headerNames()).not.toContain(label)
   })
 
   it('describes a mixed lot by category instead of only counting the rest of it', async () => {

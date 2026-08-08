@@ -5,7 +5,6 @@ import {
   ITEM_BEARING_TYPES,
   ITEM_LESS_TYPES,
   activeSegment,
-  hasOfferedItemFilters,
   isItemLessSelection,
   type ContractSearch,
   type ContractTypeValue,
@@ -99,11 +98,6 @@ export function SegmentTabs({
   // an item-less segment restores ships-only, so only a view the reader has
   // already widened counts the item-less types in.
   const allCountsEveryType = !leavingItemLess && !search.ships_only
-  // The same rule, one filter family over. An offered-item filter is applied to
-  // the item-less counts the server sends back, but arriving at an item-less
-  // segment DROPS that filter — so those figures describe a view the click does
-  // not deliver, exactly as the lifted ones do for All.
-  const itemLessCountsAreStale = hasOfferedItemFilters(search)
 
   return (
     <fieldset className="flex flex-wrap items-center gap-1.5">
@@ -116,14 +110,17 @@ export function SegmentTabs({
         // destination RESTORES ships-only, a population those counts cannot
         // describe. No numeral beats a wrong one; the count returns with the
         // next response after switching.
+        // Per-segment counts go out exactly as served: every filter but
+        // contract_type is applied to them, so the number a segment shows is
+        // the number selecting it delivers. That stays true of an item-less
+        // segment under an item-level filter — the served zero is honest, and
+        // the empty state it leads to explains itself.
         const count =
           segment.type === undefined
             ? leavingItemLess
               ? undefined
               : sumCounts(counts, allCountsEveryType ? CONTRACT_TYPES : ITEM_BEARING_TYPES)
-            : itemLessCountsAreStale && ITEM_LESS_TYPES.includes(segment.type)
-              ? undefined
-              : (counts[segment.type] ?? 0)
+            : (counts[segment.type] ?? 0)
         return (
           <button
             key={segment.type ?? 'all'}

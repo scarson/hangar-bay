@@ -61,23 +61,23 @@ test.beforeEach(async ({ page }) => {
 })
 
 test.describe('blueprint and composition cells', () => {
-  const isMobile = () => test.info().project.name === 'mobile'
-
   test('the three blueprint states each read differently', async ({ page }) => {
-    test.skip(
-      isMobile(),
-      'the Blueprint column hides below lg, where the detail page carries the terms instead (asserted by the mobile test below)',
-    )
+    // Runs on BOTH projects: the three columns are never hidden at a
+    // breakpoint, because Criterion 2.2 states the display with no exemption
+    // and three narrow numeric cells cost less width than one combined one.
     await interceptCurrentUser(page, { status: 401 })
     await interceptTaxonomy(page, taxonomy({ coverage: 'complete' }))
     await interceptContractList(page, pageOf(CORPUS))
 
     await page.goto('/contracts?ships_only=false')
-    await expect(page.getByRole('columnheader', { name: 'Blueprint' })).toBeVisible()
+    for (const label of ['Runs', 'ME', 'TE']) {
+      await expect(page.getByRole('columnheader', { name: label, exact: true })).toBeVisible()
+    }
 
     const results = page.getByRole('region', { name: 'Contract results' })
-    // One copy: its terms, each figure named so none needs a legend.
-    await expect(results.getByText('10 runs · ME 4 · TE 8')).toBeVisible()
+    // One copy: its three figures, each under the column that names it.
+    const single = results.getByRole('row', { name: /Draugur Blueprint/ })
+    await expect(single.getByRole('cell')).toContainText(['10', '4', '8'])
     // Three copies: a count that leads to them, not one copy's numbers.
     const lot = results.getByRole('link', { name: '3 BPCs' })
     await expect(lot).toBeVisible()
@@ -87,39 +87,20 @@ test.describe('blueprint and composition cells', () => {
     await expect(noCopies.filter({ hasText: /run|ME |BPC/ })).toHaveCount(0)
   })
 
-  test('below lg the blueprint column gives way rather than crowding the row', async ({ page }) => {
-    // The seam itself, so the desktop skip above is not the only word on it:
-    // the column is genuinely absent at this width, and the row's own link is
-    // still the way to the terms.
-    test.skip(!isMobile(), 'the Blueprint column is shown at and above lg')
-    await interceptCurrentUser(page, { status: 401 })
-    await interceptTaxonomy(page, taxonomy({ coverage: 'complete' }))
-    await interceptContractList(page, pageOf(CORPUS))
-
-    await page.goto('/contracts?ships_only=false')
-    await expect(rowLinks(page)).toHaveCount(CORPUS.length)
-
-    // Hidden by a breakpoint rule, so the cells are still in the DOM but out of
-    // the accessibility tree and off the screen — unlike the enrichment gate
-    // below, which does not render them at all.
-    await expect(page.getByRole('columnheader', { name: 'Blueprint' })).toHaveCount(0)
-    await expect(page.getByText('10 runs · ME 4 · TE 8')).toBeHidden()
-  })
-
   test('the blueprint column is absent while the corpus is still being enriched', async ({
     page,
   }) => {
     // The default taxonomy route reports `partial`. Absent, not blank: mid-
-    // resweep the column would be empty down its whole length. This holds at
-    // every width, so it runs on both projects.
+    // resweep the columns would be empty down their whole length.
     await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf(CORPUS))
 
     await page.goto('/contracts?ships_only=false')
     await expect(rowLinks(page)).toHaveCount(CORPUS.length)
 
-    await expect(page.getByRole('columnheader', { name: 'Blueprint' })).toHaveCount(0)
-    await expect(page.getByText('10 runs · ME 4 · TE 8')).toHaveCount(0)
+    for (const label of ['Runs', 'ME', 'TE']) {
+      await expect(page.getByRole('columnheader', { name: label, exact: true })).toHaveCount(0)
+    }
   })
 
   test('a mixed lot is described by category rather than counted', async ({ page }) => {

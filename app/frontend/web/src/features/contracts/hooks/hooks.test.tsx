@@ -6,6 +6,7 @@ import { jsonResponse } from '../../../test/http'
 import { parseContractSearch } from '../filters'
 import { useContracts } from './useContracts'
 import { useContract } from './useContract'
+import { useItemSurfaceRefresh, useTaxonomy } from './useTaxonomy'
 
 const PAGE = {
   total: 1,
@@ -105,5 +106,85 @@ describe('useContract', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(calls).toHaveLength(1)
+  })
+})
+
+/**
+ * The readiness signal's two freshness properties. Both were review findings:
+ * `staleTime` alone never refetches, and a readiness flip left the rows it now
+ * describes untouched in the cache.
+ */
+describe('useItemSurfaceRefresh', () => {
+  const TAXONOMY = (coverage: string) => ({ categories: [], groups: [], coverage })
+
+  function harness(coverageRef: { value: string }) {
+    const counts = { list: 0, taxonomy: 0 }
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (/\/contracts\/taxonomy$/.test(url)) {
+        counts.taxonomy += 1
+        return jsonResponse(TAXONOMY(coverageRef.value))
+      }
+      counts.list += 1
+      return jsonResponse(PAGE)
+    })
+    return counts
+  }
+
+  it('leaves the rows alone when readiness first arrives, and refetches them when it changes', async () => {
+    const coverage = { value: 'partial' }
+    const counts = harness(coverage)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrap = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    const { result } = renderHook(
+      () => {
+        useItemSurfaceRefresh()
+        return useContracts(parseContractSearch({}))
+      },
+      { wrapper: wrap },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // undefined -> partial is the first answer of the session, not a change.
+    // Treating it as one would cost a second corpus-scale list request on every
+    // cold load — the expense decision D13 weighed and refused.
+    await waitFor(() => expect(counts.taxonomy).toBeGreaterThan(0))
+    expect(counts.list).toBe(1)
+
+    coverage.value = 'complete'
+    await queryClient.refetchQueries({ queryKey: ['contracts', 'taxonomy'] })
+
+    // partial -> complete IS a change: the rows on screen were fetched from a
+    // corpus that has since been enriched, and the columns now describing them
+    // would otherwise show a BPC badge beside empty Runs/ME/TE cells.
+    await waitFor(() => expect(counts.list).toBe(2))
+  })
+
+  it('polls the readiness endpoint, because staleness alone never refetches', async () => {
+    // `staleTime` marks data stale without scheduling anything, so a tab left
+    // open across an ENRICHMENT_VERSION resweep would keep reporting the old
+    // answer for the whole ~80 minutes it is false.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const coverage = { value: 'complete' }
+      const counts = harness(coverage)
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const wrap = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      )
+
+      renderHook(() => useTaxonomy(), { wrapper: wrap })
+      await waitFor(() => expect(counts.taxonomy).toBe(1))
+
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000)
+
+      await waitFor(() => expect(counts.taxonomy).toBeGreaterThan(1))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

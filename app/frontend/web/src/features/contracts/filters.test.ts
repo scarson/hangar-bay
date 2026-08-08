@@ -95,13 +95,13 @@ describe('parseContractSearch', () => {
     ).toBe(false)
   })
 
-  it('drops item-level filters for an all-item-less selection, by the same rule', () => {
-    // Taxonomy ids and blueprint bounds are predicates over offered items, so
-    // they are guaranteed-empty against a courier, loan, or unknown contract
-    // for exactly the reason ships-only is. Dropping them in the parser rather
-    // than in a click handler means a shared URL and an applied saved search
-    // get the same treatment as a segment click — and it keeps the pair out of
-    // the URL entirely, so Clear filters has nothing invisible left to forget.
+  it('keeps every item-level filter on an item-less selection, widening only ships-only', () => {
+    // Criterion 1.7 names ONE pair — ships_only and contract_type — and the
+    // reason it may be normalized is that Criterion 1.9 defines a restore for
+    // it. The item-level filters have no such restore, so dropping them here
+    // would destroy state a segment round-trip should return, and would rewrite
+    // a stored saved search from "no matches" into "every item-less contract".
+    // A combination that cannot match gets an explanation instead (7.2).
     const courier = parseContractSearch({
       contract_type: 'courier',
       category_id: 6,
@@ -112,28 +112,26 @@ describe('parseContractSearch', () => {
       max_me: 8,
       min_te: 4,
       max_te: 16,
+      is_bpc: true,
     })
-    expect(courier.category_id).toBeUndefined()
-    expect(courier.group_id).toBeUndefined()
-    expect(courier.min_runs).toBeUndefined()
-    expect(courier.max_runs).toBeUndefined()
-    expect(courier.min_me).toBeUndefined()
-    expect(courier.max_me).toBeUndefined()
-    expect(courier.min_te).toBeUndefined()
-    expect(courier.max_te).toBeUndefined()
-    // is_bpc rides along: it is an offered-item predicate too, and no more
-    // satisfiable by an item-less contract than the rest.
-    expect(courier.is_bpc).toBeUndefined()
+    expect(courier.ships_only).toBe(false)
+    expect(courier.category_id).toEqual([6])
+    expect(courier.group_id).toEqual([25])
+    expect(courier.min_runs).toBe(1)
+    expect(courier.max_runs).toBe(20)
+    expect(courier.min_me).toBe(2)
+    expect(courier.max_me).toBe(8)
+    expect(courier.min_te).toBe(4)
+    expect(courier.max_te).toBe(16)
+    expect(courier.is_bpc).toBe(true)
   })
 
-  it('keeps item-level filters for a mixed selection, which an item-bearing member can satisfy', () => {
-    const mixed = parseContractSearch({
-      contract_type: ['item_exchange', 'courier'],
-      category_id: 6,
-      min_me: 2,
-    })
-    expect(mixed.category_id).toEqual([6])
-    expect(mixed.min_me).toBe(2)
+  it('keeps is_bpc=false on an item-less selection, which every such contract satisfies', () => {
+    // `is_bpc=false` compiles to NOT EXISTS(offered blueprint copy)
+    // (contract_service `~has_copy`), and a contract with no items at all
+    // satisfies it. Treating it as unsatisfiable would drop a filter that is
+    // not merely legal but true of the entire segment.
+    expect(parseContractSearch({ contract_type: 'courier', is_bpc: false }).is_bpc).toBe(false)
   })
 
   it('leaves ships-only alone for a mixed selection and for no selection', () => {

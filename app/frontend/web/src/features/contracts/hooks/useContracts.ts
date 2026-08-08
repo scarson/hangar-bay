@@ -3,6 +3,8 @@ import { api, ApiError } from '../../../lib/api/client'
 import {
   activeSegment,
   hasEnrichmentDependentFilters,
+  isItemLessSelection,
+  requiresOfferedItem,
   toApiQuery,
   type ContractSearch,
 } from '../filters'
@@ -11,6 +13,9 @@ export function useContracts(search: ContractSearch) {
   const query = toApiQuery(search)
   const segment = activeSegment(search)
   const enrichmentFiltered = hasEnrichmentDependentFilters(search)
+  // A filter that needs an offered item, asked of a type that has none. Both
+  // halves are functions of the request, so the pair travels with the rows.
+  const itemFilteredItemLessSegment = isItemLessSelection(search) && requiresOfferedItem(search)
   return useQuery({
     queryKey: ['contracts', 'list', query],
     queryFn: async () => {
@@ -25,7 +30,13 @@ export function useContracts(search: ContractSearch) {
       // warning withdrawn while the rows it was about are still on screen — for
       // as long as the request takes. Deriving them inside the query function
       // ties them to the cache key, which `query` determines (WEB-1).
-      return { ...data, segment, regionIds: query.region_ids ?? [], enrichmentFiltered }
+      return {
+        ...data,
+        segment,
+        regionIds: query.region_ids ?? [],
+        enrichmentFiltered,
+        itemFilteredItemLessSegment,
+      }
     },
     placeholderData: keepPreviousData,
   })

@@ -3,10 +3,10 @@
 import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import type { Contract } from '../../lib/api/client'
+import type { components } from '../../lib/api/schema'
 import { Badge } from '../../components/Badge'
 import {
   contractTypeLabel,
-  formatBlueprintTerms,
   formatComposition,
   formatDate,
   formatDeadline,
@@ -17,7 +17,9 @@ import {
   routeLabel,
   timeRemaining,
 } from './format'
-import type { ContractTypeValue, SortField } from './filters'
+import { ITEM_LESS_TYPES, type ContractTypeValue, type SortField } from './filters'
+
+type BlueprintSummary = components['schemas']['BlueprintSummary']
 
 /** Values shared by more than one renderer on the same row, computed once. */
 export interface RowContext {
@@ -152,41 +154,57 @@ const ISSUED_COLUMN: Column = {
 }
 
 /**
- * The blueprint terms, per §8's discriminator: exactly one offered copy shows
- * its runs/ME/TE, several show how many and send the reader to the detail page
- * (no single set of terms describes them, and picking one copy's would
- * misdescribe the others), none shows nothing at all.
+ * The blueprint terms as three columns, per spec §8: "real columns in the
+ * segment's column set", "always present in those segments; what varies is
+ * whether a given row has values to put in them".
  *
- * ONE column rather than three. The spec's "first-class columns" reads as
- * Runs | ME | TE, but none of the three is a server sort field, so nothing is
- * gained by separating them — and the cost is three columns that are empty for
- * almost every row of the DEFAULT view, which is ships-only and therefore
- * almost never blueprints. The multi-copy state has no three-column rendering
- * either: "3 BPCs" repeated three times, or nominated into one column with two
- * left blank beside it.
+ * The discriminator, also §8: exactly one offered copy shows its runs/ME/TE;
+ * several have no single set of terms to report, so the Runs cell becomes a
+ * count linking to the detail page and the other two stay empty rather than
+ * repeating it; a row with no copy shows nothing at all.
+ *
+ * Never hidden at a breakpoint. Three numeric cells of two or three characters
+ * are together NARROWER than the one combined cell an earlier revision used, so
+ * the mobile row loses nothing by keeping them — and Criterion 2.2 ("BPC rows
+ * display runs, ME and TE") carries no breakpoint exemption.
  */
-const BLUEPRINT_COLUMN: Column = {
-  key: 'blueprint',
-  label: 'Blueprint',
-  hiddenClass: 'max-lg:hidden',
-  cellClass: 'text-data text-ink-dim',
-  cell: (contract) => {
-    const summary = contract.blueprint_summary
-    if (!summary) return null
-    if (summary.copy_count > 1) {
-      return (
-        <Link
-          to="/contracts/$contractId"
-          params={{ contractId: String(contract.contract_id) }}
-          className="text-ink-dim hover:text-brand-bright"
-        >
-          {summary.copy_count} BPCs
-        </Link>
-      )
-    }
-    return formatBlueprintTerms(summary)
-  },
+function blueprintColumn(
+  key: string,
+  label: string,
+  read: (summary: BlueprintSummary) => number | null | undefined,
+  leadsWithCount = false,
+): Column {
+  return {
+    key,
+    label,
+    align: 'right',
+    cellClass: 'text-data text-ink-dim',
+    cell: (contract) => {
+      const summary = contract.blueprint_summary
+      if (!summary) return null
+      if (summary.copy_count > 1) {
+        if (!leadsWithCount) return null
+        return (
+          <Link
+            to="/contracts/$contractId"
+            params={{ contractId: String(contract.contract_id) }}
+            className="text-ink-dim hover:text-brand-bright"
+          >
+            {summary.copy_count} BPCs
+          </Link>
+        )
+      }
+      const value = read(summary)
+      return value == null ? null : value
+    },
+  }
 }
+
+const BLUEPRINT_COLUMNS: Column[] = [
+  blueprintColumn('runs', 'Runs', (summary) => summary.runs, true),
+  blueprintColumn('me', 'ME', (summary) => summary.material_efficiency),
+  blueprintColumn('te', 'TE', (summary) => summary.time_efficiency),
+]
 
 export const DEFAULT_COLUMNS: Column[] = [
   NAME_COLUMN,
@@ -298,13 +316,12 @@ export const COURIER_COLUMNS: Column[] = [
 ]
 
 /**
- * The blueprint column sits with the goods rather than with the money: right
- * before Location in both item-bearing sets, so the terms read next to the item
- * they describe. Couriers never get it — they carry no items at all.
+ * The blueprint columns sit with the goods rather than with the money: right
+ * before Location, so the terms read next to the item they describe.
  */
-function withBlueprintColumn(columns: Column[]): Column[] {
+function withBlueprintColumns(columns: Column[]): Column[] {
   const before = columns.findIndex((column) => column.key === LOCATION_COLUMN.key)
-  return [...columns.slice(0, before), BLUEPRINT_COLUMN, ...columns.slice(before)]
+  return [...columns.slice(0, before), ...BLUEPRINT_COLUMNS, ...columns.slice(before)]
 }
 
 /**
@@ -313,10 +330,16 @@ function withBlueprintColumn(columns: Column[]): Column[] {
  * default: a loan has no route and no bid, and the default columns describe it
  * as well as anything else does.
  *
- * `itemSurfaceReady` OMITS the blueprint column rather than emptying it while
- * the corpus is being enriched (decision log D1): runs/ME/TE are NULL for most
- * of the corpus mid-resweep, and a column blank down its whole length reads as
- * a broken feature rather than as a corpus of non-blueprints.
+ * The blueprint columns are added only for a segment that can hold items.
+ * §8 scopes them to the item-bearing segments, and Criterion 1.2 puts `loan`
+ * and `unknown` on the item-less side of that line beside `courier` — ingestion
+ * fetches items for none of the three, so on those segments the columns would
+ * be blank down their whole length forever, not merely until a resweep.
+ *
+ * `itemSurfaceReady` OMITS them rather than emptying them while the corpus is
+ * being enriched (decision log D1): runs/ME/TE are NULL for most of the corpus
+ * mid-resweep, and a column blank down its whole length reads as a broken
+ * feature rather than as a corpus of non-blueprints.
  */
 export function columnsFor(
   type: ContractTypeValue | undefined,
@@ -324,7 +347,8 @@ export function columnsFor(
 ): Column[] {
   if (type === 'courier') return COURIER_COLUMNS
   const columns = type === 'auction' ? AUCTION_COLUMNS : DEFAULT_COLUMNS
-  return itemSurfaceReady ? withBlueprintColumn(columns) : columns
+  const itemBearing = type === undefined || !ITEM_LESS_TYPES.includes(type)
+  return itemSurfaceReady && itemBearing ? withBlueprintColumns(columns) : columns
 }
 
 /**

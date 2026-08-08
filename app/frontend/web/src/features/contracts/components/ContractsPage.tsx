@@ -8,7 +8,7 @@ import { regionNames } from '../format'
 import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
 import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'
 import { useContracts } from '../hooks/useContracts'
-import { useItemSurfaceReady } from '../hooks/useTaxonomy'
+import { useItemSurfaceReady, useItemSurfaceRefresh } from '../hooks/useTaxonomy'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
 import { FilterRail } from './FilterRail'
 import { Pagination } from './Pagination'
@@ -41,14 +41,38 @@ const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
 function EmptyResults({
   selectedRegionIds,
   coveredRegionIds,
+  itemFilteredItemLessSegment,
   onReset,
 }: {
   selectedRegionIds: number[]
   coveredRegionIds: number[]
+  /** An item-level filter against a segment whose contracts carry no items. */
+  itemFilteredItemLessSegment: boolean
   onReset: () => void
 }) {
   const uncovered = selectedRegionIds.filter((id) => !coveredRegionIds.includes(id))
   const coveredSelection = selectedRegionIds.filter((id) => coveredRegionIds.includes(id))
+
+  if (itemFilteredItemLessSegment) {
+    // The combination cannot match, and saying so is what Criterion 7.2 asks
+    // for. The alternative once shipped here — silently dropping the item
+    // filters on the way into the segment — destroyed a selection the reader
+    // would want back on the way out, and rewrote a stored saved search's
+    // meaning from "no matches" to "every contract of this type".
+    return (
+      <div className="flex flex-col items-start gap-3 rounded-md border border-line bg-surface px-5 py-8">
+        <h2 className="text-base font-medium text-ink">
+          These contracts carry no items to filter on
+        </h2>
+        <p className="max-w-[52ch] text-sm text-ink-dim">
+          Courier, loan and unknown contracts hold no item list, so a category, group or
+          blueprint filter can never match one. Clear those filters, or pick a contract
+          type that carries items.
+        </p>
+        <Button onClick={onReset}>Clear filters</Button>
+      </div>
+    )
+  }
 
   if (coveredRegionIds.length === 0 && selectedRegionIds.length === 0) {
     // Nothing ingested and nothing selected — no filter can reach any data, so
@@ -102,6 +126,9 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
   const navigate = useNavigate({ from })
   const { data, isPending, isError, isFetching, refetch } = useContracts(search)
   const itemSurfaceReady = useItemSurfaceReady()
+  // The list query's owner is where the readiness-change refresh belongs: the
+  // rows it drops are the ones this page is describing.
+  useItemSurfaceRefresh()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const title = listTitle(search)
   useDocumentTitle(title)
@@ -275,6 +302,7 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
               <EmptyResults
                 selectedRegionIds={data.regionIds}
                 coveredRegionIds={data.coverage.ingested_region_ids}
+                itemFilteredItemLessSegment={data.itemFilteredItemLessSegment}
                 onReset={resetFilters}
               />
             ) : (

@@ -141,7 +141,48 @@ test.describe('taxonomy filters', () => {
     await expect(category(page, 'Ship')).toHaveCount(0)
   })
 
-  test('the filters stand down on a segment whose contracts carry no items', async ({ page }) => {
+  test('a taxonomy selection survives a trip through an item-less segment', async ({ page }) => {
+    // The round trip matters: an earlier revision dropped the item filters on
+    // the way into the segment, so coming back out silently produced a wider
+    // view than the one the reader left — and rewrote a saved search's meaning
+    // from "no matches" to "every contract of this type".
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptTaxonomy(page, READY)
+    const calls = await interceptContractList(page, (params) =>
+      pageOf(params.get('contract_type') === 'courier' ? [] : SEVEN_SHIPS),
+    )
+
+    await page.goto('/contracts?category_id=6')
+    await expect(rowLinks(page)).toHaveCount(7)
+    await openFiltersIfCollapsed(page)
+    await expect(category(page, 'Ship')).toBeChecked()
+
+    await page.getByRole('button', { name: /^Courier/ }).click()
+
+    // The filter travelled: still in the URL, still on the wire, still checked.
+    await expect(page).toHaveURL(/category_id=/)
+    await openFiltersIfCollapsed(page)
+    await expect(category(page, 'Ship')).toBeChecked()
+    await expect
+      .poll(() => calls.at(-1)!.params.getAll('category_id'))
+      .toEqual(['6'])
+
+    // And the empty page it produces says why, rather than blaming the filters
+    // the reader could loosen (Criterion 7.2).
+    await expect(
+      page.getByRole('heading', { name: 'These contracts carry no items to filter on' }),
+    ).toBeVisible()
+
+    // Back out, and the selection is still there.
+    await page.getByRole('button', { name: /^All/ }).click()
+    await expect(page).toHaveURL(/category_id=/)
+    await expect(rowLinks(page)).toHaveCount(7)
+  })
+
+  test('ships-only is the one control an item-less segment disables', async ({ page }) => {
+    // Criterion 1.7 forces it off and the parser enforces that, so the box
+    // would never stay checked. The item-level controls are NOT disabled: their
+    // parameters survive, and hiding a set filter hides its cause.
     await interceptCurrentUser(page, { status: 401 })
     await interceptTaxonomy(page, READY)
     await interceptContractList(page, pageOf(COURIER_CONTRACTS))
@@ -150,12 +191,11 @@ test.describe('taxonomy filters', () => {
     await expect(rowLinks(page)).toHaveCount(3)
     await openFiltersIfCollapsed(page)
 
-    await expect(
-      page.getByText('Item filters do not apply to contracts that carry no items.'),
-    ).toBeVisible()
-    await expect(category(page, 'Ship')).toHaveCount(0)
-    // Ships only is still shown — the reader has to see what the segment did to
-    // it — but it cannot be re-checked from here, only by leaving the segment.
     await expect(page.getByLabel('Ships only')).toBeDisabled()
+    await expect(page.getByLabel('Blueprint copies only')).toBeEnabled()
+    await expect(category(page, 'Ship')).toBeVisible()
+    await expect(
+      page.getByText('These match on a contract’s items, and this type carries none.'),
+    ).toBeVisible()
   })
 })
