@@ -210,3 +210,11 @@ all — **the production DB IP allow rule `198.37.143.189/32` flagged "REMOVE" o
 still open** and needs Sam's Render access (ENV-8).
 
 **Reversibility.** Everything lands as ordinary PRs; the one schema change waits for Sam.
+
+**Process slip, recorded honestly:** PR #153 (remediation Phase 1) was merged while its final
+commit's CI was still pending — the verify step and the merge were chained with `;`, so the merge
+ran regardless of the verify's output. The final commit was a test-only assertion strengthening
+that had passed locally, and the post-merge run was watched to completion, but the
+verify-green-THEN-merge rule was violated as written. Lesson: never chain the green-check and the
+merge in one command; the check's output must gate the merge, mechanically (`&&` at minimum, or
+separate commands).

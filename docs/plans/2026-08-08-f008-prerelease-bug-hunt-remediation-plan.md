@@ -63,12 +63,12 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** 1/4 phases shipped.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 1 — parser gaps (B3/B5/B7) | ⬜ Not started | — | — |
-| 2 — format fixes (B4/B6) | ⬜ Not started | — | — |
+| 1 — parser gaps (B3/B5/B7) | ✅ Shipped | `82dd8ef` | PR #153 merged 2026-08-08 at `251e951` |
+| 2 — format fixes (B4/B6) | 🚧 In progress | — | on branch `fix/composition-format` |
 | 3 — segment numerals (B1) | ⬜ Not started | — | — |
 | 4 — price nullable (B2) | ⬜ Not started | — | PR to be LEFT OPEN for Sam (`Review — database schema`) |
 
@@ -104,7 +104,7 @@ notes and commit messages.
 
 ## Phase 1 — Parser junk-tolerance gaps (B3, B5, B7) — branch `fix/contract-search-parser-gaps`
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-08T20:55Z (branch `fix/contract-search-parser-gaps`)
+**Execution Status:** ✅ SHIPPED at `82dd8ef` on 2026-08-08 (PR #153 merged at `251e951`)
 
 **Files:** `app/frontend/web/src/features/contracts/filters.ts`,
 `src/features/contracts/components/ContractsPage.tsx`, `src/features/contracts/filters.test.ts`
@@ -166,7 +166,7 @@ notes and commit messages.
 
 ## Phase 2 — Format fixes (B4, B6) — branch `fix/composition-format`
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-08T21:20Z (branch `fix/composition-format`)
 
 **Files:** `src/features/contracts/format.ts`, `src/features/contracts/format.test.ts`.
 
