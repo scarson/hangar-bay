@@ -581,7 +581,10 @@ class ContractAggregationService:
 
         if all_items:
             logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
-            BATCH_SIZE = 50  # Number of items to process in each batch
+            # Sized against asyncpg's 32,767 bind-parameter ceiling: item rows
+            # carry ~17 supplied columns, so 500 rows binds ~8,500 parameters.
+            # The contract upsert above uses the same figure.
+            BATCH_SIZE = 500
             for i in range(0, len(all_items), BATCH_SIZE):
                 batch_items = all_items[i:i + BATCH_SIZE]
                 logger.info(f"Upserting batch of {len(batch_items)} contract items (items {i + 1}-{i + len(batch_items)} of {len(all_items)}).")
