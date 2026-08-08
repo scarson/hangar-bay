@@ -2473,3 +2473,52 @@ async def test_ship_name_sorts_both_ways_and_leaves_item_less_contracts_last(
     assert ascending == [972011, 972013, 972012] + without_an_item
     assert descending == [972013, 972012, 972011] + without_an_item
     assert ascending[0] != descending[0]
+
+
+# --- NULL placement for the price sort (region 99999973) ---
+#
+# ESI marks price optional on the public route, so the column is nullable and a
+# contract without one must not lead the cheap-first sort: a missing price is
+# not an asking price of nothing (ESI-3), so NULL goes last both ways like the
+# other five nullable sorts.
+
+PRICE_SORT_REGION = 99999973
+
+
+@pytest_asyncio.fixture
+async def price_sort_contracts(db_session: AsyncSession):
+    """Four item exchanges in region 99999973: three distinct prices, one priceless."""
+    now = datetime.now(timezone.utc)
+
+    def _contract(cid: int, **overrides) -> Contract:
+        fields = dict(
+            contract_id=cid, title=f"Pricesort {cid}", collateral=0,
+            status="outstanding", type="item_exchange", issuer_id=973,
+            issuer_corporation_id=973, start_location_id=60003760,
+            start_location_region_id=PRICE_SORT_REGION, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7), last_seen_at=now,
+        )
+        fields.update(overrides)
+        return Contract(**fields)
+
+    db_session.add_all([
+        _contract(973001, price=500_000.0),
+        _contract(973002, price=2_000_000.0),
+        _contract(973003, price=9_000_000.0),
+        # A spec-conformant contract ESI sent without a price at all.
+        _contract(973004, price=None),
+    ])
+    await db_session.flush()
+
+
+async def test_price_sorts_both_ways_and_leaves_unpriced_contracts_last(
+    client: AsyncClient, price_sort_contracts
+):
+    """A contract with no asking price is not the cheapest thing on the board —
+    it has no price to compare, so it belongs at the end in both directions."""
+    ascending = await _sorted_ids(client, "price", "asc", region=PRICE_SORT_REGION)
+    descending = await _sorted_ids(client, "price", "desc", region=PRICE_SORT_REGION)
+
+    assert ascending == [973001, 973002, 973003, 973004]
+    assert descending == [973003, 973002, 973001, 973004]
+    assert ascending[0] != descending[0]

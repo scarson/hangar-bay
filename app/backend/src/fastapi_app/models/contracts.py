@@ -57,7 +57,10 @@ class Contract(Base):
 
     contract_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    price: Mapped[float] = mapped_column(Numeric, nullable=False)
+    # ESI marks price optional on the public route (a spec-conformant contract
+    # may omit it), and absence must stay distinguishable from zero (ESI-3) —
+    # a missing price is not "free". NULL sorts last via NULLABLE_SORTS.
+    price: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
     collateral: Mapped[float] = mapped_column(Numeric, nullable=False)
     # Contract lifecycle state, and when it reached a terminal one. Both belong to ESI's
     # AUTHENTICATED character/corporation contract routes; the public route carries neither,

@@ -2026,3 +2026,47 @@ async def test_a_renamed_entity_updates_on_the_next_successful_run(
         await db_session.execute(select(Contract).where(Contract.contract_id == 815))
     ).scalar_one()
     assert row.issuer_corporation_name == "New Corp Name"
+
+
+async def test_a_spec_minimal_contract_persists_with_absent_optionals_null_or_defended(
+    db_session: AsyncSession,
+):
+    """TEST-22: a payload carrying ONLY the fields the committed ESI snapshot marks
+    required — contract_id, date_issued, date_expired, issuer_corporation_id,
+    issuer_id, type — must persist. The snapshot's optional fields (buyout,
+    collateral, days_to_complete, end_location_id, for_corporation, price, reward,
+    start_location_id, title, volume) are each either defended with a default the
+    corpus really has (collateral 0.0, for_corporation False) or land as NULL —
+    price included, which aborted the whole batch while its column was NOT NULL."""
+    from datetime import datetime, timedelta, timezone
+
+    service = _make_service()
+    live_expiry = datetime.now(timezone.utc) + timedelta(days=7)
+    spec_minimal = {
+        "contract_id": 910099,
+        "issuer_id": 1,
+        "issuer_corporation_id": 1,
+        "type": "courier",  # item-less by construction; no item fetch to stub
+        "date_issued": "2026-07-01T00:00:00Z",
+        "date_expired": live_expiry.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # The fetch layer annotates every contract with its working region;
+        # not an ESI field.
+        "_hb_region_id": 10000002,
+    }
+
+    await service._process_contracts(db_session, [spec_minimal])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910099)
+        )
+    ).scalar_one()
+    assert row.price is None
+    assert row.collateral == 0.0
+    assert row.for_corporation is False
+    assert row.title is None
+    assert row.reward is None
+    assert row.volume is None
+    assert row.buyout is None
+    assert row.days_to_complete is None
+    assert row.start_location_id is None

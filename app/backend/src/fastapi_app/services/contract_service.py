@@ -56,19 +56,22 @@ SORT_MAP = {
 }
 
 # Sorts whose column can be NULL: buyout belongs to auctions, days_to_complete
-# to couriers, the ratio needs both a reward and a volume, volume is a nullable
-# column, and ship_name resolves to ContractItem.type_name across an outer join,
-# so an item-less contract has no name at all. A missing value is not a low one —
-# a contract with no reward per m3 must not lead the best-value sort — so NULL
-# goes to the end whichever way the sort runs. The remaining four sorts
-# (date_issued, date_expired, price, collateral) are non-null columns and keep
-# their existing order expressions.
+# to couriers, the ratio needs both a reward and a volume, volume and price are
+# nullable columns (ESI marks both optional on the public route), and ship_name
+# resolves to ContractItem.type_name across an outer join, so an item-less
+# contract has no name at all. A missing value is not a low one — a contract
+# with no reward per m3 must not lead the best-value sort, and one with no
+# asking price is not the cheapest thing on the board — so NULL goes to the end
+# whichever way the sort runs. The remaining three sorts (date_issued,
+# date_expired, collateral) are non-null columns and keep their existing order
+# expressions.
 NULLABLE_SORTS = frozenset({
     SortableContractFields.buyout,
     SortableContractFields.days_to_complete,
     SortableContractFields.reward_per_volume,
     SortableContractFields.volume,
     SortableContractFields.ship_name,
+    SortableContractFields.price,
 })
 
 
