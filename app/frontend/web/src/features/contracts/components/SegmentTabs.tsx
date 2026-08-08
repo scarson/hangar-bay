@@ -84,20 +84,49 @@ function segmentPatch(
 
 export function SegmentTabs({
   search,
+  countsSearch,
   counts,
   onSelect,
 }: {
   search: ContractSearch
+  /**
+   * The search `counts` was served under, captured at fetch time (WEB-1).
+   * keepPreviousData holds an envelope on screen for the whole of the next
+   * request, so what the figures ARE is read off this captured search, while
+   * what a click DELIVERS is read off the live one — the numeral logic below
+   * consults both. Clicks and pressed states stay on the live search alone:
+   * they are about where the reader goes, not about what the numbers mean.
+   */
+  countsSearch: ContractSearch
   /** The envelope's per-type counts, keyed by every type the server enumerates. */
   counts: Record<string, number>
   onSelect: (patch: Partial<ContractSearch>) => void
 }) {
   const leavingItemLess = isItemLessSelection(search)
+  // The counts' ships-lift state is a property of the request that produced
+  // them, not of the URL: while an item-less selection's envelope is on
+  // screen, the item-bearing figures in it are ships-lifted.
+  const countsFromItemLess = isItemLessSelection(countsSearch)
+  // A numeral has to be honest about two things at once — what the on-screen
+  // figures ARE (the captured search) and what clicking would DELIVER (the
+  // live one). An item-less selection on the captured side means the
+  // item-bearing figures are lifted; on the live side it means a click
+  // restores ships-only. Hiding on either covers both transition directions
+  // around the item-less segments, at two accepted residual costs: a
+  // ships-only → item-less transition hides a numeral that happened to be
+  // honest (hidden beats wrong, and this is merely hidden-though-right for
+  // one request), and a ships-only ↔ widened toggle keeps showing the held
+  // envelope's figures for its own one-request window — the same
+  // keepPreviousData semantics as every other number on the page, coherent
+  // with the held rows beside it. The complete per-request answer is the
+  // mirror-counts envelope recorded as an open design decision in D11 and
+  // the 2026-08-08 bug-hunt report.
+  const suppressLiftedNumerals = countsFromItemLess || leavingItemLess
   const selected = activeSegment(search)
   // What All would land on decides what All may claim: every route into it from
   // an item-less segment restores ships-only, so only a view the reader has
   // already widened counts the item-less types in.
-  const allCountsEveryType = !leavingItemLess && !search.ships_only
+  const allCountsEveryType = !countsFromItemLess && !countsSearch.ships_only
 
   return (
     <fieldset className="flex flex-wrap items-center gap-1.5">
@@ -105,22 +134,26 @@ export function SegmentTabs({
       {SEGMENTS.map((segment) => {
         const active =
           segment.type === undefined ? search.contract_type === undefined : segment.type === selected
-        // While an item-less segment is active the request carried no ships-only
-        // filter, so the envelope's item-bearing counts are lifted — but All's
-        // destination RESTORES ships-only, a population those counts cannot
-        // describe. No numeral beats a wrong one; the count returns with the
-        // next response after switching.
-        // Per-segment counts go out exactly as served: every filter but
-        // contract_type is applied to them, so the number a segment shows is
-        // the number selecting it delivers. That stays true of an item-less
-        // segment under an item-level filter — the served zero is honest, and
-        // the empty state it leads to explains itself.
+        // While an item-less selection is in play on either side (captured
+        // envelope or live URL), the item-bearing numerals cannot be paired
+        // honestly with what a click delivers — see suppressLiftedNumerals
+        // above. No numeral beats a wrong one: All and the typed item-bearing
+        // controls all go count-less in that state, and the counts return
+        // with the next response after switching. The item-less segment's own
+        // numeral is the lifted figure describing the lifted view it serves,
+        // so it stays.
+        // Per-segment counts otherwise go out exactly as served: every filter
+        // but contract_type is applied to them. That stays true of an
+        // item-less segment under an item-level filter — the served zero is
+        // honest, and the empty state it leads to explains itself.
         const count =
           segment.type === undefined
-            ? leavingItemLess
+            ? suppressLiftedNumerals
               ? undefined
               : sumCounts(counts, allCountsEveryType ? CONTRACT_TYPES : ITEM_BEARING_TYPES)
-            : (counts[segment.type] ?? 0)
+            : suppressLiftedNumerals && ITEM_BEARING_TYPES.includes(segment.type)
+              ? undefined
+              : (counts[segment.type] ?? 0)
         return (
           <button
             key={segment.type ?? 'all'}

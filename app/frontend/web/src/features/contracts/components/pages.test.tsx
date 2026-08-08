@@ -789,6 +789,100 @@ describe('contract-type segments', () => {
     expect(all.textContent).toBe('All')
   })
 
+  it('shows the typed item-bearing controls without counts while an item-less segment is active', async () => {
+    // The same rule as the All control one test up: this envelope's
+    // item-exchange/auction counts were served ships-lifted, but clicking
+    // either button RESTORES ships-only (Criterion 1.9), so the numeral would
+    // advertise a population the click cannot deliver. Courier's own numeral
+    // is honest in this state — its count is the lifted figure and its page is
+    // the lifted view — so it stays.
+    stubFetch(anonymousMe(segmentedPage))
+
+    renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    expect(screen.getByRole('button', { name: /^Item exchange$/ }).textContent).toBe('Item exchange')
+    expect(screen.getByRole('button', { name: /^Auction$/ }).textContent).toBe('Auction')
+    expect(screen.getByRole('button', { name: /^Courier 115$/ })).toBeInTheDocument()
+  })
+
+  it('keeps the typed numerals off until the new segment response lands', async () => {
+    // keepPreviousData holds the courier envelope on screen while the
+    // item-exchange response loads, and the numerals' meaning comes off that
+    // captured envelope, not the live URL (WEB-1): read from the URL, the
+    // lifted numbers would resurrect for exactly the window the old rows are
+    // still up.
+    let releaseExchange!: (page: Response) => void
+    const exchangeInFlight = new Promise<Response>((resolve) => {
+      releaseExchange = resolve
+    })
+    const calls = stubFetch(
+      anonymousMe((url) =>
+        url.includes('contract_type=item_exchange') ? exchangeInFlight : segmentedPage(url),
+      ),
+    )
+
+    renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    await userEvent.click(screen.getByRole('button', { name: /^Item exchange$/ }))
+    await waitFor(() =>
+      expect(calls.some((url) => url.includes('contract_type=item_exchange'))).toBe(true),
+    )
+
+    // The pressed state follows the live URL...
+    expect(screen.getByRole('button', { name: /^Item exchange$/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    // ...but the counts on screen are still the lifted envelope's, so the
+    // numerals stay off until the response for this segment arrives.
+    expect(screen.getByRole('button', { name: /^Item exchange$/ }).textContent).toBe('Item exchange')
+
+    releaseExchange(jsonResponse(listPage([ROW], { segment_counts: SEGMENT_COUNTS })))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Item exchange 1,240$/ })).toBeInTheDocument(),
+    )
+  })
+
+  it('drops the numerals the moment an item-less segment is clicked from a widened view', async () => {
+    // The reverse transition: the widened envelope's numerals are still on
+    // screen when Courier is clicked, but the live URL is already the
+    // item-less selection — so clicking All or a typed control from here
+    // RESTORES ships-only, a population the widened figures do not describe.
+    // Either context being item-less poisons the numeral's meaning: the
+    // captured one says what the figures are, the live one says what a click
+    // delivers, and the numeral must be honest about both.
+    let releaseCourier!: (page: Response) => void
+    const courierInFlight = new Promise<Response>((resolve) => {
+      releaseCourier = resolve
+    })
+    const calls = stubFetch(
+      anonymousMe((url) =>
+        url.includes('contract_type=courier') ? courierInFlight : segmentedPage(url),
+      ),
+    )
+
+    renderApp('/contracts?ships_only=false')
+    await screen.findByText('Tristan')
+    expect(screen.getByRole('button', { name: /^Item exchange 1,240$/ })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Courier 115$/ }))
+    await waitFor(() =>
+      expect(calls.some((url) => url.includes('contract_type=courier'))).toBe(true),
+    )
+
+    expect(screen.getByRole('button', { name: /^Courier/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /^Item exchange$/ }).textContent).toBe('Item exchange')
+    expect(screen.getByRole('button', { name: /^All$/ }).textContent).toBe('All')
+
+    releaseCourier(jsonResponse(listPage([COURIER_ROW], { segment_counts: SEGMENT_COUNTS })))
+    // Settled on courier, the item-less control's own (honest) numeral is back.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Courier 115$/ })).toBeInTheDocument(),
+    )
+  })
+
   it('keeps a sort both segments can express', async () => {
     // Price is sortable in All and in Auction alike — resetting it would throw
     // away the user's choice for no disclosure gain.

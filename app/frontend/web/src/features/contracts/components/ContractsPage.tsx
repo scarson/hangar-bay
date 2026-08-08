@@ -229,7 +229,7 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
             first response and stay through later ones (keepPreviousData holds
             the previous page while a new segment loads). */}
         {data !== undefined ? (
-          <SegmentTabs search={search} counts={data.segment_counts} onSelect={update} />
+          <SegmentTabs search={search} countsSearch={data.countsSearch} counts={data.segment_counts} onSelect={update} />
         ) : null}
 
         {/* A shared URL can carry a taxonomy or blueprint filter into a corpus

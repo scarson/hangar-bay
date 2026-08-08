@@ -54,6 +54,7 @@ export function useContracts(search: ContractSearch) {
       // columns over rows whose terms had not been written yet.
       return {
         ...data,
+        countsSearch: search,
         segment,
         regionIds: query.region_ids ?? [],
         enrichmentFiltered,
