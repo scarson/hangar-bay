@@ -184,9 +184,32 @@ function toNumber(value: unknown): number | undefined {
  * sentinel, but no control in this UI produces a negative, so a sub-zero value
  * in the URL is junk and falls back rather than filtering on a sentinel.
  */
+/** New sort field starts in its most useful direction: newest/soonest for dates, cheap-first for ISK. */
+export const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
+  date_issued: 'desc',
+  date_expired: 'asc',
+  price: 'asc',
+  collateral: 'asc',
+  ship_name: 'asc',
+  volume: 'desc',
+  // Hauling figures read best-offer-first: the most ISK per m³ and the most
+  // days to deliver in. Buyout follows the price convention, cheap-first.
+  reward_per_volume: 'desc',
+  days_to_complete: 'desc',
+  buyout: 'asc',
+}
+
 function toNonNegativeNumber(value: unknown): number | undefined {
   const n = toNumber(value)
   return n !== undefined && n >= 0 ? n : undefined
+}
+
+// The six blueprint bounds are integers on the wire (Optional[int]); a decimal
+// would 422 the whole request, so it is junk and falls back like any other junk.
+// Prices stay on the decimal helper above.
+function toNonNegativeInt(value: unknown): number | undefined {
+  const n = toNonNegativeNumber(value)
+  return n !== undefined && Number.isInteger(n) ? n : undefined
 }
 
 function toBoundedInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -207,7 +230,10 @@ function toContractTypes(value: unknown): ContractTypeValue[] | undefined {
   const types = raw.filter((entry): entry is ContractTypeValue =>
     CONTRACT_TYPES.includes(entry as ContractTypeValue),
   )
-  return types.length > 0 ? types : undefined
+  // Deduped: a URL repeating one type must still read as a single-segment
+  // selection, or activeSegment sees "several" and segment identity breaks.
+  const unique = [...new Set(types)]
+  return unique.length > 0 ? unique : undefined
 }
 
 /**
@@ -237,6 +263,7 @@ export function parseContractSearch(raw: Record<string, unknown>): ContractSearc
   // A filter that cannot match an item-less segment now yields an honest empty
   // result with an explanation (Criterion 7.2), which is what that criterion
   // asks for and what 1.7 does not license extending to nine other params.
+  const sortBy = reconcileSort(raw.sort_by, contractTypes)
   return {
     search: typeof raw.search === 'string' && raw.search.length > 0 ? raw.search : undefined,
     min_price: toNonNegativeNumber(raw.min_price),
@@ -245,21 +272,21 @@ export function parseContractSearch(raw: Record<string, unknown>): ContractSearc
     contract_type: contractTypes,
     category_id: toIdArray(raw.category_id),
     group_id: toIdArray(raw.group_id),
-    min_runs: toNonNegativeNumber(raw.min_runs),
-    max_runs: toNonNegativeNumber(raw.max_runs),
-    min_me: toNonNegativeNumber(raw.min_me),
-    max_me: toNonNegativeNumber(raw.max_me),
-    min_te: toNonNegativeNumber(raw.min_te),
-    max_te: toNonNegativeNumber(raw.max_te),
+    min_runs: toNonNegativeInt(raw.min_runs),
+    max_runs: toNonNegativeInt(raw.max_runs),
+    min_me: toNonNegativeInt(raw.min_me),
+    max_me: toNonNegativeInt(raw.max_me),
+    min_te: toNonNegativeInt(raw.min_te),
+    max_te: toNonNegativeInt(raw.max_te),
     is_bpc: typeof raw.is_bpc === 'boolean' ? raw.is_bpc : undefined,
     // Default ON; only an explicit false in the URL widens to all contracts.
     ships_only: itemLessOnly ? false : raw.ships_only !== false,
     page: toBoundedInt(raw.page, 1, Number.MAX_SAFE_INTEGER, DEFAULT_PAGE),
     size: toBoundedInt(raw.size, 1, MAX_SIZE, DEFAULT_SIZE),
-    sort_by: reconcileSort(raw.sort_by, contractTypes),
+    sort_by: sortBy,
     sort_direction: SORT_DIRECTIONS.includes(raw.sort_direction as SortDirection)
       ? (raw.sort_direction as SortDirection)
-      : 'desc',
+      : DEFAULT_DIRECTION[sortBy],
   }
 }
 

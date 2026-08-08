@@ -219,9 +219,10 @@ test.describe('contract filters', () => {
     // field the courier set can disclose (its header showed it, aria-sort and
     // all), and Clear preserves the current sort — sort is not a filter. Had
     // the flow never entered a segment, the default Issued sort would survive
-    // untouched instead.
+    // untouched instead. The direction is Time-left's own default, soonest
+    // first, not a flat desc.
     await expect(page).toHaveURL(/[?&]sort_by=date_expired(&|$)/)
-    await expect(page).toHaveURL(/[?&]sort_direction=desc(&|$)/)
+    await expect(page).toHaveURL(/[?&]sort_direction=asc(&|$)/)
     await expect(page).not.toHaveURL(/search=/)
     await expect(page).not.toHaveURL(/min_price=/)
     await expect(page).not.toHaveURL(/max_price=/)

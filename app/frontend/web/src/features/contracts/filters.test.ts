@@ -7,6 +7,7 @@ import {
   ITEM_LESS_TYPES,
   MIN_SEARCH_LENGTH,
   SORT_FIELDS,
+  activeSegment,
   parseContractSearch,
   toApiQuery,
 } from './filters'
@@ -234,9 +235,53 @@ describe('parseContractSearch', () => {
       sort_direction: 'asc',
     })
   })
+
+  it('drops non-integer blueprint bounds instead of sending a value the wire rejects', () => {
+    // All six bounds are Optional[int] server-side; a decimal would 422 and
+    // collapse the list view, so it is junk and falls back like any other junk.
+    for (const key of ['min_runs', 'max_runs', 'min_me', 'max_me', 'min_te', 'max_te'] as const) {
+      expect(parseContractSearch({ [key]: '2.5' })[key]).toBeUndefined()
+      expect(parseContractSearch({ [key]: 2.5 })[key]).toBeUndefined()
+      expect(parseContractSearch({ [key]: '0' })[key]).toBe(0)
+    }
+  })
+
+  it('keeps decimal prices — only the blueprint bounds are integer-typed on the wire', () => {
+    const parsed = parseContractSearch({ min_price: '99.5', max_price: '1000000.25' })
+    expect(parsed.min_price).toBe(99.5)
+    expect(parsed.max_price).toBe(1000000.25)
+  })
+
+  it('defaults the sort direction to the default of the reconciled field, not a flat desc', () => {
+    // The courier set carries no Issued column, so its sortless fallback is the
+    // Time-left field — whose own default direction is expiring-soonest-first,
+    // the same direction its header click gives.
+    const courier = parseContractSearch({ contract_type: 'courier' })
+    expect(courier.sort_by).toBe('date_expired')
+    expect(courier.sort_direction).toBe('asc')
+    // An explicit direction in the URL still wins.
+    const explicit = parseContractSearch({ contract_type: 'courier', sort_direction: 'desc' })
+    expect(explicit.sort_direction).toBe('desc')
+    // The default view is untouched: date_issued's own default is desc.
+    expect(parseContractSearch({}).sort_direction).toBe('desc')
+  })
+
+  it('collapses duplicated contract_type values so single-segment identity holds', () => {
+    const parsed = parseContractSearch({ contract_type: ['courier', 'courier'] })
+    expect(parsed.contract_type).toEqual(['courier'])
+    expect(activeSegment(parsed)).toBe('courier')
+  })
 })
 
 describe('toApiQuery', () => {
+  it('sends nothing for a blueprint bound the parser dropped as junk', () => {
+    // openapi-fetch omits undefined-valued params at serialization, so
+    // undefined here IS "not sent" — the same convention toEqual relies on
+    // throughout this file.
+    const query = toApiQuery(parseContractSearch({ min_me: '5.5' }))
+    expect(query.min_me).toBeUndefined()
+  })
+
   it('gates search below the backend min_length of 3', () => {
     expect(MIN_SEARCH_LENGTH).toBe(3)
     const base = parseContractSearch({})

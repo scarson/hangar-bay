@@ -104,7 +104,7 @@ notes and commit messages.
 
 ## Phase 1 — Parser junk-tolerance gaps (B3, B5, B7) — branch `fix/contract-search-parser-gaps`
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-08T20:55Z (branch `fix/contract-search-parser-gaps`)
 
 **Files:** `app/frontend/web/src/features/contracts/filters.ts`,
 `src/features/contracts/components/ContractsPage.tsx`, `src/features/contracts/filters.test.ts`
