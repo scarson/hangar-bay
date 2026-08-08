@@ -184,3 +184,29 @@ Not a decision so much as the operational record of OD1's fallout:
   baseline all five lanes.
 
 ---
+
+---
+
+## OD7 — Pre-release bug hunt: scope, applied decisions, and what awaits Sam
+
+**Background.** Sam delegated multi-day planning and execution ("figure out the next few days of
+useful work … plan and execute"). With the dev→main release as the next milestone, the first move
+was a four-methodology bug-hunt cycle over the F008 surface plus a disposition audit of the
+2026-06-05 perf remediation plan.
+
+**Decision.** Findings and their classifications live in
+[`docs/bug-hunts/2026-08-08-f008-prerelease-consolidated.md`](../../bug-hunts/2026-08-08-f008-prerelease-consolidated.md)
+(7 confirmed bugs, 11 design decisions left for Sam, 2 out-of-scope); the fix plan (4 PRs) in
+[`docs/plans/2026-08-08-f008-prerelease-bug-hunt-remediation-plan.md`](../../plans/2026-08-08-f008-prerelease-bug-hunt-remediation-plan.md)
+went through a 5-round review cycle (two codex rounds: 15 findings, then 4, then converged). Two
+remediation decisions were made on repo precedent rather than waiting for Sam: B1 follows D11's
+"no numeral beats a wrong one" (extended to response-captured interpretation per WEB-1), and B2
+goes nullable rather than defaulting `0.0` per the absence-≠-zero principle (ESI-3) — B2's PR is
+held OPEN under `Review — database schema` so the migration cannot land without Sam.
+
+**Perf disposition headline** ([`docs/perf-audits/2026-08-08-remediation-status.md`](../../perf-audits/2026-08-08-remediation-status.md)):
+~half the June findings were fixed incidentally by later work; the top open item is not perf at
+all — **the production DB IP allow rule `198.37.143.189/32` flagged "REMOVE" on 2026-08-02 is
+still open** and needs Sam's Render access (ENV-8).
+
+**Reversibility.** Everything lands as ordinary PRs; the one schema change waits for Sam.
