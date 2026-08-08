@@ -8,15 +8,30 @@ import {
   toApiQuery,
   type ContractSearch,
 } from '../filters'
+import { useDebouncedValue } from '../../../lib/useDebouncedValue'
 import { useTaxonomy } from './useTaxonomy'
 
+// Long enough to bridge keystrokes, short enough that the pause before results
+// reads as responsiveness rather than loss. Only the search text is debounced:
+// pagination, sorting, and every other filter fire immediately.
+const SEARCH_DEBOUNCE_MS = 300
+
 export function useContracts(search: ContractSearch) {
-  const query = toApiQuery(search)
-  const segment = activeSegment(search)
-  const enrichmentFiltered = hasEnrichmentDependentFilters(search)
+  // The URL updates per keystroke (the URL is the interface), but the request
+  // does not: the search text settles for SEARCH_DEBOUNCE_MS before it may
+  // change the query key, so typing a word costs one corpus-scale request
+  // instead of one per keystroke past MIN_SEARCH_LENGTH. Everything derived
+  // below uses the effective search — the one the request is actually made
+  // under — so the fetch-time captures describe the rows they ride with.
+  const debouncedSearchText = useDebouncedValue(search.search, SEARCH_DEBOUNCE_MS)
+  const effectiveSearch = { ...search, search: debouncedSearchText }
+  const query = toApiQuery(effectiveSearch)
+  const segment = activeSegment(effectiveSearch)
+  const enrichmentFiltered = hasEnrichmentDependentFilters(effectiveSearch)
   // A filter that needs an offered item, asked of a type that has none. Both
   // halves are functions of the request, so the pair travels with the rows.
-  const itemFilteredItemLessSegment = isItemLessSelection(search) && requiresOfferedItem(search)
+  const itemFilteredItemLessSegment =
+    isItemLessSelection(effectiveSearch) && requiresOfferedItem(effectiveSearch)
 
   // Readiness has to be KNOWN before the rows are fetched, and then travel with
   // them (WEB-1). Two mechanisms, and both are needed:
@@ -54,7 +69,7 @@ export function useContracts(search: ContractSearch) {
       // columns over rows whose terms had not been written yet.
       return {
         ...data,
-        countsSearch: search,
+        countsSearch: effectiveSearch,
         segment,
         regionIds: query.region_ids ?? [],
         enrichmentFiltered,
