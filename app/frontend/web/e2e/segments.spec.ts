@@ -6,7 +6,7 @@ import {
   countByType,
   pageOf,
 } from './fixtures/contracts'
-import { interceptContractList, interceptCurrentUser } from './helpers/api'
+import { interceptContractList, interceptCurrentUser, interceptTaxonomy } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
 /**
@@ -45,6 +45,15 @@ function respond(params: URLSearchParams) {
 }
 
 const segment = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
+
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
 
 test.describe('contract-type segments', () => {
   test('the default view offers one control per browsable type, with honest counts', async ({

@@ -106,6 +106,67 @@ export function activeSegment(search: ContractSearch): ContractTypeValue | undef
   return search.contract_type?.length === 1 ? search.contract_type[0] : undefined
 }
 
+/**
+ * The filter params that read the item columns F008 added — taxonomy ids and
+ * the three blueprint ranges. They are the only filters a half-enriched corpus
+ * answers short, so they are the only ones a readiness warning may be about.
+ *
+ * `is_bpc` is deliberately absent even though it is an item-level filter:
+ * `is_blueprint_copy` has been ingested since M1, so it answers exactly as
+ * completely mid-resweep as it does after one.
+ */
+const ENRICHMENT_DEPENDENT_FILTERS = [
+  'category_id',
+  'group_id',
+  'min_runs',
+  'max_runs',
+  'min_me',
+  'max_me',
+  'min_te',
+  'max_te',
+] as const satisfies readonly (keyof ContractSearch)[]
+
+export function hasEnrichmentDependentFilters(search: ContractSearch): boolean {
+  return ENRICHMENT_DEPENDENT_FILTERS.some((key) => search[key] !== undefined)
+}
+
+/**
+ * Every filter that asks something of an offered item. `is_bpc` joins the eight
+ * above here because the question it asks — is one of these items a copy? —
+ * is just as unanswerable for a contract that carries no items, even though
+ * the column behind it has always been populated.
+ */
+const OFFERED_ITEM_FILTERS = [...ENRICHMENT_DEPENDENT_FILTERS, 'is_bpc'] as const
+
+export function hasOfferedItemFilters(search: ContractSearch): boolean {
+  return OFFERED_ITEM_FILTERS.some((key) => search[key] !== undefined)
+}
+
+/**
+ * Whether the filters demand that an offered item EXIST — the subset no
+ * item-less contract can satisfy, which is what makes such a combination worth
+ * explaining rather than leaving as a bare empty page.
+ *
+ * `is_bpc` splits here, and only one of its values belongs: `true` compiles to
+ * EXISTS(offered copy) and matches no item-less contract, while `false` is that
+ * expression negated (`~has_copy` in `contract_service`) and is satisfied by
+ * every one of them. Folding the whole param in would call a filter
+ * unsatisfiable that is in fact true of the entire segment.
+ */
+export function requiresOfferedItem(search: ContractSearch): boolean {
+  return hasEnrichmentDependentFilters(search) || search.is_bpc === true
+}
+
+/**
+ * Whether every selected type is item-less. Such a selection is the one the
+ * parser widens on the way in — no item-level filter and no ships-only survives
+ * it — so it is also the one the controls for those filters must stand down for.
+ */
+export function isItemLessSelection(search: ContractSearch): boolean {
+  const selected = search.contract_type
+  return selected !== undefined && selected.every((type) => ITEM_LESS_TYPES.includes(type))
+}
+
 function toNumber(value: unknown): number | undefined {
   const n =
     typeof value === 'number' ? value : typeof value === 'string' && value !== '' ? Number(value) : NaN
@@ -164,6 +225,18 @@ export function parseContractSearch(raw: Record<string, unknown>): ContractSearc
   // silently contradicting the results.
   const itemLessOnly =
     contractTypes !== undefined && contractTypes.every((type) => ITEM_LESS_TYPES.includes(type))
+  // NOTE: only `ships_only` is normalized here, and only because Criterion 1.7
+  // names that exact pair. The item-level filters are deliberately NOT dropped
+  // alongside it, though an earlier revision of this function did drop them:
+  //   - it destroyed state a segment round-trip should preserve (ships_only has
+  //     a defined restore in Criterion 1.9; these have none), and
+  //   - it silently rewrote a stored saved search from "no matches" into "every
+  //     item-less contract", which is a worse answer than an honest zero, and
+  //   - `is_bpc=false` compiles to NOT EXISTS(offered copy), which every
+  //     item-less contract SATISFIES — so it is not unsatisfiable at all.
+  // A filter that cannot match an item-less segment now yields an honest empty
+  // result with an explanation (Criterion 7.2), which is what that criterion
+  // asks for and what 1.7 does not license extending to nine other params.
   return {
     search: typeof raw.search === 'string' && raw.search.length > 0 ? raw.search : undefined,
     min_price: toNonNegativeNumber(raw.min_price),

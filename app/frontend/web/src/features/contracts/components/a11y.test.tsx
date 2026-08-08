@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import { axe } from 'vitest-axe'
 import * as matchers from 'vitest-axe/matchers'
-import { anonymousMe, jsonResponse } from '../../../test/http'
+import { anonymousMe, jsonResponse, taxonomyResponse, withTaxonomy } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
@@ -102,6 +102,23 @@ describe('accessibility (axe)', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 
+  it('the two sides of a want-to-buy contract have no violations', async () => {
+    // Two aria-labelledby regions where there was one, each with its own
+    // heading — axe checks the heading order and that both labels resolve.
+    const wtb = {
+      ...CONTRACT,
+      items: [
+        { record_id: 2001, type_id: 587, quantity: 1, is_included: true, type_name: 'Rifter', category: 'ship' },
+        { record_id: 2002, type_id: 34, quantity: 1_000_000, is_included: false, type_name: 'Tritanium' },
+      ],
+    }
+    stubFetch(anonymousMe(() => jsonResponse(wtb)))
+    const { container } = renderApp('/contracts/101')
+    await screen.findByRole('region', { name: /^Requested/ })
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
   it('the contract-type segments have no violations with one selected', async () => {
     // The segment toolbar exposes its selected state with aria-pressed on plain
     // buttons inside a labelled fieldset (Criterion 12), which axe checks for
@@ -120,6 +137,27 @@ describe('accessibility (axe)', () => {
     stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
     const { container } = renderApp('/contracts?region_ids=10000043')
     await screen.findByRole('heading', { name: 'No data for Domain yet' })
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('the open item-level filters have no violations', async () => {
+    // Two more grouped checkbox lists, one of them carrying a described-by
+    // sentence about the other's scope (Criterion 12) — axe checks the fieldset
+    // grouping, the label association on every box, and that the description
+    // resolves to text that exists.
+    stubFetch(
+      withTaxonomy(
+        anonymousMe(() => jsonResponse(listPage([ROW]))),
+        taxonomyResponse({
+          coverage: 'complete',
+          categories: [{ category_id: 6, name: 'Ship' }],
+          groups: [{ group_id: 25, category_id: 6, name: 'Frigate' }],
+        }),
+      ),
+    )
+    const { container } = renderApp('/contracts?category_id=6')
+    await screen.findByRole('checkbox', { name: 'Frigate' })
 
     expect(await axe(container)).toHaveNoViolations()
   })

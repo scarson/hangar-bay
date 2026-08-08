@@ -104,7 +104,9 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 
 ---
 
-## D11 — The search-text PII scrub is closed at the engine, not only at the log site
+## D12 — The search-text PII scrub is closed at the engine, not only at the log site
+
+*(Numbered D12 on 2026-08-08. It was written as a second D11 during the overnight build, colliding with the sort-visibility entry below; both external references — the 2026-08-07 handoff's PR #140 row and the 2026-08-08 handoff's spot-check item — mean the sort-visibility entry, so that one keeps D11 and this one moves.)*
 
 **Background.** Task B10 replaced the raw search string with its length in all four `search_terms` payloads and its commit claimed the text "never lands in a log line". Review found the claim false: the failure site logs `error_message=str(e)` in the same record, and the exception a contract search realistically fails with is a SQLAlchemy `StatementError` — statement timeout, dropped connection, deadlock — whose `str()` appends `[SQL: ...]\n[parameters: {...}]`. The failing statement is the one carrying the `ILIKE '%<search text>%'` bind, so `error_message` re-published the exact string `search_terms` had just withheld. `create_async_engine` in `db.py` set no `hide_parameters`, so the default `False` applied. The shipped test could not see any of this: it injected `RuntimeError("simulated db failure")`, whose `str()` carries no parameters.
 
@@ -172,6 +174,41 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 **Codex review:** yes — and codex **objected** (round-2 finding 8): it agrees the spec is internally inconsistent but holds that changing acceptance behavior against a binding spec's literal text needs the spec owner, not a plan-local ruling. Proceeding anyway under Sam's explicit 2026-08-06 decision-making grant, because the alternative (enforcing "exactly one branch" on ranges) would reject implementations that are *correct under the spec's own existential rule* — but this entry is the one flagged most prominently for Sam's morning ratification, and §3.1's wording should be amended once ratified. If Sam overrules, the change is confined to the B5 test fixtures.
 
 **Outcome: RATIFIED by Sam, 2026-08-08.** Spec §3.1 and §16.3 amended in the same change: the identity gains its explicit overlap term (`branch_a + branch_b - both + neither == unfiltered`), "exactly one branch" is scoped to the negation-derived boolean family, and the range-family fixture's three discriminating assertions (both-branch membership, same-item window exclusion, stated-count identity) are now the spec's own text. Codex's objection is resolved the way it asked: by the spec owner.
+
+---
+
+## D13 — The item-level readiness gate is read live, not carried on the list response
+
+**Background.** Task D1 gates the whole item-dependent surface — taxonomy and blueprint controls, the blueprint column, the composition cell, and the deep-link warning — on `GET /contracts/taxonomy`'s `coverage` field. WEB-1 (added by Task C4 four days earlier) says anything *describing the rows* must be derived inside the list query function so it travels with the rows through `keepPreviousData`. The column set and the warning both describe the rows, so the rule appears to apply.
+
+**Alternatives considered.**
+1. *Put readiness in the list query key* (`['contracts','list', query, ready]`) — correct by construction, and wrong on cost: taxonomy and the list fire together on a cold load, taxonomy resolves first, the key changes, and the app issues a **second corpus-scale list request** on every cold load. The unfiltered count path is the one PR #130 spent a release fighting down; doubling it to close a seconds-long cosmetic window is a bad trade.
+2. *Capture readiness in the query function's closure* (no key change) — free, and correct for every steady state, but wrong exactly when it matters most: on a cold load the taxonomy query has not resolved when the list query function runs, so the first page of a fully-enriched production corpus would render with the item surface closed until the reader navigated. That is the common case, not an edge.
+3. *Read the live query in both consumers (chosen)* — `useItemSurfaceReady()` reads the taxonomy cache directly wherever the gate is needed.
+
+**Decision — REVERSED. What shipped is alternative 2 (capture at fetch time), plus the sequencing that removes its one defect.** Two rounds of codex review dismantled alternative 3, and both rounds were right. The reasoning trail is kept below rather than rewritten, because the way this decision failed is more useful than the decision.
+
+**What shipped — three mechanisms, none of which is sufficient alone.**
+
+1. **`enabled`.** The list waits for the taxonomy query to hold an answer of any kind (`!taxonomy.isPending` — an *error* counts, so an unreachable endpoint degrades to not-ready instead of blocking the list forever), bounded by a 5s abort on the request and `retry: false` on that query, so a hung probe cannot hold the app's core view on its skeleton. Without this, what the query function captures is a not-yet rather than an answer.
+2. **Captured in the query function.** Readiness is returned with the rows, and every consumer that describes rows — the column set, the label cell's composition-vs-count choice, the incomplete-results notice — reads `data.itemSurfaceReady`. Without this, `keepPreviousData` renders the incoming answer over the outgoing rows.
+3. **In the query key.** Without this, a readiness change during a request for a key with no cached data is absorbed: React Query reuses the in-flight promise, so the response lands carrying the value captured *before* the change and nothing remains to correct it. Invalidation cannot fix that — it is the same in-flight promise either way. Keying starts a genuinely new query, and `keepPreviousData` then shows the old rows still described by the old answer, which is exactly right.
+
+`useItemSurfaceRefresh` — the invalidation hook that mechanism 3 replaced — is deleted. `FilterRail` still reads live, and that stays correct: its controls express what the reader may ask for *next*, not what the rows on screen mean.
+
+**The cost that made keying look unaffordable was conditional, and the condition changed.** Alternative 1 was rejected because keying on readiness costs a second corpus-scale list request on every cold load. That is true *only if the list may fetch before readiness is known*. Once mechanism 1 is in place the key never moves from unknown to known, so the cold load costs one request — measured on the live dev backend, not assumed. The rejection was sound when made and stopped being sound two mechanisms later, and nothing in the original entry would have prompted a re-check.
+
+**Why alternative 3 failed, in the order it was taken apart.**
+
+*Round 1 found two factual errors in the original entry.* It claimed the stale window was "the seconds between the flip and the next list fetch" and that the worst rendering was "byte-identical to the legitimate rendering for every non-blueprint row". Neither held. `staleTime` marks data stale without scheduling anything, so with no `refetchInterval` a tab open across an `ENRICHMENT_VERSION` resweep kept reporting the *previous* answer for the whole ~80 minutes — the opposite of D1's "degrades on its own". And the rendering is not indistinguishable: `is_blueprint_copy_contract` has been ingested since M1, so the row shows its **BPC badge beside three empty cells**, which reads as missing data rather than as a non-blueprint.
+
+*Round 2 showed the repairs were insufficient in kind, not merely in degree.* Invalidating on a flip narrows the window; it does not close it, because `keepPreviousData` holds the partial rows on screen for the whole refetch — so the new columns still land on the old rows, which is precisely WEB-1. And the `undefined → first answer` exclusion (added to avoid a cold-load double fetch) leaves a permanent race: a taxonomy response that resolves while the first list request is still in flight produces the same mismatch with no transition to invalidate on.
+
+**The general lesson, which is the reason this entry is worth its length.** "This value describes the corpus rather than the rows" felt like a principled exemption from WEB-1. It is not one. Any value the row rendering consumes is *about the rows* at the moment it is consumed, whatever it is about ontologically — and if it can change independently of them, it will eventually describe them wrongly. The exemption I reached for does not exist; what looked like a narrower rule was just the same rule with a story attached.
+
+**The cost that made alternative 2 look unattractive was mispriced.** It was rejected because "on a cold load the taxonomy has not resolved when the list query function runs, so the first page renders with the surface closed". That is only true if the list is allowed to run first. Sequencing it behind a tiny, cacheable endpoint costs one small round trip in front of the first list request — against a list request measured in seconds — and buys correctness by construction. Alternative 1's cost (a *second* corpus-scale list request on every cold load) was real; this one is not comparable to it, and I treated them as if they were.
+
+**Reversibility: cheap** — the capture and the `enabled` gate are a few lines in `useContracts`.
 
 ---
 

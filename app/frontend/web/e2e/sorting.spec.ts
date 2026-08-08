@@ -8,7 +8,7 @@ import {
   paginate,
   type WireContract,
 } from './fixtures/contracts'
-import { interceptContractList, interceptCurrentUser, type ListResponder } from './helpers/api'
+import { interceptContractList, interceptCurrentUser, type ListResponder, interceptTaxonomy } from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
 /**
@@ -103,6 +103,15 @@ const shipsHeading = (page: import('@playwright/test').Page) =>
 // the mobile project (Pixel 7, 412px) its <th> is display:none and absent from
 // the accessibility tree, but the aria-sort DOM state is still assertable here.
 const activeSortHeader = (page: import('@playwright/test').Page) => page.locator('thead th[aria-sort]')
+
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
 
 test.describe('column-header sorting', () => {
   test('default sort is Issued descending on the wire and in the header', async ({ page }) => {

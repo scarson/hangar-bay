@@ -24,6 +24,15 @@ export function emptyContractPage(): Record<string, unknown> {
   }
 }
 
+/**
+ * The taxonomy endpoint's envelope. `partial` is the cold-cache default — the
+ * state a corpus is in before any resweep, and the one that keeps the
+ * item-level surface closed unless a test opts into the ready state.
+ */
+export function taxonomyResponse(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { categories: [], groups: [], coverage: 'partial', ...overrides }
+}
+
 /** A stubbed handler may answer later, so a test can hold one request in flight. */
 export type FetchHandler = (url: string) => Response | Promise<Response>
 
@@ -37,4 +46,17 @@ export function anonymousMe<R extends Response | Promise<Response>>(
   handler: (url: string) => R,
 ): (url: string) => R | Response {
   return (url) => (/\/api\/v1\/me$/.test(url) ? jsonResponse({ detail: 'unauthenticated' }, 401) : handler(url))
+}
+
+// Wrap a fetch handler so the taxonomy endpoint answers with its own envelope.
+// Every contracts view queries it for the item-level readiness signal, and a
+// URL-agnostic stub would hand it a contract page — a body that happens to have
+// no `coverage: "complete"` and so gates the surface shut by accident rather
+// than by the fixture saying so.
+export function withTaxonomy<R extends Response | Promise<Response>>(
+  handler: (url: string) => R,
+  taxonomy: unknown = taxonomyResponse(),
+): (url: string) => R | Response {
+  return (url) =>
+    /\/api\/v1\/contracts\/taxonomy$/.test(url) ? jsonResponse(taxonomy) : handler(url)
 }

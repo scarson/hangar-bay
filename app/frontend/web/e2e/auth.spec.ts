@@ -1,7 +1,16 @@
 import { expect, test } from '@playwright/test'
 import { SEVEN_SHIPS, pageOf } from './fixtures/contracts'
 import { makeCurrentUser } from './fixtures/auth'
-import { interceptContractList, interceptCurrentUser, interceptLogout, interceptNotifications, stubPortraits } from './helpers/api'
+import { interceptContractList, interceptCurrentUser, interceptLogout, interceptNotifications, stubPortraits, interceptTaxonomy } from './helpers/api'
+
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
 
 test.describe('SSO header identity', () => {
   test('anonymous header shows a login link with the encoded next', async ({ page }) => {

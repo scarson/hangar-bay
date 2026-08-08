@@ -2,8 +2,16 @@ import { useState } from 'react'
 import { Button } from '../../../components/Button'
 import { CheckboxField } from '../../../components/Checkbox'
 import { Input } from '../../../components/Input'
-import { MIN_SEARCH_LENGTH, type ContractSearch } from '../filters'
+import {
+  MIN_SEARCH_LENGTH,
+  hasOfferedItemFilters,
+  isItemLessSelection,
+  type ContractSearch,
+} from '../filters'
+import { useItemSurfaceReady } from '../hooks/useTaxonomy'
 import { REGIONS } from '../regions'
+import { BlueprintFilter } from './BlueprintFilter'
+import { TaxonomyFilter } from './TaxonomyFilter'
 
 export function FilterRail({
   search,
@@ -16,6 +24,12 @@ export function FilterRail({
   onReset: () => void
 }) {
   const [regionQuery, setRegionQuery] = useState('')
+  const itemSurfaceReady = useItemSurfaceReady()
+  // A courier, loan or unknown contract carries no offered items. That does not
+  // make the item-level controls dead — their parameters still travel and still
+  // mean something — but it does mean the rail owes the reader a sentence about
+  // why nothing they pick here can match.
+  const itemLess = isItemLessSelection(search)
   const selectedRegions = new Set(search.region_ids ?? [])
   const query = regionQuery.trim().toLowerCase()
   const visibleRegions = query
@@ -31,7 +45,7 @@ export function FilterRail({
     search.max_price !== undefined ||
     search.region_ids !== undefined ||
     search.contract_type !== undefined ||
-    search.is_bpc !== undefined ||
+    hasOfferedItemFilters(search) ||
     !search.ships_only
 
   const toggleRegion = (id: number, checked: boolean) => {
@@ -58,16 +72,29 @@ export function FilterRail({
         <p className="mt-1 text-xs text-ink-faint">Searches from {MIN_SEARCH_LENGTH} characters</p>
       </div>
 
-      <fieldset className="flex flex-col gap-1">
+      <fieldset className="flex flex-col gap-1" aria-describedby={itemLess ? 'show-scope' : undefined}>
         <legend className="text-label mb-1.5">Show</legend>
+        {itemLess ? (
+          <p id="show-scope" className="mb-0.5 text-xs text-ink-faint">
+            Both read the contract’s items, and this type carries none.
+          </p>
+        ) : null}
         <CheckboxField
           label="Ships only"
           checked={search.ships_only}
+          // Criterion 1.7 forces this off for an item-less selection and the
+          // parser enforces it, so the box would never stay checked — a dead
+          // control since Task C3. Disabled, with the sentence above saying
+          // why, rather than left to silently refuse the click.
+          disabled={itemLess}
           onChange={(checked) => onUpdate({ ships_only: checked })}
         />
         <CheckboxField
           label="Blueprint copies only"
           checked={search.is_bpc === true}
+          // NOT disabled on an item-less selection: `is_bpc` survives the
+          // parser, and both of its values are meaningful there — false is
+          // satisfied by every item-less contract, true by none.
           onChange={(checked) => onUpdate({ is_bpc: checked ? true : undefined })}
         />
       </fieldset>
@@ -150,6 +177,36 @@ export function FilterRail({
           )}
         </div>
       </fieldset>
+
+      {/* The item-level controls sit below the region list rather than above
+          it: the list's desktop height is sized against the rail content that
+          precedes it, and this region's height changes with the readiness
+          signal. They come last for the same reason they are gated — they are
+          the specialist's filters, and until the corpus is enriched they are
+          the ones that cannot answer.
+
+          No spinner and no retry while it is closed (decision log D1): the
+          state is expected for the ~80 minutes after a release and briefly on
+          a fresh dev boot, and dressing it as a failure of this page would
+          invite the reader to fix something that is already fixing itself. */}
+      {itemSurfaceReady ? (
+        <>
+          {/* Rendered on an item-less segment too, deliberately. Nothing here
+              can match a contract that carries no items, but hiding a control
+              whose parameter is still set hides an ACTIVE filter — the reader
+              would see an empty page and no way to find or clear the cause.
+              The empty state names the mismatch instead (Criterion 7.2). */}
+          {itemLess ? (
+            <p className="text-xs text-ink-faint">
+              These match on a contract’s items, and this type carries none.
+            </p>
+          ) : null}
+          <TaxonomyFilter search={search} onUpdate={onUpdate} />
+          <BlueprintFilter search={search} onUpdate={onUpdate} />
+        </>
+      ) : (
+        <p className="text-xs text-ink-faint">Item filters are still indexing.</p>
+      )}
 
       {hasActiveFilters ? (
         <Button onClick={onReset} className="self-start">

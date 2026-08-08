@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { BPC_CONTRACTS, SEVEN_SHIPS, bigDataset, pageOf, paginate } from './fixtures/contracts'
-import { interceptContractList, interceptCurrentUser } from './helpers/api'
+import { BPC_CONTRACTS, SEVEN_SHIPS, bigDataset, pageOf, paginate, taxonomy } from './fixtures/contracts'
+import { interceptContractList, interceptCurrentUser, interceptTaxonomy } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
 /**
@@ -13,6 +13,15 @@ import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
  * visible rows so the render can't drift from the request. All fixtures return
  * non-empty pages so the only "Clear filters" button in the tree is the rail's.
  */
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
+
 test.describe('contract filters', () => {
   test('search gate: sub-3-char stays in the URL but is never sent; the 3rd char fires it', async ({
     page,
@@ -134,6 +143,28 @@ test.describe('contract filters', () => {
 
     const last = calls.at(-1)!
     expect(last.params.get('is_bpc')).toBe('true')
+  })
+
+  test('blueprint stat windows: an ME bound reaches the URL and the wire', async ({ page }) => {
+    // Criterion 2.5. Live production on 2026-08-01 answered min_me=10 with the
+    // identical count to no ME filter at all — the control was not merely
+    // inert, it returned a large plausible wrong answer. The wire assertion is
+    // what would catch that class of regression here.
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptTaxonomy(page, taxonomy({ coverage: 'complete' }))
+    const calls = await interceptContractList(page, (params) =>
+      pageOf(params.get('min_me') === '5' ? BPC_CONTRACTS.slice(0, 1) : SEVEN_SHIPS),
+    )
+
+    await page.goto('/contracts')
+    await expect(rowLinks(page)).toHaveCount(7)
+    await openFiltersIfCollapsed(page)
+
+    await page.getByLabel('Minimum material efficiency').fill('5')
+
+    await expect(page).toHaveURL(/[?&]min_me=5(&|$)/)
+    await expect(rowLinks(page)).toHaveCount(1)
+    await expect.poll(() => calls.some((c) => c.params.get('min_me') === '5')).toBe(true)
   })
 
   test('clear filters resets the URL + controls and the button removes itself', async ({ page }) => {

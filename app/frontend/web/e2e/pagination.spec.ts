@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { bigDataset, paginate } from './fixtures/contracts'
-import { interceptContractList, interceptCurrentUser } from './helpers/api'
+import { interceptContractList, interceptCurrentUser, interceptTaxonomy } from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
 /**
@@ -15,6 +15,15 @@ import { rowLinks } from './helpers/ui'
 /** The `·` label format is verbatim from Pagination.tsx (`Page {page} of {n} · {total} contracts`). */
 const pagination = (page: import('@playwright/test').Page) =>
   page.getByRole('navigation', { name: 'Pagination' })
+
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
 
 test.describe('pagination', () => {
   test('walks every page across boundaries with no gaps or duplicates', async ({ page }) => {

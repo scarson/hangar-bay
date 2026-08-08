@@ -18,6 +18,18 @@ export function toSavedSearchParameters(search: ContractSearch): SavedSearchPara
     max_price: search.max_price,
     region_ids: search.region_ids,
     contract_type: search.contract_type,
+    // The taxonomy and blueprint params (decision log D4): the blob rejected
+    // the ME/TE four for as long as they filtered nothing, and F008 made all
+    // eight real. Omitting them would persist a strictly WIDER view than the
+    // one being saved — the same defect the item-less segment case has.
+    category_id: search.category_id,
+    group_id: search.group_id,
+    min_runs: search.min_runs,
+    max_runs: search.max_runs,
+    min_me: search.min_me,
+    max_me: search.max_me,
+    min_te: search.min_te,
+    max_te: search.max_te,
     is_bpc: search.is_bpc,
     ships_only: search.ships_only,
     size: search.size,

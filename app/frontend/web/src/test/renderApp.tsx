@@ -13,6 +13,9 @@ export function renderApp(initialUrl: string) {
   })
   return {
     router,
+    // Exposed so a test can drive a background query directly — the readiness
+    // poll, for instance, whose real interval is minutes long.
+    queryClient,
     ...render(
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />

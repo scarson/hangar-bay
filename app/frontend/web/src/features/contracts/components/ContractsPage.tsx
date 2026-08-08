@@ -40,14 +40,38 @@ const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
 function EmptyResults({
   selectedRegionIds,
   coveredRegionIds,
+  itemFilteredItemLessSegment,
   onReset,
 }: {
   selectedRegionIds: number[]
   coveredRegionIds: number[]
+  /** An item-level filter against a segment whose contracts carry no items. */
+  itemFilteredItemLessSegment: boolean
   onReset: () => void
 }) {
   const uncovered = selectedRegionIds.filter((id) => !coveredRegionIds.includes(id))
   const coveredSelection = selectedRegionIds.filter((id) => coveredRegionIds.includes(id))
+
+  if (itemFilteredItemLessSegment) {
+    // The combination cannot match, and saying so is what Criterion 7.2 asks
+    // for. The alternative once shipped here — silently dropping the item
+    // filters on the way into the segment — destroyed a selection the reader
+    // would want back on the way out, and rewrote a stored saved search's
+    // meaning from "no matches" to "every contract of this type".
+    return (
+      <div className="flex flex-col items-start gap-3 rounded-md border border-line bg-surface px-5 py-8">
+        <h2 className="text-base font-medium text-ink">
+          These contracts carry no items to filter on
+        </h2>
+        <p className="max-w-[52ch] text-sm text-ink-dim">
+          Courier, loan and unknown contracts hold no item list, so a category, group or
+          blueprint filter can never match one. Clear those filters, or pick a contract
+          type that carries items.
+        </p>
+        <Button onClick={onReset}>Clear filters</Button>
+      </div>
+    )
+  }
 
   if (coveredRegionIds.length === 0 && selectedRegionIds.length === 0) {
     // Nothing ingested and nothing selected — no filter can reach any data, so
@@ -223,6 +247,24 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
           <SegmentTabs search={search} counts={data.segment_counts} onSelect={update} />
         ) : null}
 
+        {/* A shared URL can carry a taxonomy or blueprint filter into a corpus
+            that is still being enriched — the rows it matches are real, so the
+            request goes out unchanged, but the page it returns is short by
+            however much is not yet restamped and has to say so (Criterion 7.2's
+            explain-rather-than-empty rule, applied to a temporary population
+            rather than an uncovered region). Rejecting the params server-side
+            was declined: it would break every saved search the moment a future
+            resweep started.
+
+            Whether a filter was in play comes off the response, not the live
+            URL (WEB-1): the claim is about the rows on screen, and those are
+            the previous request's for the whole of the next one. */}
+        {data !== undefined && !data.itemSurfaceReady && data.enrichmentFiltered ? (
+          <p className="text-xs text-ink-dim">
+            Item filters are still indexing; results may be incomplete.
+          </p>
+        ) : null}
+
         {isPending ? (
           <ContractTableSkeleton />
         ) : isError ? (
@@ -255,6 +297,7 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
               <EmptyResults
                 selectedRegionIds={data.regionIds}
                 coveredRegionIds={data.coverage.ingested_region_ids}
+                itemFilteredItemLessSegment={data.itemFilteredItemLessSegment}
                 onReset={resetFilters}
               />
             ) : (
@@ -266,7 +309,8 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
                   // response rather than the URL so the columns always describe the
                   // rows beneath them — the two disagree for the whole of a segment
                   // switch, which `keepPreviousData` renders with the old rows.
-                  columns={columnsFor(data.segment)}
+                  columns={columnsFor(data.segment, data.itemSurfaceReady)}
+                  itemSurfaceReady={data.itemSurfaceReady}
                   search={search}
                   onSort={handleSort}
                   isRefreshing={isFetching}

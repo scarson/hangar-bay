@@ -92,6 +92,36 @@ describe('SaveSearchControl', () => {
     expect(JSON.parse(post.body!).search_parameters).not.toHaveProperty('search')
   })
 
+  it('persists the taxonomy and blueprint filters, which were unsaveable while inert', async () => {
+    // F008 §14 / decision log D4: the blob deliberately rejected the ME/TE
+    // params for as long as they filtered nothing. They filter now, so a saved
+    // search that omitted them would restore a strictly wider view than the one
+    // the reader saved — the same defect the courier case above pins.
+    const calls = stubFetch((url) => {
+      if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)
+      if (/\/me\/saved-searches\//.test(url)) return jsonResponse({ id: 1, name: 'BPCs', search_parameters: {}, created_at: 'x', updated_at: 'x' }, 201)
+      return jsonResponse(EMPTY_PAGE)
+    })
+    renderApp(
+      '/contracts?category_id=9&group_id=105&min_runs=1&max_runs=20&min_me=2&max_me=10&min_te=4&max_te=20',
+    )
+    await userEvent.click(await screen.findByRole('button', { name: /save search/i }))
+    await userEvent.type(screen.getByLabelText(/search name/i), 'BPCs')
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
+    await waitFor(() => expect(calls.some((c) => /\/me\/saved-searches\//.test(c.url) && c.method === 'POST')).toBe(true))
+    const post = calls.find((c) => /\/me\/saved-searches\//.test(c.url) && c.method === 'POST')!
+    expect(JSON.parse(post.body!).search_parameters).toMatchObject({
+      category_id: [9],
+      group_id: [105],
+      min_runs: 1,
+      max_runs: 20,
+      min_me: 2,
+      max_me: 10,
+      min_te: 4,
+      max_te: 20,
+    })
+  })
+
   it('renders an inline error when the name conflicts (409)', async () => {
     stubFetch((url) => {
       if (/\/api\/v1\/me$/.test(url)) return jsonResponse(AUTHED)

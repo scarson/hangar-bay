@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { Contract } from '../../lib/api/client'
 import {
   contractTypeLabel,
+  formatBlueprintTerms,
+  formatComposition,
   formatDate,
   formatDeadline,
   formatIsk,
   formatRewardPerVolume,
+  formatVolume,
   locationLabel,
   regionNames,
   routeLabel,
@@ -196,6 +199,161 @@ describe('regionNames', () => {
     // Nothing ingested yet is a real state (coverage.ingested_region_ids is
     // empty before the first run), and the callers word that case themselves.
     expect(regionNames([])).toBe('')
+  })
+})
+
+describe('formatComposition', () => {
+  const composition = (
+    categories: { category_id: number | null; name: string | null; item_row_count: number }[],
+    total_volume: number | null = null,
+  ) => ({
+    categories,
+    total_item_rows: categories.reduce((n, c) => n + c.item_row_count, 0),
+    total_volume,
+  })
+
+  it('names the two largest categories and buckets the rest as other', () => {
+    // Criterion 6.1: the breakdown is what lets a reader judge a mixed lot
+    // without opening it, and two names plus a remainder is what fits a cell.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 7, name: 'Module', item_row_count: 3 },
+          { category_id: 9, name: 'Blueprint', item_row_count: 1 },
+          { category_id: 8, name: 'Charge', item_row_count: 1 },
+          { category_id: 4, name: 'Material', item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('3 Modules · 1 Blueprint · 2 other')
+  })
+
+  it('counts item rows, never summed quantities', () => {
+    // A contract of 100 identical drones in one row reads as "1 Drone", not
+    // "100 Drones" — the server sends rows and the client must not invent units.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 18, name: 'Drone', item_row_count: 1 },
+          { category_id: 6, name: 'Ship', item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('1 Drone · 1 Ship')
+  })
+
+  it('puts an unnamed category in the other bucket rather than inventing a label', () => {
+    // Two unnameable shapes: the rows whose category could not be determined
+    // (category_id null) and a category the name cache has not resolved yet
+    // (name null). Neither can be called anything, and "other" is what they are.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 7, name: 'Module', item_row_count: 2 },
+          { category_id: null, name: null, item_row_count: 2 },
+          { category_id: 42, name: null, item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('2 Modules · 3 other')
+  })
+
+  it('adds the total volume when the server measured one', () => {
+    expect(
+      formatComposition(
+        composition(
+          [
+            { category_id: 7, name: 'Module', item_row_count: 2 },
+            { category_id: 6, name: 'Ship', item_row_count: 1 },
+          ],
+          120_000,
+        ),
+      ),
+    ).toBe('2 Modules · 1 Ship · 120,000 m³')
+  })
+
+  it('keeps a blueprint lot’s sub-1 m³ volume rather than calling it zero', () => {
+    // The live dev corpus's own numbers (2026-08-08): two blueprint copies at
+    // 0.01 m³ each. Through the whole-ISK formatter this line read
+    // "2 Blueprints · 0 m³" — a lot claiming to have no volume — on six of the
+    // ten composition-bearing contracts in the sample.
+    expect(
+      formatComposition(
+        composition([{ category_id: 9, name: 'Blueprint', item_row_count: 2 }], 0.02),
+      ),
+    ).toBe('2 Blueprints · 0.02 m³')
+  })
+
+  it('says nothing about volume when there is no measurement', () => {
+    // A contract whose volume the corpus does not carry gets no "0 m³", which
+    // would be a reading rather than the absence of one.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 7, name: 'Module', item_row_count: 2 },
+          { category_id: 6, name: 'Ship', item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('2 Modules · 1 Ship')
+  })
+})
+
+describe('formatVolume', () => {
+  it('keeps a small cargo distinguishable from no cargo at all', () => {
+    // Live dev corpus, 2026-08-08: 6 of the 10 composition-bearing contracts
+    // measured under 1 m³, because a blueprint copy is 0.01 m³ and blueprint
+    // lots are exactly what the composition line most often describes. The ISK
+    // formatter rendered every one of them as "0" — a lot that says it has no
+    // volume, which is a reading rather than the absence of one.
+    expect(formatVolume(0.02)).toBe('0.02')
+    expect(formatVolume(0.05)).toBe('0.05')
+  })
+
+  it('does not leak the float noise a summed volume arrives with', () => {
+    // The server sums per-item volumes, so 3 × 0.02 crosses the wire as
+    // 0.060000000000000005.
+    expect(formatVolume(0.060000000000000005)).toBe('0.06')
+    expect(formatVolume(0.20000000000000004)).toBe('0.2')
+  })
+
+  it('drops the decimals once they stop carrying information', () => {
+    expect(formatVolume(100)).toBe('100')
+    expect(formatVolume(470_000)).toBe('470,000')
+    expect(formatVolume(12_345.67)).toBe('12,346')
+  })
+
+  it('says a volume is below the shown precision rather than calling it zero', () => {
+    expect(formatVolume(0.001)).toBe('<0.01')
+    // A measured zero is a real reading and keeps its numeral.
+    expect(formatVolume(0)).toBe('0')
+  })
+
+  it('dashes an absent measurement, like every other figure', () => {
+    expect(formatVolume(null)).toBe('—')
+    expect(formatVolume(undefined)).toBe('—')
+  })
+})
+
+describe('formatBlueprintTerms', () => {
+  it('reads the terms of a single offered copy, each figure named', () => {
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: 10, material_efficiency: 4, time_efficiency: 8 }),
+    ).toBe('10 runs · ME 4 · TE 8')
+  })
+
+  it('omits a term the payload does not carry rather than printing a zero', () => {
+    // ESI omits `runs` for a blueprint ORIGINAL rather than sending -1 (ESI-3),
+    // and a half-enriched copy can be missing any of the three. "ME 0" is a
+    // real, meaningfully different blueprint from one whose ME is unknown.
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: null, material_efficiency: 0, time_efficiency: 8 }),
+    ).toBe('ME 0 · TE 8')
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: null, material_efficiency: null, time_efficiency: null }),
+    ).toBe('')
+  })
+
+  it('reads a single run in the singular', () => {
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: 1, material_efficiency: null, time_efficiency: null }),
+    ).toBe('1 run')
   })
 })
 

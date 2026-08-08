@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { anonymousMe, jsonResponse, type FetchHandler } from '../../../test/http'
+import {
+  anonymousMe,
+  jsonResponse,
+  taxonomyResponse,
+  withTaxonomy,
+  type FetchHandler,
+} from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
@@ -79,6 +85,17 @@ function listPage(rows: { type: string }[], overrides: Record<string, unknown> =
  */
 function headerNames(): string[] {
   return screen.getAllByRole('columnheader').map((th) => th.textContent!.replace(/[▲▼]/g, '').trim())
+}
+
+/**
+ * The contract-LIST request among the captured calls. `/contracts/taxonomy` is
+ * a sibling path under the same prefix and every contracts view queries it, so
+ * a substring match on `/api/v1/contracts/` returns whichever fired first
+ * rather than the one the assertion is about. The list request always carries a
+ * query string — `toApiQuery` emits page, size and both sort keys unconditionally.
+ */
+function listCall(calls: string[]): string {
+  return calls.find((url) => /\/api\/v1\/contracts\/\?/.test(url))!
 }
 
 function stubFetch(handler: FetchHandler) {
@@ -229,12 +246,12 @@ describe('ContractsPage', () => {
     renderApp('/contracts?region_ids=10000002&is_bpc=true&sort_by=price&sort_direction=asc')
 
     await screen.findByText(/no contracts match/i)
-    // Order-independent: whether /me or the contracts query fires first is
-    // scheduling, not contract (the header now issues its own /me request).
-    const listCall = calls.find((u) => u.includes('/api/v1/contracts/'))!
-    expect(listCall).toContain('region_ids=10000002')
-    expect(listCall).toContain('is_bpc=true')
-    expect(listCall).toContain('sort_by=price')
+    // Order-independent: whether /me, the taxonomy query or the contracts query
+    // fires first is scheduling, not contract.
+    const request = listCall(calls)
+    expect(request).toContain('region_ids=10000002')
+    expect(request).toContain('is_bpc=true')
+    expect(request).toContain('sort_by=price')
   })
 
   it('carries a repeated region_ids URL through to repeated API params (shareable-URL contract)', async () => {
@@ -259,8 +276,7 @@ describe('ContractsPage', () => {
 
     await screen.findByText(/no contracts match/i)
     // Order-independent: see the rationale above.
-    const listCall = calls.find((u) => u.includes('/api/v1/contracts/'))!
-    expect(listCall).toContain('region_ids=10000002&region_ids=10000020')
+    expect(listCall(calls)).toContain('region_ids=10000002&region_ids=10000020')
   })
 
   it('redirects an out-of-range page to the last page instead of a false empty state', async () => {
@@ -1271,5 +1287,732 @@ describe('freshness and coverage', () => {
 
     await screen.findByText('Tristan')
     expect(screen.queryByText(/originating in/)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * The item-level surface waits on observed reality rather than on a flag
+ * (decision log D1): `GET /contracts/taxonomy` reports `complete` only once the
+ * corpus is enriched at the current enrichment version, which follows the
+ * post-release resweep on its own. Until then the controls are honestly absent
+ * and a filter that arrived by URL says the results may be short.
+ */
+const INDEXING_LINE = 'Item filters are still indexing.'
+const INCOMPLETE_NOTICE = 'Item filters are still indexing; results may be incomplete.'
+
+/** A taxonomy the resweep has finished with — the state that opens the surface. */
+const READY_TAXONOMY = taxonomyResponse({
+  coverage: 'complete',
+  categories: [
+    { category_id: 6, name: 'Ship' },
+    { category_id: 7, name: 'Module' },
+  ],
+  groups: [
+    { group_id: 25, category_id: 6, name: 'Frigate' },
+    { group_id: 60, category_id: 7, name: 'Shield Booster' },
+  ],
+})
+
+describe('item-level surface gate', () => {
+  it('asks the taxonomy endpoint for the readiness signal, at its schema path', async () => {
+    const calls = stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(calls.filter((url) => /\/api\/v1\/contracts\/taxonomy$/.test(url))).toHaveLength(1)
+  })
+
+  it('offers no item filters while the corpus is still being enriched', async () => {
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(await screen.findByText(INDEXING_LINE)).toBeInTheDocument()
+  })
+
+  it('opens the item filters once the corpus is enriched', async () => {
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW]))), READY_TAXONOMY))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    await waitFor(() => expect(screen.queryByText(INDEXING_LINE)).not.toBeInTheDocument())
+  })
+
+  it('treats an unreachable taxonomy endpoint as still indexing, without a retry control', async () => {
+    // A 500 leaves the readiness unknown, and unknown is not ready: offering
+    // controls whose option list never arrived would be worse than saying so.
+    // No spinner and no Retry — the state is expected for the ~80 minutes after
+    // a release, and inviting a retry frames it as a failure of this page.
+    stubFetch(
+      anonymousMe((url) =>
+        /\/contracts\/taxonomy$/.test(url)
+          ? jsonResponse({ detail: 'boom' }, 500)
+          : jsonResponse(listPage([ROW])),
+      ),
+    )
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(await screen.findByText(INDEXING_LINE)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('warns that a deep-linked item filter may be answered from a half-enriched corpus', async () => {
+    // The request still goes out: the rows it matches are real, and a 422 here
+    // would break every saved search the moment a future resweep starts.
+    const calls = stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts?category_id=6')
+
+    expect(await screen.findByText(INCOMPLETE_NOTICE)).toBeInTheDocument()
+    expect(calls.some((url) => /[?&]category_id=6(&|$)/.test(url))).toBe(true)
+  })
+
+  it('keeps warning about the rows on screen while an unfiltered page loads over them', async () => {
+    // WEB-1: the warning is a claim about the RESULTS, and `keepPreviousData`
+    // holds the filtered rows on screen for the whole of the request that drops
+    // the filter. Reading the live URL would withdraw the warning while the
+    // rows it was about are still the ones being read.
+    let releaseUnfiltered: (() => void) | undefined
+    stubFetch(
+      withTaxonomy(
+        anonymousMe((url) => {
+          if (/\/contracts\/\?/.test(url) && !/[?&]min_me=/.test(url)) {
+            return new Promise<Response>((resolve) => {
+              releaseUnfiltered = () => resolve(jsonResponse(listPage([ROW])))
+            })
+          }
+          return jsonResponse(listPage([ROW]))
+        }),
+      ),
+    )
+
+    // Navigated rather than typed: the rail's ME control is itself gated shut
+    // while the corpus is partial, and a shared link is exactly how a filter
+    // reaches this state anyway.
+    const { router } = renderApp('/contracts?min_me=5')
+    expect(await screen.findByText(INCOMPLETE_NOTICE)).toBeInTheDocument()
+
+    await router.navigate({ to: '/contracts', search: {} })
+
+    // The unfiltered response is still in flight; the filtered rows are still
+    // what the reader is looking at, so the warning about them stands.
+    await waitFor(() => expect(releaseUnfiltered).toBeDefined())
+    expect(screen.getByText(INCOMPLETE_NOTICE)).toBeInTheDocument()
+
+    releaseUnfiltered!()
+    await waitFor(() => expect(screen.queryByText(INCOMPLETE_NOTICE)).not.toBeInTheDocument())
+  })
+
+  it('drops the incomplete-results warning once the corpus is enriched', async () => {
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW]))), READY_TAXONOMY))
+
+    renderApp('/contracts?min_me=5')
+
+    await screen.findByText('Tristan')
+    await waitFor(() => expect(screen.queryByText(INCOMPLETE_NOTICE)).not.toBeInTheDocument())
+  })
+
+  it('warns only when a filter that reads the new item columns is in play', async () => {
+    // is_bpc reads is_blueprint_copy, which ingestion has written since M1, so
+    // it answers just as completely mid-resweep as it does after one. Warning
+    // about it would cry wolf on the one item filter that was never at risk.
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts?is_bpc=true')
+
+    await screen.findByText('Tristan')
+    expect(screen.queryByText(INCOMPLETE_NOTICE)).not.toBeInTheDocument()
+    // The rail still says the controls are not ready — that claim is about the
+    // controls, not about this request.
+    expect(screen.getByText(INDEXING_LINE)).toBeInTheDocument()
+  })
+})
+
+/**
+ * The cascading dogma filter (Criteria 3.2–3.4). The option lists come from the
+ * server so the client embeds no taxonomy of its own (Criterion 3.5), and the
+ * group list is scoped client-side because §17.6 serves it flat for exactly
+ * that reason — narrowing a category costs no round trip.
+ */
+describe('taxonomy filters', () => {
+  const readyList = (rows = [ROW]) =>
+    withTaxonomy(anonymousMe(() => jsonResponse(listPage(rows))), READY_TAXONOMY)
+
+  it('offers the categories the corpus actually holds', async () => {
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+
+    expect(await screen.findByRole('checkbox', { name: 'Ship' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Module' })).toBeInTheDocument()
+  })
+
+  it('scopes the group list to the selected categories', async () => {
+    stubFetch(readyList())
+
+    renderApp('/contracts?category_id=6')
+
+    // Frigate belongs to Ship; Shield Booster belongs to Module, which is not
+    // selected, so offering it would offer a combination matching nothing.
+    expect(await screen.findByRole('checkbox', { name: 'Frigate' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Shield Booster' })).not.toBeInTheDocument()
+  })
+
+  it('offers every group while no category narrows the list', async () => {
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+
+    expect(await screen.findByRole('checkbox', { name: 'Frigate' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Shield Booster' })).toBeInTheDocument()
+  })
+
+  it('narrows the group list by type-ahead, and says when nothing matches', async () => {
+    // Criterion 3.3: the Module category alone holds hundreds of groups in the
+    // real taxonomy, so the list is unusable without one.
+    const user = userEvent.setup()
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+    await screen.findByRole('checkbox', { name: 'Frigate' })
+
+    await user.type(screen.getByLabelText('Filter group list'), 'fri')
+    expect(screen.getByRole('checkbox', { name: 'Frigate' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Shield Booster' })).not.toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Filter group list'))
+    await user.type(screen.getByLabelText('Filter group list'), 'zzz')
+    expect(screen.getByText('No group matches “zzz”')).toBeInTheDocument()
+  })
+
+  it('sends a category selection to the API and puts it in the URL', async () => {
+    const user = userEvent.setup()
+    const calls = stubFetch(readyList())
+
+    const { router } = renderApp('/contracts')
+    await screen.findByRole('checkbox', { name: 'Ship' })
+
+    await user.click(screen.getByRole('checkbox', { name: 'Ship' }))
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ category_id: [6] }))
+    await waitFor(() =>
+      expect(calls.some((url) => /[?&]category_id=6(&|$)/.test(url))).toBe(true),
+    )
+  })
+
+  it('prunes group selections the narrowed category scope no longer contains', async () => {
+    // One navigation, not two: leaving Shield Booster in the URL after its
+    // category goes would keep filtering on a group no visible control could
+    // clear.
+    const user = userEvent.setup()
+    stubFetch(readyList())
+
+    const { router } = renderApp('/contracts?category_id=6&category_id=7&group_id=25&group_id=60')
+    await screen.findByRole('checkbox', { name: 'Module' })
+    expect(screen.getByRole('checkbox', { name: 'Shield Booster' })).toBeChecked()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Module' }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ category_id: [6], group_id: [25] }),
+    )
+  })
+
+  it('keeps every group selection when the category scope opens up again', async () => {
+    // Deselecting the last category widens the scope to every group, so nothing
+    // is out of scope and nothing may be pruned.
+    const user = userEvent.setup()
+    stubFetch(readyList())
+
+    const { router } = renderApp('/contracts?category_id=6&group_id=25')
+    await screen.findByRole('checkbox', { name: 'Ship' })
+
+    await user.click(screen.getByRole('checkbox', { name: 'Ship' }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ group_id: [25] }),
+    )
+    expect(router.state.location.search).not.toHaveProperty('category_id')
+  })
+
+  it('says in words that the group list follows the category selection', async () => {
+    // Criterion 12: changing category changes the available groups, and that
+    // has to be announced — as plain described-by text, not invented ARIA.
+    stubFetch(readyList())
+
+    renderApp('/contracts?category_id=6')
+
+    const groups = await screen.findByRole('group', { name: /^Group/ })
+    expect(groups).toHaveAccessibleDescription('1 group within the selected categories')
+  })
+
+  it('describes an unscoped group list as the whole taxonomy', async () => {
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+
+    const groups = await screen.findByRole('group', { name: /^Group/ })
+    expect(groups).toHaveAccessibleDescription(
+      'All 2 groups; select a category to narrow this list',
+    )
+  })
+
+  it('announces the new scope when a category change resizes the group list', async () => {
+    // A described-by sentence is read when focus reaches the fieldset — which
+    // is not where the reader is when they tick a category. Criterion 12 asks
+    // for the CHANGE to be announced, so the sentence is a polite live region
+    // and carries the count that makes each change audible.
+    const user = userEvent.setup()
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+    const scope = await screen.findByText('All 2 groups; select a category to narrow this list')
+    expect(scope).toHaveAttribute('aria-live', 'polite')
+
+    await user.click(screen.getByRole('checkbox', { name: 'Ship' }))
+
+    expect(await screen.findByText('1 group within the selected categories')).toBeInTheDocument()
+  })
+
+  it('never puts the blueprint columns over rows fetched before the corpus was enriched', async () => {
+    // The defect two review rounds chased. Invalidating on the readiness flip
+    // narrows the window but does not close it: `keepPreviousData` holds the
+    // partial rows on screen for the whole refetch, so a live readiness read
+    // still lands the new columns on old rows — a contract whose BPC badge is
+    // right there beside three empty cells. Readiness therefore travels WITH
+    // the rows, and this test holds the refetch open to prove it.
+    let coverage = 'partial'
+    let releaseSecondList: (() => void) | undefined
+    let listCalls = 0
+    const bpcRow = {
+      ...ROW,
+      contract_id: 909,
+      primary_label: 'Draugur Blueprint',
+      is_blueprint_copy_contract: true,
+      blueprint_summary: {
+        copy_count: 1,
+        runs: null,
+        material_efficiency: null,
+        time_efficiency: null,
+      },
+    }
+    stubFetch(
+      anonymousMe((url) => {
+        if (/\/contracts\/taxonomy$/.test(url)) return jsonResponse(taxonomyResponse({ coverage }))
+        listCalls += 1
+        if (listCalls === 1) return jsonResponse(listPage([bpcRow]))
+        return new Promise<Response>((resolve) => {
+          releaseSecondList = () => resolve(jsonResponse(listPage([bpcRow])))
+        })
+      }),
+    )
+
+    const { queryClient } = renderApp('/contracts')
+    await screen.findByText('Draugur Blueprint')
+    expect(headerNames()).not.toContain('Runs')
+
+    // The corpus finishes enriching and the readiness poll picks it up, which
+    // invalidates the list — but that refetch has not landed yet.
+    coverage = 'complete'
+    await queryClient.refetchQueries({ queryKey: ['contracts', 'taxonomy'] })
+    await waitFor(() => expect(releaseSecondList).toBeDefined())
+
+    // The rows on screen are still the ones fetched under `partial`, so they
+    // must still be described under `partial` — no blueprint columns yet.
+    expect(screen.getByText('Draugur Blueprint')).toBeInTheDocument()
+    expect(headerNames()).not.toContain('Runs')
+
+    releaseSecondList!()
+    await waitFor(() => expect(headerNames()).toContain('Runs'))
+  })
+
+  it('offers no taxonomy controls while the corpus is still being enriched', async () => {
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText(INDEXING_LINE)
+    expect(screen.queryByRole('checkbox', { name: 'Ship' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: /^Group/ })).not.toBeInTheDocument()
+  })
+
+  it('holds the rows back until readiness is known, rather than guessing', async () => {
+    // Genuinely unresolved, not "partial arrived quickly" — this is the
+    // first-paint state, and it is distinct from the partial-coverage case
+    // above. Nothing may be fetched or described until the answer lands: the
+    // rows carry the readiness they were fetched under, so a row fetched
+    // against an unknown answer would carry a guess.
+    let releaseTaxonomy: (() => void) | undefined
+    let listCalls = 0
+    stubFetch(
+      anonymousMe((url) => {
+        if (/\/contracts\/taxonomy$/.test(url)) {
+          return new Promise<Response>((resolve) => {
+            releaseTaxonomy = () => resolve(jsonResponse(taxonomyResponse({ coverage: 'partial' })))
+          })
+        }
+        listCalls += 1
+        return jsonResponse(listPage([ROW]))
+      }),
+    )
+
+    renderApp('/contracts')
+
+    await waitFor(() => expect(releaseTaxonomy).toBeDefined())
+    expect(await screen.findByRole('status', { name: 'Loading contracts' })).toBeInTheDocument()
+    expect(listCalls).toBe(0)
+    expect(screen.queryByLabelText('Filter group list')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Minimum runs')).not.toBeInTheDocument()
+
+    releaseTaxonomy!()
+    await screen.findByText('Tristan')
+    expect(listCalls).toBe(1)
+  })
+
+  it('keeps the taxonomy controls on an item-less segment, and says why they cannot match', async () => {
+    // Hiding a control whose parameter is still set hides an ACTIVE filter: the
+    // reader gets an empty page with no way to find or clear the cause. The
+    // controls stay, and a sentence explains what the segment cannot do.
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+    renderApp('/contracts?contract_type=courier&category_id=6')
+
+    expect(await screen.findByRole('checkbox', { name: 'Ship' })).toBeChecked()
+    expect(
+      screen.getByText('These match on a contract’s items, and this type carries none.'),
+    ).toBeInTheDocument()
+  })
+
+  it('explains an empty item-less segment rather than blaming the price bounds', async () => {
+    // Criterion 7.2's explain-rather-than-empty rule. The generic card would
+    // tell this reader to loosen a price bound, which cannot help: no courier
+    // has an item for the category filter to match.
+    stubFetch(
+      withTaxonomy(
+        anonymousMe(() => jsonResponse(listPage([], { segment_counts: SEGMENT_COUNTS }))),
+        READY_TAXONOMY,
+      ),
+    )
+
+    renderApp('/contracts?contract_type=courier&category_id=6')
+
+    expect(
+      await screen.findByRole('heading', { name: 'These contracts carry no items to filter on' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Loosen a price bound/)).not.toBeInTheDocument()
+  })
+
+  it('does not claim an item-less mismatch for is_bpc=false, which such contracts satisfy', async () => {
+    // `is_bpc=false` is NOT EXISTS(offered copy), so every courier satisfies it.
+    // An empty result there is an ordinary empty result, not a mismatch.
+    stubFetch(
+      withTaxonomy(
+        anonymousMe(() => jsonResponse(listPage([], { segment_counts: SEGMENT_COUNTS }))),
+        READY_TAXONOMY,
+      ),
+    )
+
+    renderApp('/contracts?contract_type=courier&is_bpc=false')
+
+    expect(await screen.findByText(/Loosen a price bound/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'These contracts carry no items to filter on' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps an item-less segment’s served count under an item-level filter', async () => {
+    // The count is computed with every filter but contract_type applied, so a
+    // zero is what selecting the segment delivers, and the empty state above
+    // explains it. An earlier revision suppressed the numeral to cover for a
+    // parser that destroyed the filter on the way in; that parser change is gone.
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+    renderApp('/contracts?category_id=6')
+
+    expect(await screen.findByRole('button', { name: /^Courier 115$/ })).toBeInTheDocument()
+  })
+
+  it('carries a taxonomy filter through an item-less segment and back out again', async () => {
+    // The round trip an earlier revision broke: it dropped the filter on the
+    // way in, so returning to All silently produced a wider view than the one
+    // the reader left.
+    const user = userEvent.setup()
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+    const { router } = renderApp('/contracts?category_id=6')
+    await screen.findByRole('button', { name: /^Courier/ })
+
+    await user.click(screen.getByRole('button', { name: /^Courier/ }))
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        contract_type: ['courier'],
+        category_id: [6],
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: /^All/ }))
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ category_id: [6] }))
+  })
+
+  it('offers Clear filters for a taxonomy selection that arrived by URL', async () => {
+    // The rail's Clear button is the only way back from a deep link, and the
+    // predicate behind it has to know about every param the parser accepts.
+    // Rows on screen deliberately: the empty-state card carries a Clear button
+    // of its own, which would answer this query whatever the rail decided.
+    stubFetch(readyList())
+
+    renderApp('/contracts?group_id=25')
+
+    await screen.findByText('Tristan')
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * The blueprint and composition cells (Criteria 2.2, 6.1–6.3, 8.1, §8's
+ * discriminator). Every one of them reads a column the F008 resweep fills, so
+ * every one of them is behind the readiness gate: a column that is blank across
+ * a mostly-unenriched corpus reads as breakage, which is the state §7 gates.
+ */
+describe('blueprint and composition cells', () => {
+  const readyList = (rows: { type: string }[]) =>
+    withTaxonomy(anonymousMe(() => jsonResponse(listPage(rows))), READY_TAXONOMY)
+
+  /** A contract offering exactly one blueprint copy — §8's "values" case. */
+  const ONE_COPY = {
+    ...ROW,
+    contract_id: 811,
+    primary_label: 'Draugur Blueprint',
+    is_blueprint_copy_contract: true,
+    blueprint_summary: { copy_count: 1, runs: 10, material_efficiency: 4, time_efficiency: 8 },
+  }
+
+  /** Several copies: no single set of terms describes them (§8's "count" case). */
+  const THREE_COPIES = {
+    ...ROW,
+    contract_id: 822,
+    primary_label: 'Blueprint lot',
+    is_blueprint_copy_contract: true,
+    blueprint_summary: {
+      copy_count: 3,
+      runs: null,
+      material_efficiency: null,
+      time_efficiency: null,
+    },
+  }
+
+  /** The Runs / ME / TE cells of a row, in order. */
+  function blueprintCells(rowName: RegExp): string[] {
+    const cells = within(screen.getByRole('row', { name: rowName })).getAllByRole('cell')
+    const headers = headerNames()
+    return ['Runs', 'ME', 'TE'].map((label) => cells[headers.indexOf(label)].textContent!)
+  }
+
+  it('reads a single offered copy’s terms across the three columns', async () => {
+    stubFetch(readyList([ONE_COPY]))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Draugur Blueprint')
+    expect(headerNames()).toEqual(
+      expect.arrayContaining(['Runs', 'ME', 'TE']),
+    )
+    expect(blueprintCells(/Draugur Blueprint/)).toEqual(['10', '4', '8'])
+  })
+
+  it('counts several copies instead of reporting one of them, and links to the detail', async () => {
+    // There is no single ME/TE to report, and picking one copy's numbers would
+    // misdescribe the others — so the cell says how many and where to look.
+    stubFetch(readyList([THREE_COPIES]))
+
+    renderApp('/contracts')
+
+    const link = await screen.findByRole('link', { name: '3 BPCs' })
+    expect(link).toHaveAttribute('href', '/contracts/822')
+    // The count lands in Runs alone. Repeating it under ME and TE would claim
+    // three figures where the contract supports none.
+    expect(blueprintCells(/Blueprint lot/)).toEqual(['3 BPCs', '', ''])
+  })
+
+  it('leaves the blueprint cell empty for a contract offering no copy', async () => {
+    // §8's third case. Empty, not a dash: a dash reads as "we looked and found
+    // nothing", and there was nothing to look for.
+    stubFetch(readyList([ROW]))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(blueprintCells(/Tristan/)).toEqual(['', '', ''])
+  })
+
+  it('omits the blueprint column entirely while the corpus is still being enriched', async () => {
+    // Omitted rather than emptied: runs/ME/TE are NULL for most of the corpus
+    // mid-resweep, and a column blank down its whole length reads as breakage.
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ONE_COPY])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Draugur Blueprint')
+    for (const label of ['Runs', 'ME', 'TE']) expect(headerNames()).not.toContain(label)
+  })
+
+  it('gives the auction segment the blueprint column too, and the courier segment never', async () => {
+    // §8: blueprint columns are per-row content within the two item-bearing
+    // segments, not a segment of their own. A courier carries no items at all.
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+    const auction = renderApp('/contracts?contract_type=auction')
+    await screen.findByText('Vargur')
+    expect(headerNames()).toEqual(expect.arrayContaining(['Runs', 'ME', 'TE']))
+    auction.unmount()
+    vi.unstubAllGlobals()
+
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+    renderApp('/contracts?contract_type=courier')
+    await screen.findByText('Jita to Amarr rush')
+    for (const label of ['Runs', 'ME', 'TE']) expect(headerNames()).not.toContain(label)
+  })
+
+  it('gives no blueprint columns to loan or unknown, which carry no items either', async () => {
+    // Criterion 1.2: ingestion fetches items for loan and unknown exactly as it
+    // does for courier, so these columns would be blank on those segments
+    // forever rather than until the next resweep.
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+    renderApp('/contracts?contract_type=loan')
+
+    await screen.findByText('Capital fleet float')
+    for (const label of ['Runs', 'ME', 'TE']) expect(headerNames()).not.toContain(label)
+  })
+
+  it('describes a mixed lot by category instead of only counting the rest of it', async () => {
+    // Criterion 6.1: a bare "+2 more" says how much is in the bundle and
+    // nothing about what — the breakdown is what lets a reader judge it.
+    const bundle = {
+      ...ROW,
+      contract_id: 833,
+      primary_label: 'Myrmidon',
+      composition: {
+        categories: [
+          { category_id: 7, name: 'Module', item_row_count: 3 },
+          { category_id: 6, name: 'Ship', item_row_count: 1 },
+        ],
+        total_item_rows: 4,
+        total_volume: 120_000,
+      },
+    }
+    stubFetch(readyList([bundle]))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Myrmidon')
+    expect(screen.getByText('3 Modules · 1 Ship · 120,000 m³')).toBeInTheDocument()
+    expect(screen.queryByText('+3 more')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the bundle count while the categories are still being named', async () => {
+    // Mid-resweep the categories are mostly unnamed, so the breakdown would
+    // read "4 other" — less than the count it replaced.
+    const bundle = {
+      ...ROW,
+      contract_id: 844,
+      primary_label: 'Myrmidon',
+      composition: {
+        categories: [{ category_id: null, name: null, item_row_count: 4 }],
+        total_item_rows: 4,
+        total_volume: 120_000,
+      },
+    }
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([bundle])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Myrmidon')
+    expect(screen.getByText('+3 more')).toBeInTheDocument()
+  })
+})
+
+describe('ContractDetailPage item sides', () => {
+  const OFFERED = {
+    record_id: 1,
+    type_id: 587,
+    quantity: 1,
+    is_included: true,
+    type_name: 'Rifter',
+    category: 'ship',
+  }
+  const REQUESTED = {
+    record_id: 2,
+    type_id: 34,
+    quantity: 1_000_000,
+    is_included: false,
+    type_name: 'Tritanium',
+  }
+
+  it('renders what is offered and what is asked for as two separate lists', async () => {
+    // Criterion 8.1. Merged, the two sides read as one inventory and a
+    // want-to-buy contract looks like a sale of the thing it wants to buy.
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, items: [OFFERED, REQUESTED] })))
+
+    renderApp('/contracts/101')
+
+    const offered = within(await screen.findByRole('region', { name: /^Offered/ }))
+    expect(offered.getByText(/Rifter/)).toBeInTheDocument()
+    expect(offered.queryByText(/Tritanium/)).not.toBeInTheDocument()
+
+    const requested = within(screen.getByRole('region', { name: /^Requested/ }))
+    expect(requested.getByText(/Tritanium/)).toBeInTheDocument()
+    expect(requested.queryByText(/Rifter/)).not.toBeInTheDocument()
+  })
+
+  it('renders the requested side of a want-to-buy contract that offers nothing', async () => {
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, items: [REQUESTED] })))
+
+    renderApp('/contracts/101')
+
+    const requested = within(await screen.findByRole('region', { name: /^Requested/ }))
+    expect(requested.getByText(/Tritanium/)).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /^Offered/ })).not.toBeInTheDocument()
+  })
+
+  it('names an unresolved requested item by its type id rather than dropping the row', async () => {
+    // The A7 completion-predicate widening guarantees a route back for a
+    // contract whose requested item failed name resolution; until it lands,
+    // the row must still say something rather than vanish.
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse({ ...CONTRACT, items: [{ ...REQUESTED, type_name: null }] }),
+      ),
+    )
+
+    renderApp('/contracts/101')
+
+    const requested = within(await screen.findByRole('region', { name: /^Requested/ }))
+    expect(requested.getByText(/Type 34/)).toBeInTheDocument()
+  })
+
+  it('shows each offered copy’s terms, so the row’s "N BPCs" link answers what it raises', async () => {
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse({
+          ...CONTRACT,
+          items: [
+            { ...OFFERED, record_id: 3, type_name: 'Draugur Blueprint', category: null, is_blueprint_copy: true, runs: 10, material_efficiency: 4, time_efficiency: 8 },
+            { ...OFFERED, record_id: 4, type_name: 'Phoenix Blueprint', category: null, is_blueprint_copy: true, runs: 3, material_efficiency: 2, time_efficiency: 0 },
+          ],
+        }),
+      ),
+    )
+
+    renderApp('/contracts/101')
+
+    const offered = within(await screen.findByRole('region', { name: /^Offered/ }))
+    expect(offered.getByText('10 runs · ME 4 · TE 8')).toBeInTheDocument()
+    expect(offered.getByText('3 runs · ME 2 · TE 0')).toBeInTheDocument()
   })
 })

@@ -95,6 +95,45 @@ describe('parseContractSearch', () => {
     ).toBe(false)
   })
 
+  it('keeps every item-level filter on an item-less selection, widening only ships-only', () => {
+    // Criterion 1.7 names ONE pair — ships_only and contract_type — and the
+    // reason it may be normalized is that Criterion 1.9 defines a restore for
+    // it. The item-level filters have no such restore, so dropping them here
+    // would destroy state a segment round-trip should return, and would rewrite
+    // a stored saved search from "no matches" into "every item-less contract".
+    // A combination that cannot match gets an explanation instead (7.2).
+    const courier = parseContractSearch({
+      contract_type: 'courier',
+      category_id: 6,
+      group_id: 25,
+      min_runs: 1,
+      max_runs: 20,
+      min_me: 2,
+      max_me: 8,
+      min_te: 4,
+      max_te: 16,
+      is_bpc: true,
+    })
+    expect(courier.ships_only).toBe(false)
+    expect(courier.category_id).toEqual([6])
+    expect(courier.group_id).toEqual([25])
+    expect(courier.min_runs).toBe(1)
+    expect(courier.max_runs).toBe(20)
+    expect(courier.min_me).toBe(2)
+    expect(courier.max_me).toBe(8)
+    expect(courier.min_te).toBe(4)
+    expect(courier.max_te).toBe(16)
+    expect(courier.is_bpc).toBe(true)
+  })
+
+  it('keeps is_bpc=false on an item-less selection, which every such contract satisfies', () => {
+    // `is_bpc=false` compiles to NOT EXISTS(offered blueprint copy)
+    // (contract_service `~has_copy`), and a contract with no items at all
+    // satisfies it. Treating it as unsatisfiable would drop a filter that is
+    // not merely legal but true of the entire segment.
+    expect(parseContractSearch({ contract_type: 'courier', is_bpc: false }).is_bpc).toBe(false)
+  })
+
   it('leaves ships-only alone for a mixed selection and for no selection', () => {
     // An item-bearing member can still match, so the combination is not
     // guaranteed-empty and the user's ships-only choice stands.

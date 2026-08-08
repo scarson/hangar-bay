@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { SEVEN_SHIPS, makeContractDetail, makeShipItem, pageOf } from './fixtures/contracts'
-import { interceptContractDetail, interceptContractList, interceptCurrentUser } from './helpers/api'
+import { interceptContractDetail, interceptContractList, interceptCurrentUser, interceptTaxonomy } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
 /**
@@ -51,6 +51,15 @@ function liveRegion(page: Page) {
 async function waitForDataRendered(page: Page) {
   await expect(page.getByRole('status', { name: 'Loading contracts' })).toHaveCount(0)
 }
+
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
 
 test.describe('states', () => {
   test('loading skeleton shows while the list request is in flight, then rows replace it', async ({

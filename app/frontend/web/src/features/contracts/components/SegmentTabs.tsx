@@ -5,6 +5,7 @@ import {
   ITEM_BEARING_TYPES,
   ITEM_LESS_TYPES,
   activeSegment,
+  isItemLessSelection,
   type ContractSearch,
   type ContractTypeValue,
 } from '../filters'
@@ -30,15 +31,6 @@ const SEGMENT_TITLES: Record<ContractTypeValue, string> = {
   courier: 'Courier Contracts',
   loan: 'Loan Contracts',
   unknown: 'Unknown Contracts',
-}
-
-/**
- * Whether every selected type is item-less. Such a selection is the one the
- * parser widened on the way in, so it is also the one leaving restores from.
- */
-function itemLessOnly(search: ContractSearch): boolean {
-  const selected = search.contract_type
-  return selected !== undefined && selected.every((type) => ITEM_LESS_TYPES.includes(type))
 }
 
 /**
@@ -100,7 +92,7 @@ export function SegmentTabs({
   counts: Record<string, number>
   onSelect: (patch: Partial<ContractSearch>) => void
 }) {
-  const leavingItemLess = itemLessOnly(search)
+  const leavingItemLess = isItemLessSelection(search)
   const selected = activeSegment(search)
   // What All would land on decides what All may claim: every route into it from
   // an item-less segment restores ships-only, so only a view the reader has
@@ -118,6 +110,11 @@ export function SegmentTabs({
         // destination RESTORES ships-only, a population those counts cannot
         // describe. No numeral beats a wrong one; the count returns with the
         // next response after switching.
+        // Per-segment counts go out exactly as served: every filter but
+        // contract_type is applied to them, so the number a segment shows is
+        // the number selecting it delivers. That stays true of an item-less
+        // segment under an item-level filter — the served zero is honest, and
+        // the empty state it leads to explains itself.
         const count =
           segment.type === undefined
             ? leavingItemLess
