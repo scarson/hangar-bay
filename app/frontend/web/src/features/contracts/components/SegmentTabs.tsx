@@ -5,6 +5,8 @@ import {
   ITEM_BEARING_TYPES,
   ITEM_LESS_TYPES,
   activeSegment,
+  hasOfferedItemFilters,
+  isItemLessSelection,
   type ContractSearch,
   type ContractTypeValue,
 } from '../filters'
@@ -30,15 +32,6 @@ const SEGMENT_TITLES: Record<ContractTypeValue, string> = {
   courier: 'Courier Contracts',
   loan: 'Loan Contracts',
   unknown: 'Unknown Contracts',
-}
-
-/**
- * Whether every selected type is item-less. Such a selection is the one the
- * parser widened on the way in, so it is also the one leaving restores from.
- */
-function itemLessOnly(search: ContractSearch): boolean {
-  const selected = search.contract_type
-  return selected !== undefined && selected.every((type) => ITEM_LESS_TYPES.includes(type))
 }
 
 /**
@@ -100,12 +93,17 @@ export function SegmentTabs({
   counts: Record<string, number>
   onSelect: (patch: Partial<ContractSearch>) => void
 }) {
-  const leavingItemLess = itemLessOnly(search)
+  const leavingItemLess = isItemLessSelection(search)
   const selected = activeSegment(search)
   // What All would land on decides what All may claim: every route into it from
   // an item-less segment restores ships-only, so only a view the reader has
   // already widened counts the item-less types in.
   const allCountsEveryType = !leavingItemLess && !search.ships_only
+  // The same rule, one filter family over. An offered-item filter is applied to
+  // the item-less counts the server sends back, but arriving at an item-less
+  // segment DROPS that filter — so those figures describe a view the click does
+  // not deliver, exactly as the lifted ones do for All.
+  const itemLessCountsAreStale = hasOfferedItemFilters(search)
 
   return (
     <fieldset className="flex flex-wrap items-center gap-1.5">
@@ -123,7 +121,9 @@ export function SegmentTabs({
             ? leavingItemLess
               ? undefined
               : sumCounts(counts, allCountsEveryType ? CONTRACT_TYPES : ITEM_BEARING_TYPES)
-            : (counts[segment.type] ?? 0)
+            : itemLessCountsAreStale && ITEM_LESS_TYPES.includes(segment.type)
+              ? undefined
+              : (counts[segment.type] ?? 0)
         return (
           <button
             key={segment.type ?? 'all'}

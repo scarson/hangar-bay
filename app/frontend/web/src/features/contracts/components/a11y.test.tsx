@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import { axe } from 'vitest-axe'
 import * as matchers from 'vitest-axe/matchers'
-import { anonymousMe, jsonResponse } from '../../../test/http'
+import { anonymousMe, jsonResponse, taxonomyResponse, withTaxonomy } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
@@ -120,6 +120,27 @@ describe('accessibility (axe)', () => {
     stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
     const { container } = renderApp('/contracts?region_ids=10000043')
     await screen.findByRole('heading', { name: 'No data for Domain yet' })
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('the open item-level filters have no violations', async () => {
+    // Two more grouped checkbox lists, one of them carrying a described-by
+    // sentence about the other's scope (Criterion 12) — axe checks the fieldset
+    // grouping, the label association on every box, and that the description
+    // resolves to text that exists.
+    stubFetch(
+      withTaxonomy(
+        anonymousMe(() => jsonResponse(listPage([ROW]))),
+        taxonomyResponse({
+          coverage: 'complete',
+          categories: [{ category_id: 6, name: 'Ship' }],
+          groups: [{ group_id: 25, category_id: 6, name: 'Frigate' }],
+        }),
+      ),
+    )
+    const { container } = renderApp('/contracts?category_id=6')
+    await screen.findByRole('checkbox', { name: 'Frigate' })
 
     expect(await axe(container)).toHaveNoViolations()
   })

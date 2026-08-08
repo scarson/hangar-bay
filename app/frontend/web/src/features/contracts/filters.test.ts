@@ -95,6 +95,47 @@ describe('parseContractSearch', () => {
     ).toBe(false)
   })
 
+  it('drops item-level filters for an all-item-less selection, by the same rule', () => {
+    // Taxonomy ids and blueprint bounds are predicates over offered items, so
+    // they are guaranteed-empty against a courier, loan, or unknown contract
+    // for exactly the reason ships-only is. Dropping them in the parser rather
+    // than in a click handler means a shared URL and an applied saved search
+    // get the same treatment as a segment click — and it keeps the pair out of
+    // the URL entirely, so Clear filters has nothing invisible left to forget.
+    const courier = parseContractSearch({
+      contract_type: 'courier',
+      category_id: 6,
+      group_id: 25,
+      min_runs: 1,
+      max_runs: 20,
+      min_me: 2,
+      max_me: 8,
+      min_te: 4,
+      max_te: 16,
+    })
+    expect(courier.category_id).toBeUndefined()
+    expect(courier.group_id).toBeUndefined()
+    expect(courier.min_runs).toBeUndefined()
+    expect(courier.max_runs).toBeUndefined()
+    expect(courier.min_me).toBeUndefined()
+    expect(courier.max_me).toBeUndefined()
+    expect(courier.min_te).toBeUndefined()
+    expect(courier.max_te).toBeUndefined()
+    // is_bpc rides along: it is an offered-item predicate too, and no more
+    // satisfiable by an item-less contract than the rest.
+    expect(courier.is_bpc).toBeUndefined()
+  })
+
+  it('keeps item-level filters for a mixed selection, which an item-bearing member can satisfy', () => {
+    const mixed = parseContractSearch({
+      contract_type: ['item_exchange', 'courier'],
+      category_id: 6,
+      min_me: 2,
+    })
+    expect(mixed.category_id).toEqual([6])
+    expect(mixed.min_me).toBe(2)
+  })
+
   it('leaves ships-only alone for a mixed selection and for no selection', () => {
     // An item-bearing member can still match, so the combination is not
     // guaranteed-empty and the user's ships-only choice stands.

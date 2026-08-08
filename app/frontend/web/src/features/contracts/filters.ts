@@ -130,6 +130,28 @@ export function hasEnrichmentDependentFilters(search: ContractSearch): boolean {
   return ENRICHMENT_DEPENDENT_FILTERS.some((key) => search[key] !== undefined)
 }
 
+/**
+ * Every filter that asks something of an offered item. `is_bpc` joins the eight
+ * above here because the question it asks — is one of these items a copy? —
+ * is just as unanswerable for a contract that carries no items, even though
+ * the column behind it has always been populated.
+ */
+const OFFERED_ITEM_FILTERS = [...ENRICHMENT_DEPENDENT_FILTERS, 'is_bpc'] as const
+
+export function hasOfferedItemFilters(search: ContractSearch): boolean {
+  return OFFERED_ITEM_FILTERS.some((key) => search[key] !== undefined)
+}
+
+/**
+ * Whether every selected type is item-less. Such a selection is the one the
+ * parser widens on the way in — no item-level filter and no ships-only survives
+ * it — so it is also the one the controls for those filters must stand down for.
+ */
+export function isItemLessSelection(search: ContractSearch): boolean {
+  const selected = search.contract_type
+  return selected !== undefined && selected.every((type) => ITEM_LESS_TYPES.includes(type))
+}
+
 function toNumber(value: unknown): number | undefined {
   const n =
     typeof value === 'number' ? value : typeof value === 'string' && value !== '' ? Number(value) : NaN
@@ -188,21 +210,28 @@ export function parseContractSearch(raw: Record<string, unknown>): ContractSearc
   // silently contradicting the results.
   const itemLessOnly =
     contractTypes !== undefined && contractTypes.every((type) => ITEM_LESS_TYPES.includes(type))
+  // Everything ships-only is dropped for, every item-level predicate is dropped
+  // for: taxonomy ids, the three blueprint ranges, and the blueprint-copy flag
+  // all ask something of an offered item, and an item-less contract has none to
+  // ask. Widening here keeps the pair out of the URL altogether, so a segment
+  // click, a shared link, and an applied saved search cannot differ — and so
+  // the item-less segment's own count stays the number clicking it delivers.
+  const dropItemFilters = <T>(value: T): T | undefined => (itemLessOnly ? undefined : value)
   return {
     search: typeof raw.search === 'string' && raw.search.length > 0 ? raw.search : undefined,
     min_price: toNonNegativeNumber(raw.min_price),
     max_price: toNonNegativeNumber(raw.max_price),
     region_ids: toIdArray(raw.region_ids),
     contract_type: contractTypes,
-    category_id: toIdArray(raw.category_id),
-    group_id: toIdArray(raw.group_id),
-    min_runs: toNonNegativeNumber(raw.min_runs),
-    max_runs: toNonNegativeNumber(raw.max_runs),
-    min_me: toNonNegativeNumber(raw.min_me),
-    max_me: toNonNegativeNumber(raw.max_me),
-    min_te: toNonNegativeNumber(raw.min_te),
-    max_te: toNonNegativeNumber(raw.max_te),
-    is_bpc: typeof raw.is_bpc === 'boolean' ? raw.is_bpc : undefined,
+    category_id: dropItemFilters(toIdArray(raw.category_id)),
+    group_id: dropItemFilters(toIdArray(raw.group_id)),
+    min_runs: dropItemFilters(toNonNegativeNumber(raw.min_runs)),
+    max_runs: dropItemFilters(toNonNegativeNumber(raw.max_runs)),
+    min_me: dropItemFilters(toNonNegativeNumber(raw.min_me)),
+    max_me: dropItemFilters(toNonNegativeNumber(raw.max_me)),
+    min_te: dropItemFilters(toNonNegativeNumber(raw.min_te)),
+    max_te: dropItemFilters(toNonNegativeNumber(raw.max_te)),
+    is_bpc: dropItemFilters(typeof raw.is_bpc === 'boolean' ? raw.is_bpc : undefined),
     // Default ON; only an explicit false in the URL widens to all contracts.
     ships_only: itemLessOnly ? false : raw.ships_only !== false,
     page: toBoundedInt(raw.page, 1, Number.MAX_SAFE_INTEGER, DEFAULT_PAGE),

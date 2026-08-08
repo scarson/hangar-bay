@@ -1381,6 +1381,24 @@ describe('item-level surface gate', () => {
     await waitFor(() => expect(screen.queryByText(INCOMPLETE_NOTICE)).not.toBeInTheDocument())
   })
 
+  it('shows an item-less segment without a count while an offered-item filter is active', async () => {
+    // The envelope's courier figure was computed with the category filter
+    // applied, but arriving at the courier segment drops that filter (nothing
+    // item-less can satisfy it), so the number describes a view the click does
+    // not deliver. No numeral beats a wrong one — the same rule the All control
+    // already follows from an item-less segment.
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+    renderApp('/contracts?category_id=6')
+
+    expect(await screen.findByRole('button', { name: /^Courier$/ })).toBeInTheDocument()
+    // The item-bearing segments keep theirs: their counts were computed under
+    // the same filter their destination keeps.
+    expect(screen.getByRole('button', { name: /^Item exchange 1,240$/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Auction 60$/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^All 1,300$/ })).toBeInTheDocument()
+  })
+
   it('warns only when a filter that reads the new item columns is in play', async () => {
     // is_bpc reads is_blueprint_copy, which ingestion has written since M1, so
     // it answers just as completely mid-resweep as it does after one. Warning
@@ -1394,5 +1412,168 @@ describe('item-level surface gate', () => {
     // The rail still says the controls are not ready — that claim is about the
     // controls, not about this request.
     expect(screen.getByText(INDEXING_LINE)).toBeInTheDocument()
+  })
+})
+
+/**
+ * The cascading dogma filter (Criteria 3.2–3.4). The option lists come from the
+ * server so the client embeds no taxonomy of its own (Criterion 3.5), and the
+ * group list is scoped client-side because §17.6 serves it flat for exactly
+ * that reason — narrowing a category costs no round trip.
+ */
+describe('taxonomy filters', () => {
+  const readyList = (rows = [ROW]) =>
+    withTaxonomy(anonymousMe(() => jsonResponse(listPage(rows))), READY_TAXONOMY)
+
+  it('offers the categories the corpus actually holds', async () => {
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+
+    expect(await screen.findByRole('checkbox', { name: 'Ship' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Module' })).toBeInTheDocument()
+  })
+
+  it('scopes the group list to the selected categories', async () => {
+    stubFetch(readyList())
+
+    renderApp('/contracts?category_id=6')
+
+    // Frigate belongs to Ship; Shield Booster belongs to Module, which is not
+    // selected, so offering it would offer a combination matching nothing.
+    expect(await screen.findByRole('checkbox', { name: 'Frigate' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Shield Booster' })).not.toBeInTheDocument()
+  })
+
+  it('offers every group while no category narrows the list', async () => {
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+
+    expect(await screen.findByRole('checkbox', { name: 'Frigate' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Shield Booster' })).toBeInTheDocument()
+  })
+
+  it('narrows the group list by type-ahead, and says when nothing matches', async () => {
+    // Criterion 3.3: the Module category alone holds hundreds of groups in the
+    // real taxonomy, so the list is unusable without one.
+    const user = userEvent.setup()
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+    await screen.findByRole('checkbox', { name: 'Frigate' })
+
+    await user.type(screen.getByLabelText('Filter group list'), 'fri')
+    expect(screen.getByRole('checkbox', { name: 'Frigate' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Shield Booster' })).not.toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Filter group list'))
+    await user.type(screen.getByLabelText('Filter group list'), 'zzz')
+    expect(screen.getByText('No group matches “zzz”')).toBeInTheDocument()
+  })
+
+  it('sends a category selection to the API and puts it in the URL', async () => {
+    const user = userEvent.setup()
+    const calls = stubFetch(readyList())
+
+    const { router } = renderApp('/contracts')
+    await screen.findByRole('checkbox', { name: 'Ship' })
+
+    await user.click(screen.getByRole('checkbox', { name: 'Ship' }))
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ category_id: [6] }))
+    await waitFor(() =>
+      expect(calls.some((url) => /[?&]category_id=6(&|$)/.test(url))).toBe(true),
+    )
+  })
+
+  it('prunes group selections the narrowed category scope no longer contains', async () => {
+    // One navigation, not two: leaving Shield Booster in the URL after its
+    // category goes would keep filtering on a group no visible control could
+    // clear.
+    const user = userEvent.setup()
+    stubFetch(readyList())
+
+    const { router } = renderApp('/contracts?category_id=6&category_id=7&group_id=25&group_id=60')
+    await screen.findByRole('checkbox', { name: 'Module' })
+    expect(screen.getByRole('checkbox', { name: 'Shield Booster' })).toBeChecked()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Module' }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ category_id: [6], group_id: [25] }),
+    )
+  })
+
+  it('keeps every group selection when the category scope opens up again', async () => {
+    // Deselecting the last category widens the scope to every group, so nothing
+    // is out of scope and nothing may be pruned.
+    const user = userEvent.setup()
+    stubFetch(readyList())
+
+    const { router } = renderApp('/contracts?category_id=6&group_id=25')
+    await screen.findByRole('checkbox', { name: 'Ship' })
+
+    await user.click(screen.getByRole('checkbox', { name: 'Ship' }))
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ group_id: [25] }),
+    )
+    expect(router.state.location.search).not.toHaveProperty('category_id')
+  })
+
+  it('says in words that the group list follows the category selection', async () => {
+    // Criterion 12: changing category changes the available groups, and that
+    // has to be announced — as plain described-by text, not invented ARIA.
+    stubFetch(readyList())
+
+    renderApp('/contracts?category_id=6')
+
+    const groups = await screen.findByRole('group', { name: /^Group/ })
+    expect(groups).toHaveAccessibleDescription('Groups within the selected categories')
+  })
+
+  it('describes an unscoped group list as the whole taxonomy', async () => {
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+
+    const groups = await screen.findByRole('group', { name: /^Group/ })
+    expect(groups).toHaveAccessibleDescription('Every group; select a category to narrow this list')
+  })
+
+  it('offers no taxonomy controls while the corpus is still being enriched', async () => {
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText(INDEXING_LINE)
+    expect(screen.queryByRole('checkbox', { name: 'Ship' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: /^Group/ })).not.toBeInTheDocument()
+  })
+
+  it('offers no taxonomy controls on an item-less segment, which no item can satisfy', async () => {
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+    renderApp('/contracts?contract_type=courier')
+
+    await screen.findByText('Jita to Amarr rush')
+    expect(screen.queryByRole('checkbox', { name: 'Ship' })).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Item filters do not apply to contracts that carry no items.'),
+    ).toBeInTheDocument()
+  })
+
+  it('offers Clear filters for a taxonomy selection that arrived by URL', async () => {
+    // The rail's Clear button is the only way back from a deep link, and the
+    // predicate behind it has to know about every param the parser accepts.
+    // Rows on screen deliberately: the empty-state card carries a Clear button
+    // of its own, which would answer this query whatever the rail decided.
+    stubFetch(readyList())
+
+    renderApp('/contracts?group_id=25')
+
+    await screen.findByText('Tristan')
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument()
   })
 })

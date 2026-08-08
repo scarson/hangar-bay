@@ -2,9 +2,15 @@ import { useState } from 'react'
 import { Button } from '../../../components/Button'
 import { CheckboxField } from '../../../components/Checkbox'
 import { Input } from '../../../components/Input'
-import { MIN_SEARCH_LENGTH, type ContractSearch } from '../filters'
+import {
+  MIN_SEARCH_LENGTH,
+  hasOfferedItemFilters,
+  isItemLessSelection,
+  type ContractSearch,
+} from '../filters'
 import { useItemSurfaceReady } from '../hooks/useTaxonomy'
 import { REGIONS } from '../regions'
+import { TaxonomyFilter } from './TaxonomyFilter'
 
 export function FilterRail({
   search,
@@ -18,6 +24,11 @@ export function FilterRail({
 }) {
   const [regionQuery, setRegionQuery] = useState('')
   const itemSurfaceReady = useItemSurfaceReady()
+  // A courier, loan or unknown contract carries no offered items, so every
+  // control below that asks about one would be a switch wired to nothing —
+  // the parser drops those params on the way in, and a checkbox that will not
+  // stay checked is the silent-no-op defect Criterion 7.2 forbids.
+  const itemLess = isItemLessSelection(search)
   const selectedRegions = new Set(search.region_ids ?? [])
   const query = regionQuery.trim().toLowerCase()
   const visibleRegions = query
@@ -33,7 +44,7 @@ export function FilterRail({
     search.max_price !== undefined ||
     search.region_ids !== undefined ||
     search.contract_type !== undefined ||
-    search.is_bpc !== undefined ||
+    hasOfferedItemFilters(search) ||
     !search.ships_only
 
   const toggleRegion = (id: number, checked: boolean) => {
@@ -60,16 +71,23 @@ export function FilterRail({
         <p className="mt-1 text-xs text-ink-faint">Searches from {MIN_SEARCH_LENGTH} characters</p>
       </div>
 
-      <fieldset className="flex flex-col gap-1">
+      <fieldset className="flex flex-col gap-1" aria-describedby={itemLess ? 'show-scope' : undefined}>
         <legend className="text-label mb-1.5">Show</legend>
+        {itemLess ? (
+          <p id="show-scope" className="mb-0.5 text-xs text-ink-faint">
+            Both read the contract’s items, and this type carries none.
+          </p>
+        ) : null}
         <CheckboxField
           label="Ships only"
           checked={search.ships_only}
+          disabled={itemLess}
           onChange={(checked) => onUpdate({ ships_only: checked })}
         />
         <CheckboxField
           label="Blueprint copies only"
           checked={search.is_bpc === true}
+          disabled={itemLess}
           onChange={(checked) => onUpdate({ is_bpc: checked ? true : undefined })}
         />
       </fieldset>
@@ -164,7 +182,15 @@ export function FilterRail({
           state is expected for the ~80 minutes after a release and briefly on
           a fresh dev boot, and dressing it as a failure of this page would
           invite the reader to fix something that is already fixing itself. */}
-      {itemSurfaceReady ? null : <p className="text-xs text-ink-faint">Item filters are still indexing.</p>}
+      {itemLess ? (
+        <p className="text-xs text-ink-faint">
+          Item filters do not apply to contracts that carry no items.
+        </p>
+      ) : itemSurfaceReady ? (
+        <TaxonomyFilter search={search} onUpdate={onUpdate} />
+      ) : (
+        <p className="text-xs text-ink-faint">Item filters are still indexing.</p>
+      )}
 
       {hasActiveFilters ? (
         <Button onClick={onReset} className="self-start">
