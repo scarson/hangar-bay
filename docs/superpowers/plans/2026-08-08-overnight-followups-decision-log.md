@@ -245,3 +245,29 @@ sibling's committed row poisoned it. Recorded as pitfall TEST-23; both tests are
 footprint-free under `finally`.
 
 **Reversibility.** Three merged PRs are ordinary reverts; #156 awaits Sam by construction.
+
+---
+
+## OD9 — Perf quick-win wave: three shipped, one deliberately rejected, the rest sequenced
+
+**Background.** Continuing Sam's autonomy grant after the bug-hunt remediation, the local items
+from the perf disposition's ranked list.
+
+**Shipped.** PR #158 (item upsert batch 50→500 — disposition item 3), PR #159 (search debounced at
+the data layer, 300 ms, URL untouched — item 6; two codex rounds: round 1 caught the page-reset
+riding the effective search from page 2+, fixed by freezing the whole query while the text is
+mid-edit; the repo's react-hooks lint rejected both the ref form and setState-in-effect, forcing
+the documented render-adjust pattern with value comparison), PR #160 (redis `aclose()` + plain
+`select` import — item 14's live half).
+
+**Rejected, recorded so nobody reopens it bare:** SP14's "dead" `sorted()` in
+`resolve_ids_to_names` stays — chunk-order determinism feeds reproducible request bodies, and the
+sort is noise at real id counts.
+
+**Sequenced, not started:** the location indexes wait for PR #156 (a second migration PR now would
+fork the alembic head); the bundle-budget needs a warn-vs-fail choice and a baseline number;
+cache-aside, the ESI fan-out semaphore, QueueHandler logging, ingestion metrics, and streaming
+each carry enough design surface to deserve fresh-context sessions against the disposition's
+write-ups.
+
+**Reversibility.** All ordinary PR reverts.

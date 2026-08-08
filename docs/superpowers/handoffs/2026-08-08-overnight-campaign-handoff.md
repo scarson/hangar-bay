@@ -56,7 +56,9 @@ now). Its §1 release runbook pointer remains authoritative and is NOT restated:
 
 ## 3. The queued docket (next sessions)
 
-1. **Perf quick-wins** — ranked list in
+1. **Perf quick-wins** — PARTIALLY DONE since this handoff was written: PRs #158 (item batch
+   50→500), #159 (search debounce at the data layer), #160 (redis aclose + select import; SP14
+   deliberately kept) shipped; see decision-log OD9. Remaining: ranked list in
    [`docs/perf-audits/2026-08-08-remediation-status.md`](../../perf-audits/2026-08-08-remediation-status.md)
    §"Still open, worth doing". Local, no production access needed: item upsert batch 50→500
    (`background_aggregation.py:584` — one line), search debounce (`FilterRail.tsx` — the React
