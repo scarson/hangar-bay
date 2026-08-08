@@ -187,7 +187,8 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
           </h2>
           <dl>
             <Field label="Price" valueClassName="text-base font-medium text-(--color-copper)">
-              {formatIsk(data.price)} ISK
+              {/* ESI marks price optional; a dash is not an amount, so no unit. */}
+              {data.price == null ? '—' : <>{formatIsk(data.price)} ISK</>}
             </Field>
             {data.reward != null && data.reward > 0 ? (
               <Field label="Reward">{formatIsk(data.reward)} ISK</Field>
