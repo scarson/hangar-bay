@@ -6,6 +6,8 @@ import type { Contract } from '../../lib/api/client'
 import { Badge } from '../../components/Badge'
 import {
   contractTypeLabel,
+  formatBlueprintTerms,
+  formatComposition,
   formatDate,
   formatDeadline,
   formatIsk,
@@ -19,6 +21,13 @@ import type { ContractTypeValue, SortField } from './filters'
 /** Values shared by more than one renderer on the same row, computed once. */
 export interface RowContext {
   expiry: string
+  /**
+   * Whether the corpus is enriched enough for the item-derived cells to say
+   * anything (decision log D1). It selects the column SET as well, but the
+   * label cell also chooses between two renderings on it, so it rides here
+   * rather than being read twice.
+   */
+  itemSurfaceReady: boolean
 }
 
 export interface Column {
@@ -40,8 +49,8 @@ export interface Column {
   cell: (contract: Contract, ctx: RowContext) => ReactNode
 }
 
-export function rowContext(contract: Contract): RowContext {
-  return { expiry: timeRemaining(contract.date_expired) }
+export function rowContext(contract: Contract, itemSurfaceReady: boolean): RowContext {
+  return { expiry: timeRemaining(contract.date_expired), itemSurfaceReady }
 }
 
 /**
@@ -49,7 +58,12 @@ export function rowContext(contract: Contract): RowContext {
  * the spreadsheet-minded audience can still select/copy the price, location,
  * and time-left cell text.
  */
-function labelCell(contract: Contract): ReactNode {
+function labelCell(contract: Contract, ctx: RowContext): ReactNode {
+  // Composition is served only for a contract offering more than one item row,
+  // so its presence IS the "there is more in here" signal. Counts are item rows
+  // rather than summed quantities — a bundle, not an ammunition stack.
+  const composition =
+    contract.composition && contract.composition.total_item_rows > 1 ? contract.composition : null
   return (
     <>
       <Link
@@ -59,14 +73,18 @@ function labelCell(contract: Contract): ReactNode {
       >
         {contract.primary_label}
       </Link>
-      {/* Composition is served only for a contract offering more than one item
-          row, so its presence IS the "there is more in here" signal. Counts are
-          item rows rather than summed quantities — "+2 more" describes a bundle,
-          "+3,000 more" would describe an ammunition stack. */}
-      {contract.composition && contract.composition.total_item_rows > 1 ? (
-        <span className="ml-1.5 text-xs text-ink-faint">
-          +{contract.composition.total_item_rows - 1} more
-        </span>
+      {/* Criterion 6.1 wants the per-category breakdown, which needs the item
+          categories named — so while the corpus is still being enriched the row
+          falls back to the bare count it has always shown. A breakdown from an
+          unnamed corpus would read "4 other", which says less than "+3 more". */}
+      {composition ? (
+        ctx.itemSurfaceReady ? (
+          <div className="text-xs text-ink-faint">{formatComposition(composition)}</div>
+        ) : (
+          <span className="ml-1.5 text-xs text-ink-faint">
+            +{composition.total_item_rows - 1} more
+          </span>
+        )
       ) : null}
     </>
   )
@@ -130,6 +148,43 @@ const ISSUED_COLUMN: Column = {
   hiddenClass: 'max-sm:hidden',
   cellClass: 'text-data text-ink-dim',
   cell: (contract) => formatDate(contract.date_issued),
+}
+
+/**
+ * The blueprint terms, per §8's discriminator: exactly one offered copy shows
+ * its runs/ME/TE, several show how many and send the reader to the detail page
+ * (no single set of terms describes them, and picking one copy's would
+ * misdescribe the others), none shows nothing at all.
+ *
+ * ONE column rather than three. The spec's "first-class columns" reads as
+ * Runs | ME | TE, but none of the three is a server sort field, so nothing is
+ * gained by separating them — and the cost is three columns that are empty for
+ * almost every row of the DEFAULT view, which is ships-only and therefore
+ * almost never blueprints. The multi-copy state has no three-column rendering
+ * either: "3 BPCs" repeated three times, or nominated into one column with two
+ * left blank beside it.
+ */
+const BLUEPRINT_COLUMN: Column = {
+  key: 'blueprint',
+  label: 'Blueprint',
+  hiddenClass: 'max-lg:hidden',
+  cellClass: 'text-data text-ink-dim',
+  cell: (contract) => {
+    const summary = contract.blueprint_summary
+    if (!summary) return null
+    if (summary.copy_count > 1) {
+      return (
+        <Link
+          to="/contracts/$contractId"
+          params={{ contractId: String(contract.contract_id) }}
+          className="text-ink-dim hover:text-brand-bright"
+        >
+          {summary.copy_count} BPCs
+        </Link>
+      )
+    }
+    return formatBlueprintTerms(summary)
+  },
 }
 
 export const DEFAULT_COLUMNS: Column[] = [
@@ -240,20 +295,44 @@ export const COURIER_COLUMNS: Column[] = [
 ]
 
 /**
+ * The blueprint column sits with the goods rather than with the money: right
+ * before Location in both item-bearing sets, so the terms read next to the item
+ * they describe. Couriers never get it — they carry no items at all.
+ */
+function withBlueprintColumn(columns: Column[]): Column[] {
+  const before = columns.findIndex((column) => column.key === LOCATION_COLUMN.key)
+  return [...columns.slice(0, before), BLUEPRINT_COLUMN, ...columns.slice(before)]
+}
+
+/**
  * The columns a segment shows (spec §8 axis 1). The types with no set of their
  * own — item exchange, loan, unknown, and no selection at all — keep the
  * default: a loan has no route and no bid, and the default columns describe it
  * as well as anything else does.
+ *
+ * `itemSurfaceReady` OMITS the blueprint column rather than emptying it while
+ * the corpus is being enriched (decision log D1): runs/ME/TE are NULL for most
+ * of the corpus mid-resweep, and a column blank down its whole length reads as
+ * a broken feature rather than as a corpus of non-blueprints.
  */
-export function columnsFor(type: ContractTypeValue | undefined): Column[] {
-  if (type === 'auction') return AUCTION_COLUMNS
+export function columnsFor(
+  type: ContractTypeValue | undefined,
+  itemSurfaceReady = false,
+): Column[] {
   if (type === 'courier') return COURIER_COLUMNS
-  return DEFAULT_COLUMNS
+  const columns = type === 'auction' ? AUCTION_COLUMNS : DEFAULT_COLUMNS
+  return itemSurfaceReady ? withBlueprintColumn(columns) : columns
 }
 
-/** The sort fields a segment's column set can actually disclose in a header. */
+/**
+ * The sort fields a segment's column set can actually disclose in a header,
+ * computed over the WIDEST set the segment can show. The gated columns carry no
+ * `sortField` (pinned by a test), so readiness cannot change this answer — and
+ * taking the widest set means a readiness flip could never silently reset a
+ * sort the reader had chosen.
+ */
 export function sortableFieldsFor(type: ContractTypeValue | undefined): ReadonlySet<SortField> {
   return new Set(
-    columnsFor(type).flatMap((column) => (column.sortField ? [column.sortField] : [])),
+    columnsFor(type, true).flatMap((column) => (column.sortField ? [column.sortField] : [])),
   )
 }

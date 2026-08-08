@@ -1621,6 +1621,15 @@ describe('taxonomy filters', () => {
     expect(screen.queryByLabelText('Minimum runs')).not.toBeInTheDocument()
   })
 
+  it('offers no taxonomy or blueprint controls while a taxonomy request is unanswered', async () => {
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText(INDEXING_LINE)
+    expect(screen.queryByLabelText('Filter group list')).not.toBeInTheDocument()
+  })
+
   it('offers Clear filters for a taxonomy selection that arrived by URL', async () => {
     // The rail's Clear button is the only way back from a deep link, and the
     // predicate behind it has to know about every param the parser accepts.
@@ -1632,5 +1641,230 @@ describe('taxonomy filters', () => {
 
     await screen.findByText('Tristan')
     expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * The blueprint and composition cells (Criteria 2.2, 6.1–6.3, 8.1, §8's
+ * discriminator). Every one of them reads a column the F008 resweep fills, so
+ * every one of them is behind the readiness gate: a column that is blank across
+ * a mostly-unenriched corpus reads as breakage, which is the state §7 gates.
+ */
+describe('blueprint and composition cells', () => {
+  const readyList = (rows: { type: string }[]) =>
+    withTaxonomy(anonymousMe(() => jsonResponse(listPage(rows))), READY_TAXONOMY)
+
+  /** A contract offering exactly one blueprint copy — §8's "values" case. */
+  const ONE_COPY = {
+    ...ROW,
+    contract_id: 811,
+    primary_label: 'Draugur Blueprint',
+    is_blueprint_copy_contract: true,
+    blueprint_summary: { copy_count: 1, runs: 10, material_efficiency: 4, time_efficiency: 8 },
+  }
+
+  /** Several copies: no single set of terms describes them (§8's "count" case). */
+  const THREE_COPIES = {
+    ...ROW,
+    contract_id: 822,
+    primary_label: 'Blueprint lot',
+    is_blueprint_copy_contract: true,
+    blueprint_summary: {
+      copy_count: 3,
+      runs: null,
+      material_efficiency: null,
+      time_efficiency: null,
+    },
+  }
+
+  function blueprintCell(rowName: RegExp): string {
+    const cells = within(screen.getByRole('row', { name: rowName })).getAllByRole('cell')
+    const index = headerNames().indexOf('Blueprint')
+    return cells[index].textContent!
+  }
+
+  it('reads a single offered copy’s terms in the row', async () => {
+    stubFetch(readyList([ONE_COPY]))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Draugur Blueprint')
+    expect(blueprintCell(/Draugur Blueprint/)).toBe('10 runs · ME 4 · TE 8')
+  })
+
+  it('counts several copies instead of reporting one of them, and links to the detail', async () => {
+    // There is no single ME/TE to report, and picking one copy's numbers would
+    // misdescribe the others — so the cell says how many and where to look.
+    stubFetch(readyList([THREE_COPIES]))
+
+    renderApp('/contracts')
+
+    const link = await screen.findByRole('link', { name: '3 BPCs' })
+    expect(link).toHaveAttribute('href', '/contracts/822')
+  })
+
+  it('leaves the blueprint cell empty for a contract offering no copy', async () => {
+    // §8's third case. Empty, not a dash: a dash reads as "we looked and found
+    // nothing", and there was nothing to look for.
+    stubFetch(readyList([ROW]))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Tristan')
+    expect(blueprintCell(/Tristan/)).toBe('')
+  })
+
+  it('omits the blueprint column entirely while the corpus is still being enriched', async () => {
+    // Omitted rather than emptied: runs/ME/TE are NULL for most of the corpus
+    // mid-resweep, and a column blank down its whole length reads as breakage.
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ONE_COPY])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Draugur Blueprint')
+    expect(headerNames()).not.toContain('Blueprint')
+  })
+
+  it('gives the auction segment the blueprint column too, and the courier segment never', async () => {
+    // §8: blueprint columns are per-row content within the two item-bearing
+    // segments, not a segment of their own. A courier carries no items at all.
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+    const auction = renderApp('/contracts?contract_type=auction')
+    await screen.findByText('Vargur')
+    expect(headerNames()).toContain('Blueprint')
+    auction.unmount()
+    vi.unstubAllGlobals()
+
+    stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+    renderApp('/contracts?contract_type=courier')
+    await screen.findByText('Jita to Amarr rush')
+    expect(headerNames()).not.toContain('Blueprint')
+  })
+
+  it('describes a mixed lot by category instead of only counting the rest of it', async () => {
+    // Criterion 6.1: a bare "+2 more" says how much is in the bundle and
+    // nothing about what — the breakdown is what lets a reader judge it.
+    const bundle = {
+      ...ROW,
+      contract_id: 833,
+      primary_label: 'Myrmidon',
+      composition: {
+        categories: [
+          { category_id: 7, name: 'Module', item_row_count: 3 },
+          { category_id: 6, name: 'Ship', item_row_count: 1 },
+        ],
+        total_item_rows: 4,
+        total_volume: 120_000,
+      },
+    }
+    stubFetch(readyList([bundle]))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Myrmidon')
+    expect(screen.getByText('3 Modules · 1 Ship · 120,000 m³')).toBeInTheDocument()
+    expect(screen.queryByText('+3 more')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the bundle count while the categories are still being named', async () => {
+    // Mid-resweep the categories are mostly unnamed, so the breakdown would
+    // read "4 other" — less than the count it replaced.
+    const bundle = {
+      ...ROW,
+      contract_id: 844,
+      primary_label: 'Myrmidon',
+      composition: {
+        categories: [{ category_id: null, name: null, item_row_count: 4 }],
+        total_item_rows: 4,
+        total_volume: 120_000,
+      },
+    }
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([bundle])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Myrmidon')
+    expect(screen.getByText('+3 more')).toBeInTheDocument()
+  })
+})
+
+describe('ContractDetailPage item sides', () => {
+  const OFFERED = {
+    record_id: 1,
+    type_id: 587,
+    quantity: 1,
+    is_included: true,
+    type_name: 'Rifter',
+    category: 'ship',
+  }
+  const REQUESTED = {
+    record_id: 2,
+    type_id: 34,
+    quantity: 1_000_000,
+    is_included: false,
+    type_name: 'Tritanium',
+  }
+
+  it('renders what is offered and what is asked for as two separate lists', async () => {
+    // Criterion 8.1. Merged, the two sides read as one inventory and a
+    // want-to-buy contract looks like a sale of the thing it wants to buy.
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, items: [OFFERED, REQUESTED] })))
+
+    renderApp('/contracts/101')
+
+    const offered = within(await screen.findByRole('region', { name: /^Offered/ }))
+    expect(offered.getByText(/Rifter/)).toBeInTheDocument()
+    expect(offered.queryByText(/Tritanium/)).not.toBeInTheDocument()
+
+    const requested = within(screen.getByRole('region', { name: /^Requested/ }))
+    expect(requested.getByText(/Tritanium/)).toBeInTheDocument()
+    expect(requested.queryByText(/Rifter/)).not.toBeInTheDocument()
+  })
+
+  it('renders the requested side of a want-to-buy contract that offers nothing', async () => {
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, items: [REQUESTED] })))
+
+    renderApp('/contracts/101')
+
+    const requested = within(await screen.findByRole('region', { name: /^Requested/ }))
+    expect(requested.getByText(/Tritanium/)).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /^Offered/ })).not.toBeInTheDocument()
+  })
+
+  it('names an unresolved requested item by its type id rather than dropping the row', async () => {
+    // The A7 completion-predicate widening guarantees a route back for a
+    // contract whose requested item failed name resolution; until it lands,
+    // the row must still say something rather than vanish.
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse({ ...CONTRACT, items: [{ ...REQUESTED, type_name: null }] }),
+      ),
+    )
+
+    renderApp('/contracts/101')
+
+    const requested = within(await screen.findByRole('region', { name: /^Requested/ }))
+    expect(requested.getByText(/Type 34/)).toBeInTheDocument()
+  })
+
+  it('shows each offered copy’s terms, so the row’s "N BPCs" link answers what it raises', async () => {
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse({
+          ...CONTRACT,
+          items: [
+            { ...OFFERED, record_id: 3, type_name: 'Draugur Blueprint', category: null, is_blueprint_copy: true, runs: 10, material_efficiency: 4, time_efficiency: 8 },
+            { ...OFFERED, record_id: 4, type_name: 'Phoenix Blueprint', category: null, is_blueprint_copy: true, runs: 3, material_efficiency: 2, time_efficiency: 0 },
+          ],
+        }),
+      ),
+    )
+
+    renderApp('/contracts/101')
+
+    const offered = within(await screen.findByRole('region', { name: /^Offered/ }))
+    expect(offered.getByText('10 runs · ME 4 · TE 8')).toBeInTheDocument()
+    expect(offered.getByText('3 runs · ME 2 · TE 0')).toBeInTheDocument()
   })
 })

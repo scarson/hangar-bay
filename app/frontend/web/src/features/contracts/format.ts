@@ -1,5 +1,9 @@
 import type { Contract } from '../../lib/api/client'
+import type { components } from '../../lib/api/schema'
 import { REGIONS } from './regions'
+
+type CompositionSummary = components['schemas']['CompositionSummary']
+type BlueprintSummary = components['schemas']['BlueprintSummary']
 
 // Fixed locale: M1 is explicitly English-only (spec Non-goals), and tests
 // assert formatted values (pitfall TEST-3).
@@ -112,6 +116,53 @@ export function routeLabel(contract: Contract): string {
  */
 export function regionNames(ids: readonly number[]): string {
   return NAME_LIST.format(ids.map((id) => REGION_NAMES.get(id) ?? `Region ${id}`))
+}
+
+/** How many category names a cell has room for before the rest becomes "other". */
+const NAMED_CATEGORIES = 2
+
+/**
+ * What a mixed lot is made of, in one line (Criterion 6.1). The server sends
+ * the categories sorted by share and does NOT truncate — how many fit is the
+ * client's question — so this names the two largest and buckets the remainder.
+ *
+ * Counts are item ROWS. A contract of 100 identical drones in one row reads as
+ * "1 Drone": summing quantities would describe an ammunition stack as a fleet.
+ *
+ * Two shapes cannot be named and both fall into the bucket: rows whose category
+ * could not be determined at all (`category_id` null), and a category the name
+ * cache has not resolved yet (`name` null). "Other" is exactly what they are;
+ * anything else would be an invented label.
+ */
+export function formatComposition(composition: CompositionSummary): string {
+  const named = composition.categories.filter((category) => category.name)
+  const parts = named
+    .slice(0, NAMED_CATEGORIES)
+    .map((category) => `${category.item_row_count} ${category.name}${category.item_row_count === 1 ? '' : 's'}`)
+  const other = composition.categories
+    .filter((category) => !named.slice(0, NAMED_CATEGORIES).includes(category))
+    .reduce((rows, category) => rows + category.item_row_count, 0)
+  if (other > 0) parts.push(`${other} other`)
+  // A corpus that carries no volume for the contract gets no figure: "0 m³"
+  // would be a measurement rather than the absence of one.
+  if (composition.total_volume != null) parts.push(`${ISK.format(composition.total_volume)} m³`)
+  return parts.join(' · ')
+}
+
+/**
+ * The terms of ONE offered blueprint copy. Each figure is named because the
+ * three are not interchangeable and a bare "10 · 4 · 8" would need a legend.
+ *
+ * An absent figure is omitted rather than shown as zero: ESI omits `runs`
+ * entirely for an original instead of sending -1 (ESI-3), and "ME 0" is a real
+ * blueprint that is meaningfully different from one whose ME is unknown.
+ */
+export function formatBlueprintTerms(summary: BlueprintSummary): string {
+  const parts: string[] = []
+  if (summary.runs != null) parts.push(`${summary.runs} run${summary.runs === 1 ? '' : 's'}`)
+  if (summary.material_efficiency != null) parts.push(`ME ${summary.material_efficiency}`)
+  if (summary.time_efficiency != null) parts.push(`TE ${summary.time_efficiency}`)
+  return parts.join(' · ')
 }
 
 /**

@@ -288,7 +288,8 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
                   // response rather than the URL so the columns always describe the
                   // rows beneath them — the two disagree for the whole of a segment
                   // switch, which `keepPreviousData` renders with the old rows.
-                  columns={columnsFor(data.segment)}
+                  columns={columnsFor(data.segment, itemSurfaceReady)}
+                  itemSurfaceReady={itemSurfaceReady}
                   search={search}
                   onSort={handleSort}
                   isRefreshing={isFetching}

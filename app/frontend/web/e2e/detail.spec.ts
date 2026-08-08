@@ -3,6 +3,7 @@ import {
   makeBpcItem,
   makeContract,
   makeContractDetail,
+  makeItem,
   makeShipItem,
   pageOf,
 } from './fixtures/contracts'
@@ -32,7 +33,7 @@ const CONTRACT_FIELDS = {
 
 /**
  * One contract carrying BOTH a ship item and a blueprint-copy item, so the
- * Contents list exercises the SHIP badge and the BPC badge in a single fixture.
+ * offered list exercises the SHIP badge and the BPC badge in a single fixture.
  * Fresh items each call (record_id auto-increments) keep list keys unique.
  */
 function detailContract() {
@@ -87,13 +88,17 @@ test.describe('contract detail (F003)', () => {
     // The three definition sections are aria-labelledby regions.
     await expect(page.getByRole('region', { name: 'Economics' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Identification' })).toBeVisible()
-    const contents = page.getByRole('region', { name: /Contents/ })
-    await expect(contents).toBeVisible()
+    // The items region is named for the side of the trade it holds now
+    // (Criterion 8.1); this fixture offers both its items and asks for nothing.
+    const offered = page.getByRole('region', { name: /^Offered/ })
+    await expect(offered).toBeVisible()
+    await expect(page.getByRole('region', { name: /^Requested/ })).toHaveCount(0)
 
     // Ship item shows the SHIP badge, the BPC item shows the BPC badge — scoped
-    // to Contents so the header's own BPC badge doesn't stand in for the row's.
-    await expect(contents.getByText('Ship', { exact: true })).toBeVisible()
-    await expect(contents.getByText('BPC', { exact: true })).toBeVisible()
+    // to the offered side so the header's own BPC badge doesn't stand in for
+    // the row's.
+    await expect(offered.getByText('Ship', { exact: true })).toBeVisible()
+    await expect(offered.getByText('BPC', { exact: true })).toBeVisible()
 
     // Price renders with grouping separators and a trailing " ISK".
     await expect(page.getByRole('region', { name: 'Economics' }).getByText('1,750,000,000 ISK')).toBeVisible()
@@ -150,7 +155,7 @@ test.describe('contract detail (F003)', () => {
     await expect(page.getByRole('heading', { level: 1, name: HULL })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Economics' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Identification' })).toBeVisible()
-    await expect(page.getByRole('region', { name: /Contents/ })).toBeVisible()
+    await expect(page.getByRole('region', { name: /^Offered/ })).toBeVisible()
 
     // No in-app history → the control is a LINK to the default list, not a button.
     const backLink = page.getByRole('link', { name: '← All contracts', exact: true })
@@ -174,6 +179,53 @@ test.describe('contract detail (F003)', () => {
     await page.getByRole('link', { name: '← All contracts', exact: true }).click()
     await expect(page).toHaveURL(/\/contracts(\?|$)/)
     await expect(page.getByRole('heading', { level: 1, name: 'Ship Contracts' })).toBeVisible()
+  })
+
+  test('a want-to-buy contract keeps the two sides of the trade apart', async ({ page }) => {
+    // Criterion 8.1. Merged into one list, a want-to-buy contract reads as a
+    // sale of the very thing it is asking to buy — and the offered side of this
+    // one is empty, so a merged list would have shown nothing but the request.
+    const wtb = makeContractDetail({
+      contract_id: 232_800_001,
+      title: 'WTB Tritanium',
+      price: 0,
+      items: [
+        makeItem({ type_name: 'Tritanium', category: null, category_id: 4, quantity: 1_000_000, is_included: false }),
+      ],
+    })
+    await failUnexpectedApiCalls(page)
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptContractDetail(page, wtb)
+
+    await page.goto(`/contracts/${wtb.contract_id}`)
+
+    const requested = page.getByRole('region', { name: /^Requested/ })
+    await expect(requested.getByText(/Tritanium/)).toBeVisible()
+    await expect(page.getByRole('region', { name: /^Offered/ })).toHaveCount(0)
+  })
+
+  test('each offered copy carries its own terms, which is what the row’s count promises', async ({
+    page,
+  }) => {
+    // The list renders "N BPCs" as a link here rather than one arbitrary
+    // blueprint's numbers; this page is where the reader collects them.
+    const lot = makeContractDetail({
+      contract_id: 232_800_002,
+      title: 'Blueprint lot',
+      items: [
+        makeBpcItem('Phoenix Blueprint'),
+        makeBpcItem('Moros Blueprint', { runs: 3, material_efficiency: 2, time_efficiency: 0 }),
+      ],
+    })
+    await failUnexpectedApiCalls(page)
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptContractDetail(page, lot)
+
+    await page.goto(`/contracts/${lot.contract_id}`)
+
+    const offered = page.getByRole('region', { name: /^Offered/ })
+    await expect(offered.getByText('10 runs · ME 4 · TE 8')).toBeVisible()
+    await expect(offered.getByText('3 runs · ME 2 · TE 0')).toBeVisible()
   })
 
   test('document title becomes "<hull> — Hangar Bay"', async ({ page }) => {

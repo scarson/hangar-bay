@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Contract } from '../../lib/api/client'
 import {
   contractTypeLabel,
+  formatBlueprintTerms,
+  formatComposition,
   formatDate,
   formatDeadline,
   formatIsk,
@@ -196,6 +198,113 @@ describe('regionNames', () => {
     // Nothing ingested yet is a real state (coverage.ingested_region_ids is
     // empty before the first run), and the callers word that case themselves.
     expect(regionNames([])).toBe('')
+  })
+})
+
+describe('formatComposition', () => {
+  const composition = (
+    categories: { category_id: number | null; name: string | null; item_row_count: number }[],
+    total_volume: number | null = null,
+  ) => ({
+    categories,
+    total_item_rows: categories.reduce((n, c) => n + c.item_row_count, 0),
+    total_volume,
+  })
+
+  it('names the two largest categories and buckets the rest as other', () => {
+    // Criterion 6.1: the breakdown is what lets a reader judge a mixed lot
+    // without opening it, and two names plus a remainder is what fits a cell.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 7, name: 'Module', item_row_count: 3 },
+          { category_id: 9, name: 'Blueprint', item_row_count: 1 },
+          { category_id: 8, name: 'Charge', item_row_count: 1 },
+          { category_id: 4, name: 'Material', item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('3 Modules · 1 Blueprint · 2 other')
+  })
+
+  it('counts item rows, never summed quantities', () => {
+    // A contract of 100 identical drones in one row reads as "1 Drone", not
+    // "100 Drones" — the server sends rows and the client must not invent units.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 18, name: 'Drone', item_row_count: 1 },
+          { category_id: 6, name: 'Ship', item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('1 Drone · 1 Ship')
+  })
+
+  it('puts an unnamed category in the other bucket rather than inventing a label', () => {
+    // Two unnameable shapes: the rows whose category could not be determined
+    // (category_id null) and a category the name cache has not resolved yet
+    // (name null). Neither can be called anything, and "other" is what they are.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 7, name: 'Module', item_row_count: 2 },
+          { category_id: null, name: null, item_row_count: 2 },
+          { category_id: 42, name: null, item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('2 Modules · 3 other')
+  })
+
+  it('adds the total volume when the server measured one', () => {
+    expect(
+      formatComposition(
+        composition(
+          [
+            { category_id: 7, name: 'Module', item_row_count: 2 },
+            { category_id: 6, name: 'Ship', item_row_count: 1 },
+          ],
+          120_000,
+        ),
+      ),
+    ).toBe('2 Modules · 1 Ship · 120,000 m³')
+  })
+
+  it('says nothing about volume when there is no measurement', () => {
+    // A contract whose volume the corpus does not carry gets no "0 m³", which
+    // would be a reading rather than the absence of one.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 7, name: 'Module', item_row_count: 2 },
+          { category_id: 6, name: 'Ship', item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('2 Modules · 1 Ship')
+  })
+})
+
+describe('formatBlueprintTerms', () => {
+  it('reads the terms of a single offered copy, each figure named', () => {
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: 10, material_efficiency: 4, time_efficiency: 8 }),
+    ).toBe('10 runs · ME 4 · TE 8')
+  })
+
+  it('omits a term the payload does not carry rather than printing a zero', () => {
+    // ESI omits `runs` for a blueprint ORIGINAL rather than sending -1 (ESI-3),
+    // and a half-enriched copy can be missing any of the three. "ME 0" is a
+    // real, meaningfully different blueprint from one whose ME is unknown.
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: null, material_efficiency: 0, time_efficiency: 8 }),
+    ).toBe('ME 0 · TE 8')
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: null, material_efficiency: null, time_efficiency: null }),
+    ).toBe('')
+  })
+
+  it('reads a single run in the singular', () => {
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: 1, material_efficiency: null, time_efficiency: null }),
+    ).toBe('1 run')
   })
 })
 

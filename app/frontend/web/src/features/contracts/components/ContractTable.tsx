@@ -10,6 +10,7 @@ function cellClass(column: Column, contract: Contract, ctx: RowContext): string 
 export function ContractTable({
   contracts,
   columns,
+  itemSurfaceReady,
   search,
   onSort,
   isRefreshing,
@@ -17,6 +18,8 @@ export function ContractTable({
   contracts: Contract[]
   /** The active segment's column set — one frame, per-segment columns (spec §8). */
   columns: Column[]
+  /** Whether the item-derived cells can say anything yet (decision log D1). */
+  itemSurfaceReady: boolean
   search: ContractSearch
   onSort: (field: SortField) => void
   isRefreshing: boolean
@@ -74,7 +77,7 @@ export function ContractTable({
         </thead>
         <tbody>
           {contracts.map((contract) => {
-            const ctx = rowContext(contract)
+            const ctx = rowContext(contract, itemSurfaceReady)
             return (
               <tr
                 key={contract.contract_id}
