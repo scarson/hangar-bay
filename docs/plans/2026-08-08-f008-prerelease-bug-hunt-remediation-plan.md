@@ -74,6 +74,14 @@ notes and commit messages.
 
 ### Discoveries
 
+- **Deferred to the test-coverage review task (codex round-2 P3 on PR #156):** no e2e fixture
+  assigns `price: null`, so `WireContract.price`'s `number | null` widening is not
+  regression-pinned at the type level — reverting it would still typecheck. Belongs with O1's
+  fixture-drift items.
+- **env.py's offline path lacked the standard template's transaction wrapper** (found by PR #156's
+  round-2 review): `--sql` scripts rendered with no BEGIN/COMMIT, invalid for any migration
+  needing a transaction block. Fixed in the PR; pinned by the offline-render test.
+
 - **Phase 3 accepted residuals (codex round 2's state enumeration, 2026-08-08):** the
   suppression predicate (`countsFromItemLess || leavingItemLess`) leaves the ships-only ↔ widened
   toggle showing the held envelope's figures for its one-request window — the same

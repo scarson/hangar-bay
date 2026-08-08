@@ -64,16 +64,23 @@ def test_downgrade_refuses_while_priceless_contracts_exist(blank_migrated_sync_c
 
     cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     cfg.attributes["connection"] = conn
-    with pytest.raises(DBAPIError, match="cannot restore NOT NULL on contracts.price"):
-        command.downgrade(cfg, "-1")
-    # The fixture is SESSION-scoped: one database and one connection shared by
-    # every consumer. Leave both exactly as found — clear the aborted
-    # transaction the refusal left open, then remove the row this test
-    # committed, or the sibling clean-downgrade test meets a corpus with a
-    # price-less contract and is refused too.
-    conn.rollback()
-    conn.execute(text("DELETE FROM contracts WHERE contract_id = 990001"))
-    conn.commit()
+    try:
+        with pytest.raises(
+            DBAPIError,
+            match=r"cannot restore NOT NULL on contracts\.price: 1 stored "
+                  r"contract\(s\) have no price.*data decision this migration "
+                  r"refuses to make",
+        ):
+            command.downgrade(cfg, "-1")
+    finally:
+        # The fixture is SESSION-scoped (TEST-23): one database and one
+        # connection shared by every consumer. Leave both exactly as found
+        # WHATEVER this test's outcome — clear any open/aborted transaction,
+        # then remove the row this test committed, or the sibling
+        # clean-downgrade test meets a corpus with a price-less contract.
+        conn.rollback()
+        conn.execute(text("DELETE FROM contracts WHERE contract_id = 990001"))
+        conn.commit()
 
 
 def test_clean_downgrade_restores_not_null_on_price(blank_migrated_sync_connection):
@@ -104,3 +111,32 @@ def test_clean_downgrade_restores_not_null_on_price(blank_migrated_sync_connecti
         # schema the fixture promises, whatever this test's outcome.
         command.upgrade(cfg, "head")
         conn.commit()
+
+
+def test_offline_downgrade_renders_a_transaction_wrapped_locked_guard():
+    """`alembic downgrade --sql` must emit a script that is executable as rendered:
+    LOCK TABLE is only legal inside a transaction block, so BEGIN/COMMIT must wrap
+    the guard, and the lock must precede the check for guard+alteration atomicity
+    against concurrent writers. This pins both the env.py offline transaction
+    wrapper and the lock's presence — deleting either regresses silently
+    otherwise."""
+    import io
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+
+    buffer = io.StringIO()
+    cfg = Config(
+        str(Path(__file__).resolve().parents[2] / "alembic.ini"),
+        output_buffer=buffer,
+    )
+    command.downgrade(cfg, "f2a91c3b7e04:685dab7d6df5", sql=True)
+    rendered = buffer.getvalue()
+
+    begin = rendered.index("BEGIN")
+    lock = rendered.index("LOCK TABLE contracts IN ACCESS EXCLUSIVE MODE")
+    guard = rendered.index("cannot restore NOT NULL on contracts.price")
+    alter = rendered.index("ALTER COLUMN price SET NOT NULL")
+    commit = rendered.index("COMMIT")
+    assert begin < lock < guard < alter < commit
