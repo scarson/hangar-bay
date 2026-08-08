@@ -2276,9 +2276,11 @@ async def sortable_field_contracts(db_session: AsyncSession):
     await db_session.flush()
 
 
-async def _sorted_ids(client: AsyncClient, field: str, direction: str) -> list[int]:
+async def _sorted_ids(
+    client: AsyncClient, field: str, direction: str, region: int = SORTABLE_REGION
+) -> list[int]:
     response = await client.get(
-        f"/contracts/?region_ids={SORTABLE_REGION}"
+        f"/contracts/?region_ids={region}"
         f"&sort_by={field}&sort_direction={direction}"
     )
     assert response.status_code == 200, response.text
@@ -2376,3 +2378,96 @@ async def test_a_new_sort_survives_the_grouped_joined_pagination_path(
         966013, 966012, 966011,
         966001, 966002, 966003, 966004, 966014, 966021,
     ]
+
+
+# --- NULL placement for the pre-F008 nullable sorts: volume, ship_name (region 99999972) ---
+#
+# volume is a nullable column and ship_name resolves to ContractItem.type_name
+# across an outer join, so before these tests both sorts led with their
+# no-value rows under a descending sort while buyout, days_to_complete and
+# reward_per_volume put theirs last. A missing volume is not a small cargo and
+# a contract with no items has no ship to alphabetize, so NULL goes to the end
+# in both directions — the same contract the three newer sorts already pin.
+
+NULLSORT_REGION = 99999972
+
+
+@pytest_asyncio.fixture
+async def volume_and_ship_name_sort_contracts(db_session: AsyncSession):
+    """Seven contracts in region 99999972, spanning the two pre-F008 nullable sorts.
+
+    Volume gets four distinct non-NULL values on rows whose ingestion writer would
+    produce them (TEST-18): couriers always carry a volume, and 972014 follows the
+    item-exchange-with-volume shape 966021 established. The NULL-volume rows are
+    auctions, which ship without one in the 99999966 fixture too. Ship names get
+    three distinct values on auctioned items; 972013 carries two items so the
+    grouped-id pagination has joined rows to collapse (SQLA-1), and its
+    sort-direction-appropriate representative is "Sabre" ascending, "Zealot"
+    descending — inside the alphabet range of the other two either way.
+    """
+    now = datetime.now(timezone.utc)
+
+    def _contract(cid: int, **overrides) -> Contract:
+        fields = dict(
+            contract_id=cid, title=f"Nullsort {cid}", price=1_000_000,
+            collateral=0, status="outstanding", type="item_exchange", issuer_id=972,
+            issuer_corporation_id=972, start_location_id=60003760,
+            start_location_region_id=NULLSORT_REGION, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7), last_seen_at=now,
+        )
+        fields.update(overrides)
+        return Contract(**fields)
+
+    db_session.add_all([
+        _contract(972001, type="courier", reward=1_000_000.0, volume=50.0),
+        _contract(972002, type="courier", reward=2_000_000.0, volume=300.0),
+        _contract(972003, type="courier", reward=3_000_000.0, volume=120.0),
+        _contract(972011, type="auction", items=[
+            ContractItem(record_id=9720111, type_id=608, type_name="Atron",
+                         quantity=1, is_included=True, is_singleton=False),
+        ]),
+        _contract(972012, type="auction", items=[
+            ContractItem(record_id=9720121, type_id=603, type_name="Merlin",
+                         quantity=1, is_included=True, is_singleton=False),
+        ]),
+        _contract(972013, type="auction", items=[
+            ContractItem(record_id=9720131, type_id=22456, type_name="Sabre",
+                         quantity=1, is_included=True, is_singleton=False),
+            ContractItem(record_id=9720132, type_id=12003, type_name="Zealot",
+                         quantity=1, is_included=True, is_singleton=False),
+        ]),
+        _contract(972014, volume=250.0),
+    ])
+    await db_session.flush()
+
+
+async def test_volume_sorts_both_ways_and_leaves_contracts_without_one_last(
+    client: AsyncClient, volume_and_ship_name_sort_contracts
+):
+    """A contract with no recorded volume is not a small cargo — it has no cargo
+    to compare, so it belongs at the end of the sort in both directions."""
+    without_a_volume = [972011, 972012, 972013]
+
+    ascending = await _sorted_ids(client, "volume", "asc", region=NULLSORT_REGION)
+    descending = await _sorted_ids(client, "volume", "desc", region=NULLSORT_REGION)
+
+    assert ascending == [972001, 972003, 972014, 972002] + without_a_volume
+    assert descending == [972002, 972014, 972003, 972001] + without_a_volume
+    assert ascending[0] != descending[0]
+
+
+async def test_ship_name_sorts_both_ways_and_leaves_item_less_contracts_last(
+    client: AsyncClient, volume_and_ship_name_sort_contracts
+):
+    """An item-less contract has no ship to alphabetize, so it must not lead the
+    Z-first sort. The sort joins the items table, so the page paginates over
+    grouped contract ids (SQLA-1) — 972013's two rows must collapse to one."""
+    without_an_item = [972001, 972002, 972003, 972014]
+
+    ascending = await _sorted_ids(client, "ship_name", "asc", region=NULLSORT_REGION)
+    descending = await _sorted_ids(client, "ship_name", "desc", region=NULLSORT_REGION)
+
+    assert len(descending) == len(set(descending)) == 7
+    assert ascending == [972011, 972012, 972013] + without_an_item
+    assert descending == [972013, 972012, 972011] + without_an_item
+    assert ascending[0] != descending[0]
