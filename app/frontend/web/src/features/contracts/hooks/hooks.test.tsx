@@ -202,3 +202,45 @@ describe('useItemSurfaceRefresh', () => {
     }
   })
 })
+
+describe('useTaxonomy timeout', () => {
+  it('gives up on an unanswered readiness probe so the list is never held hostage', async () => {
+    // The list waits for a readiness answer so it can capture one with its rows
+    // (WEB-1). An ERROR is an answer and unblocks it; a request that neither
+    // resolves nor rejects would not, and would leave the app's core view on
+    // its skeleton for as long as the connection stayed open. The abort turns
+    // that into a bounded wait.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      let listCalls = 0
+      vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+        if (/\/contracts\/taxonomy$/.test(url)) {
+          const signal = (input as Request).signal ?? init?.signal
+          // Never resolves on its own — only the abort ends it.
+          return new Promise<Response>((_resolve, reject) => {
+            signal?.addEventListener('abort', () => reject(new Error('aborted')))
+          })
+        }
+        listCalls += 1
+        return jsonResponse(PAGE)
+      })
+
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const wrap = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      )
+      const { result } = renderHook(() => useContracts(parseContractSearch({})), { wrapper: wrap })
+
+      expect(listCalls).toBe(0)
+
+      await vi.advanceTimersByTimeAsync(6_000)
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      expect(listCalls).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

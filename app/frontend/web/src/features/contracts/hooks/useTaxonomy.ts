@@ -18,13 +18,35 @@ import { api, ApiError } from '../../../lib/api/client'
  */
 const READINESS_POLL_MS = 5 * 60_000
 
+/**
+ * How long the contract list will wait for a readiness answer before giving up
+ * on one. The list is `enabled` on this query having ANY answer, so that it can
+ * capture readiness with the rows it fetches (WEB-1) — which means a taxonomy
+ * request that neither resolves nor rejects would hold the app's core view on
+ * its skeleton indefinitely. An error unblocks it; a hang would not.
+ *
+ * A readiness probe nobody has answered in five seconds is not worth waiting
+ * for: the surface it gates stays closed either way, and the rows do not need
+ * it to be correct — only to be described correctly.
+ */
+const READINESS_TIMEOUT_MS = 5_000
+
 export function useTaxonomy() {
   return useQuery({
     queryKey: ['contracts', 'taxonomy'],
     queryFn: async () => {
-      const { data, response } = await api.GET('/contracts/taxonomy')
-      if (data === undefined) throw new ApiError(response.status)
-      return data
+      // An explicit controller rather than `AbortSignal.timeout`: the latter
+      // runs on a platform timer that test fake-timers cannot drive, which
+      // would leave the bound above unverifiable.
+      const abort = new AbortController()
+      const timer = setTimeout(() => abort.abort(), READINESS_TIMEOUT_MS)
+      try {
+        const { data, response } = await api.GET('/contracts/taxonomy', { signal: abort.signal })
+        if (data === undefined) throw new ApiError(response.status)
+        return data
+      } finally {
+        clearTimeout(timer)
+      }
     },
     // The option lists are near-static — they change only when the corpus
     // starts holding a category it did not before — so the poll above is the
