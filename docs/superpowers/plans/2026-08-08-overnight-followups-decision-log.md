@@ -218,3 +218,30 @@ that had passed locally, and the post-merge run was watched to completion, but t
 verify-green-THEN-merge rule was violated as written. Lesson: never chain the green-check and the
 merge in one command; the check's output must gate the merge, mechanically (`&&` at minimum, or
 separate commands).
+
+---
+
+## OD8 — Bug-hunt remediation executed: three phases merged autonomously, the schema phase held
+
+**Background.** OD7 recorded the hunt and plan; this records the execution. Phases ran strictly
+sequentially per the plan: PR #153 (parser gaps), #154 (format fixes), #155 (segment numerals),
+each TDD, all five frontend lanes green, codex-reviewed where the plan required it (#154's skip
+recorded per the OD5 precedent). Phase 4 (`price` nullable) is PR #156, `Review — database
+schema`, deliberately NOT merged.
+
+**Review-cycle statistics worth keeping.** Codex rounds on the execution found real defects at
+every depth: #153 round 1 — one P3 (wire-params assertion, taken); #155 round 1 — one P2 (the
+reverse widened→item-less transition, fixed with symmetric suppression) and round 2's state
+enumeration produced two accepted-and-documented residuals; #156 round 1 — three P2s (offline
+`--sql` breakage, guard/writer race, missing clean-downgrade test), and round 2 on the REWORK
+found a genuine pre-existing P1 (env.py's offline path never wrapped migrations in a
+transaction — every `--sql` render was missing BEGIN/COMMIT). The "re-run the reviewer on the
+rework" guardrail has now paid out in every campaign that honored it.
+
+**The expensive lesson (TEST-23).** The clean-downgrade test failed only after its sibling ran;
+three hypotheses (alembic global state, connection leakage, transaction abort) died before
+instrumentation showed the migration fixture is `scope="session"` — one shared database, and the
+sibling's committed row poisoned it. Recorded as pitfall TEST-23; both tests are now
+footprint-free under `finally`.
+
+**Reversibility.** Three merged PRs are ordinary reverts; #156 awaits Sam by construction.
