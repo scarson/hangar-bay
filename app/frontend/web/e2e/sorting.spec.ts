@@ -17,7 +17,7 @@ import { rowLinks } from './helpers/ui'
  *   'Ship / Contract' → ship_name, 'Price (ISK)' → price,
  *   'Time left' → date_expired, 'Issued' → date_issued —
  * and the active header carries aria-sort ('ascending' | 'descending').
- * A new field starts in ContractsPage's DEFAULT_DIRECTION (date_issued: desc,
+ * A new field starts in DEFAULT_DIRECTION (filters.ts; date_issued: desc,
  * everything used here: asc); re-clicking the active field flips it.
  *
  * The frontend never sorts client-side — handleSort only navigates and the
@@ -277,17 +277,26 @@ const byRate = (direction: 'asc' | 'desc'): string[] => {
     .map((contract) => contract.primary_label)
 }
 
-// The order the backend would return, for the two keys this block exercises.
+// The order the backend would return, for the two keys this block exercises:
+// the rate column, and the Time-left fallback the courier segment reconciles
+// its sortless entry to.
 const courierResponder: ListResponder = (params) => {
   const factor = params.get('sort_direction') === 'asc' ? 1 : -1
   const ordered = [...COURIER_CONTRACTS].sort((a, b) => {
     const delta =
       params.get('sort_by') === 'reward_per_volume'
         ? (a.reward_per_volume ?? 0) - (b.reward_per_volume ?? 0)
-        : a.date_issued.localeCompare(b.date_issued)
+        : a.date_expired.localeCompare(b.date_expired)
     return delta * factor
   })
   return pageOf(ordered)
+}
+
+const byExpiry = (direction: 'asc' | 'desc'): string[] => {
+  const factor = direction === 'asc' ? 1 : -1
+  return [...COURIER_CONTRACTS]
+    .sort((a, b) => a.date_expired.localeCompare(b.date_expired) * factor)
+    .map((contract) => contract.primary_label)
 }
 
 const rateHeader = (page: import('@playwright/test').Page) =>
@@ -302,8 +311,14 @@ test.describe('courier column sorting', () => {
 
     await page.goto('/contracts?contract_type=courier&ships_only=false')
     await expect(page.getByRole('heading', { level: 1, name: 'Courier Contracts' })).toBeVisible()
-    // Default sort, date_issued desc, which the fixture declares in array order.
-    await expect(rowLinks(page)).toHaveText(COURIER_CONTRACTS.map((c) => c.primary_label))
+    // Sortless courier entry reconciles to the Time-left field (no Issued
+    // column here), in that column's own default direction: expiring soonest
+    // first — the same direction its header click gives. The fixture's issued
+    // and expiry orders coincide, so the wire params are asserted too — the
+    // render alone could not tell date_expired asc from date_issued asc.
+    await expect(rowLinks(page)).toHaveText(byExpiry('asc'))
+    expect(calls[0].params.get('sort_by')).toBe('date_expired')
+    expect(calls[0].params.get('sort_direction')).toBe('asc')
 
     await page.getByRole('button', { name: 'Reward/m³', exact: true }).click()
 

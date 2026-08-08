@@ -5,28 +5,13 @@ import { timeAgo } from '../../../lib/timeAgo'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
 import { columnsFor } from '../columns'
 import { regionNames } from '../format'
-import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
+import { DEFAULT_DIRECTION, DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
 import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'
 import { useContracts } from '../hooks/useContracts'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
 import { FilterRail } from './FilterRail'
 import { Pagination } from './Pagination'
 import { SegmentTabs, listTitle } from './SegmentTabs'
-
-/** New sort field starts in its most useful direction: newest/soonest for dates, cheap-first for ISK. */
-const DEFAULT_DIRECTION: Record<SortField, 'asc' | 'desc'> = {
-  date_issued: 'desc',
-  date_expired: 'asc',
-  price: 'asc',
-  collateral: 'asc',
-  ship_name: 'asc',
-  volume: 'desc',
-  // Hauling figures read best-offer-first: the most ISK per m³ and the most
-  // days to deliver in. Buyout follows the price convention, cheap-first.
-  reward_per_volume: 'desc',
-  days_to_complete: 'desc',
-  buyout: 'asc',
-}
 
 /**
  * Why the page is empty, and which of the two reasons it is (Criterion 7.2).
