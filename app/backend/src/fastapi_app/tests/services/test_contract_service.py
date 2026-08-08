@@ -25,7 +25,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from sqlalchemy import select
 
 from datetime import datetime, timedelta, timezone
 from fastapi_app.models.contracts import Contract, ContractItem
