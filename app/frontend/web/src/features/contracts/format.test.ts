@@ -227,6 +227,31 @@ describe('formatComposition', () => {
     ).toBe('3 Modules · 1 Blueprint · 2 other')
   })
 
+  it('pluralizes by name shape, so real dogma categories are not garbled', () => {
+    // The dogma namespace includes names that are already plural (Accessories,
+    // SKINs) and a consonant-y singular (Commodity); a blanket +s renders
+    // "Accessoriess", "SKINss", "Commoditys" in the row summary.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 43, name: 'Commodity', item_row_count: 3 },
+          { category_id: 39, name: 'Accessories', item_row_count: 2 },
+        ]),
+      ),
+    ).toBe('3 Commodities · 2 Accessories')
+    expect(
+      formatComposition(composition([{ category_id: 91, name: 'SKINs', item_row_count: 2 }])),
+    ).toBe('2 SKINs')
+    // Vowel-y names take a plain s — the -ies rule is consonant-y only.
+    expect(
+      formatComposition(composition([{ category_id: 99, name: 'Decoy', item_row_count: 2 }])),
+    ).toBe('2 Decoys')
+    // Count one never pluralizes, whatever the shape.
+    expect(
+      formatComposition(composition([{ category_id: 43, name: 'Commodity', item_row_count: 1 }])),
+    ).toBe('1 Commodity')
+  })
+
   it('counts item rows, never summed quantities', () => {
     // A contract of 100 identical drones in one row reads as "1 Drone", not
     // "100 Drones" — the server sends rows and the client must not invent units.
