@@ -26,7 +26,7 @@ function sameSearch(a: ContractSearch, b: ContractSearch): boolean {
     const left = a[key]
     const right = b[key]
     if (Array.isArray(left) && Array.isArray(right)) {
-      if (left.length !== right.length || left.some((value, i) => value !== right[i])) return false
+      if (left.length !== right.length || left.some((value, i) => !Object.is(value, right[i]))) return false
     } else if (!Object.is(left, right)) {
       return false
     }
@@ -52,7 +52,13 @@ export function useContracts(search: ContractSearch) {
   // stays immediate); unsettled renders read the search as of the last
   // settled moment, recorded via the documented adjust-state-during-render
   // pattern. The comparison is by VALUE, so callers that pass a fresh search
-  // object every render converge instead of looping.
+  // object every render converge instead of looping. Accepted residual: a
+  // sort/segment/Clear click mid-word updates the page chrome (heading,
+  // pressed states, sort indicator) from live state while the rows stay
+  // under the frozen query for the rest of the debounce window — the
+  // row-describing surfaces themselves read fetch-time captures (WEB-1), and
+  // the ordinary keepPreviousData refresh indication takes over the moment
+  // the text settles.
   const [lastSettled, setLastSettled] = useState(search)
   if (searchTextSettled && !sameSearch(lastSettled, search)) setLastSettled(search)
   const effectiveSearch = searchTextSettled ? search : lastSettled
