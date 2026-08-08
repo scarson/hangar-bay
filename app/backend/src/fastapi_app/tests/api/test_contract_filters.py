@@ -2401,9 +2401,11 @@ async def volume_and_ship_name_sort_contracts(db_session: AsyncSession):
     item-exchange-with-volume shape 966021 established. The NULL-volume rows are
     auctions, which ship without one in the 99999966 fixture too. Ship names get
     three distinct values on auctioned items; 972013 carries two items so the
-    grouped-id pagination has joined rows to collapse (SQLA-1), and its
-    sort-direction-appropriate representative is "Sabre" ascending, "Zealot"
-    descending — inside the alphabet range of the other two either way.
+    grouped-id pagination has joined rows to collapse (SQLA-1). Its
+    sort-direction-appropriate representative is "Bantam" ascending, "Zealot"
+    descending — straddling "Merlin", so an implementation that picks the
+    wrong-direction aggregate produces a different order in BOTH directions
+    instead of accidentally agreeing with the right one.
     """
     now = datetime.now(timezone.utc)
 
@@ -2431,7 +2433,7 @@ async def volume_and_ship_name_sort_contracts(db_session: AsyncSession):
                          quantity=1, is_included=True, is_singleton=False),
         ]),
         _contract(972013, type="auction", items=[
-            ContractItem(record_id=9720131, type_id=22456, type_name="Sabre",
+            ContractItem(record_id=9720131, type_id=582, type_name="Bantam",
                          quantity=1, is_included=True, is_singleton=False),
             ContractItem(record_id=9720132, type_id=12003, type_name="Zealot",
                          quantity=1, is_included=True, is_singleton=False),
@@ -2468,6 +2470,6 @@ async def test_ship_name_sorts_both_ways_and_leaves_item_less_contracts_last(
     descending = await _sorted_ids(client, "ship_name", "desc", region=NULLSORT_REGION)
 
     assert len(descending) == len(set(descending)) == 7
-    assert ascending == [972011, 972012, 972013] + without_an_item
+    assert ascending == [972011, 972013, 972012] + without_an_item
     assert descending == [972013, 972012, 972011] + without_an_item
     assert ascending[0] != descending[0]
