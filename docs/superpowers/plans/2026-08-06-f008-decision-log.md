@@ -188,7 +188,15 @@ Strictly sequential (each builds on the previous merge); workflow parallelism is
 
 **Decision — REVERSED. What shipped is alternative 2 (capture at fetch time), plus the sequencing that removes its one defect.** Two rounds of codex review dismantled alternative 3, and both rounds were right. The reasoning trail is kept below rather than rewritten, because the way this decision failed is more useful than the decision.
 
-**What shipped.** `useContracts` waits for the taxonomy query to have an answer of any kind (`enabled: !taxonomy.isPending` — an *error* counts, so an unreachable endpoint degrades to not-ready instead of blocking the list forever), captures readiness in its query function, and returns it with the rows. Every consumer that describes rows — the column set, the label cell's composition-vs-count choice, the incomplete-results notice — reads `data.itemSurfaceReady`. `useItemSurfaceRefresh` invalidates the list when readiness changes between two known answers, so the rows come forward. `FilterRail` still reads live, and that stays correct: the controls express what the reader may ask for *next*, not what the rows on screen mean.
+**What shipped — three mechanisms, none of which is sufficient alone.**
+
+1. **`enabled`.** The list waits for the taxonomy query to hold an answer of any kind (`!taxonomy.isPending` — an *error* counts, so an unreachable endpoint degrades to not-ready instead of blocking the list forever), bounded by a 5s abort on the request and `retry: false` on that query, so a hung probe cannot hold the app's core view on its skeleton. Without this, what the query function captures is a not-yet rather than an answer.
+2. **Captured in the query function.** Readiness is returned with the rows, and every consumer that describes rows — the column set, the label cell's composition-vs-count choice, the incomplete-results notice — reads `data.itemSurfaceReady`. Without this, `keepPreviousData` renders the incoming answer over the outgoing rows.
+3. **In the query key.** Without this, a readiness change during a request for a key with no cached data is absorbed: React Query reuses the in-flight promise, so the response lands carrying the value captured *before* the change and nothing remains to correct it. Invalidation cannot fix that — it is the same in-flight promise either way. Keying starts a genuinely new query, and `keepPreviousData` then shows the old rows still described by the old answer, which is exactly right.
+
+`useItemSurfaceRefresh` — the invalidation hook that mechanism 3 replaced — is deleted. `FilterRail` still reads live, and that stays correct: its controls express what the reader may ask for *next*, not what the rows on screen mean.
+
+**The cost that made keying look unaffordable was conditional, and the condition changed.** Alternative 1 was rejected because keying on readiness costs a second corpus-scale list request on every cold load. That is true *only if the list may fetch before readiness is known*. Once mechanism 1 is in place the key never moves from unknown to known, so the cold load costs one request — measured on the live dev backend, not assumed. The rejection was sound when made and stopped being sound two mechanisms later, and nothing in the original entry would have prompted a re-check.
 
 **Why alternative 3 failed, in the order it was taken apart.**
 

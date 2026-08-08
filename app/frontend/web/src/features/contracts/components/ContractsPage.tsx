@@ -8,7 +8,6 @@ import { regionNames } from '../format'
 import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
 import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'
 import { useContracts } from '../hooks/useContracts'
-import { useItemSurfaceRefresh } from '../hooks/useTaxonomy'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
 import { FilterRail } from './FilterRail'
 import { Pagination } from './Pagination'
@@ -125,10 +124,6 @@ function EmptyResults({
 export function ContractsPage({ search, from }: { search: ContractSearch; from: '/contracts/' }) {
   const navigate = useNavigate({ from })
   const { data, isPending, isError, isFetching, refetch } = useContracts(search)
-  // The list query's owner is where the readiness-change refresh belongs: the
-  // rows it drops are the ones this page is describing. Readiness ITSELF is
-  // read off the response below, never live — see useContracts.
-  useItemSurfaceRefresh()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const title = listTitle(search)
   useDocumentTitle(title)

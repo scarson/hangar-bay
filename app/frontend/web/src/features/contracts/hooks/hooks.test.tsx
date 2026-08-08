@@ -6,7 +6,6 @@ import { jsonResponse } from '../../../test/http'
 import { parseContractSearch } from '../filters'
 import { useContracts } from './useContracts'
 import { useContract } from './useContract'
-import { useItemSurfaceRefresh, useTaxonomy } from './useTaxonomy'
 
 const PAGE = {
   total: 1,
@@ -128,11 +127,18 @@ describe('useContract', () => {
  * `staleTime` alone never refetches, and a readiness flip left the rows it now
  * describes untouched in the cache.
  */
-describe('useItemSurfaceRefresh', () => {
+/**
+ * The readiness signal's freshness properties, both of them review findings:
+ * `staleTime` alone never refetches, and a readiness change has to start a NEW
+ * list query rather than try to redirect the one in flight.
+ */
+describe('readiness and the rows', () => {
   const TAXONOMY = (coverage: string) => ({ categories: [], groups: [], coverage })
 
-  function harness(coverageRef: { value: string }) {
+  function harness(coverageRef: { value: string }, holdList = false) {
     const counts = { list: 0, taxonomy: 0 }
+    const captured: boolean[] = []
+    let releaseList: (() => void) | undefined
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
       const url =
         typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
@@ -141,65 +147,67 @@ describe('useItemSurfaceRefresh', () => {
         return jsonResponse(TAXONOMY(coverageRef.value))
       }
       counts.list += 1
+      if (holdList && counts.list === 1) {
+        return new Promise<Response>((resolve) => {
+          releaseList = () => resolve(jsonResponse(PAGE))
+        })
+      }
       return jsonResponse(PAGE)
     })
-    return counts
+    return { counts, captured, release: () => releaseList?.() }
   }
 
-  it('leaves the rows alone when readiness first arrives, and refetches them when it changes', async () => {
-    const coverage = { value: 'partial' }
-    const counts = harness(coverage)
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const wrap = ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    )
+  const wrapperFor = (queryClient: QueryClient) =>
+    function Wrap({ children }: { children: ReactNode }) {
+      return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    }
 
-    const { result } = renderHook(
-      () => {
-        useItemSurfaceRefresh()
-        return useContracts(parseContractSearch({}))
-      },
-      { wrapper: wrap },
-    )
+  it('fetches once on a cold load, then refetches when readiness changes', async () => {
+    const coverage = { value: 'partial' }
+    const { counts } = harness(coverage)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    const { result } = renderHook(() => useContracts(parseContractSearch({})), {
+      wrapper: wrapperFor(queryClient),
+    })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    // undefined -> partial is the first answer of the session, not a change.
-    // Treating it as one would cost a second corpus-scale list request on every
-    // cold load — the expense decision D13 weighed and refused.
-    await waitFor(() => expect(counts.taxonomy).toBeGreaterThan(0))
+    // Readiness is in the key, but the list waits for it, so the key never
+    // moves from unknown to known and a cold load costs ONE list request.
     expect(counts.list).toBe(1)
+    expect(result.current.data?.itemSurfaceReady).toBe(false)
 
     coverage.value = 'complete'
     await queryClient.refetchQueries({ queryKey: ['contracts', 'taxonomy'] })
 
-    // partial -> complete IS a change: the rows on screen were fetched from a
-    // corpus that has since been enriched, and the columns now describing them
-    // would otherwise show a BPC badge beside empty Runs/ME/TE cells.
-    await waitFor(() => expect(counts.list).toBe(2))
+    await waitFor(() => expect(result.current.data?.itemSurfaceReady).toBe(true))
+    expect(counts.list).toBe(2)
   })
 
-  it('polls the readiness endpoint, because staleness alone never refetches', async () => {
-    // `staleTime` marks data stale without scheduling anything, so a tab left
-    // open across an ENRICHMENT_VERSION resweep would keep reporting the old
-    // answer for the whole ~80 minutes it is false.
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    try {
-      const coverage = { value: 'complete' }
-      const counts = harness(coverage)
-      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      const wrap = ({ children }: { children: ReactNode }) => (
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      )
+  it('never lands a response under a readiness that changed while it was in flight', async () => {
+    // Invalidation alone could not fix this: for a key with no cached data yet,
+    // React Query reuses the in-flight promise, so the response landed carrying
+    // the value captured BEFORE the change, with nothing left to correct it.
+    // Keying on readiness starts a genuinely new query instead.
+    const coverage = { value: 'complete' }
+    const { counts, release } = harness(coverage, true)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-      renderHook(() => useTaxonomy(), { wrapper: wrap })
-      await waitFor(() => expect(counts.taxonomy).toBe(1))
+    const { result } = renderHook(() => useContracts(parseContractSearch({})), {
+      wrapper: wrapperFor(queryClient),
+    })
 
-      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000)
+    await waitFor(() => expect(counts.list).toBe(1))
 
-      await waitFor(() => expect(counts.taxonomy).toBeGreaterThan(1))
-    } finally {
-      vi.useRealTimers()
-    }
+    // The corpus regresses mid-request (a future ENRICHMENT_VERSION resweep).
+    coverage.value = 'partial'
+    await queryClient.refetchQueries({ queryKey: ['contracts', 'taxonomy'] })
+    release()
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // Whatever is on screen must describe itself as partial. The stale `true`
+    // must never be what the rows are rendered under.
+    expect(result.current.data?.itemSurfaceReady).toBe(false)
   })
 })
 
@@ -227,7 +235,12 @@ describe('useTaxonomy timeout', () => {
         return jsonResponse(PAGE)
       })
 
-      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      // retry:1 is the PRODUCTION default, deliberately used here: the taxonomy
+      // query sets retry:false itself, so the five-second bound has to hold
+      // even when the surrounding client would otherwise retry. Without that,
+      // a hang costs two attempts plus the retry delay before the rows can be
+      // fetched, and the bound the comment states would be false.
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } })
       const wrap = ({ children }: { children: ReactNode }) => (
         <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
       )

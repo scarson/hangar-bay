@@ -1,7 +1,6 @@
 // ABOUTME: The dogma category/group option lists behind the item-level filters,
 // ABOUTME: plus the readiness signal that decides whether that surface opens at all.
-import { useEffect, useRef } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../../../lib/api/client'
 
 /**
@@ -53,6 +52,11 @@ export function useTaxonomy() {
     // thing that keeps this current, not a short staleTime.
     staleTime: READINESS_POLL_MS,
     refetchInterval: READINESS_POLL_MS,
+    // No retry. A failed readiness probe just means not-ready, the poll above
+    // comes round again in five minutes, and the list is waiting on this
+    // query's first answer — a retry would double the bound below before the
+    // rows could be fetched.
+    retry: false,
   })
 }
 
@@ -68,41 +72,10 @@ export function useTaxonomy() {
  * reasons the reader cannot see, which is worse than a control that is honestly
  * not there yet.
  *
- * This value describes the CORPUS, not the rows — which is why it may be read
- * live rather than carried on the query result (decision log D13). What makes
- * that safe is `useItemSurfaceRefresh` below, not the read itself.
+ * Read live ONLY by controls that express what the reader may ask for next —
+ * the filter rail. Anything describing the rows on screen reads the value
+ * `useContracts` captured with them instead (decision log D13).
  */
 export function useItemSurfaceReady(): boolean {
   return useTaxonomy().data?.coverage === 'complete'
-}
-
-/**
- * Drops the list cache when the corpus's readiness changes under it.
- *
- * Without this the two halves drift: the rows on screen were fetched from an
- * earlier state of the corpus, and nothing makes them refetch when readiness
- * flips. A contract known to hold a blueprint copy would then show its BPC
- * badge beside empty Runs/ME/TE cells — its terms had not been written when
- * that page was fetched — and the composition line would name categories from
- * a cache that has since filled in. Invalidating brings the rows forward to the
- * state the columns are already describing.
- *
- * Only a change BETWEEN KNOWN answers invalidates. The first answer of a
- * session resolves from `undefined`, and treating that as a transition would
- * cost a second corpus-scale list request on every cold load — the exact
- * expense D13 weighed and refused.
- *
- * Called once, by the page that owns the list query.
- */
-export function useItemSurfaceRefresh(): void {
-  const coverage = useTaxonomy().data?.coverage
-  const queryClient = useQueryClient()
-  const previousCoverage = useRef(coverage)
-
-  useEffect(() => {
-    const previous = previousCoverage.current
-    previousCoverage.current = coverage
-    if (previous === undefined || coverage === undefined || previous === coverage) return
-    queryClient.invalidateQueries({ queryKey: ['contracts', 'list'] })
-  }, [coverage, queryClient])
 }
