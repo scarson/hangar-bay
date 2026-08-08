@@ -37,8 +37,12 @@ on every item-less-segment visit under default settings.
 **Blast radius:** Frontend-only for the D11-precedent fix (hide typed numerals in that state, as All
 already does). The full fix (serve ships-respecting mirror counts) is a backend envelope change —
 recorded as design decision D-b below.
-**Fix approach:** Apply the D11 precedent now — typed item-bearing numerals hidden while
-`leavingItemLess`, pinned by tests; keep D-b as the recorded upgrade path.
+**Fix approach:** Applied (PR #155): typed item-bearing numerals hidden per the D11 precedent,
+with interpretation reading a fetch-time-captured search (WEB-1) OR'd with the live one so both
+transition directions are covered. Accepted residuals from the review's state enumeration — the
+ships-only ↔ widened toggle's one-request stale window (generic keepPreviousData semantics) and
+one over-suppressed honest numeral in the ships-only → item-less transition — are documented at
+the predicate; D-b (mirror counts) remains the recorded complete answer.
 
 ### B2. A spec-conformant contract without `price` poisons the entire aggregation run, recurring every tick
 **Consensus:** ALL FOUR hunters; verified by consolidation.

@@ -72,6 +72,17 @@ notes and commit messages.
 | 3 — segment numerals (B1) | 🚧 In progress | — | on branch `fix/segment-count-numerals` |
 | 4 — price nullable (B2) | ⬜ Not started | — | PR to be LEFT OPEN for Sam (`Review — database schema`) |
 
+### Discoveries
+
+- **Phase 3 accepted residuals (codex round 2's state enumeration, 2026-08-08):** the
+  suppression predicate (`countsFromItemLess || leavingItemLess`) leaves the ships-only ↔ widened
+  toggle showing the held envelope's figures for its one-request window — the same
+  keepPreviousData semantics as every number on the page, coherent with the held rows, and not
+  worth a flicker on the most-used checkbox — and over-suppresses one honest numeral during the
+  ships-only → item-less transition (hidden-though-right for one request; hidden beats wrong).
+  Both are documented at the predicate in `SegmentTabs.tsx`; the complete per-request answer is
+  design decision D-b (mirror counts), Sam's call.
+
 ## Global constraints (every phase)
 
 1. **TDD is mandatory.** BEFORE starting any task: invoke `superpowers:test-driven-development` and

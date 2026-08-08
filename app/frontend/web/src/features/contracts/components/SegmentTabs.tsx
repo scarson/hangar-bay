@@ -92,10 +92,10 @@ export function SegmentTabs({
   /**
    * The search `counts` was served under, captured at fetch time (WEB-1).
    * keepPreviousData holds an envelope on screen for the whole of the next
-   * request, so numeral interpretation MUST read the captured search — the
-   * live one describes counts that have not arrived yet. Clicks and pressed
-   * states stay on the live search: they are about where the reader goes,
-   * not about what the numbers mean.
+   * request, so what the figures ARE is read off this captured search, while
+   * what a click DELIVERS is read off the live one — the numeral logic below
+   * consults both. Clicks and pressed states stay on the live search alone:
+   * they are about where the reader goes, not about what the numbers mean.
    */
   countsSearch: ContractSearch
   /** The envelope's per-type counts, keyed by every type the server enumerates. */
@@ -109,9 +109,18 @@ export function SegmentTabs({
   const countsFromItemLess = isItemLessSelection(countsSearch)
   // A numeral has to be honest about two things at once — what the on-screen
   // figures ARE (the captured search) and what clicking would DELIVER (the
-  // live one). Either being an item-less selection poisons the pairing:
-  // captured item-less means the figures are lifted, live item-less means the
-  // click restores ships-only. Hide on either, in both transition directions.
+  // live one). An item-less selection on the captured side means the
+  // item-bearing figures are lifted; on the live side it means a click
+  // restores ships-only. Hiding on either covers both transition directions
+  // around the item-less segments, at two accepted residual costs: a
+  // ships-only → item-less transition hides a numeral that happened to be
+  // honest (hidden beats wrong, and this is merely hidden-though-right for
+  // one request), and a ships-only ↔ widened toggle keeps showing the held
+  // envelope's figures for its own one-request window — the same
+  // keepPreviousData semantics as every other number on the page, coherent
+  // with the held rows beside it. The complete per-request answer is the
+  // mirror-counts envelope recorded as an open design decision in D11 and
+  // the 2026-08-08 bug-hunt report.
   const suppressLiftedNumerals = countsFromItemLess || leavingItemLess
   const selected = activeSegment(search)
   // What All would land on decides what All may claim: every route into it from
@@ -125,14 +134,14 @@ export function SegmentTabs({
       {SEGMENTS.map((segment) => {
         const active =
           segment.type === undefined ? search.contract_type === undefined : segment.type === selected
-        // While an item-less selection's envelope is on screen, its request
-        // carried no ships-only filter, so the item-bearing counts in it are
-        // lifted — but clicking All OR a typed item-bearing segment RESTORES
-        // ships-only, a population those counts cannot describe. No numeral
-        // beats a wrong one: All and the typed item-bearing controls all go
-        // count-less in that state, and the counts return with the next
-        // response after switching. The item-less segment's own numeral is the
-        // lifted figure describing the lifted view it serves, so it stays.
+        // While an item-less selection is in play on either side (captured
+        // envelope or live URL), the item-bearing numerals cannot be paired
+        // honestly with what a click delivers — see suppressLiftedNumerals
+        // above. No numeral beats a wrong one: All and the typed item-bearing
+        // controls all go count-less in that state, and the counts return
+        // with the next response after switching. The item-less segment's own
+        // numeral is the lifted figure describing the lifted view it serves,
+        // so it stays.
         // Per-segment counts otherwise go out exactly as served: every filter
         // but contract_type is applied to them. That stays true of an
         // item-less segment under an item-level filter — the served zero is
