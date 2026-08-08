@@ -148,6 +148,37 @@ describe('SavedSearchesPage', () => {
 })
 
 describe('summarizeSearch', () => {
+  it('names the taxonomy and blueprint criteria, so two such searches read differently', () => {
+    // The line is what tells one saved search from another. Without these,
+    // every blueprint search on the page reads "All contracts · sorted by …"
+    // and the reader has to Apply each one to find out which is which.
+    const summary = summarizeSearch({
+      ships_only: false,
+      category_id: [9],
+      group_id: [105, 106],
+      min_runs: 1,
+      max_runs: 20,
+      min_me: 5,
+      min_te: 10,
+      max_te: 20,
+      size: 50,
+      sort_by: 'price',
+      sort_direction: 'asc',
+    })
+    expect(summary).toContain('1 category')
+    expect(summary).toContain('2 groups')
+    expect(summary).toContain('Runs 1–20')
+    // An open-ended bound reads as open-ended rather than silently dropping the
+    // half that was set, exactly as the ISK range does.
+    expect(summary).toContain('ME 5–∞')
+    expect(summary).toContain('TE 10–20')
+  })
+
+  it('claims no blueprint criteria when none were stored', () => {
+    expect(summarizeSearch({ ships_only: true })).not.toContain('ME')
+    expect(summarizeSearch({ ships_only: true })).not.toContain('category')
+  })
+
   it('defaults the sort fields when an older stored blob omits them', () => {
     // Older blobs may omit the server-defaulted sort_by/sort_direction; the summary must still render
     // (a `.replace()` on undefined would be a TS build error and a runtime crash).

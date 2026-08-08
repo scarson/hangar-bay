@@ -10,6 +10,7 @@ import {
 } from '../filters'
 import { useItemSurfaceReady } from '../hooks/useTaxonomy'
 import { REGIONS } from '../regions'
+import { BlueprintFilter } from './BlueprintFilter'
 import { TaxonomyFilter } from './TaxonomyFilter'
 
 export function FilterRail({
@@ -187,7 +188,10 @@ export function FilterRail({
           Item filters do not apply to contracts that carry no items.
         </p>
       ) : itemSurfaceReady ? (
-        <TaxonomyFilter search={search} onUpdate={onUpdate} />
+        <>
+          <TaxonomyFilter search={search} onUpdate={onUpdate} />
+          <BlueprintFilter search={search} onUpdate={onUpdate} />
+        </>
       ) : (
         <p className="text-xs text-ink-faint">Item filters are still indexing.</p>
       )}

@@ -1564,6 +1564,63 @@ describe('taxonomy filters', () => {
     ).toBeInTheDocument()
   })
 
+  it('offers the blueprint stat bounds beside the taxonomy lists', async () => {
+    stubFetch(readyList())
+
+    renderApp('/contracts')
+
+    // Criterion 2.5's four ME/TE params and Criterion 2.3's runs pair, each a
+    // separate control rather than one "blueprint" box: the three families are
+    // independent EXISTS clauses on the wire, and a reader filtering on ME
+    // must not be made to state a runs window they do not care about.
+    for (const label of [
+      'Minimum runs',
+      'Maximum runs',
+      'Minimum material efficiency',
+      'Maximum material efficiency',
+      'Minimum time efficiency',
+      'Maximum time efficiency',
+    ]) {
+      expect(await screen.findByLabelText(label)).toHaveAttribute('min', '0')
+    }
+  })
+
+  it('sends a blueprint stat window to the API and puts it in the URL', async () => {
+    const user = userEvent.setup()
+    const calls = stubFetch(readyList())
+
+    const { router } = renderApp('/contracts')
+    await screen.findByLabelText('Minimum material efficiency')
+
+    await user.type(screen.getByLabelText('Minimum material efficiency'), '5')
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ min_me: 5 }))
+    await waitFor(() => expect(calls.some((url) => /[?&]min_me=5(&|$)/.test(url))).toBe(true))
+  })
+
+  it('clears a blueprint bound out of the URL when its input is emptied', async () => {
+    // An empty box means "no bound", not zero: min_me=0 matches every blueprint
+    // with any ME at all, which is a filter, not the absence of one.
+    const user = userEvent.setup()
+    stubFetch(readyList())
+
+    const { router } = renderApp('/contracts?max_runs=20')
+    await screen.findByLabelText('Maximum runs')
+
+    await user.clear(screen.getByLabelText('Maximum runs'))
+
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('max_runs'))
+  })
+
+  it('offers no blueprint stat bounds while the corpus is still being enriched', async () => {
+    stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
+
+    renderApp('/contracts')
+
+    await screen.findByText(INDEXING_LINE)
+    expect(screen.queryByLabelText('Minimum runs')).not.toBeInTheDocument()
+  })
+
   it('offers Clear filters for a taxonomy selection that arrived by URL', async () => {
     // The rail's Clear button is the only way back from a deep link, and the
     // predicate behind it has to know about every param the parser accepts.

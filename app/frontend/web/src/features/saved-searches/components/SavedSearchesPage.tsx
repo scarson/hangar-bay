@@ -28,6 +28,24 @@ export function summarizeSearch(p: Partial<SavedSearchParameters>): string {
   if (p.region_ids && p.region_ids.length > 0) {
     parts.push(`${p.region_ids.length} region${p.region_ids.length === 1 ? '' : 's'}`)
   }
+  // Counted, not named: the taxonomy names live behind GET /contracts/taxonomy
+  // and this page does not query it — the same treatment the region ids get,
+  // one line up, for the same reason.
+  if (p.category_id && p.category_id.length > 0) {
+    parts.push(`${p.category_id.length} categor${p.category_id.length === 1 ? 'y' : 'ies'}`)
+  }
+  if (p.group_id && p.group_id.length > 0) {
+    parts.push(`${p.group_id.length} group${p.group_id.length === 1 ? '' : 's'}`)
+  }
+  // The three blueprint windows. Without them every blueprint search on the
+  // page reads identically and the only way to tell two apart is to apply both.
+  for (const [label, lo, hi] of [
+    ['Runs', p.min_runs, p.max_runs],
+    ['ME', p.min_me, p.max_me],
+    ['TE', p.min_te, p.max_te],
+  ] as const) {
+    if (lo != null || hi != null) parts.push(`${label} ${lo ?? 0}–${hi ?? '∞'}`)
+  }
   // The parameter is Partial: a stored blob from an older schema version may omit any field,
   // including the server-defaulted sort_by/sort_direction. Default before use — a `.replace()` on
   // undefined would crash at runtime (and would be a TS18048 error were these non-optional here).
