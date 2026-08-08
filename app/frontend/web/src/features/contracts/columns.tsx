@@ -178,7 +178,9 @@ function blueprintColumn(
     key,
     label,
     align: 'right',
-    cellClass: 'text-data text-ink-dim',
+    // nowrap for the multi-copy count: the columns are sized for two-digit
+    // numbers, so "3 BPCs" wraps across two lines and reads as two values.
+    cellClass: 'text-data text-ink-dim whitespace-nowrap',
     cell: (contract) => {
       const summary = contract.blueprint_summary
       if (!summary) return null
