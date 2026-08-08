@@ -27,7 +27,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 | § | Section | You're working on... | Entries | Checklist |
 |---|---------|---------------------|---------|-----------|
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, FASTAPI-3, PROXY-1 | §1.C |
-| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3, SQLA-4 | §2.C |
+| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3, SQLA-4, SQLA-5 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8, ENV-9, ENV-10 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status, spec drift | ESI-1, ESI-2, ESI-3, ESI-4 | §4.C |
 | 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4, DEPLOY-5, DEPLOY-6 | §5.C |
@@ -178,12 +178,31 @@ Test it by injecting a real `StatementError` constructed with the sensitive valu
 
 ---
 
+### SQLA-5: An upsert that copies supplied columns on conflict decays enrichment-derived values
+
+**The Flaw:** `bulk_upsert` copies every supplied column from the incoming row on conflict. A column whose value comes from a fallible enrichment step (external name resolution, item fetching) carries NULL or a default whenever that step degrades — and the on-conflict copy writes it over the good value already stored, for every re-sighted row in the batch.
+
+**Why It Matters:** The decay is silent: no error is raised anywhere, because the degraded step already handled its own failure (a swallowed per-chunk error, an ETag-304 skip). One transient upstream outage blanks previously-correct data corpus-wide, and it stays blank until the next fully-successful run — or forever, when the value is never re-derived. Three variants have bitten this one function: `is_ship_contract` decayed to False whenever items were ETag-304'd past re-enrichment; a station outage would have written NULL over every known `start/end_location_system_id`; and a partial `/universe/names` map blanked all four denormalized name columns for every re-sighted contract.
+
+**The Fix:** Decide per column what an absent-or-NULL value means at conflict time, and encode that decision in the row shape or the upsert call:
+
+- **Maintained by a different writer** (`is_ship_contract`, `item_processing_status`, `enrichment_version`): keep the column **absent from the row dict entirely** — `bulk_upsert` only updates supplied columns, and the uniform-keys invariant makes one row's omission everyone's.
+- **Re-derived every run, where NULL means "unknown this run"** (the four name columns): pass the column in `bulk_upsert`'s `preserve_on_null` set, which compiles the on-conflict assignment to `COALESCE(excluded.col, table.col)` — NULL keeps the stored value, a real value still overwrites.
+- **Legitimately clearable** (a title the issuer deleted): plain copy semantics are correct; do neither.
+
+A durable-cache read-back (as `_select_known_station_systems` does for station→system pairs) is the stronger alternative when the value is static and worth never re-fetching — but it protects only its own columns; new enrichment-derived columns need one of the three choices above.
+
+**Where It Bit Us:** The four contract name columns (F008 decision log D10, flagged by codex in the PR-A review; fixed in PR #142, 2026-08-07). The `is_ship_contract` decay and the station-system hazard were each fixed earlier in their own shapes — the comment blocks in `_build_contract_rows` and `_select_known_station_systems` (`services/background_aggregation.py`) carry those stories.
+
+---
+
 ### §2.C — Review Checklist
 
 - [ ] **Pagination over a one-to-many join paginates distinct parent IDs, not duplicated joined rows** — grouped subquery with aggregate-based ordering; page entities re-loaded and restored to the ID order (SQLA-1)
 - [ ] **Parent-level classification uses a correlated EXISTS, not a predicate on a joined child row** — the negative branch negates the same expression, and a mixed-child fixture proves the branches are complements (SQLA-3)
 - [ ] **`ON CONFLICT` against a partial unique index restates the index predicate** — `index_where=` matches the index's `WHERE`, and every indexed column is non-NULL on insert (Postgres NULLs never conflict) (SQLA-2)
 - [ ] **No log site renders a SQLAlchemy exception with an unscrubbed `str()`** — the engine sets `hide_parameters=True`, and any redaction claim is tested against the whole record with a real `StatementError` carrying the value as a bind (SQLA-4)
+- [ ] **Every enrichment-derived column in an upsert row decides what NULL means on conflict** — maintained-elsewhere columns are absent from the row, re-derived-each-run columns are in `preserve_on_null` (COALESCE keeps the stored value), and only genuinely clearable columns keep plain copy semantics (SQLA-5)
 
 ---
 
@@ -554,6 +573,10 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 
 # Appendix A: Historical Changelog
 
+## 2026-08-07 — SQLA-5 added: on-conflict copy decays enrichment-derived values
+
+- Added SQLA-5 (an upsert that copies supplied columns on conflict writes a degraded run's NULLs over previously-stored enrichment values). Third variant of the same trap in one function: after the `is_ship_contract` ETag-304 decay (fixed by omitting maintained columns) and the station-system read-back, a partial `/universe/names` map blanked all four denormalized name columns for every re-sighted contract (F008 decision log D10, flagged by codex in the PR-A review, deferred there, fixed in PR #142 with `preserve_on_null`/COALESCE semantics in `bulk_upsert`).
+
 ## 2026-08-07 — Section 6 opened with WEB-1: view shape must follow the rows, not the URL
 
 - Added Section 6 (Frontend State & Rendering) and WEB-1. Found in review of F008 Task C4: per-segment column sets shipped while the page still chose them from the live URL, so `keepPreviousData` rendered the previous segment's rows under the incoming segment's columns for the length of the request — reporting a sale's price as a hauling reward and inventing an unresolvable destination for a contract with no route.
@@ -677,6 +700,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | SQLA-2 | ON CONFLICT vs a partial unique index needs index_where | HIGH | VALIDATED | Data & Persistence |
 | SQLA-3 | A per-row predicate over a one-to-many join cannot classify the parent | HIGH | VALIDATED | Data & Persistence |
 | SQLA-4 | A SQLAlchemy error carries the failed statement's bind values into `str()` | HIGH | VALIDATED | Data & Persistence |
+| SQLA-5 | An on-conflict copy decays enrichment-derived values on degraded runs | HIGH | VALIDATED | Data & Persistence |
 | ENV-1 | pydantic-settings JSON-decodes complex env fields early | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-2 | Backend restart wipes and re-ingests all data | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-3 | --reload + ingestion + Valkey lock interact badly in dev | MEDIUM | VALIDATED | Environment & Dev Loop |
