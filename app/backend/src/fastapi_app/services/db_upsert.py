@@ -26,7 +26,8 @@ async def bulk_upsert(
             to COALESCE(excluded.col, table.col), so a degraded enrichment run
             (e.g. a partial /universe/names map) cannot blank a previously
             stored value; a non-NULL value still overwrites. Fresh inserts are
-            unaffected — NULL inserts as NULL.
+            unaffected — NULL inserts as NULL. Supported on PostgreSQL and
+            SQLite only; other dialects raise NotImplementedError.
     """
     if not values:
         return
@@ -65,16 +66,16 @@ async def bulk_upsert(
             set_=_update_cols(stmt),
         )
     else:
-        # A basic fallback for other dialects, though less performant. Dropping
-        # NULL-valued preserved keys gives merge the same keep-the-stored-value
-        # semantics: merge only copies attributes that were actually set.
+        # A basic fallback for other dialects, though less performant. It cannot
+        # honor preserve_on_null: merge cannot tell an insert from an update, so
+        # dropping a NULL-valued key would let a column default replace the
+        # requested NULL on fresh inserts.
+        if preserve_on_null:
+            raise NotImplementedError(
+                f"preserve_on_null is not supported on dialect {dialect!r}"
+            )
         for value in values:
-            preserved = {
-                k: v
-                for k, v in value.items()
-                if not (v is None and k in preserve_on_null)
-            }
-            await db.merge(model_class(**preserved))
+            await db.merge(model_class(**value))
         await db.flush()
         return
 

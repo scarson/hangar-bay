@@ -10,6 +10,7 @@ hazard end-to-end.
 """
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
@@ -95,6 +96,49 @@ async def test_unpreserved_column_null_still_overwrites(db_session: AsyncSession
 
     row = await _fetch(db_session, 910003)
     assert row.title is None
+
+
+async def test_preserve_on_null_rejects_dialects_without_conflict_support():
+    """The generic merge fallback cannot tell an insert from an update, so it
+    cannot honor NULL-preservation (a column default would silently replace a
+    requested NULL on fresh inserts — codex probe on PR #142). Refuse loudly."""
+
+    class _RecordingSession:
+        def __init__(self, dialect_name: str):
+            self.bind = SimpleNamespace(dialect=SimpleNamespace(name=dialect_name))
+            self.merged = []
+
+        async def merge(self, obj):
+            self.merged.append(obj)
+
+        async def flush(self):
+            pass
+
+    db = _RecordingSession("mysql")
+    with pytest.raises(NotImplementedError):
+        await bulk_upsert(
+            db, Contract, [_contract_row(910005)], preserve_on_null={"issuer_name"}
+        )
+    assert db.merged == []
+
+
+async def test_plain_upsert_still_merges_on_dialects_without_conflict_support():
+    """Without preserve_on_null the generic fallback keeps its merge behavior."""
+
+    class _RecordingSession:
+        def __init__(self, dialect_name: str):
+            self.bind = SimpleNamespace(dialect=SimpleNamespace(name=dialect_name))
+            self.merged = []
+
+        async def merge(self, obj):
+            self.merged.append(obj)
+
+        async def flush(self):
+            pass
+
+    db = _RecordingSession("mysql")
+    await bulk_upsert(db, Contract, [_contract_row(910006)])
+    assert len(db.merged) == 1
 
 
 async def test_preserved_null_on_a_fresh_insert_stays_null(db_session: AsyncSession):
