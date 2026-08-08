@@ -359,7 +359,7 @@ class ContractAggregationService:
                         "Leaving the current holder's lock intact.",
                         lock_ttl,
                     )
-            await redis_client.close()  # Ensure redis client is closed
+            await redis_client.aclose()  # Ensure redis client is closed
 
     def _usable_region_ids(self) -> List[int] | None:
         """Validate the configured region list, or None when the run must be skipped.

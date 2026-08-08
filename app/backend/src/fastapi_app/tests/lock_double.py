@@ -28,5 +28,5 @@ class FakeLockRedis:
             return 1
         return 0
 
-    async def close(self):
+    async def aclose(self):
         pass

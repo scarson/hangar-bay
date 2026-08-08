@@ -187,7 +187,7 @@ class ESIClient:
         if self._managed_http_client:
             await self._managed_http_client.aclose()
         if self._managed_redis_client:
-            await self._managed_redis_client.close()
+            await self._managed_redis_client.aclose()
 
     async def get_esi_data_with_etag_caching(
         self, path: str, all_pages: bool = False, ignore_404: bool = False

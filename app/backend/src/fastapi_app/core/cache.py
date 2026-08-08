@@ -54,7 +54,7 @@ class CacheManager:
     async def close(self):
         """Closes the Redis connection pool if it has been initialized."""
         if self.redis_client:
-            await self.redis_client.close()
+            await self.redis_client.aclose()
             self.redis_client = None
             logger.info("Redis connection closed.")
 

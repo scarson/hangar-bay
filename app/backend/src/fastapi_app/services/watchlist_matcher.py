@@ -106,7 +106,7 @@ class WatchlistMatcherService:
                         "expired mid-run and was reacquired by another runner. Leaving it intact.",
                         lock_ttl,
                     )
-            await redis_client.close()
+            await redis_client.aclose()
 
     async def run_matching(self) -> None:
         started = time.monotonic()

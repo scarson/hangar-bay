@@ -3,7 +3,7 @@ import time
 from sqlalchemy import and_, case, func, or_, text
 from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from sqlalchemy import select
 from sqlalchemy.orm import aliased, selectinload
 
 from ..core.config import get_settings
