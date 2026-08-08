@@ -46,6 +46,16 @@ function stubFetch(handler: (url: string) => Response) {
   return calls
 }
 
+/**
+ * The contract-LIST request among the captured calls. The list now waits for
+ * the taxonomy answer (readiness must be known before rows are fetched, so it
+ * can travel with them — WEB-1), so the taxonomy call comes FIRST and an
+ * index-based assertion would read the wrong request.
+ */
+function listCall(calls: string[]): string | undefined {
+  return calls.find((url) => /\/api\/v1\/contracts\/\?/.test(url))
+}
+
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -64,7 +74,10 @@ describe('useContracts', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.total).toBe(1)
     expect(result.current.data?.items[0]?.contract_id).toBe(101)
-    expect(calls[0]).toContain('/api/v1/contracts/?')
+    expect(listCall(calls)).toBeDefined()
+    // Ordering is part of the contract now: nothing is fetched until readiness
+    // is known, so the taxonomy request precedes the list request.
+    expect(calls[0]).toContain('/api/v1/contracts/taxonomy')
   })
 
   it('never sends a sub-3-char search', async () => {
@@ -76,7 +89,8 @@ describe('useContracts', () => {
     )
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(calls[0]).not.toContain('search')
+    expect(listCall(calls)).toBeDefined()
+    expect(listCall(calls)).not.toContain('search')
   })
 
   it('surfaces server errors as isError', async () => {

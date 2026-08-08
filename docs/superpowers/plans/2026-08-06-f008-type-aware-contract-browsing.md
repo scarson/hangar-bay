@@ -1412,6 +1412,13 @@ Everything gated on the taxonomy readiness signal (decision-log D1): the cascadi
 
 Ten mutations run against the fixes; all ten killed.
 
+**Codex round 2, on the fixes themselves — one P1 and one P2, both real, both taken.** Four of the five first-round fixes were confirmed effective; two were not finished.
+
+7. **[P1] The readiness coupling was still wrong in kind.** Invalidating the list on a readiness flip narrows the window without closing it — `keepPreviousData` holds the partial rows through the whole refetch, so the new columns still land on old rows. And excluding the `undefined → first answer` transition (to avoid a cold-load double fetch) left a permanent race: a taxonomy response resolving while the first list request is in flight produces the same mismatch with no transition to invalidate on. **Decision D13 is reversed as a result**: readiness is now captured in the list query function and travels with the rows, and the list waits for the taxonomy answer before fetching. The cost is one small round trip in front of the first list request — which is what the original entry mispriced, treating it as equivalent to alternative 1's *second corpus-scale list request per cold load*. Covered by a test that holds the post-flip refetch open, which is the only shape that catches it.
+8. **[P2] The pending-taxonomy test was deleted rather than replaced.** Self-inflicted: the scripted removal of two stale tests took the newly written one with it, and the suite stayed green because the surviving neighbour asserts a similar thing. Restored, and now stronger — it asserts that no list request is issued at all until readiness is known.
+
+Both fixes mutation-verified (4 more mutations, 4 killed). The lesson from D13's reversal is recorded in that entry: "describes the corpus rather than the rows" is not an exemption from WEB-1, because any value the row rendering consumes is about the rows at the moment it is consumed.
+
 **Task D5 record — the three rounds, and what each found.** Each round found something substantive, so none of them was ceremony.
 
 1. **Spec §3 criteria, one at a time.** Criterion 12 says the cascading filter must *announce* that changing category changes the available groups. The shipped `aria-describedby` sentence described the relationship but announced nothing: a described-by is read when focus reaches the fieldset, and the reader who just ticked a category is standing on a checkbox two fieldsets above it. The sentence became a polite live region carrying the scoped count (`37 groups within the selected categories`), so every category change is audible rather than only the first.

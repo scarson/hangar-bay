@@ -8,7 +8,7 @@ import { regionNames } from '../format'
 import { DEFAULT_PAGE, DEFAULT_SIZE, type ContractSearch, type SortField } from '../filters'
 import { SaveSearchControl } from '../../saved-searches/components/SaveSearchControl'
 import { useContracts } from '../hooks/useContracts'
-import { useItemSurfaceReady, useItemSurfaceRefresh } from '../hooks/useTaxonomy'
+import { useItemSurfaceRefresh } from '../hooks/useTaxonomy'
 import { ContractTable, ContractTableSkeleton } from './ContractTable'
 import { FilterRail } from './FilterRail'
 import { Pagination } from './Pagination'
@@ -125,9 +125,9 @@ function EmptyResults({
 export function ContractsPage({ search, from }: { search: ContractSearch; from: '/contracts/' }) {
   const navigate = useNavigate({ from })
   const { data, isPending, isError, isFetching, refetch } = useContracts(search)
-  const itemSurfaceReady = useItemSurfaceReady()
   // The list query's owner is where the readiness-change refresh belongs: the
-  // rows it drops are the ones this page is describing.
+  // rows it drops are the ones this page is describing. Readiness ITSELF is
+  // read off the response below, never live — see useContracts.
   useItemSurfaceRefresh()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const title = listTitle(search)
@@ -264,7 +264,7 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
             Whether a filter was in play comes off the response, not the live
             URL (WEB-1): the claim is about the rows on screen, and those are
             the previous request's for the whole of the next one. */}
-        {!itemSurfaceReady && data?.enrichmentFiltered ? (
+        {data !== undefined && !data.itemSurfaceReady && data.enrichmentFiltered ? (
           <p className="text-xs text-ink-dim">
             Item filters are still indexing; results may be incomplete.
           </p>
@@ -314,8 +314,8 @@ export function ContractsPage({ search, from }: { search: ContractSearch; from: 
                   // response rather than the URL so the columns always describe the
                   // rows beneath them — the two disagree for the whole of a segment
                   // switch, which `keepPreviousData` renders with the old rows.
-                  columns={columnsFor(data.segment, itemSurfaceReady)}
-                  itemSurfaceReady={itemSurfaceReady}
+                  columns={columnsFor(data.segment, data.itemSurfaceReady)}
+                  itemSurfaceReady={data.itemSurfaceReady}
                   search={search}
                   onSort={handleSort}
                   isRefreshing={isFetching}

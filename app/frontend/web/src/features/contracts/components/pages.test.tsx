@@ -1579,6 +1579,58 @@ describe('taxonomy filters', () => {
     expect(await screen.findByText('1 group within the selected categories')).toBeInTheDocument()
   })
 
+  it('never puts the blueprint columns over rows fetched before the corpus was enriched', async () => {
+    // The defect two review rounds chased. Invalidating on the readiness flip
+    // narrows the window but does not close it: `keepPreviousData` holds the
+    // partial rows on screen for the whole refetch, so a live readiness read
+    // still lands the new columns on old rows — a contract whose BPC badge is
+    // right there beside three empty cells. Readiness therefore travels WITH
+    // the rows, and this test holds the refetch open to prove it.
+    let coverage = 'partial'
+    let releaseSecondList: (() => void) | undefined
+    let listCalls = 0
+    const bpcRow = {
+      ...ROW,
+      contract_id: 909,
+      primary_label: 'Draugur Blueprint',
+      is_blueprint_copy_contract: true,
+      blueprint_summary: {
+        copy_count: 1,
+        runs: null,
+        material_efficiency: null,
+        time_efficiency: null,
+      },
+    }
+    stubFetch(
+      anonymousMe((url) => {
+        if (/\/contracts\/taxonomy$/.test(url)) return jsonResponse(taxonomyResponse({ coverage }))
+        listCalls += 1
+        if (listCalls === 1) return jsonResponse(listPage([bpcRow]))
+        return new Promise<Response>((resolve) => {
+          releaseSecondList = () => resolve(jsonResponse(listPage([bpcRow])))
+        })
+      }),
+    )
+
+    const { queryClient } = renderApp('/contracts')
+    await screen.findByText('Draugur Blueprint')
+    expect(headerNames()).not.toContain('Runs')
+
+    // The corpus finishes enriching and the readiness poll picks it up, which
+    // invalidates the list — but that refetch has not landed yet.
+    coverage = 'complete'
+    await queryClient.refetchQueries({ queryKey: ['contracts', 'taxonomy'] })
+    await waitFor(() => expect(releaseSecondList).toBeDefined())
+
+    // The rows on screen are still the ones fetched under `partial`, so they
+    // must still be described under `partial` — no blueprint columns yet.
+    expect(screen.getByText('Draugur Blueprint')).toBeInTheDocument()
+    expect(headerNames()).not.toContain('Runs')
+
+    releaseSecondList!()
+    await waitFor(() => expect(headerNames()).toContain('Runs'))
+  })
+
   it('offers no taxonomy controls while the corpus is still being enriched', async () => {
     stubFetch(withTaxonomy(anonymousMe(() => jsonResponse(listPage([ROW])))))
 
@@ -1587,6 +1639,39 @@ describe('taxonomy filters', () => {
     await screen.findByText(INDEXING_LINE)
     expect(screen.queryByRole('checkbox', { name: 'Ship' })).not.toBeInTheDocument()
     expect(screen.queryByRole('group', { name: /^Group/ })).not.toBeInTheDocument()
+  })
+
+  it('holds the rows back until readiness is known, rather than guessing', async () => {
+    // Genuinely unresolved, not "partial arrived quickly" — this is the
+    // first-paint state, and it is distinct from the partial-coverage case
+    // above. Nothing may be fetched or described until the answer lands: the
+    // rows carry the readiness they were fetched under, so a row fetched
+    // against an unknown answer would carry a guess.
+    let releaseTaxonomy: (() => void) | undefined
+    let listCalls = 0
+    stubFetch(
+      anonymousMe((url) => {
+        if (/\/contracts\/taxonomy$/.test(url)) {
+          return new Promise<Response>((resolve) => {
+            releaseTaxonomy = () => resolve(jsonResponse(taxonomyResponse({ coverage: 'partial' })))
+          })
+        }
+        listCalls += 1
+        return jsonResponse(listPage([ROW]))
+      }),
+    )
+
+    renderApp('/contracts')
+
+    await waitFor(() => expect(releaseTaxonomy).toBeDefined())
+    expect(await screen.findByRole('status', { name: 'Loading contracts' })).toBeInTheDocument()
+    expect(listCalls).toBe(0)
+    expect(screen.queryByLabelText('Filter group list')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Minimum runs')).not.toBeInTheDocument()
+
+    releaseTaxonomy!()
+    await screen.findByText('Tristan')
+    expect(listCalls).toBe(1)
   })
 
   it('keeps the taxonomy controls on an item-less segment, and says why they cannot match', async () => {
