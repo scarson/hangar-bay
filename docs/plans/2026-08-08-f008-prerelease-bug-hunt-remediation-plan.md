@@ -63,13 +63,13 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** 1/4 phases shipped.
+**Overall:** 2/4 phases shipped.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 1 — parser gaps (B3/B5/B7) | ✅ Shipped | `82dd8ef` | PR #153 merged 2026-08-08 at `251e951` |
-| 2 — format fixes (B4/B6) | 🚧 In progress | — | on branch `fix/composition-format` |
-| 3 — segment numerals (B1) | ⬜ Not started | — | — |
+| 2 — format fixes (B4/B6) | ✅ Shipped | `f585dc5` | PR #154 merged 2026-08-08 at `195af01` |
+| 3 — segment numerals (B1) | 🚧 In progress | — | on branch `fix/segment-count-numerals` |
 | 4 — price nullable (B2) | ⬜ Not started | — | PR to be LEFT OPEN for Sam (`Review — database schema`) |
 
 ## Global constraints (every phase)
@@ -166,7 +166,7 @@ notes and commit messages.
 
 ## Phase 2 — Format fixes (B4, B6) — branch `fix/composition-format`
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-08T21:20Z (branch `fix/composition-format`)
+**Execution Status:** ✅ SHIPPED at `f585dc5` on 2026-08-08 (PR #154 merged at `195af01`)
 
 **Files:** `src/features/contracts/format.ts`, `src/features/contracts/format.test.ts`.
 
@@ -197,7 +197,7 @@ Routine; codex skipped as trivial, recorded); merge on green.
 
 ## Phase 3 — Segment numerals in the item-less state (B1) — branch `fix/segment-count-numerals`
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-08T21:50Z (branch `fix/segment-count-numerals`)
 
 **Files:** `src/features/contracts/components/SegmentTabs.tsx`, its tests (in `pages.test.tsx` or
 a colocated file — follow where D11's All-numeral tests live).

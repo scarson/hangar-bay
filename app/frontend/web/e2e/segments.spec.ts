@@ -77,6 +77,26 @@ test.describe('contract-type segments', () => {
     await expect(page.getByRole('button', { name: /^Unknown/ })).toHaveCount(0)
   })
 
+  test('the item-bearing controls drop their counts while Courier is active', async ({
+    page,
+  }) => {
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptContractList(page, respond)
+
+    await page.goto('/contracts')
+    await expect(rowLinks(page)).toHaveCount(7)
+    await segment(page, 'Courier 3').click()
+
+    // The courier request carried no ships-only filter, so this envelope's
+    // item-bearing counts are lifted — and clicking either button restores
+    // ships-only. No numeral beats a wrong one; Courier's own count is the
+    // lifted figure for the lifted view it serves, so it stays.
+    await expect(segment(page, 'Item exchange')).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByRole('button', { name: /^Item exchange \d/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Auction \d/ })).toHaveCount(0)
+    await expect(segment(page, 'Courier 3')).toHaveAttribute('aria-pressed', 'true')
+  })
+
   test('selecting Courier clears Ships only visibly and asks the API for couriers', async ({
     page,
   }) => {
