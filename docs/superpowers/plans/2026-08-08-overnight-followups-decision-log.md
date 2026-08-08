@@ -92,4 +92,87 @@ CI; adversarial review still applied before merge.
 
 **Reversibility.** Trivial — remove two enum members from the frozenset.
 
+Shipped as PR #148 (merge `94ca572`). Codex round 1: no P1s, one P2 (the ship-name fixture could
+not distinguish the direction-appropriate aggregate from its reverse — both of the multi-item
+contract's names sorted after every other contract's). Reworked to a straddling fixture
+(Bantam + Zealot around Merlin), mutation-verified by swapping the aggregate in production code
+(red) and restoring (green). Codex round 2 on the rework: zero findings, expected orders
+independently re-derived.
+
+---
+
+## OD4 — Criterion 1.8 count-lifting for offered-item filters: NO code change; needs Sam's ratification
+
+**Background.** Handoff §2 item 2 frames the open question as: `_segment_counts_and_total` lifts
+`ships_only` for item-less segments (Criterion 1.8) but not `category_id`/`group_id`, the three
+blueprint ranges, or `is_bpc` — so an item-less segment's count reads 0 whenever one of those is
+active — and "needs a decision on whether 'lifted' means lifting all offered-item filters together
+or per-family."
+
+**Analysis (what the handoff framing missed).** The 1.8 lift is honest for `ships_only` **only
+because Criterion 1.7 clears `ships_only` on segment entry** — the lifted count advertises exactly
+what clicking reveals. The offered-item filters have no such clearing rule: `segmentPatch`
+(`SegmentTabs.tsx`) touches only `contract_type`, `ships_only`, and the sort keys, so a taxonomy or
+blueprint filter SURVIVES the switch and the clicked segment really does serve the empty page.
+Lifting those filters in the count — together or per-family, either variant — would therefore make
+the label advertise contracts the click cannot deliver, which is precisely the
+"silent-filter-no-op defect wearing a numeral" that Criterion 1.8 exists to prevent, and the exact
+case `_segment_counts_and_total`'s docstring warns about ("Every OTHER filter still applies (§6.2),
+or the labels advertise results the list cannot show"). Read literally, Criterion 1.8 is scoped to
+`ships_only` and is already fully implemented. The shipped Phase-D code even records this position:
+SegmentTabs' count comment says "That stays true of an item-less segment under an item-level
+filter — the served zero is honest, and the empty state it leads to explains itself."
+
+**Alternatives.**
+- (a) Lift offered-item filters in the count only (the handoff's framing, either granularity) —
+  rejected: creates the advertised-vs-delivered mismatch above; strictly worse than the status quo.
+- (b) Lift in the count AND extend the 1.7-style clearing rule so entering an item-less segment
+  also clears offered-item filters — coherent, but it is a spec amendment (new interaction rule,
+  URL semantics, frontend + backend + e2e work) and it discards the user's filter work on a
+  segment click; only Sam can ratify that trade.
+- (c) No code change; record why, close the Discovery pending ratification — chosen.
+
+**Decision.** No code change. The served zero is the honest number under the shipped interaction
+semantics. The Discoveries entry is updated to point here; if Sam prefers the option (b) behavior,
+that is a new spec decision (a D8-style ratification) and a small feature, not a follow-up fix.
+
+**Reversibility.** Total — nothing was changed; the analysis is the artifact.
+
+---
+
+## OD5 — jsdom noise fix (PR #149): TDD-exempt, codex review skipped as below the meaningful-PR bar
+
+**Background.** Handoff §2 item 5: the vitest lanes emitted jsdom "Not implemented" stderr lines
+(measured 14 per lane here — two sources, not one: TanStack Router's scroll restoration calling
+`window.scrollTo` on every test navigation, and axe-core's color-contrast rule probing
+`HTMLCanvasElement.getContext`). Violates the pristine-output rule.
+
+**Decision.** Two stubs in `src/test/setup.ts`, each reproducing jsdom's existing return value
+(undefined / null) minus the stderr line, so no test's semantics change. TDD does not apply
+(test-infrastructure, CLAUDE.md §TDD scope); verification is the measured noise count: 0 after,
+across both vitest lanes, with all five lanes green (310+310 vitest, 138 e2e). Codex adversarial
+review deliberately skipped: the repo policy reserves it for "meaningful PRs", and a two-stub
+test-environment change with measured-zero verification is below that bar. Classified Routine.
+
+**Reversibility.** Trivial — delete the stubs.
+
+---
+
+## OD6 — Machine-migration notes (Windows): what future sessions on this machine inherit
+
+Not a decision so much as the operational record of OD1's fallout:
+
+- **`pdm` 2.28.0 installed user-level** (`python -m pip install --user pdm`); invoke as
+  `python -m pdm`. Python 3.14.3, Node 24.14.0 already present.
+- **Playwright needed its chromium build**: 1.61.1 wants `chromium_headless_shell-1228`, which was
+  missing (1208/1217/1234 present). `npx playwright install chromium` fixed it; before that the
+  e2e lane failed with `browserType.launch: Executable doesn't exist`.
+- **This machine's npm rewrites `package-lock.json`** (strips `libc` fields) and touches
+  `routeTree.gen.ts` line endings on every install/test run. Neither is a real change — do NOT
+  commit lockfile churn from this machine; `git checkout --` them before staging.
+- **The e2e lane was not part of the pre-change baseline** (only eslint/tsc/vitest×2 were run
+  before PR #148's work started). Its first-ever run on this machine failed for the missing-browser
+  reason above, initially indistinguishable from a real regression. Future provisioning should
+  baseline all five lanes.
+
 ---
