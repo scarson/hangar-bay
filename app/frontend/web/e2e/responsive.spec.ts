@@ -220,8 +220,16 @@ test.describe('responsive column visibility', () => {
     const mobile = testInfo.project.name === 'mobile'
 
     // Never hidden at any width: Price carries the headline figure, and the days a
-    // hauler has to deliver in appear nowhere else in the app.
-    await expect(header('Price (ISK)')).toBeVisible()
+    // hauler has to deliver in appear nowhere else in the app. The CELL is asserted
+    // as well as the header — `hiddenClass` is not the only route to invisibility, and
+    // a breakpoint class on the column's cellClass would empty the figures out from
+    // under a heading that stayed put.
+    const priceHeader = header('Price (ISK)')
+    await expect(priceHeader).toBeVisible()
+    const priceIndex = await page
+      .locator('thead th')
+      .evaluateAll((ths, label) => ths.findIndex((th) => th.textContent?.includes(label)), 'Price (ISK)')
+    await expect(page.locator('tbody tr').first().locator('td').nth(priceIndex)).toBeVisible()
 
     // Recoverable from the detail page, so they stand down when space is tight.
     if (mobile) {

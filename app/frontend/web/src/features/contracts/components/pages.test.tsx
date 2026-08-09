@@ -2387,14 +2387,20 @@ describe('responsive column classes reach the DOM', () => {
     expect(within(bodyRow).getAllByRole('cell')[index]).toHaveClass(hiddenClass)
   })
 
-  it('leaves an always-visible column with no breakpoint class at all', () => {
-    // Anti-vacuity: proves toHaveClass above is discriminating rather than matching
-    // some class every cell happens to carry.
+  it('leaves an always-visible column unhidden in its header AND its cells', async () => {
+    // Anti-vacuity, and it has to cover the CELL as well as the header: `hiddenClass`
+    // is not the only way a column can disappear. A `max-lg:hidden` added to
+    // PRICE_COLUMN.cellClass hides every Price <td> on mobile while leaving
+    // hiddenClass undefined — so a header-only check reports an always-visible
+    // column that is in fact invisible below `lg` wherever the figures actually are.
     stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
     renderApp('/contracts')
 
-    return screen.findByRole('columnheader', { name: /Price/ }).then((price) => {
-      expect(price.className).not.toContain('hidden')
-    })
+    const price = await screen.findByRole('columnheader', { name: /Price/ })
+    expect(price.className).not.toContain('hidden')
+
+    const index = screen.getAllByRole('columnheader').indexOf(price)
+    const bodyRow = screen.getAllByRole('row')[1]
+    expect(within(bodyRow).getAllByRole('cell')[index].className).not.toContain('hidden')
   })
 })
