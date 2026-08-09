@@ -44,13 +44,21 @@ this file — they are the evidence; this file is the severity-organized view.
 
 - **O1a (WirePage omits `unknown_system_excluded`)** — STILL OPEN.
 - **O1b (fixture tiebreak localeCompare vs Python ordinal)** — STILL OPEN.
-- **O2 (type-partition invariant)** — CLOSED (Wave 3): frontend partition pinned
-  (`filters.test.ts:70`); the backend literal at `background_aggregation.py:720` is gone.
+- **O2 (type-partition invariant)** — CLOSED (Wave 3), at **all three backend sites**.
   `ITEMLESS_CONTRACT_TYPES` / `ITEM_BEARING_CONTRACT_TYPES` now live beside `ContractType`
-  in `schemas/contracts.py`, so reader and writer classify a contract type in exactly one
-  place, and a test parametrized over the whole enum asserts items are fetched for
-  precisely the item-bearing half. Verified by adding a hypothetical sixth enum member:
-  the derived writer handles it, the old literal fails the new test.
+  in `schemas/contracts.py`, and every consumer reads them: the read path
+  (`contract_service`), the ingestion writer (`background_aggregation._fetch_item_rows`,
+  which hard-coded `["item_exchange", "auction"]`) and the watchlist matcher
+  (`watchlist_matcher._match_and_notify`, which hard-coded the same pair as a tuple —
+  found during Wave 3's adversarial review, and NOT part of O2's original register).
+  A contract type is therefore classified in exactly one place. The frontend partition
+  was already pinned (`filters.test.ts:70`).
+
+  Both backend gates have tests parametrized over the derived constants rather than a
+  hand-listed pair, so a sixth `ContractType` is covered the moment it is added. Verified
+  by actually adding a hypothetical sixth member: the derived writer handles it, while the
+  old literal fails the new test. Without the matcher fix, that sixth type would have been
+  ingested with items and recognized by the read path while silently never alerting.
 - **PR #156 deferred e2e null-price pin** — STILL OPEN.
 
 ## What is demonstrably strong
@@ -371,7 +379,7 @@ four per-file registers as work orders.
 |---|---|---|
 | 1 | Security-critical (4) | ✅ DONE — PR #163 (three test-only + this report committed), PR #164 (search max_length, `Review — public API contract`, held for Sam) |
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
-| 3 | Backend write correctness (11) + O2's backend partition pin | ✅ DONE — PR #169 (`Routine`); backend 705 → 730, every new test mutation-verified (17 regressions, all killed) |
+| 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
 | 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ⬜ queued — registers: the two frontend reports |
 | 5 | Nice-to-have (60) | ⬜ queued — sweep last; drop any a wave above already covered |
 
@@ -404,3 +412,17 @@ tests that exercise mocked behavior, flagging rather than choosing:
 - **(b) Keep it, rename the test** to say it pins dialect *dispatch*, not merge semantics, so
   nobody reads it as coverage of behavior it does not cover.
 - **(c) Accept the residual** as recorded here and move on.
+
+Until one of those is chosen, Wave 3 stands at **10 of 11 correctness rows closed**, not DONE —
+the wave table says so rather than rounding up. Whoever picks an option should flip the Wave 3
+row at the same time.
+
+### Wave 3 erratum against the write-path register
+
+`subagent-backend-write-findings.md` C-9 describes a7c44d19e582's downgrade as dropping the two
+location indexes **before** the narrowing rewrite. It does the reverse — narrow, then drop in
+reverse creation order, which is the exact inverse of the upgrade and the correct shape. The
+register's stated ordering property does not exist in the code; the test written for C-9 pins
+what the migration actually emits (independently confirmed during adversarial review). No code
+change was made: editing an already-applied migration to satisfy a misreading would be the
+wrong repair.

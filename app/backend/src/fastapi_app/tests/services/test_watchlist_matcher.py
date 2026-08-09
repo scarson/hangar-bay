@@ -10,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.watchlist_matcher as wm
 from fastapi_app.models import Contract, ContractItem, Notification, User, WatchlistItem
+from fastapi_app.schemas.contracts import (
+    ITEM_BEARING_CONTRACT_TYPES,
+    ITEMLESS_CONTRACT_TYPES,
+)
 from fastapi_app.services.watchlist_matcher import (
     ConcurrencyLockError,
     WatchlistMatcherService,
@@ -116,7 +120,31 @@ async def test_an_item_exchange_contract_matches_and_renders_its_own_label(
     )
 
 
-@pytest.mark.parametrize("itemless_type", ["courier", "loan", "unknown"])
+@pytest.mark.parametrize("item_bearing_type", sorted(ITEM_BEARING_CONTRACT_TYPES))
+async def test_every_item_bearing_contract_type_matches(
+    db_session: AsyncSession, item_bearing_type: str
+):
+    """The positive arm, parametrized over the partition rather than a hand-listed pair.
+
+    The matcher's gate is the third site that used to restate `(item_exchange, auction)`
+    as a literal; it now reads the same enum-derived constant as the ingestion writer and
+    the read path. Deriving the parametrization too is what makes that load-bearing: a
+    sixth item-bearing ContractType is covered here the moment it is added, instead of
+    ingesting items nobody is ever alerted about.
+    """
+    u = await _user(db_session)
+    await _watch(db_session, u, type_id=621, max_price=None)
+    await _contract(db_session, cid=5031, price=1_000_000, ctype=item_bearing_type)
+    await _item(db_session, cid=5031, type_id=621)
+
+    matched, created = await _service()._match_and_notify(db_session)
+
+    assert (matched, created) == (1, 1)
+    note = (await db_session.execute(select(Notification))).scalar_one()
+    assert note.contract_id == 5031
+
+
+@pytest.mark.parametrize("itemless_type", sorted(ITEMLESS_CONTRACT_TYPES))
 async def test_a_contract_outside_the_item_bearing_types_never_matches(
     db_session: AsyncSession, itemless_type: str
 ):

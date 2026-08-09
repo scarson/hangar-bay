@@ -1870,21 +1870,31 @@ async def test_freshness_failure_when_every_region_fetch_fails(
     assert _gauge_value() == before
 
 
-async def test_a_freshness_write_failure_never_fails_the_run(caplog):
+@pytest.mark.parametrize("failing_op", ["get", "set"])
+async def test_a_freshness_cache_failure_never_fails_the_run(caplog, failing_op: str):
     """A cache blip while RECORDING the outcome must not turn a healthy ingest into a
     failed job — the recorder's own try/except is what guarantees that.
 
     Narrow or delete that except and a Valkey hiccup after a clean commit propagates
     out of _record_run_outcome into run_aggregation's forced-failure handler, which
     records failure and re-raises: a successful run reported as broken.
+
+    Both cache calls the recorder makes are covered: the prior-record GET and the
+    record SET. They sit inside the same try today, but parametrizing means a refactor
+    that lifts either one out of the guard fails here instead of in production.
     """
     from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
 
-    class _RecorderWriteFails(_FakeLockRedis):
-        """Lock traffic works; only the freshness SET blows up."""
+    class _RecorderCacheFails(_FakeLockRedis):
+        """Lock traffic works; only the freshness call under test blows up."""
+
+        async def get(self, key):
+            if failing_op == "get" and key == INGEST_KEY:
+                raise RuntimeError("valkey blip")
+            return await super().get(key)
 
         async def set(self, key, value, nx=False, ex=None):
-            if key == INGEST_KEY:
+            if failing_op == "set" and key == INGEST_KEY:
                 raise RuntimeError("valkey blip")
             return await super().set(key, value, nx=nx, ex=ex)
 
@@ -1892,7 +1902,7 @@ async def test_a_freshness_write_failure_never_fails_the_run(caplog):
     service.esi_client.get_public_contracts = AsyncMock(side_effect=_NotModified("304"))
 
     store: dict = {}
-    with patch.object(bg_agg.aioredis, "from_url", return_value=_RecorderWriteFails(store)):
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_RecorderCacheFails(store)):
         with caplog.at_level("WARNING"):
             await service.run_aggregation()  # must not raise
 

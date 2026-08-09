@@ -1,6 +1,8 @@
 # ABOUTME: Runs the REAL compare-and-delete Lua release script against a live cache.
 # ABOUTME: The shared FakeLockRedis reimplements it in Python, so the source never executed.
 
+import uuid
+
 import pytest
 import redis.asyncio as aioredis
 
@@ -35,7 +37,10 @@ async def test_the_release_lock_script_compares_and_deletes_on_a_real_cache(
     a divergence in either is caught here rather than in production.
     """
     client = aioredis.from_url(str(settings.CACHE_URL_TESTS or settings.CACHE_URL))
-    key = f"hangar-bay:test:release-lock-script:{label}"
+    # Unique per run: CACHE_URL_TESTS is unset in CI, so this falls back to the shared
+    # application cache, where a fixed key would let two concurrent runs (or a parallel
+    # worktree) observe each other's writes and delete each other's fixture on cleanup.
+    key = f"hangar-bay:test:release-lock-script:{label}:{uuid.uuid4().hex}"
     try:
         await client.set(key, "our-token")
 
