@@ -421,3 +421,33 @@ async def test_run_matching_reuses_app_session_factory(monkeypatch: pytest.Monke
     assert entered["count"] == 1, (
         "run_matching must obtain its session from fastapi_app.db.AsyncSessionLocal"
     )
+
+
+# ---------- NULL price: ESI marks price optional; the column is nullable ----------
+
+async def test_a_priceless_contract_matches_an_unbounded_watch_and_renders_a_dash(db_session: AsyncSession):
+    """No price bound means any price, the unknown one included — hiding the match
+    would silently drop a real contract over a display concern. The message carries
+    the same bare dash the list surface uses, with no ISK suffix: a dash is not an
+    amount of ISK."""
+    u = await _user(db_session)
+    await _watch(db_session, u, type_id=621, type_name="Caracal", max_price=None)
+    await _contract(db_session, cid=5901, price=None, ctype="auction", location="Jita IV - Moon 4")
+    await _item(db_session, cid=5901, type_id=621)
+
+    matched, created = await _service()._match_and_notify(db_session)
+    assert matched == 1 and created == 1
+    note = (await db_session.execute(select(Notification))).scalar_one()
+    assert note.message == "Caracal available in an auction priced — in Jita IV - Moon 4"
+
+
+async def test_a_priceless_contract_never_satisfies_a_numeric_price_bound(db_session: AsyncSession):
+    """SQL three-valued logic: NULL <= bound is not true, so a priced watch cannot
+    match a contract whose price is unknown — an unknown price is not a low one."""
+    u = await _user(db_session)
+    await _watch(db_session, u, type_id=621, type_name="Caracal", max_price=20_000_000)
+    await _contract(db_session, cid=5902, price=None, ctype="auction", location="Jita IV - Moon 4")
+    await _item(db_session, cid=5902, type_id=621)
+
+    matched, created = await _service()._match_and_notify(db_session)
+    assert matched == 0 and created == 0

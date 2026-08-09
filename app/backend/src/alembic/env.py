@@ -36,7 +36,12 @@ def run_migrations_offline() -> None:
         compare_type=True,
         compare_server_default=True,
     )
-    context.run_migrations()
+    # The standard template's transaction wrapper. Without it the rendered
+    # --sql script carries no BEGIN/COMMIT, and any migration that needs a
+    # transaction block (LOCK TABLE in f2a91c3b7e04's downgrade guard) is
+    # invalid as rendered.
+    with context.begin_transaction():
+        context.run_migrations()
 
 
 def do_run_migrations(connection):

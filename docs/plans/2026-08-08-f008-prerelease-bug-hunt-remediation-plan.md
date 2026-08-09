@@ -63,16 +63,24 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** 2/4 phases shipped.
+**Overall:** 3/4 phases shipped; Phase 4 implemented, PR #156 awaiting Sam.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 1 — parser gaps (B3/B5/B7) | ✅ Shipped | `82dd8ef` | PR #153 merged 2026-08-08 at `251e951` |
 | 2 — format fixes (B4/B6) | ✅ Shipped | `f585dc5` | PR #154 merged 2026-08-08 at `195af01` |
-| 3 — segment numerals (B1) | 🚧 In progress | — | on branch `fix/segment-count-numerals` |
-| 4 — price nullable (B2) | ⬜ Not started | — | PR to be LEFT OPEN for Sam (`Review — database schema`) |
+| 3 — segment numerals (B1) | ✅ Shipped | `7b7e65c` | PR #155 merged 2026-08-08 at `0c8ed62` |
+| 4 — price nullable (B2) | ⏸ Awaiting Sam | — | PR #156 open (`Review — database schema`) |
 
 ### Discoveries
+
+- **Deferred to the test-coverage review task (codex round-2 P3 on PR #156):** no e2e fixture
+  assigns `price: null`, so `WireContract.price`'s `number | null` widening is not
+  regression-pinned at the type level — reverting it would still typecheck. Belongs with O1's
+  fixture-drift items.
+- **env.py's offline path lacked the standard template's transaction wrapper** (found by PR #156's
+  round-2 review): `--sql` scripts rendered with no BEGIN/COMMIT, invalid for any migration
+  needing a transaction block. Fixed in the PR; pinned by the offline-render test.
 
 - **Phase 3 accepted residuals (codex round 2's state enumeration, 2026-08-08):** the
   suppression predicate (`countsFromItemLess || leavingItemLess`) leaves the ships-only ↔ widened
@@ -208,7 +216,7 @@ Routine; codex skipped as trivial, recorded); merge on green.
 
 ## Phase 3 — Segment numerals in the item-less state (B1) — branch `fix/segment-count-numerals`
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-08-08T21:50Z (branch `fix/segment-count-numerals`)
+**Execution Status:** ✅ SHIPPED at `7b7e65c` on 2026-08-08 (PR #155 merged at `0c8ed62`)
 
 **Files:** `src/features/contracts/components/SegmentTabs.tsx`, its tests (in `pages.test.tsx` or
 a colocated file — follow where D11's All-numeral tests live).
@@ -256,7 +264,7 @@ click cannot deliver` — Routine; cites D11 precedent); merge on green.
 
 ## Phase 4 — `price` nullable end-to-end (B2) — branch `fix/price-nullable` — PR LEFT OPEN
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ⏸ AWAITING SAM — implementation complete on branch `fix/price-nullable`; PR #156 open, classified `Review — database schema`, deliberately NOT merged by the agent. Unblock: Sam reviews and merges (or rejects) PR #156.
 
 **Files (unconditional — round-4 correction):** `app/backend/src/fastapi_app/models/contracts.py`,
 new migration under `app/backend/src/alembic/versions/`, `services/contract_service.py`

@@ -29,3 +29,114 @@ def test_migrated_schema_matches_model_metadata(blank_migrated_sync_connection):
     )
     diff = compare_metadata(ctx, Base.metadata)
     assert diff == [], f"schema drift between migrations and models: {diff}"
+
+
+def test_downgrade_refuses_while_priceless_contracts_exist(blank_migrated_sync_connection):
+    """The price-nullable migration's downgrade must fail with a stated reason, not an
+    incidental NotNullViolation: restoring NOT NULL would require deleting or zero-filling
+    contracts ESI legitimately sent without a price (ESI-3). The guard is emitted SQL
+    (a DO block), so the refusal surfaces as the database's RaiseException carrying the
+    stated message."""
+    from pathlib import Path
+
+    import pytest
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+
+    conn = blank_migrated_sync_connection
+    conn.execute(
+        text(
+            """
+            INSERT INTO contracts
+                (contract_id, collateral, status, type, issuer_id,
+                 issuer_corporation_id, for_corporation, date_issued, date_expired,
+                 item_processing_status, is_ship_contract)
+            VALUES
+                (990001, 0, 'outstanding', 'item_exchange', 1, 1, FALSE,
+                 '2026-07-01T00:00:00Z', '2026-12-31T00:00:00Z', 'PENDING_ITEMS',
+                 FALSE)
+            """
+        )
+    )
+    conn.commit()
+
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    cfg.attributes["connection"] = conn
+    try:
+        with pytest.raises(
+            DBAPIError,
+            match=r"cannot restore NOT NULL on contracts\.price: 1 stored "
+                  r"contract\(s\) have no price.*data decision this migration "
+                  r"refuses to make",
+        ):
+            command.downgrade(cfg, "-1")
+    finally:
+        # The fixture is SESSION-scoped (TEST-23): one database and one
+        # connection shared by every consumer. Leave both exactly as found
+        # WHATEVER this test's outcome — clear any open/aborted transaction,
+        # then remove the row this test committed, or the sibling
+        # clean-downgrade test meets a corpus with a price-less contract.
+        conn.rollback()
+        conn.execute(text("DELETE FROM contracts WHERE contract_id = 990001"))
+        conn.commit()
+
+
+def test_clean_downgrade_restores_not_null_on_price(blank_migrated_sync_connection):
+    """With no price-less rows the downgrade must actually restore the constraint —
+    the guard test alone would stay green if the alteration itself were dropped."""
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    conn = blank_migrated_sync_connection
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    cfg.attributes["connection"] = conn
+    command.downgrade(cfg, "-1")
+    conn.commit()
+
+    try:
+        nullable = conn.execute(
+            text(
+                "SELECT is_nullable FROM information_schema.columns "
+                "WHERE table_name = 'contracts' AND column_name = 'price'"
+            )
+        ).scalar_one()
+        assert nullable == "NO"
+    finally:
+        # Session-scoped fixture: restore head so any later consumer sees the
+        # schema the fixture promises, whatever this test's outcome.
+        command.upgrade(cfg, "head")
+        conn.commit()
+
+
+def test_offline_downgrade_renders_a_transaction_wrapped_locked_guard():
+    """`alembic downgrade --sql` must emit a script that is executable as rendered:
+    LOCK TABLE is only legal inside a transaction block, so BEGIN/COMMIT must wrap
+    the guard, and the lock must precede the check for guard+alteration atomicity
+    against concurrent writers. This pins both the env.py offline transaction
+    wrapper and the lock's presence — deleting either regresses silently
+    otherwise."""
+    import io
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+
+    buffer = io.StringIO()
+    cfg = Config(
+        str(Path(__file__).resolve().parents[2] / "alembic.ini"),
+        output_buffer=buffer,
+    )
+    command.downgrade(cfg, "f2a91c3b7e04:685dab7d6df5", sql=True)
+    rendered = buffer.getvalue()
+
+    begin = rendered.index("BEGIN")
+    lock = rendered.index("LOCK TABLE contracts IN ACCESS EXCLUSIVE MODE")
+    guard = rendered.index("cannot restore NOT NULL on contracts.price")
+    alter = rendered.index("ALTER COLUMN price SET NOT NULL")
+    commit = rendered.index("COMMIT")
+    assert begin < lock < guard < alter < commit

@@ -121,7 +121,7 @@ export interface WireContract {
   for_corporation: boolean
   date_issued: string
   date_expired: string
-  price: number
+  price: number | null
   buyout: number | null
   collateral: number
   reward: number

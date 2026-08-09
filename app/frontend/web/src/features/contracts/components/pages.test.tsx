@@ -336,6 +336,26 @@ describe('ContractDetailPage', () => {
     expect(document.title).toBe('Tristan — Hangar Bay')
   })
 
+  it('renders an unknown price as a bare dash, never as an amount of ISK', async () => {
+    // ESI marks price optional on the public route and the column is nullable;
+    // a dash is not an amount, so it must not carry the unit. The list cell
+    // already routes through formatIsk (dash, no unit) — this pins the detail
+    // page, whose Economics field appends the unit itself.
+    const priceless = { ...CONTRACT, contract_id: 779, price: null }
+    stubFetch(anonymousMe(() => jsonResponse(priceless)))
+
+    renderApp('/contracts/779')
+
+    await screen.findByRole('heading', { name: 'Tristan' })
+    // Scoped to the Price row itself: the label's own definition-list row must
+    // hold the bare dash, and no ISK unit may appear anywhere in Economics —
+    // other rows' dashes cannot satisfy either assertion.
+    const economics = within(screen.getByRole('region', { name: 'Economics' }))
+    const priceRow = economics.getByText('Price').closest('div')!
+    expect(within(priceRow).getByText('—')).toBeInTheDocument()
+    expect(economics.queryByText(/ISK/)).not.toBeInTheDocument()
+  })
+
   it('heads with the label the server derived, "Contract <id>" last resort included', async () => {
     // The heading is the server's primary_label verbatim, so the detail page and
     // the list row can never name the same contract differently. Both ends of the

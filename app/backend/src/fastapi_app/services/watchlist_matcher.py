@@ -55,7 +55,11 @@ def _render_message(type_name: str, contract_type: str, price, location: Optiona
     # Price-honest: name the CONTRACT as the priced thing (bundle price), not the ship (design §4.4).
     label = _SHIP_TYPE_LABELS.get(contract_type, "a contract")
     where = location or "an unknown location"
-    return f"{type_name} available in {label} priced {price:,.0f} ISK in {where}"
+    # ESI marks price optional and the column is nullable; the dash is the same
+    # unknown-price rendering the list surface uses, with no ISK suffix — a
+    # dash is not an amount of ISK.
+    priced = f"{price:,.0f} ISK" if price is not None else "—"
+    return f"{type_name} available in {label} priced {priced} in {where}"
 
 
 class WatchlistMatcherService:
