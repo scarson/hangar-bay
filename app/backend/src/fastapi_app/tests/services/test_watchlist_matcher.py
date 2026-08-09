@@ -619,8 +619,13 @@ async def test_a_match_at_an_unresolved_location_says_so_rather_than_naming_noth
     Asserted on the whole rendered message rather than on a substring: the location is
     the last field, so a substring check passes for a message that lost everything
     before it.
+
+    Both falsy shapes, because the guard is `location or ...` and not `is None`. An
+    empty string is what a name cache returns for a station it resolved to nothing,
+    and narrowing the guard to `is None` would render a message ending in "in " —
+    which reads as truncated rather than as unknown.
     """
-    assert (
-        wm._render_message("Caracal", "auction", 10_500_000, None)
-        == "Caracal available in an auction priced 10,500,000 ISK in an unknown location"
-    )
+    for absent in (None, ""):
+        assert wm._render_message("Caracal", "auction", 10_500_000, absent) == (
+            "Caracal available in an auction priced 10,500,000 ISK in an unknown location"
+        ), f"location={absent!r}"

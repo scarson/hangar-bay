@@ -225,8 +225,12 @@ async def test_every_preserved_column_still_overwrites_on_a_non_null_value(
     that never updates is worse than one that blanks, because nothing looks wrong: the
     site keeps serving a pilot's old corporation forever.
 
-    Parametrized over `NAME_COLUMNS_PRESERVED_ON_NULL` itself rather than a hand-listed
-    four, so a fifth member is covered the moment it joins the frozenset.
+    Parametrized over `NAME_COLUMNS_PRESERVED_ON_NULL` so every current member is
+    exercised — but that alone cannot police the SET, only its members: adding a column
+    to the production set adds a parametrization that passes trivially, because COALESCE
+    always lets a non-NULL value through. `test_the_preserved_set_is_exactly_the_four_name_columns`
+    below is what catches growth, and it has to compare against an independent literal
+    rather than against the production constant.
     """
     contract_id = 910100 + sorted(NAME_COLUMNS_PRESERVED_ON_NULL).index(column)
     await bulk_upsert(
@@ -286,6 +290,28 @@ async def test_one_statement_coalesces_per_row_not_per_statement(
     assert (kept.issuer_name, replaced.issuer_name) == ("Kept Pilot", "Renamed Pilot")
 
 
+async def test_the_preserved_set_is_exactly_the_four_name_columns():
+    """The membership of the set, compared against an INDEPENDENT literal.
+
+    Every other test here reads the production constant, so all of them move with it: a
+    column wrongly added to `NAME_COLUMNS_PRESERVED_ON_NULL` gains a parametrized case
+    that passes (COALESCE lets non-NULL through regardless) while silently acquiring
+    preserve-on-null semantics it should not have. `title` is the column that would hurt
+    — ESI really does send contracts with no title, and preserving it would freeze the
+    first title a contract was ever seen with, forever.
+
+    Deliberately a hand-written literal rather than anything derived. A test whose
+    expectation is computed from the thing under test agrees with every value that thing
+    can take.
+    """
+    assert NAME_COLUMNS_PRESERVED_ON_NULL == {
+        "start_location_name",
+        "end_location_name",
+        "issuer_name",
+        "issuer_corporation_name",
+    }
+
+
 async def test_an_empty_batch_is_a_no_op_rather_than_an_error(
     db_session: AsyncSession,
 ):
@@ -299,13 +325,22 @@ async def test_an_empty_batch_is_a_no_op_rather_than_an_error(
     dialect branch looks like the "real" start of the function — turns every quiet
     no-op run into an IndexError that aborts the whole aggregation.
 
-    Asserted as a no-op, not merely as "did not raise": a return that fell through to an
-    INSERT with no VALUES is a different failure that a raises-check would miss.
+    Asserted against a SEEDED sentinel, not against an empty database. The per-test
+    database starts empty, so a before/after row count says nothing: an implementation
+    that deleted every row on empty input would leave 0 == 0 and pass. The sentinel's
+    full state is compared so the claim is "nothing changed", not "the count is stable"
+    — a truncate-and-reinsert would keep the count too.
     """
-    before = (await db_session.execute(select(Contract))).scalars().all()
+    await bulk_upsert(
+        db_session, Contract, [_contract_row(910301, issuer_name="Sentinel Pilot")]
+    )
+    before = await _fetch(db_session, 910301)
+    before_state = (before.issuer_name, before.title, before.price)
 
     await bulk_upsert(db_session, Contract, [], preserve_on_null=frozenset())
     await bulk_upsert(db_session, Contract, [])
 
-    after = (await db_session.execute(select(Contract))).scalars().all()
-    assert len(after) == len(before)
+    rows = (await db_session.execute(select(Contract))).scalars().all()
+    assert len(rows) == 1, "the empty call touched rows it was given nothing about"
+    after = await _fetch(db_session, 910301)
+    assert (after.issuer_name, after.title, after.price) == before_state

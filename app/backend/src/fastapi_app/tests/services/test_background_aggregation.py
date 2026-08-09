@@ -2524,6 +2524,11 @@ async def test_every_mapped_contract_field_lands_on_its_own_column(
         "buyout": 3_300_000.0,
         "days_to_complete": 6,
         "price": 5_500_000.0,
+        # Pinned rather than clock-relative, because this assertion is about the
+        # MAPPING and needs an exact expected value. The row is never read back
+        # through the list endpoint here, so the TEST-17 liveness concern that makes
+        # other fixtures relative does not apply.
+        "date_expired": "2027-02-03T04:05:06Z",
     })
 
     await service._process_contracts(db_session, [payload])
@@ -2542,10 +2547,12 @@ async def test_every_mapped_contract_field_lands_on_its_own_column(
     assert float(row.buyout) == 3_300_000.0
     assert row.days_to_complete == 6
     assert float(row.price) == 5_500_000.0
-    # The two dates are parsed, not merely copied, and they are the pair a swap would
-    # leave looking plausible — an expiry before its issue date is the tell.
+    # Both dates asserted as EXACT values, not as a relation between them. "expiry is
+    # after issue" is a digest: it holds for any constant far enough in the future, so
+    # a mapping that replaced every expiry with a fixed date would satisfy it while
+    # storing the same instant for the whole corpus (TEST-25).
     assert row.date_issued == datetime(2026, 7, 1, tzinfo=timezone.utc)
-    assert row.date_expired > row.date_issued
+    assert row.date_expired == datetime(2027, 2, 3, 4, 5, 6, tzinfo=timezone.utc)
 
 
 async def test_an_absent_status_persists_as_unknown(db_session: AsyncSession):
@@ -2608,14 +2615,19 @@ async def test_a_malformed_esi_date_takes_the_whole_batch_down_with_it():
     """CHARACTERIZATION, not endorsement: one bad date string kills every contract beside it.
 
     `_parse_esi_datetime` calls `datetime.fromisoformat` with no guard, from inside the
-    list comprehension that builds rows for the ENTIRE batch, so one malformed date
-    takes down every other contract on the same region page — the blast radius that
-    made a NOT NULL `price` a production hazard (TEST-22 / FASTAPI-3).
+    list comprehension that builds rows for the ENTIRE batch. `run_aggregation`
+    concatenates every page of every configured region before calling
+    `_process_contracts` once, so the blast radius is **the whole aggregation run**, not
+    one region page — one malformed date string anywhere in the corpus discards every
+    contract fetched that cycle. That is the hazard shape a NOT NULL `price` already
+    demonstrated in production (TEST-22 / FASTAPI-3).
 
-    Observed at `_build_contract_rows` rather than through `_process_contracts`: the
-    batch semantics live in the comprehension, and asserting there shows that NO rows
-    are produced, not merely that a write failed. Going through the session would only
-    show a poisoned transaction, which is a consequence rather than the property.
+    Observed at `_build_contract_rows` rather than through `_process_contracts` because
+    the batch semantics live in the comprehension: asserting here shows NO rows are
+    produced at all, which is the property. Note the limit of that choice — the raise
+    happens before any upsert, so nothing is written and no transaction is poisoned;
+    and a refactor that built and wrote per contract would change the persistence blast
+    radius without failing this test.
 
     Pinned so the behavior is visible and any change to it is deliberate. Whether it
     SHOULD abort is a decision, not a defect to fix inside a test-only wave — skipping
@@ -2649,31 +2661,54 @@ async def test_absent_item_flags_persist_as_null_and_false(db_session: AsyncSess
         return_value=[
             # Neither flag supplied: the shape ESI sends for an ordinary packaged item.
             {"record_id": 9201071, "type_id": 587, "quantity": 1, "is_included": True},
+            # Both supplied, and is_singleton TRUE — an assembled item. Public contract
+            # payloads never carry the flag, so without this row the default and a
+            # hardcoded False are indistinguishable: the mapping could ignore a
+            # supplied value entirely and every fixture would still agree with it.
+            {
+                "record_id": 9201072, "type_id": 588, "quantity": 1,
+                "is_included": True, "is_singleton": True, "is_blueprint_copy": True,
+            },
         ]
     )
 
     await service._process_contracts(db_session, [_ship_contract_dict(920107)])
 
-    item = (
-        await db_session.execute(
-            select(ContractItem).where(ContractItem.record_id == 9201071)
-        )
-    ).scalar_one()
-    assert item.is_blueprint_copy is None, "absent must not become False"
-    assert item.is_singleton is False, "the documented default did not apply"
+    items = {
+        item.record_id: item
+        for item in (
+            await db_session.execute(
+                select(ContractItem).where(
+                    ContractItem.record_id.in_([9201071, 9201072])
+                )
+            )
+        ).scalars()
+    }
+    assert items[9201071].is_blueprint_copy is None, "absent must not become False"
+    assert items[9201071].is_singleton is False, "the documented default did not apply"
+    assert items[9201072].is_blueprint_copy is True, "a supplied flag was not carried"
+    assert items[9201072].is_singleton is True, "a supplied flag was overridden"
 
 
-async def test_apply_dev_limit_passes_through_a_batch_under_the_limit(caplog):
-    """A configured limit larger than the batch truncates nothing and warns nothing.
+@pytest.mark.parametrize("limit", [5, 3], ids=["limit_above_batch", "limit_equals_batch"])
+async def test_apply_dev_limit_passes_through_a_batch_at_or_under_the_limit(
+    caplog, limit: int
+):
+    """A configured limit the batch does not EXCEED truncates nothing and warns nothing.
 
     The three tested paths are limit<len, 0 and None; this is the fourth corner, and
     the only one where the limit is ACTIVE but does not fire. It is also the one a
     developer actually runs into — a limit set generously enough to keep working — so
     a spurious DEV_MODE warning here would be permanent noise in every dev log.
+
+    Both sides of the comparison are parametrized because the guard is `>` and the row
+    it closes says `<=`: with only the strictly-under case, flipping `>` to `>=` warns
+    and truncates at exactly the limit while every test still passes. An off-by-one on
+    a real boundary is the plainest kind of surviving edit there is.
     """
     caplog.set_level("WARNING")
     service = _make_service()
-    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 5
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = limit
     batch = [_ship_contract_dict(cid) for cid in (920108, 920109, 920110)]
 
     limited = service._apply_dev_limit(batch)
