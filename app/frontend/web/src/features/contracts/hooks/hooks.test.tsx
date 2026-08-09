@@ -395,7 +395,7 @@ describe('search freezing and field-wise search equality', () => {
 
       const { result, rerender } = renderHook(
         ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
-        { wrapper, initialProps: { raw: { search: 'rifter' } } },
+        { wrapper, initialProps: { raw: { search: 'rifter' } as Record<string, unknown> } },
       )
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
       const beforeTyping = listCalls()

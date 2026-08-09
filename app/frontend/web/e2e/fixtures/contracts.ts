@@ -72,6 +72,8 @@ const CATEGORY_NAMES: Record<number, string> = {
   9: 'Blueprint',
 }
 
+import type { components } from '../../src/lib/api/schema'
+
 export interface WireContractItem {
   record_id: number
   type_id: number
@@ -150,6 +152,25 @@ export interface WireCoverage {
   as_of: string | null
 }
 
+/**
+ * Compile-time proof that WirePage still mirrors the list response the backend
+ * actually publishes. `tsc -b` is one of the five lanes, so a field added to the
+ * API schema and forgotten here becomes a build error instead of a fixture lane
+ * that quietly stops being a mirror (which is exactly how unknown_system_excluded
+ * went missing). Assignability alone would not catch it — a missing field is
+ * perfectly assignable — so the check is over the KEYS.
+ */
+type _NoApiFieldMissingFromWirePage = Exclude<
+  keyof components['schemas']['ContractListResponse'],
+  keyof WirePage
+> extends never
+  ? true
+  : ['WirePage is missing a field the API publishes', Exclude<
+      keyof components['schemas']['ContractListResponse'],
+      keyof WirePage
+    >]
+export const wirePageMirrorsTheApi: _NoApiFieldMissingFromWirePage = true
+
 export interface WirePage {
   total: number
   page: number
@@ -157,6 +178,11 @@ export interface WirePage {
   items: WireContract[]
   segment_counts: Record<WireContractType, number>
   coverage: WireCoverage
+  // The count of rows dropped for having no resolved solar system (player-owned
+  // structures). The backend publishes it on every list response, so a fixture
+  // lane that claims to mirror the wire has to carry it — omitting one field is
+  // how a lane stops being a mirror without anyone noticing.
+  unknown_system_excluded: number | null
 }
 
 export interface WireTaxonomyCategory {
@@ -294,7 +320,12 @@ function deriveComposition(volume: number, offered: WireContractItem[]): WireCom
     (a, b) =>
       b.item_row_count - a.item_row_count ||
       Number(a.name === null) - Number(b.name === null) ||
-      (a.name ?? '').localeCompare(b.name ?? ''),
+      // ORDINAL, not localeCompare: the backend breaks this tie in Python, which
+      // compares strings by code point, so 'Z' sorts before 'a'. localeCompare
+      // is case-insensitive-ish in most locales and puts 'a' first — the two
+      // agree only over same-case ASCII, which is all the current fixtures use.
+      // The fixture lane's whole claim is that it answers as the backend does.
+      compareOrdinal(a.name ?? '', b.name ?? ''),
   )
 
   return { categories, total_item_rows: offered.length, total_volume: volume }
@@ -400,6 +431,16 @@ export function coverage(overrides: Partial<WireCoverage> = {}): WireCoverage {
   return { ingested_region_ids: [COVERED_REGION_ID], as_of: stampMinutesAgo(6), ...overrides }
 }
 
+/**
+ * Python's `<` on str compares code point by code point. JavaScript's relational
+ * operators on strings compare UTF-16 code units, which agrees with Python across
+ * the whole BMP — and unlike localeCompare it is locale-independent, so the lane
+ * cannot answer differently on a different machine.
+ */
+export function compareOrdinal(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
 export function pageOf(
   contracts: WireContract[],
   overrides: Partial<Omit<WirePage, 'items'>> = {},
@@ -411,6 +452,7 @@ export function pageOf(
     items: contracts,
     segment_counts: countByType(contracts),
     coverage: coverage(),
+    unknown_system_excluded: null,
     ...overrides,
   }
 }
@@ -557,5 +599,6 @@ export function paginate(all: WireContract[], page: number, size: number): WireP
     // figures describe what selecting a segment would show.
     segment_counts: countByType(all),
     coverage: coverage(),
+    unknown_system_excluded: null,
   }
 }
