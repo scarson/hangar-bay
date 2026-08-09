@@ -728,6 +728,74 @@ describe('contract-type segments', () => {
     })
   })
 
+  it('sorts by Deadline from its header, and shows the sort it applied', async () => {
+    // Register C9. days_to_complete is a SERVER sort (§6.2), so the header exists to
+    // disclose it — a sort reachable only by hand-editing the URL, with no header to
+    // show or clear it, is the invisible-ordering defect the column's own comment
+    // names. Untested in unit AND e2e, so nothing connected the click to the wire.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    const header = screen.getByRole('columnheader', { name: /Deadline/ })
+    await userEvent.click(within(header).getByRole('button'))
+
+    // URL...
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ sort_by: 'days_to_complete' }),
+    )
+    // ...wire...
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=days_to_complete')
+      // DEFAULT_DIRECTION for this field is desc — most days to deliver in first.
+      expect(listCall).toContain('sort_direction=desc')
+    })
+    // ...and the header says so, which is the whole reason it is clickable.
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: /Deadline/ })).toHaveAttribute(
+        'aria-sort',
+        'descending',
+      ),
+    )
+  })
+
+  it('flips the Deadline direction when its header is clicked again', async () => {
+    // Re-clicking the ACTIVE field reverses it rather than re-applying the default,
+    // which is what makes the header a control rather than a one-way switch.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp(
+      '/contracts?contract_type=courier&ships_only=false&sort_by=days_to_complete&sort_direction=desc',
+    )
+    await screen.findByText('Jita to Amarr rush')
+
+    await userEvent.click(
+      within(screen.getByRole('columnheader', { name: /Deadline/ })).getByRole('button'),
+    )
+
+    // URL as well as wire: the first click asserts both, and a flip that reached the
+    // request without reaching the address bar would produce a link that does not
+    // reproduce what the reader is looking at.
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        sort_by: 'days_to_complete',
+        sort_direction: 'asc',
+      }),
+    )
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_direction=asc')
+    })
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: /Deadline/ })).toHaveAttribute(
+        'aria-sort',
+        'ascending',
+      ),
+    )
+  })
+
   it('resets the ship-name sort to a field the courier set can disclose', async () => {
     // The courier Contract column deliberately drops the ship_name sortField —
     // and the courier set has no Issued column either, so the parser's fallback
@@ -2190,5 +2258,154 @@ describe('search request debouncing', () => {
 
     await waitFor(() => expect(listCalls(calls).length).toBeGreaterThan(0))
     expect(listCalls(calls)[0]).toContain('search=drake')
+  })
+})
+
+describe('ContractDetailPage Reward row', () => {
+  // Register C6. `data.reward != null && data.reward > 0` is two decisions, and
+  // neither the render nor the suppression was asserted anywhere. Zero is falsy, so
+  // the `> 0` half is what stops a price-only contract growing a meaningless
+  // "0 ISK" Reward row — and a truthiness-narrowed regression keeps both arms
+  // looking right until you check the zero case specifically.
+  it('renders the reward on a courier, where it is the headline figure', async () => {
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, type: 'courier', reward: 4_500_000 })))
+
+    renderApp('/contracts/101')
+
+    const reward = await screen.findByText('Reward')
+    expect(reward.parentElement).toHaveTextContent('4,500,000')
+  })
+
+  it.each([
+    { label: 'zero', reward: 0 },
+    { label: 'absent', reward: null },
+  ])('suppresses the row entirely when the reward is $label', async ({ reward }) => {
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, reward })))
+
+    renderApp('/contracts/101')
+
+    // Wait on a sibling field so the assertion runs against a rendered page rather
+    // than against one that has not loaded yet — otherwise it passes vacuously.
+    await screen.findByText('Price')
+    expect(screen.queryByText('Reward')).not.toBeInTheDocument()
+  })
+})
+
+describe('ContractDetailPage empty contents', () => {
+  // Both item-less types, not just courier: the register names the courier/LOAN
+  // state, and a single courier fixture is satisfied by a gate that requires
+  // `type === 'courier'` — which would silently drop the card from every loan.
+  it.each(['courier', 'loan'])('says so plainly when a %s records no items', async (type) => {
+    // Register C7. Without the card the Contents heading renders above nothing at
+    // all, which reads as a failed load rather than as a contract that legitimately
+    // carries no items.
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, type, items: [] })))
+
+    renderApp('/contracts/101')
+
+    expect(await screen.findByText(/No item data recorded for this contract/)).toBeInTheDocument()
+    // The heading still stands, so the card is an explanation rather than a gap.
+    expect(screen.getByRole('heading', { name: 'Contents' })).toBeInTheDocument()
+  })
+})
+
+describe('ContractDetailPage watch button gate', () => {
+  // Register C10: `item.is_included && item.category === 'ship'`. Both arms
+  // unasserted at this layer. Watching a type you can only ever be ASKED for, or
+  // one that is not a ship at all, is an alert for a thing this feature does not
+  // track.
+  const OFFERED_SHIP = {
+    record_id: 1, type_id: 587, quantity: 1, is_included: true,
+    type_name: 'Rifter', category: 'ship',
+  }
+
+  // The button is auth-gated (`if (!user) return null`), so these must sign in. Using
+  // the anonymous stub made the NEGATIVE arms pass for the wrong reason — no button
+  // renders for a signed-out reader whatever the item is — which the positive arm
+  // caught by failing.
+  const AUTHED = { character_id: 42, character_name: 'Pilot', watchlist_alerts_enabled: true }
+  const signedIn = (handler: (url: string) => Response) => (url: string) =>
+    /\/api\/v1\/me$/.test(url) ? jsonResponse(AUTHED) : handler(url)
+
+  it('offers the watch button on an OFFERED ship', async () => {
+    stubFetch(signedIn(() => jsonResponse({ ...CONTRACT, items: [OFFERED_SHIP] })))
+
+    renderApp('/contracts/101')
+
+    const offered = within(await screen.findByRole('region', { name: /^Offered/ }))
+    expect(offered.getByText(/Rifter/)).toBeInTheDocument()
+    expect(offered.getByRole('button', { name: /watch/i })).toBeInTheDocument()
+  })
+
+  it.each([
+    {
+      label: 'a REQUESTED ship (wrong side)',
+      item: { ...OFFERED_SHIP, record_id: 3, is_included: false },
+      region: /^Requested/,
+    },
+    {
+      label: 'an offered NON-ship (wrong category)',
+      item: { ...OFFERED_SHIP, record_id: 4, type_id: 34, type_name: 'Tritanium', category: null },
+      region: /^Offered/,
+    },
+  ])('withholds it from $label', async ({ item, region }) => {
+    stubFetch(signedIn(() => jsonResponse({ ...CONTRACT, items: [item] })))
+
+    renderApp('/contracts/101')
+
+    // The row itself must be present — otherwise "no watch button" would hold
+    // merely because nothing rendered.
+    const scope = within(await screen.findByRole('region', { name: region }))
+    expect(scope.getByText(new RegExp(item.type_name))).toBeInTheDocument()
+    expect(scope.queryByRole('button', { name: /watch/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('responsive column classes reach the DOM', () => {
+  // The columns.test.ts policy states which columns hide at which breakpoint, but
+  // that is METADATA — deleting `column.hiddenClass` from the <th>/<td> className in
+  // ContractTable leaves every one of those assertions green while mobile rendering
+  // breaks entirely. This asserts the class actually lands on both the header and
+  // the body cell; e2e/responsive.spec.ts asserts the breakpoint then does its job,
+  // which jsdom cannot (it evaluates no media queries).
+  it.each([
+    { column: 'Location', hiddenClass: 'max-lg:hidden' },
+    { column: 'Issued', hiddenClass: 'max-sm:hidden' },
+  ])('applies $hiddenClass to the $column header AND its cells', async ({ column, hiddenClass }) => {
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+
+    renderApp('/contracts')
+    await screen.findByRole('columnheader', { name: new RegExp(column) })
+
+    const header = screen.getByRole('columnheader', { name: new RegExp(column) })
+    expect(header).toHaveClass(hiddenClass)
+
+    // The body cell too: hiding only the header leaves an orphaned column of data
+    // under a missing heading, which is worse than either alone.
+    const index = screen.getAllByRole('columnheader').indexOf(header)
+    const bodyRow = screen.getAllByRole('row')[1]
+    expect(within(bodyRow).getAllByRole('cell')[index]).toHaveClass(hiddenClass)
+  })
+
+  it('leaves an always-visible column unhidden in its header AND its cells', async () => {
+    // Anti-vacuity, and it has to cover the CELL as well as the header: `hiddenClass`
+    // is not the only way a column can disappear. A `max-lg:hidden` added to
+    // PRICE_COLUMN.cellClass hides every Price <td> on mobile while leaving
+    // hiddenClass undefined — so a header-only check reports an always-visible
+    // column that is in fact invisible below `lg` wherever the figures actually are.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+    renderApp('/contracts')
+
+    const price = await screen.findByRole('columnheader', { name: /Price/ })
+    expect(price.className).not.toContain('hidden')
+
+    const index = screen.getAllByRole('columnheader').indexOf(price)
+    const bodyRow = screen.getAllByRole('row')[1]
+    const cell = within(bodyRow).getAllByRole('cell')[index]
+    expect(cell.className).not.toContain('hidden')
+    // ...and nothing INSIDE it either: wrapping the figure in a hidden span leaves the
+    // padded <td> box visible while the number itself disappears, which a class check
+    // on the cell alone cannot see.
+    expect(cell.querySelector('[class*="hidden"]')).toBeNull()
   })
 })
