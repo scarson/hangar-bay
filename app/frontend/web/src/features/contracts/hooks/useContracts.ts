@@ -27,7 +27,7 @@ const SEARCH_DEBOUNCE_MS = 300
 // which is never all of them.
 // sameSearch.test.ts drives it with GENERATED input against an independent
 // reference instead, bounded by that file's MAX_LIST rather than by which cases
-// somebody remembered to write.
+// somebody remembered to write. See its header for what that does and does not buy.
 export function sameSearch(a: ContractSearch, b: ContractSearch): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof ContractSearch>
   for (const key of keys) {

@@ -55,14 +55,6 @@ function referenceEqual(a: unknown, b: unknown): boolean {
 
 const base = parseContractSearch({})
 
-/** Id lists as the parser can produce them, plus the absent case. */
-const idList = fc.oneof(
-  fc.constant(undefined),
-  // A small value pool so equal and near-equal lists are drawn often enough to matter;
-  // an unconstrained integer domain would almost never generate two equal arrays and
-  // the equality half of the property would go effectively untested.
-  fc.array(fc.integer({ min: 1, max: 4 }), { maxLength: 8 }),
-)
 
 // The one number that bounds what these properties prove. A comparator inspecting
 // MORE than this many positions would still survive — that residual is inherent to
@@ -71,6 +63,20 @@ const idList = fc.oneof(
 // authoring another fixture, which is the whole reason generated input replaced the
 // example-by-example regress.
 const MAX_LIST = 24
+
+/**
+ * Id lists as the parser can produce them, plus the absent case. Bounded by MAX_LIST
+ * like every other generator here, so the file really does have ONE cutoff to raise.
+ *
+ * The value pool is small so near-equal lists are drawn often enough to be interesting.
+ * It is not relied on for the equality side: two independently generated lists of any
+ * length rarely collide, so equality is covered deterministically by the reflexivity
+ * property, which constructs its pair.
+ */
+const idList = fc.oneof(
+  fc.constant(undefined),
+  fc.array(fc.integer({ min: 1, max: 4 }), { maxLength: MAX_LIST }),
+)
 
 const withIds = (region_ids: number[] | undefined): ContractSearch => ({ ...base, region_ids })
 
