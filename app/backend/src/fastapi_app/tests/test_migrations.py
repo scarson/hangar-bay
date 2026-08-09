@@ -71,15 +71,22 @@ def test_downgrade_refuses_while_priceless_contracts_exist(blank_migrated_sync_c
                   r"contract\(s\) have no price.*data decision this migration "
                   r"refuses to make",
         ):
-            command.downgrade(cfg, "-1")
+            # Explicit target, never "-1": a relative step silently re-targets
+            # itself the moment a newer migration lands above this one. The
+            # preceding migrations' downgrades run first on the walk; the
+            # refusal aborts the one caller-managed transaction, so the
+            # rollback below restores every step.
+            command.downgrade(cfg, "685dab7d6df5")
     finally:
         # The fixture is SESSION-scoped (TEST-23): one database and one
         # connection shared by every consumer. Leave both exactly as found
         # WHATEVER this test's outcome — clear any open/aborted transaction,
-        # then remove the row this test committed, or the sibling
-        # clean-downgrade test meets a corpus with a price-less contract.
+        # remove the row this test committed, and restore head (the first
+        # single-step downgrade above committed).
         conn.rollback()
         conn.execute(text("DELETE FROM contracts WHERE contract_id = 990001"))
+        conn.commit()
+        command.upgrade(cfg, "head")
         conn.commit()
 
 
@@ -95,7 +102,9 @@ def test_clean_downgrade_restores_not_null_on_price(blank_migrated_sync_connecti
     conn = blank_migrated_sync_connection
     cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     cfg.attributes["connection"] = conn
-    command.downgrade(cfg, "-1")
+    # Explicit targets, never "-1" — a relative step silently re-targets
+    # itself the moment a newer migration lands above this one.
+    command.downgrade(cfg, "685dab7d6df5")
     conn.commit()
 
     try:
@@ -140,3 +149,72 @@ def test_offline_downgrade_renders_a_transaction_wrapped_locked_guard():
     alter = rendered.index("ALTER COLUMN price SET NOT NULL")
     commit = rendered.index("COMMIT")
     assert begin < lock < guard < alter < commit
+
+
+def test_downgrade_refuses_while_an_issuer_id_exceeds_int32(blank_migrated_sync_connection):
+    """The issuer-narrowing downgrade must fail with a stated reason once CCP has
+    allocated beyond int32 — not with an incidental out-of-range error. Same
+    emitted-SQL guard shape as the price migration; same SESSION-scoped fixture
+    discipline (TEST-23): every mutation restored in finally."""
+    from pathlib import Path
+
+    import pytest
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+
+    conn = blank_migrated_sync_connection
+    conn.execute(
+        text(
+            """
+            INSERT INTO contracts
+                (contract_id, collateral, status, type, issuer_id,
+                 issuer_corporation_id, for_corporation, date_issued, date_expired,
+                 item_processing_status, is_ship_contract)
+            VALUES
+                (990002, 0, 'outstanding', 'item_exchange', 3000000000, 1, FALSE,
+                 '2026-07-01T00:00:00Z', '2026-12-31T00:00:00Z', 'PENDING_ITEMS',
+                 FALSE)
+            """
+        )
+    )
+    conn.commit()
+
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    cfg.attributes["connection"] = conn
+    try:
+        with pytest.raises(DBAPIError, match="cannot narrow issuer columns to int32"):
+            command.downgrade(cfg, "f2a91c3b7e04")
+    finally:
+        conn.rollback()
+        conn.execute(text("DELETE FROM contracts WHERE contract_id = 990002"))
+        conn.commit()
+
+
+def test_clean_downgrade_restores_int32_issuer_columns(blank_migrated_sync_connection):
+    """With no oversized ids the downgrade must actually narrow — the guard test
+    alone stays green if the alteration is dropped. Head restored in finally."""
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    conn = blank_migrated_sync_connection
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    cfg.attributes["connection"] = conn
+    command.downgrade(cfg, "f2a91c3b7e04")
+    conn.commit()
+
+    try:
+        data_type = conn.execute(
+            text(
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_name = 'contracts' AND column_name = 'issuer_id'"
+            )
+        ).scalar_one()
+        assert data_type == "integer"
+    finally:
+        command.upgrade(cfg, "head")
+        conn.commit()
