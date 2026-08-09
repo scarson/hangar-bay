@@ -23,7 +23,8 @@ const SEARCH_DEBOUNCE_MS = 300
 //
 // Exported for its own test. Example-based tests cannot close this predicate: for
 // any finite set of fixtures there is a comparator checking exactly the positions
-// those fixtures vary, so each example only rules out one wrong implementation.
+// those fixtures vary; an example rules out the implementations that differ ON it,
+// which is never all of them.
 // sameSearch.test.ts drives it with GENERATED input against an independent
 // reference instead, bounded by that file's MAX_LIST rather than by which cases
 // somebody remembered to write.

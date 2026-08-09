@@ -20,10 +20,16 @@ import { sameSearch } from './useContracts'
  * A bounded exhaustive sweep does not terminate it either: for a domain of maximum
  * length N there is always a `slice(0, N)` implementation correct on the whole domain.
  *
- * Generated input does not escape that bound either — a generator has a maximum size, so
- * strictly this rules out implementations that go wrong at any depth UP TO `MAX_LIST`,
- * and a comparator inspecting more positions than that still passes. That residual is
- * real and is not claimed away.
+ * Generated input does not escape that bound either, and finite sampling is weaker still.
+ * Precisely what this establishes:
+ *   - it mutation-kills the named plausible edits (reference equality, either clause of
+ *     the compound predicate deleted, order-blind set comparison);
+ *   - it kills fixed-prefix comparators through index 23, the deepest-index property
+ *     being deterministic rather than sampled;
+ *   - it SAMPLES the broader space of pairs up to `MAX_LIST` elements — sampling, so it
+ *     does not rule out every implementation with a defect somewhere inside that range;
+ *   - a comparator inspecting `MAX_LIST` positions or more passes, and widening that
+ *     cutoff is a one-constant change.
  *
  * What changes is the shape of the cost. With examples, each additional position of
  * guarantee is another hand-authored fixture, which is why six review rounds produced six
@@ -69,14 +75,14 @@ const MAX_LIST = 24
 const withIds = (region_ids: number[] | undefined): ContractSearch => ({ ...base, region_ids })
 
 describe('sameSearch (property-based)', () => {
-  it('sees a change at ANY index, however deep', () => {
+  it('sees a single-element change at a sampled index', () => {
     // The discriminating property, and it needs a WITNESS rather than luck: two
     // independently generated arrays almost never agree on a long prefix, so a
     // comparator checking only the first k positions is never challenged by random
     // pairs — that is exactly how a fixed-depth implementation survived the first
     // draft of this file. So the pair is CONSTRUCTED: take a list, change one element
-    // at a uniformly-chosen index, and require the predicate to notice. The index is
-    // drawn across the whole list, so no fixed inspection depth can pass.
+    // at a uniformly-chosen index, and require the predicate to notice. This one
+    // SAMPLES; the deterministic depth guarantee is the deepest-index property below.
     fc.assert(
       fc.property(
         fc.array(fc.integer({ min: 1, max: 4 }), { minLength: 1, maxLength: MAX_LIST }),
@@ -94,12 +100,13 @@ describe('sameSearch (property-based)', () => {
     )
   })
 
-  it('sees a change at the DEEPEST index, for every generated length', () => {
+  it('sees a change at index MAX_LIST - 1, deterministically', () => {
     // The random-index property above reaches deep positions only by luck: on a list of
     // length L it picks the final slot 1/L of the time, so a comparator inspecting the
     // first k positions survives unless a long list happens to draw a late index. This
-    // targets the last index deterministically, so every generated length longer than k
-    // is a counterexample to a depth-k comparator on every single run.
+    // pins the length and targets its last index, so on EVERY run it is a counterexample
+    // to any fixed-prefix comparator of depth 23 or less. Depth MAX_LIST or more passes;
+    // that is the stated cutoff.
     fc.assert(
       fc.property(
         // Pinned to FULL length, not merely bounded by it: fast-check biases array
