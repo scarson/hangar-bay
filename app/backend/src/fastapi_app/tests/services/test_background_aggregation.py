@@ -1743,6 +1743,113 @@ async def test_freshness_recorder_overwrites_a_non_object_prior_record(
     assert record["outcome"] == "success"
     assert record["last_success_at"] == record["finished_at"]
 
+async def test_run_aggregation_skips_cleanly_when_the_lock_is_already_held(
+    caplog, monkeypatch: pytest.MonkeyPatch
+):
+    """A run that cannot take the lock must do nothing at all and return quietly.
+
+    This is the scenario the whole lock exists for, and the aggregation side had no
+    test for it: the suite pins release, TTL derivation and token mismatch, but never
+    a PRE-HELD lock. A regression that let the run proceed anyway (concurrent
+    ingestion) or let ConcurrencyLockError escape to the scheduler (a crash-looping
+    job) was invisible here — the matcher suite pins both arms, aggregation neither.
+    """
+    entered = {"count": 0}
+    monkeypatch.setattr(
+        bg_agg, "AsyncSessionLocal", lambda: entered.__setitem__("count", entered["count"] + 1),
+        raising=False,
+    )
+
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[])
+
+    held_by_someone_else = "another-runners-token"
+    store: dict = {bg_agg.AGGREGATION_LOCK_KEY: held_by_someone_else}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        with caplog.at_level("INFO"):
+            await service.run_aggregation()  # must not raise
+
+    service.esi_client.get_public_contracts.assert_not_awaited()  # no ESI traffic
+    assert entered["count"] == 0  # no session opened
+    assert INGEST_KEY not in store  # no freshness record from a run that never ran
+    # The other runner's lock is neither stolen nor released by the skipping run.
+    assert store[bg_agg.AGGREGATION_LOCK_KEY] == held_by_someone_else
+    assert "existing concurrency lock" in caplog.text
+
+
+async def test_freshness_failure_when_every_region_fetch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Total ESI outage: no exception propagates, so the outcome must derive from the
+    counters (ok == 0) rather than from the forced-failure path.
+
+    Success, all-304, partial and forced (commit raise) are pinned; this natural
+    all-failed path is the readiness signal for an ESI outage and had no test that
+    last_success_at survives it and the gauge stays put.
+    """
+    import json as _json
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=RuntimeError("ESI 500"))
+
+    prior = "2026-07-18T00:00:00+00:00"
+    store: dict = {
+        INGEST_KEY: _json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 2,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure"
+    assert record["regions_ok"] == 0
+    assert record["regions_failed"] == 2
+    # Staleness is always measured against the last REAL refresh.
+    assert record["last_success_at"] == prior
+    assert record["finished_at"] != prior  # the record was rewritten, not left alone
+    assert _gauge_value() == before
+
+
+async def test_a_freshness_write_failure_never_fails_the_run(caplog):
+    """A cache blip while RECORDING the outcome must not turn a healthy ingest into a
+    failed job — the recorder's own try/except is what guarantees that.
+
+    Narrow or delete that except and a Valkey hiccup after a clean commit propagates
+    out of _record_run_outcome into run_aggregation's forced-failure handler, which
+    records failure and re-raises: a successful run reported as broken.
+    """
+    from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
+
+    class _RecorderWriteFails(_FakeLockRedis):
+        """Lock traffic works; only the freshness SET blows up."""
+
+        async def set(self, key, value, nx=False, ex=None):
+            if key == INGEST_KEY:
+                raise RuntimeError("valkey blip")
+            return await super().set(key, value, nx=nx, ex=ex)
+
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=_NotModified("304"))
+
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_RecorderWriteFails(store)):
+        with caplog.at_level("WARNING"):
+            await service.run_aggregation()  # must not raise
+
+    service.esi_client.get_public_contracts.assert_awaited()  # the run really ran
+    assert "failed to record ingest outcome" in caplog.text
+    assert INGEST_KEY not in store
+    # And the swallow does not strand the lock: release still happened in the finally.
+    assert bg_agg.AGGREGATION_LOCK_KEY not in store
+
 
 async def test_run_aggregation_rejects_non_list_region_config(caplog):
     """A region config that is not a list of int aborts the run before the
