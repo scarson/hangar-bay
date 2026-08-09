@@ -332,6 +332,10 @@ class ContractFilters(BaseModel):
     search: Optional[str] = Field(
         default=None,
         min_length=3,
+        # Bounded: the box carries ship and contract names, and without a
+        # ceiling arbitrary-length text binds into a double-wildcard ILIKE
+        # over two columns on an anonymous endpoint.
+        max_length=100,
         description="Case-insensitive search across contract title and ship name.",
     )
     # Numeric ranges
