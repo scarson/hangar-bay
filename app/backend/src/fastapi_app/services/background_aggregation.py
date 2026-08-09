@@ -17,6 +17,7 @@ from ..core.metrics import last_ingest_success_timestamp
 
 from ..db import AsyncSessionLocal
 from ..models.contracts import Contract, ContractItem, EsiTaxonomyCache  # Models
+from ..schemas.contracts import ITEM_BEARING_CONTRACT_TYPES
 # Removed incorrect import: from ..services.esi_client import ESIClient as ESIClientService
 from .db_upsert import bulk_upsert  # Upsert utility
 
@@ -717,7 +718,7 @@ class ContractAggregationService:
         all_items: List[dict] = []
         processed_contract_ids: set[int] = set()
         for contract in contracts:
-            if contract["type"] not in ["item_exchange", "auction"]:
+            if contract["type"] not in ITEM_BEARING_CONTRACT_TYPES:
                 continue
             if contract["contract_id"] in already_enriched:
                 continue

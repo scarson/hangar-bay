@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.background_aggregation as bg_agg
 from fastapi_app.models.contracts import Contract, ContractItem, EsiTaxonomyCache
+from fastapi_app.schemas.contracts import ITEM_BEARING_CONTRACT_TYPES, ContractType
 from fastapi_app.services.background_aggregation import ContractAggregationService
 from fastapi_app.tests.core.test_esi_client import _etag_client, _etag_response
 from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
@@ -1497,6 +1498,34 @@ async def test_an_issuer_id_above_int32_survives_the_writer(db_session: AsyncSes
     )).scalar_one()
     assert row.issuer_id == 3_000_000_000
     assert row.issuer_corporation_id == 3_000_000_001
+
+@pytest.mark.parametrize("contract_type", sorted(t.value for t in ContractType))
+async def test_items_are_fetched_for_exactly_the_item_bearing_contract_types(
+    db_session: AsyncSession, contract_type: str
+):
+    """The writer's item-fetch partition must be the enum-derived one, for every type.
+
+    _fetch_item_rows decides which contracts to ask ESI for items. The read path
+    already derives that partition from the enum "so a contract type can only ever be
+    classified in one place", but the writer restated it as a literal, so the two could
+    drift: add a type to ContractType and the reader classifies it item-bearing while
+    the writer silently never fetches its items — contracts that permanently look empty.
+
+    Parametrized over the whole enum rather than a hand-listed pair, so a new member is
+    covered the moment it is added instead of the next time somebody remembers to.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[])
+    contract = _ship_contract_dict(890301)
+    contract["type"] = contract_type
+
+    await service._process_contracts(db_session, [contract])
+
+    if contract_type in ITEM_BEARING_CONTRACT_TYPES:
+        service.esi_client.get_contract_items.assert_awaited_once_with(890301)
+    else:
+        # No ESI round-trip at all for a type that cannot carry items.
+        service.esi_client.get_contract_items.assert_not_awaited()
 
 
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):

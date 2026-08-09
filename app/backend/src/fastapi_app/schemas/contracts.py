@@ -299,6 +299,25 @@ class ContractType(str, Enum):
     unknown = "unknown"
 
 
+# Contract types ESI never returns items for. The ship flag is derived from items,
+# so a contract of one of these types is never a ship contract — which is why their
+# segment counts are read with the ships-only filter lifted (Criterion 1.8).
+ITEMLESS_CONTRACT_TYPES = frozenset({
+    ContractType.courier.value,
+    ContractType.loan.value,
+    ContractType.unknown.value,
+})
+
+# The complement of ITEMLESS_CONTRACT_TYPES over the enum, derived rather than
+# restated so a contract type can only ever be classified in one place. It lives
+# beside the enum because both halves of the pipeline ask this question: the read
+# path (which contracts can carry items, and so which segment counts lift the
+# ships-only filter) and the ingestion writer (which contracts to fetch items FOR).
+ITEM_BEARING_CONTRACT_TYPES = frozenset(
+    contract_type.value for contract_type in ContractType
+) - ITEMLESS_CONTRACT_TYPES
+
+
 class SortableContractFields(str, Enum):
     """Fields that can be used for sorting contracts."""
 
