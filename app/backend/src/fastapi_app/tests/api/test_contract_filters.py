@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_app.models import Contract, ContractItem
 from fastapi_app.models.contracts import EsiTaxonomyCache
 from fastapi_app.services.background_aggregation import ENRICHMENT_VERSION
+from fastapi_app.services.contract_service import NULLABLE_SORTS
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -2202,6 +2203,75 @@ async def test_a_category_seen_only_on_delisted_rows_does_not_hold_the_signal(
     assert (await _taxonomy(client))["coverage"] == "complete"
 
 
+async def test_taxonomy_breaks_a_name_tie_by_id_so_the_order_is_total(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Name alone is not a total order, and ESI does reuse names across ids.
+
+    The sort key carries the id as a second element precisely so two entries sharing
+    a name land in a fixed order rather than in whatever order the cache read them —
+    an order that changes between requests reshuffles the filter rail under the
+    reader's cursor. Both lists are seeded with the HIGHER id first, so a key that
+    dropped its id element would preserve that insertion order under Python's stable
+    sort and fail here rather than pass by coincidence.
+
+    Observed as the ordered id list, not as membership: every permutation satisfies a
+    set assertion, and permutation is the whole regression (TEST-25).
+    """
+    db_session.add_all([
+        _cached_taxonomy("category", 66, "Ship"),
+        _cached_taxonomy("category", 6, "Ship"),
+        _cached_taxonomy("group", 250, "Frigate", 6),
+        _cached_taxonomy("group", 25, "Frigate", 6),
+    ])
+    await db_session.flush()
+
+    body = await _taxonomy(client)
+    assert [entry["category_id"] for entry in body["categories"]] == [6, 66]
+    assert [entry["group_id"] for entry in body["groups"]] == [25, 250]
+
+
+async def test_a_stale_enrichment_settles_coverage_without_the_category_sweep(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch
+):
+    """The two coverage conditions are ordered for COST, and only the order is at stake.
+
+    Either condition failing reports "partial", so the answer is identical whichever
+    runs first — which is exactly why a reordering is invisible to every assertion on
+    the RESPONSE. The property is that the more expensive query does not run once the
+    cheap one has already settled the answer, and the only observation point that can
+    see it is whether the sweep was called at all (TEST-25).
+
+    A resweep in progress is the state this exists for: the ratio says "partial" for
+    every request until the sweep finishes, and each of those requests would otherwise
+    pay for a distinct-category scan over the live corpus to learn nothing new.
+    """
+    from fastapi_app.services import contract_service as cs
+
+    calls: list[int] = []
+
+    async def _counting_sweep(db):
+        calls.append(1)
+        return set()
+
+    monkeypatch.setattr(cs, "_live_category_ids", _counting_sweep)
+
+    db_session.add_all([
+        _cached_taxonomy("category", 6, "Ship"),
+        # Mid-resweep: stamped at the previous enrichment version, so the ratio
+        # cannot report the live corpus as currently enriched.
+        _enriched_contract(
+            971901,
+            version=ENRICHMENT_VERSION - 1,
+            items=[_taxonomy_item(9719011, category_id=6, group_id=25)],
+        ),
+    ])
+    await db_session.flush()
+
+    assert (await _taxonomy(client))["coverage"] == "partial"
+    assert calls == [], "the category sweep ran after the ratio had already answered"
+
+
 # --- New sortable fields: buyout, days_to_complete, reward_per_volume (region 99999966) ---
 #
 # Each of the three gets its own acceptance evidence (spec §6.2): a sort that
@@ -2653,3 +2723,276 @@ async def test_a_region_outside_the_configured_hint_still_drops_stale_rows(
     response = await client.get("/contracts/?region_ids=99999976")
     assert response.status_code == 200
     assert {row["contract_id"] for row in response.json()["items"]} == {976001}
+
+
+# --- Out-of-range pages and the detail endpoint's liveness asymmetry (region 99999977) ---
+#
+# A page beyond the last one is not the same request as a search that matches nothing,
+# and the two take different routes through `get_contracts`. The empty-result
+# short-circuit fires on `total == 0` and never runs a page query at all; here `total`
+# is positive, the short-circuit does not fire, and the page query runs and legitimately
+# returns nothing. Both fetch paths reach that state by different mechanics — the simple
+# path OFFSETs past the end, the joined path OFFSETs past the end of its distinct-id
+# query and then loads `WHERE contract_id IN ()` from an empty list — so both are pinned.
+
+OUT_OF_RANGE_REGION = 99999977
+
+
+def _paged_contract(cid: int, *, ship_name: str, seen: datetime) -> Contract:
+    """A live contract carrying one named ship, so the ship_name sort has a join to make.
+
+    `seen` is required rather than defaulted to `now()` inside: the delisting watermark
+    is an exact `last_seen_at >= max(last_seen_at) in region` with no tolerance, so rows
+    meant to be co-listed must carry the IDENTICAL stamp, not merely adjacent ones. That
+    is also what ingestion does — one run writes one `seen_at` across the whole batch —
+    so a helper stamping each row on its own clock builds a state ingestion cannot
+    produce, and quietly delists every row but the last (TEST-18).
+    """
+    now = datetime.now(timezone.utc)
+    return Contract(
+        contract_id=cid, title=f"Paging Case {cid}", price=1_000_000,
+        collateral=0.0, status="outstanding", type="item_exchange",
+        issuer_id=977, issuer_corporation_id=977, for_corporation=False,
+        is_ship_contract=True, start_location_id=60003760,
+        start_location_region_id=OUT_OF_RANGE_REGION,
+        date_issued=now - timedelta(days=1), date_expired=now + timedelta(days=7),
+        last_seen_at=seen,
+        items=[
+            ContractItem(
+                record_id=cid * 10 + 1, type_id=587, type_name=ship_name,
+                quantity=1, is_included=True, is_singleton=False, category="ship",
+            )
+        ],
+    )
+
+
+async def test_a_page_past_the_end_serves_an_empty_page_that_still_counts_the_corpus(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The simple fetch path, OFFSET past the end.
+
+    `total` is what the client paginates against, so an out-of-range page that reported
+    `total: 0` alongside its empty item list would tell the reader the corpus is empty
+    and strand them there — the Previous control is computed from the same number. The
+    envelope must keep echoing the real total and the page that was asked for.
+
+    Distinct from the zero-match short-circuit, which never runs a page query; this
+    request has 2 matching contracts and runs one that returns nothing.
+    """
+    seen = datetime.now(timezone.utc)
+    db_session.add_all([
+        _paged_contract(977001, ship_name="Rifter", seen=seen),
+        _paged_contract(977002, ship_name="Tristan", seen=seen),
+    ])
+    await db_session.flush()
+
+    response = await client.get(
+        f"/contracts/?region_ids={OUT_OF_RANGE_REGION}&page=5&size=2"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert body["total"] == 2
+    assert body["page"] == 5
+    assert body["size"] == 2
+
+
+async def test_a_page_past_the_end_of_the_joined_path_loads_from_an_empty_id_list(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The joined fetch path, where the empty page arrives as an empty `IN ()`.
+
+    Sorting by ship_name forces `_needs_item_join`, so pagination runs over distinct
+    contract ids first and the second query loads `WHERE contract_id IN (<page ids>)`.
+    Past the last page that list is empty, and an empty `IN` is the one shape a
+    hand-built id filter can get wrong in a way that returns EVERYTHING rather than
+    nothing — which would serve the whole corpus under a page number past its end.
+
+    ship_name rather than `search` on purpose: it reaches the same join without
+    depending on the search predicate's offered-side semantics, which are still open.
+    """
+    seen = datetime.now(timezone.utc)
+    db_session.add_all([
+        _paged_contract(977101, ship_name="Rifter", seen=seen),
+        _paged_contract(977102, ship_name="Tristan", seen=seen),
+    ])
+    await db_session.flush()
+
+    response = await client.get(
+        f"/contracts/?region_ids={OUT_OF_RANGE_REGION}"
+        "&sort_by=ship_name&sort_direction=asc&page=5&size=2"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert body["total"] == 2
+    assert body["page"] == 5
+
+
+async def test_detail_still_serves_a_delisted_but_unexpired_contract(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The sibling of the pinned expired-detail case, through the OTHER liveness arm.
+
+    A contract disappears from the list for two independent reasons — its expiry passed,
+    or ESI stopped listing it while it was still in date (bought, cancelled, completed).
+    The detail endpoint deliberately serves both, and only the expiry arm is pinned. The
+    delisting arm is the one a pasted link hits most often, because a contract is far
+    more likely to be bought than to run out its full term.
+
+    The stale row is asserted absent from the LIST in the same test, so the fixture is
+    proved delisted rather than merely assumed to be (TEST-15): a fixture that failed to
+    trip the watermark would make the detail assertion pass for the wrong reason.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add_all([
+        _paged_contract(977201, ship_name="Rifter", seen=now),
+        # Two hours behind its region's newest sighting: delisted, still in date.
+        _paged_contract(977202, ship_name="Tristan", seen=now - timedelta(hours=2)),
+    ])
+    await db_session.flush()
+
+    listed = await client.get(f"/contracts/?region_ids={OUT_OF_RANGE_REGION}")
+    assert listed.status_code == 200
+    assert {row["contract_id"] for row in listed.json()["items"]} == {977201}
+
+    detail = await client.get("/contracts/977202")
+    assert detail.status_code == 200
+    assert detail.json()["contract_id"] == 977202
+
+
+async def test_min_runs_admits_the_esi_sentinel_and_rejects_one_below_it(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """`min_runs` is bounded at -1, not at 0, and the boundary is deliberate.
+
+    -1 is ESI's "not a blueprint copy" sentinel. Public contract data never carries it
+    (ESI-3), so the bound admits a value the corpus cannot hold — which is why nothing
+    exercises it and why narrowing to `ge=0` would look like a safe tidy-up. Pinned as a
+    boundary PAIR: -1 is admitted, -2 is refused. A single-sided assertion is satisfied
+    by any bound at or below -1, including no bound at all.
+    """
+    db_session.add(
+        _paged_contract(977301, ship_name="Rifter", seen=datetime.now(timezone.utc))
+    )
+    await db_session.flush()
+
+    admitted = await client.get(f"/contracts/?region_ids={OUT_OF_RANGE_REGION}&min_runs=-1")
+    assert admitted.status_code == 200
+
+    refused = await client.get(f"/contracts/?region_ids={OUT_OF_RANGE_REGION}&min_runs=-2")
+    assert refused.status_code == 422
+
+
+# --- NULL placement on the JOINED fetch path, for every nullable sort (region 99999978) ---
+#
+# `nulls_last()` is applied by both fetch paths from the same `sort_by in NULLABLE_SORTS`
+# test, but the two paths build different order expressions around it: the simple path
+# orders the column directly, the joined path orders an AGGREGATE of it (min for asc,
+# max for desc) over a grouped distinct-id query. NULL propagates through min/max, so the
+# placement holds for the same reason — but "for the same reason" is an argument, not a
+# test, and only two of the six nullable sorts have ever run it on the joined side.
+#
+# Parametrized over NULLABLE_SORTS itself rather than a hand-listed set, so a seventh
+# nullable sort is covered the moment it joins the frozenset instead of the next time
+# somebody remembers to add a case.
+
+NULLS_JOINED_REGION = 99999978
+NULLS_JOINED_TYPE_ID = 34567
+
+
+@pytest_asyncio.fixture
+async def joined_null_corpus(db_session: AsyncSession):
+    """Three contracts sharing one item type, ordered low / high / nothing-at-all.
+
+    Every nullable sort reads the same shape from this corpus: 978001 sorts before
+    978002 ascending, and 978003 carries NULL in all six columns at once. One fixture
+    serves all six because the assertion is about WHERE NULL LANDS, which is the one
+    thing the six have in common.
+
+    All three carry the identical `last_seen_at`, the way one ingestion run stamps a
+    batch — adjacent-but-different stamps would delist two of the three against the
+    region watermark and leave a single-row corpus that no ordering can discriminate.
+    """
+    seen = datetime.now(timezone.utc)
+
+    def _contract(cid, *, price, volume, buyout, days, reward, ship_name):
+        return Contract(
+            contract_id=cid, title=f"Null Placement {cid}", price=price,
+            collateral=0.0, status="outstanding", type="item_exchange",
+            issuer_id=978, issuer_corporation_id=978, for_corporation=False,
+            is_ship_contract=True, start_location_id=60003760,
+            start_location_region_id=NULLS_JOINED_REGION,
+            date_issued=seen - timedelta(days=1), date_expired=seen + timedelta(days=7),
+            last_seen_at=seen, volume=volume, buyout=buyout,
+            days_to_complete=days, reward=reward,
+            items=[
+                ContractItem(
+                    record_id=cid * 10 + 1, type_id=NULLS_JOINED_TYPE_ID,
+                    type_name=ship_name, quantity=1, is_included=True,
+                    is_singleton=False, category="ship",
+                )
+            ],
+        )
+
+    db_session.add_all([
+        # Every sorted column is DISTINCT between these two, volume included: a shared
+        # volume ties the volume sort, the contract_id tiebreaker then produces
+        # ascending order in both directions, and the descending assertion fails on a
+        # fixture defect rather than on a placement one. reward_per_volume still has to
+        # order the same way, so the rewards are chosen against the volumes:
+        # 10 000 / 100 = 100 ...
+        _contract(978001, price=1_000_000, volume=100.0, buyout=1_000_000,
+                  days=1, reward=10_000, ship_name="Apocalypse"),
+        # ... against 1 800 000 / 200 = 9 000.
+        _contract(978002, price=9_000_000, volume=200.0, buyout=9_000_000,
+                  days=9, reward=1_800_000, ship_name="Zealot"),
+        # NULL in every sorted column at once, including the item's name.
+        _contract(978003, price=None, volume=None, buyout=None,
+                  days=None, reward=None, ship_name=None),
+    ])
+    await db_session.flush()
+    return seen
+
+
+@pytest.mark.parametrize(
+    "sort_by",
+    sorted(field.value for field in NULLABLE_SORTS),
+)
+async def test_the_joined_path_puts_nulls_last_whichever_way_every_nullable_sort_runs(
+    client: AsyncClient, joined_null_corpus, sort_by: str
+):
+    """A missing value is not a low one, on the joined path as much as the simple one.
+
+    `type_ids` forces `_needs_item_join` for the five contract-column sorts; ship_name
+    reaches the same path on its own. Both directions are asserted because nulls_last is
+    direction-independent by construction and a regression that simply dropped the call
+    would put NULLs first in exactly one of the two — an assertion on one direction alone
+    is satisfied by the database's default placement half the time.
+
+    The order is observed as the full ordered id list rather than as "978003 is last":
+    the latter also passes when the two REAL values have swapped, which is a different
+    regression in the same expression (TEST-25).
+    """
+    base = (
+        f"/contracts/?region_ids={NULLS_JOINED_REGION}"
+        f"&type_ids={NULLS_JOINED_TYPE_ID}&sort_by={sort_by}"
+    )
+
+    ascending = await client.get(f"{base}&sort_direction=asc")
+    assert ascending.status_code == 200
+    assert [row["contract_id"] for row in ascending.json()["items"]] == [
+        978001,
+        978002,
+        978003,
+    ], f"{sort_by} asc"
+
+    descending = await client.get(f"{base}&sort_direction=desc")
+    assert descending.status_code == 200
+    assert [row["contract_id"] for row in descending.json()["items"]] == [
+        978002,
+        978001,
+        978003,
+    ], f"{sort_by} desc"

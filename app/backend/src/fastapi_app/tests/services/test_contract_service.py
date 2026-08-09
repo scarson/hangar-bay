@@ -435,6 +435,41 @@ async def test_a_failing_statement_does_not_log_its_bound_search_text(
     assert "statement timeout" in failures[0]["error_message"]
 
 
+async def test_scrubbing_an_error_for_the_log_leaves_the_exception_as_it_found_it():
+    """The scrub borrows `hide_parameters`; it must give it back.
+
+    The exception is not consumed at the log site — `get_contracts` re-raises it, so
+    the object outlives the render and travels on to whatever handles it. Flipping the
+    flag permanently would silently strip the binds from every LATER rendering of that
+    same exception, including the driver diagnosis the `error_message` field exists to
+    preserve, and nothing downstream would report a missing field.
+
+    Observed through the RENDERING rather than through the flag: asserting
+    `hide_parameters is False` pins the bookkeeping, while re-rendering pins the
+    behavior the bookkeeping controls (TEST-25). Both are asserted, in that order, so
+    a failure says which one broke.
+    """
+    secret = "Tristan sale"
+    error = StatementError(
+        "canceling statement due to statement timeout",
+        "SELECT contracts.contract_id FROM contracts WHERE contracts.title ILIKE %(title_1)s",
+        {"title_1": f"%{secret}%"},
+        Exception("canceling statement due to statement timeout"),
+    )
+    # Vacuity guard: the restore is only observable while the default rendering
+    # carries the binds. If that stopped being true this test would pass having
+    # constrained nothing (TEST-12).
+    assert error.hide_parameters is False
+    assert secret in str(error)
+
+    scrubbed = contract_service._error_without_bound_parameters(error)
+
+    assert secret not in scrubbed, "the render did not scrub"
+    assert "statement timeout" in scrubbed, "the render scrubbed the diagnosis too"
+    assert error.hide_parameters is False, "the flag was not restored"
+    assert secret in str(error), "a later rendering of the same exception lost its binds"
+
+
 async def test_full_dimension_logs_carry_the_type_and_taxonomy_filters(
     db_session: AsyncSession, setup_contracts, monkeypatch
 ):
