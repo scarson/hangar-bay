@@ -42,7 +42,10 @@ async def test_the_release_lock_script_compares_and_deletes_on_a_real_cache(
     # worktree) observe each other's writes and delete each other's fixture on cleanup.
     key = f"hangar-bay:test:release-lock-script:{label}:{uuid.uuid4().hex}"
     try:
-        await client.set(key, "our-token")
+        # TTL as a backstop to the finally: a unique key is unrecoverable by any later
+        # run, so a worker killed mid-test would otherwise strand it in the shared cache
+        # forever. Far longer than the test, short enough to self-clean.
+        await client.set(key, "our-token", ex=60)
 
         # Another runner's token: refuse, report 0, and leave THEIR value intact. This
         # is the arm that matters — an unconditional DEL here cascades concurrent runs.
@@ -53,5 +56,8 @@ async def test_the_release_lock_script_compares_and_deletes_on_a_real_cache(
         assert await client.eval(script, 1, key, "our-token") == 1
         assert await client.get(key) is None
     finally:
-        await client.delete(key)
-        await client.aclose()
+        # Nested so a failing delete cannot skip the connection close.
+        try:
+            await client.delete(key)
+        finally:
+            await client.aclose()
