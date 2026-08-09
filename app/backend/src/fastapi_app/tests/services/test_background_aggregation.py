@@ -2479,3 +2479,192 @@ async def test_a_spec_minimal_contract_persists_with_absent_optionals_null_or_de
     assert row.days_to_complete is None
     assert row.start_location_id is None
     assert row.end_location_id is None
+
+
+# --- Field mapping, optional-date parsing, and the two guards nothing reads ---
+
+
+async def test_every_mapped_contract_field_lands_on_its_own_column(
+    db_session: AsyncSession,
+):
+    """One payload, DISTINCT values in every mapped field, asserted per column.
+
+    The mapping is a flat dict literal, which is exactly the shape where a
+    copy-paste swaps two keys and nothing notices: `reward` and `volume` are both
+    plain floats read straight off the payload, so exchanging them produces a row
+    that is internally consistent, passes every schema check, and quietly reverses
+    the reward-per-m3 sort the whole courier surface is built on.
+
+    Every value here is distinct from every other, including across TYPES, because a
+    swap is only observable when the two fields disagree. The `status` default and a
+    supplied `status` are separate tests below for the same reason — one payload
+    cannot exercise both arms of the same `.get`.
+    """
+    service = _make_service()
+    payload = _ship_contract_dict(920101)
+    payload.update({
+        "status": "outstanding",
+        "title": "Distinctly Titled Lot",
+        "for_corporation": True,
+        "collateral": 4_400_000.0,
+        "reward": 1_100_000.0,
+        "volume": 2_200.0,
+        "buyout": 3_300_000.0,
+        "days_to_complete": 6,
+        "price": 5_500_000.0,
+    })
+
+    await service._process_contracts(db_session, [payload])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 920101)
+        )
+    ).scalar_one()
+    assert row.status == "outstanding"
+    assert row.title == "Distinctly Titled Lot"
+    assert row.for_corporation is True
+    assert float(row.collateral) == 4_400_000.0
+    assert float(row.reward) == 1_100_000.0
+    assert float(row.volume) == 2_200.0
+    assert float(row.buyout) == 3_300_000.0
+    assert row.days_to_complete == 6
+    assert float(row.price) == 5_500_000.0
+    # The two dates are parsed, not merely copied, and they are the pair a swap would
+    # leave looking plausible — an expiry before its issue date is the tell.
+    assert row.date_issued == datetime(2026, 7, 1, tzinfo=timezone.utc)
+    assert row.date_expired > row.date_issued
+
+
+async def test_an_absent_status_persists_as_unknown(db_session: AsyncSession):
+    """ESI marks `status` optional on the public route and the column is NOT NULL.
+
+    The default is what stands between a status-less contract and an IntegrityError
+    that aborts the whole batch — the TEST-22 shape, which `price` already paid for.
+    """
+    service = _make_service()
+    payload = _ship_contract_dict(920102)
+    payload.pop("status", None)
+
+    await service._process_contracts(db_session, [payload])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 920102)
+        )
+    ).scalar_one()
+    assert row.status == "unknown"
+
+
+async def test_a_populated_date_completed_is_parsed_and_an_absent_one_is_null(
+    db_session: AsyncSession,
+):
+    """`_parse_esi_datetime`'s None arm runs on every public contract and is unasserted.
+
+    `date_completed` is the only optional DATE in the mapping, so it is the only field
+    that exercises the None arm at all — every other date is required. The populated
+    arm never runs against public data (ESI does not send it there) but does for the
+    character/corp contracts the column is kept for, so both are pinned here rather
+    than one being left to a future reader to guess at.
+
+    Both arms in one test because they are two arms of ONE `.get`, and asserting them
+    separately would let a mapping that always returns None pass the absent case while
+    the populated case was written for a different contract id.
+    """
+    service = _make_service()
+    absent = _ship_contract_dict(920103)
+    populated = _ship_contract_dict(920104)
+    populated["date_completed"] = "2026-07-05T12:30:00Z"
+
+    await service._process_contracts(db_session, [absent, populated])
+
+    rows = {
+        row.contract_id: row
+        for row in (
+            await db_session.execute(
+                select(Contract).where(Contract.contract_id.in_([920103, 920104]))
+            )
+        ).scalars()
+    }
+    assert rows[920103].date_completed is None
+    assert rows[920104].date_completed == datetime(
+        2026, 7, 5, 12, 30, tzinfo=timezone.utc
+    )
+
+
+async def test_a_malformed_esi_date_takes_the_whole_batch_down_with_it():
+    """CHARACTERIZATION, not endorsement: one bad date string kills every contract beside it.
+
+    `_parse_esi_datetime` calls `datetime.fromisoformat` with no guard, from inside the
+    list comprehension that builds rows for the ENTIRE batch, so one malformed date
+    takes down every other contract on the same region page — the blast radius that
+    made a NOT NULL `price` a production hazard (TEST-22 / FASTAPI-3).
+
+    Observed at `_build_contract_rows` rather than through `_process_contracts`: the
+    batch semantics live in the comprehension, and asserting there shows that NO rows
+    are produced, not merely that a write failed. Going through the session would only
+    show a poisoned transaction, which is a consequence rather than the property.
+
+    Pinned so the behavior is visible and any change to it is deliberate. Whether it
+    SHOULD abort is a decision, not a defect to fix inside a test-only wave — skipping
+    the contract and persisting a NULL date both change what the site shows. Recorded
+    for Sam in the coverage report.
+    """
+    good = _ship_contract_dict(920105)
+    bad = _ship_contract_dict(920106)
+    bad["date_issued"] = "not-a-date"
+
+    # The healthy sibling alone builds fine, so the batch below fails for the reason
+    # named and not because the fixture was malformed all along (TEST-12 vacuity guard).
+    assert len(bg_agg._build_contract_rows([good], {})) == 1
+
+    with pytest.raises(ValueError):
+        bg_agg._build_contract_rows([good, bad], {})
+
+
+async def test_absent_item_flags_persist_as_null_and_false(db_session: AsyncSession):
+    """ESI sends `is_blueprint_copy` true-or-ABSENT, never false (TEST-18).
+
+    So the absent arm is the ordinary case for every non-blueprint item in the corpus,
+    and it must persist as NULL rather than False: `is_bpc=false` compiles to "contains
+    no offered blueprint copy", and a mapping that defaulted the flag to False would
+    make that filter agree with itself while saying nothing about the data.
+    `is_singleton` is the opposite convention — a real `.get(..., False)` default — so
+    the two are asserted together to keep the distinction visible.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            # Neither flag supplied: the shape ESI sends for an ordinary packaged item.
+            {"record_id": 9201071, "type_id": 587, "quantity": 1, "is_included": True},
+        ]
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(920107)])
+
+    item = (
+        await db_session.execute(
+            select(ContractItem).where(ContractItem.record_id == 9201071)
+        )
+    ).scalar_one()
+    assert item.is_blueprint_copy is None, "absent must not become False"
+    assert item.is_singleton is False, "the documented default did not apply"
+
+
+async def test_apply_dev_limit_passes_through_a_batch_under_the_limit(caplog):
+    """A configured limit larger than the batch truncates nothing and warns nothing.
+
+    The three tested paths are limit<len, 0 and None; this is the fourth corner, and
+    the only one where the limit is ACTIVE but does not fire. It is also the one a
+    developer actually runs into — a limit set generously enough to keep working — so
+    a spurious DEV_MODE warning here would be permanent noise in every dev log.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = 5
+    batch = [_ship_contract_dict(cid) for cid in (920108, 920109, 920110)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920108, 920109, 920110]
+    assert "DEV_MODE" not in caplog.text
