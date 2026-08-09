@@ -2449,6 +2449,12 @@ async def test_a_spec_minimal_contract_persists_with_absent_optionals_null_or_de
     from datetime import datetime, timedelta, timezone
 
     service = _make_service()
+    # Armed with a WORKING return precisely so the not-awaited assertion below is
+    # meaningful: an unarmed MagicMock could never be awaited, which would satisfy
+    # the assertion for a reason that has nothing to do with the guard (TEST-15).
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 60003760, "system_id": 30000142}
+    )
     live_expiry = datetime.now(timezone.utc) + timedelta(days=7)
     spec_minimal = {
         "contract_id": 910099,
@@ -2479,6 +2485,12 @@ async def test_a_spec_minimal_contract_persists_with_absent_optionals_null_or_de
     assert row.days_to_complete is None
     assert row.start_location_id is None
     assert row.end_location_id is None
+    # And the absence COSTS nothing upstream: `_npc_station_ids` guards on
+    # `is not None`, so a contract naming no location must produce no station
+    # lookup at all. Without the guard every location-less contract in a page
+    # would send ESI a request for station `None` — a per-row round trip whose
+    # only possible answer is an error, on the most common shape in the corpus.
+    service.esi_client.get_universe_station.assert_not_awaited()
 
 
 # --- Field mapping, optional-date parsing, and the two guards nothing reads ---
@@ -2668,3 +2680,38 @@ async def test_apply_dev_limit_passes_through_a_batch_under_the_limit(caplog):
 
     assert [c["contract_id"] for c in limited] == [920108, 920109, 920110]
     assert "DEV_MODE" not in caplog.text
+
+
+async def test_freshness_recorder_treats_an_unparseable_prior_as_no_prior(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A prior record that is not JSON at all is a distinct branch from one that is
+    valid JSON but not an object, and only the latter has a test.
+
+    `json.loads` raises for the unparseable case and returns cleanly for `"[]"`, so the
+    two arrive at `prior_success = None` by different routes — one through the
+    `except (ValueError, TypeError)`, one through the `isinstance` check. Narrowing that
+    except clause (dropping `ValueError` is the natural half, since `TypeError` is what
+    a non-str would raise) lets the exception escape to the OUTER swallow, which logs
+    "failed to record ingest outcome" and skips the SET entirely — so the corrupt key is
+    never repaired and every future run re-reads the same garbage.
+
+    Observed on a FAILING run on purpose: `last_success_at` only reports the prior value
+    when the current outcome is not itself a success, so a passing run would overwrite
+    it with `now` and hide which branch produced it (TEST-25).
+    """
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(
+        side_effect=RuntimeError("region fetch down")
+    )
+
+    store: dict = {INGEST_KEY: "not json at all"}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    # The key was REPAIRED, not left holding the garbage it started with.
+    record = json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure"
+    # No prior success could be recovered from an unparseable record, and inventing
+    # one would report the site as fresher than it is.
+    assert record["last_success_at"] is None

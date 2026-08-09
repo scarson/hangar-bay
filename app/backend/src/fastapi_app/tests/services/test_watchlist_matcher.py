@@ -603,3 +603,24 @@ async def test_a_priceless_contract_never_satisfies_a_numeric_price_bound(db_ses
 
     matched, created = await _service()._match_and_notify(db_session)
     assert matched == 0 and created == 0
+
+
+async def test_a_match_at_an_unresolved_location_says_so_rather_than_naming_nothing(
+    db_session: AsyncSession,
+):
+    """`_render_message`'s `location or "an unknown location"` arm.
+
+    Station names are resolved by a separate ESI call that can fail or lag, so a live
+    contract routinely carries a NULL `start_location_name` — this is the ordinary
+    state right after ingestion, not a defensive corner. Without the fallback the
+    notification renders "... in None", which is the kind of string that reaches a
+    reader before anyone notices.
+
+    Asserted on the whole rendered message rather than on a substring: the location is
+    the last field, so a substring check passes for a message that lost everything
+    before it.
+    """
+    assert (
+        wm._render_message("Caracal", "auction", 10_500_000, None)
+        == "Caracal available in an auction priced 10,500,000 ISK in an unknown location"
+    )
