@@ -2522,3 +2522,134 @@ async def test_price_sorts_both_ways_and_leaves_unpriced_contracts_last(
     assert ascending == [973001, 973002, 973003, 973004]
     assert descending == [973003, 973002, 973001, 973004]
     assert ascending[0] != descending[0]
+
+
+# --- The pre-F008 sorts and bounds nobody ever pinned (region 99999974) ---
+#
+# date_expired, collateral, and date_issued-ascending are non-null columns that
+# predate F008's both-directions-exact-order discipline; a silently no-op'd sort
+# there is the same defect class §6.2 names for the new sorts. The three orders
+# are mutually distinct permutations, so no sort can pass by echoing another.
+
+LEGACY_SORT_REGION = 99999974
+
+
+@pytest_asyncio.fixture
+async def legacy_sort_contracts(db_session: AsyncSession):
+    now = datetime.now(timezone.utc)
+
+    def _contract(cid: int, **overrides) -> Contract:
+        fields = dict(
+            contract_id=cid, title=f"Legacysort {cid}", price=1_000_000,
+            collateral=0, status="outstanding", type="item_exchange", issuer_id=974,
+            issuer_corporation_id=974, start_location_id=60003760,
+            start_location_region_id=LEGACY_SORT_REGION, for_corporation=False,
+            date_issued=now, date_expired=now + timedelta(days=7), last_seen_at=now,
+        )
+        fields.update(overrides)
+        return Contract(**fields)
+
+    db_session.add_all([
+        _contract(974001, date_issued=datetime(2026, 7, 1, tzinfo=timezone.utc),
+                  date_expired=now + timedelta(days=3), collateral=900.0),
+        _contract(974002, date_issued=datetime(2026, 7, 2, tzinfo=timezone.utc),
+                  date_expired=now + timedelta(days=9), collateral=100.0),
+        _contract(974003, date_issued=datetime(2026, 7, 3, tzinfo=timezone.utc),
+                  date_expired=now + timedelta(days=6), collateral=5_000.0),
+    ])
+    await db_session.flush()
+
+
+async def test_date_expired_sorts_both_ways(client: AsyncClient, legacy_sort_contracts):
+    """The Time-left column — the courier segment's default sort field."""
+    ascending = await _sorted_ids(client, "date_expired", "asc", region=LEGACY_SORT_REGION)
+    descending = await _sorted_ids(client, "date_expired", "desc", region=LEGACY_SORT_REGION)
+
+    assert ascending == [974001, 974003, 974002]
+    assert descending == [974002, 974003, 974001]
+
+
+async def test_collateral_sorts_both_ways(client: AsyncClient, legacy_sort_contracts):
+    ascending = await _sorted_ids(client, "collateral", "asc", region=LEGACY_SORT_REGION)
+    descending = await _sorted_ids(client, "collateral", "desc", region=LEGACY_SORT_REGION)
+
+    assert ascending == [974002, 974001, 974003]
+    assert descending == [974003, 974001, 974002]
+
+
+async def test_date_issued_sorts_ascending_too(client: AsyncClient, legacy_sort_contracts):
+    """Descending is pinned as the default everywhere; the explicit ascending
+    direction had no assertion anywhere."""
+    ascending = await _sorted_ids(client, "date_issued", "asc", region=LEGACY_SORT_REGION)
+    assert ascending == [974001, 974002, 974003]
+
+
+async def test_min_collateral_filters_alone(client: AsyncClient, legacy_sort_contracts):
+    """min_collateral had zero assertions anywhere — only max_collateral, and
+    only in combination."""
+    response = await client.get(
+        f"/contracts/?region_ids={LEGACY_SORT_REGION}&min_collateral=850"
+    )
+    assert response.status_code == 200
+    assert {row["contract_id"] for row in response.json()["items"]} == {974001, 974003}
+
+
+async def test_an_expired_item_bearing_contract_leaves_the_readiness_denominator(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Ingestion never revisits an expired contract, so counting one would hold
+    the ratio below the threshold forever on an up-to-date corpus. Vacuity
+    guard first: the same row degrades the signal while it is live."""
+    now = datetime.now(timezone.utc)
+    stale = _enriched_contract(974102, processing_status="PENDING_ITEMS", version=0)
+    db_session.add_all([_enriched_contract(974101), stale])
+    await db_session.flush()
+
+    assert (await _taxonomy(client))["coverage"] == "partial"
+
+    stale.date_expired = now - timedelta(hours=1)
+    await db_session.flush()
+
+    assert (await _taxonomy(client))["coverage"] == "complete"
+
+
+# --- Watermark fallback for a region outside the configured hint (region 99999976) ---
+
+async def test_a_region_outside_the_configured_hint_still_drops_stale_rows(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch
+):
+    """AGGREGATION_REGION_IDS is an optimization hint, never a semantic input:
+    a region the config does not name must get the same delisted-row exclusion
+    through the correlated fallback (the case else_ branch) that configured
+    regions get through the hoisted watermark. Verified manually in the
+    2026-08-02 perf audit; pinned here."""
+    from fastapi_app.services import contract_service as cs
+
+    patched = cs.get_settings().model_copy(
+        update={"AGGREGATION_REGION_IDS": [10000002]}
+    )
+    monkeypatch.setattr(cs, "get_settings", lambda: patched)
+
+    now = datetime.now(timezone.utc)
+
+    def _contract(cid: int, seen: datetime) -> Contract:
+        return Contract(
+            contract_id=cid, title=f"Driftwatch {cid}", price=1_000_000,
+            collateral=0, status="outstanding", type="item_exchange", issuer_id=976,
+            issuer_corporation_id=976, start_location_id=60003760,
+            start_location_region_id=99999976, for_corporation=False,
+            date_issued=now - timedelta(days=1), date_expired=now + timedelta(days=7),
+            last_seen_at=seen,
+        )
+
+    db_session.add_all([
+        _contract(976001, seen=now),
+        # Two hours behind its region's newest sighting: delisted, and only the
+        # fallback branch can know it — 99999976 is not in the patched config.
+        _contract(976002, seen=now - timedelta(hours=2)),
+    ])
+    await db_session.flush()
+
+    response = await client.get("/contracts/?region_ids=99999976")
+    assert response.status_code == 200
+    assert {row["contract_id"] for row in response.json()["items"]} == {976001}
