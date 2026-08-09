@@ -1325,7 +1325,13 @@ async def test_run_aggregation_reuses_app_session_factory_and_never_logs_databas
     for rec in caplog.records:
         msg = rec.getMessage()
         assert "Creating database engine" not in msg
-        assert service.settings.DATABASE_URL[:16] not in msg
+        # The SENSITIVE parts, each on its own: the old [:16] slice only covered
+        # "postgresql+async" — the dialect prefix every URL shares — so a line
+        # leaking just the credentials or host sailed past the guard. The
+        # fixture plants distinctive values precisely so these can be asserted.
+        assert "secret_user" not in msg
+        assert "secret_pw" not in msg
+        assert "db.internal" not in msg
 
 
 # --- ingestion-freshness recording (M4 Task 3.3) ---

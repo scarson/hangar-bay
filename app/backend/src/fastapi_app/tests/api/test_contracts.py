@@ -190,3 +190,51 @@ async def test_paginate_contracts(client: AsyncClient, db_session: AsyncSession)
     assert data["page"] == 2
     assert data["size"] == 3
     assert [c["contract_id"] for c in data["items"]] == [4, 5, 6]
+
+
+# --- Endpoint guardrails: the constraints standing between an anonymous caller and the corpus ---
+
+async def test_size_above_the_cap_is_rejected_before_it_reaches_the_corpus(client: AsyncClient):
+    """size<=100 is the only thing between a caller and corpus-per-request pages;
+    its removal must fail a test, not pass silently."""
+    over = await client.get("/contracts/?size=101")
+    assert over.status_code == 422
+
+    at_cap = await client.get("/contracts/?size=100")
+    assert at_cap.status_code == 200
+
+
+async def test_a_search_below_min_length_is_rejected_at_the_wire(client: AsyncClient):
+    """The schema's min_length=3 guard, pinned at the HTTP surface — toApiQuery
+    gates short searches client-side, but the wire contract must hold for any
+    caller."""
+    response = await client.get("/contracts/?search=ab")
+    assert response.status_code == 422
+
+
+async def test_a_read_path_failure_serves_the_fixed_body_with_no_internals(
+    test_app, monkeypatch
+):
+    """The generic 500 handler's body is a fixed sentence. A failure whose
+    exception text carries statement internals (the SQLA-4 shape — an ILIKE
+    bind with the user's own search text) must not surface any of it on the
+    wire an anonymous caller sees; the scrub is pinned at the log layer
+    elsewhere, and this pins the HTTP layer. Starlette's Exception handler
+    builds the response AND re-raises, so this client must not re-raise app
+    exceptions the way the shared fixture's transport does — the response is
+    the subject here."""
+    from httpx import ASGITransport
+
+    from fastapi_app.api import contracts as contracts_api
+
+    async def raiser(*args, **kwargs):
+        raise RuntimeError("params: {'search_pattern': '%SECRET-BIND-TEXT%'}")
+
+    monkeypatch.setattr(contracts_api, "get_contracts", raiser)
+
+    transport = ASGITransport(app=test_app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as quiet_client:
+        response = await quiet_client.get("/contracts/?search=widget")
+    assert response.status_code == 500
+    assert response.json() == {"detail": "An unexpected server error occurred."}
+    assert "SECRET-BIND-TEXT" not in response.text
