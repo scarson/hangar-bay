@@ -1242,6 +1242,177 @@ async def test_a_nameless_group_payload_is_repaired_from_observed_items(
     assert row.name == "Frigate"
     assert row.parent_category_id == 6
 
+async def test_a_non_dict_esi_payload_degrades_one_id_and_the_run_continues(
+    db_session: AsyncSession, caplog
+):
+    """A surprise payload SHAPE degrades that one id; it must never kill the run.
+
+    The guard exists because of a live incident: the list-shaped ETag helper flattened
+    object payloads into keys, so a lookup handed back a list and the `.get()` calls
+    downstream took the whole run down. Every other resolution-failure test raises FROM
+    the fetch, which exercises the try/except one branch above and leaves this guard
+    unproven — remove the isinstance check and those tests all still pass.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8611, "type_id": 587, "quantity": 1, "is_included": True},
+        {"record_id": 8612, "type_id": 34, "quantity": 5000, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            # The incident shape: a list where an object belongs.
+            34: [{"name": "Tritanium", "group_id": 18}],
+        }[type_id]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    with caplog.at_level("WARNING"):
+        await service._process_contracts(db_session, [_ship_contract_dict(861)])
+
+    assert "Unexpected type payload shape for 34: list" in caplog.text
+
+    items = {
+        item.record_id: item
+        for item in (await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 861)
+        )).scalars()
+    }
+    # The healthy id resolves as normal — the degradation is scoped to one lookup...
+    assert items[8611].type_name == "Tristan"
+    assert items[8611].category_id == 6
+    # ...and the malformed one lands as absent enrichment rather than an exception.
+    assert items[8612].type_name is None
+    assert items[8612].category_id is None
+
+    contract = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 861)
+    )).scalar_one()
+    assert contract.is_ship_contract is True
+    # Unresolved category => not COMPLETED, so the contract stays in the re-fetch set
+    # and recovers once ESI returns object-shaped payloads again.
+    assert contract.item_processing_status == "ENRICHMENT_INCOMPLETE"
+
+
+async def test_two_distinct_missing_categories_are_both_repaired(
+    db_session: AsyncSession,
+):
+    """The observed-category walk must yield EVERY distinct category, not just the first.
+
+    _OBSERVED_CATEGORY_IDS_SQL is a hand-written loose index scan: the base case reads
+    `min(category_id)` and the recursive step walks to the next-greater one. With items
+    of a single category the base case alone is a correct answer, so a regression that
+    dropped the whole `UNION ALL` step would pass every other repair test while the
+    self-healing cache silently repaired only the lowest-numbered category forever.
+    Two categories is the smallest fixture that can tell the two apart.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8711, "type_id": 587, "quantity": 1, "is_included": True},
+        {"record_id": 8712, "type_id": 34, "quantity": 5000, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            34: {"name": "Tritanium", "group_id": 18, "market_group_id": 1857},
+        }[type_id]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {
+            25: {"name": "Frigate", "category_id": 6},
+            18: {"name": "Mineral", "category_id": 4},
+        }[group_id]
+    )
+    service.esi_client.get_universe_category = AsyncMock(
+        side_effect=RuntimeError("ESI down")
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(871)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "category")
+    )).scalars().all() == []
+    # Both categories reached the items table — that is the only record of them.
+    assert {
+        row.category_id for row in (await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 871)
+        )).scalars()
+    } == {4, 6}
+
+    # Next run: fresh service (the retry must be DB-observed, not in-memory), ESI
+    # healed, courier-only batch so nothing in this run's enrichment mentions either
+    # category. Both must still be repaired.
+    service = _make_service()
+    service.esi_client.get_universe_category = AsyncMock(
+        side_effect=lambda category_id: {6: {"name": "Ship"}, 4: {"name": "Material"}}[
+            category_id
+        ]
+    )
+    courier = _ship_contract_dict(872)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    rows = (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "category")
+    )).scalars().all()
+    assert {row.esi_id: row.name for row in rows} == {4: "Material", 6: "Ship"}
+
+
+async def test_two_distinct_missing_groups_are_both_repaired(db_session: AsyncSession):
+    """The observed-group walk must yield EVERY distinct group (categories' sibling).
+
+    _OBSERVED_GROUP_IDS_SQL is the same loose index scan one taxonomy level down and
+    carries the same single-value blind spot: with one group in the corpus the base
+    case is indistinguishable from the full recursion.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8811, "type_id": 587, "quantity": 1, "is_included": True},
+        {"record_id": 8812, "type_id": 34, "quantity": 5000, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            34: {"name": "Tritanium", "group_id": 18, "market_group_id": 1857},
+        }[type_id]
+    )
+    # Both payloads carry a category but no name, so neither writes a cache row.
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {25: {"category_id": 6}, 18: {"category_id": 4}}[
+            group_id
+        ]
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(881)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "group")
+    )).scalars().all() == []
+    assert {
+        row.group_id for row in (await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 881)
+        )).scalars()
+    } == {18, 25}
+
+    service = _make_service()
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {
+            25: {"name": "Frigate", "category_id": 6},
+            18: {"name": "Mineral", "category_id": 4},
+        }[group_id]
+    )
+    courier = _ship_contract_dict(882)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    rows = (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "group")
+    )).scalars().all()
+    assert {row.esi_id: row.name for row in rows} == {18: "Mineral", 25: "Frigate"}
+    assert {row.esi_id: row.parent_category_id for row in rows} == {18: 4, 25: 6}
+
 
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
     """A contract whose item fetch failed is retried by the NEXT run, with no sweep.
