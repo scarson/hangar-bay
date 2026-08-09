@@ -616,14 +616,38 @@ async def test_a_match_at_an_unresolved_location_says_so_rather_than_naming_noth
     notification renders "... in None", which is the kind of string that reaches a
     reader before anyone notices.
 
-    Asserted on the whole rendered message rather than on a substring: the location is
-    the last field, so a substring check passes for a message that lost everything
-    before it.
+    Driven through `_match_and_notify` against a real unresolved row, and asserted on
+    the STORED notification. A direct `_render_message` call constrains the renderer but
+    not the rendering: the call site passes `r.start_location_name`, and wrapping that in
+    `str()` — which is how a "make the type checker happy" edit reads — produces the
+    literal "None" while every unit-level assertion on the renderer still passes
+    (TEST-25: observe the value the reader receives, at the point they receive it).
 
-    Both falsy shapes, because the guard is `location or ...` and not `is None`. An
-    empty string is what a name cache returns for a station it resolved to nothing,
-    and narrowing the guard to `is None` would render a message ending in "in " —
-    which reads as truncated rather than as unknown.
+    Asserted on the whole message rather than on a substring: the location is the last
+    field, so a substring check passes for a message that lost everything before it.
+    """
+    u = await _user(db_session)
+    await _watch(db_session, u, type_id=621, type_name="Caracal", max_price=None)
+    await _contract(db_session, cid=5921, price=10_500_000, ctype="auction", location=None)
+    await _item(db_session, cid=5921, type_id=621)
+
+    matched, created = await _service()._match_and_notify(db_session)
+    assert matched == 1 and created == 1
+    note = (await db_session.execute(select(Notification))).scalar_one()
+    assert note.message == (
+        "Caracal available in an auction priced 10,500,000 ISK in an unknown location"
+    )
+
+
+async def test_the_unknown_location_fallback_covers_every_falsy_name(
+    db_session: AsyncSession,
+):
+    """The guard is `location or ...`, not `is None`, and the difference is reachable.
+
+    An empty string is what a name lookup returns for a station it resolved to nothing,
+    and narrowing the guard to `is None` would render a message ending in "in " — which
+    reads as truncated rather than as unknown. Kept at the renderer because the point
+    here is the SHAPE of the guard, while the integration test above pins the call site.
     """
     for absent in (None, ""):
         assert wm._render_message("Caracal", "auction", 10_500_000, absent) == (

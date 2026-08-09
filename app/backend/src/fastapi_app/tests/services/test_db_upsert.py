@@ -327,20 +327,29 @@ async def test_an_empty_batch_is_a_no_op_rather_than_an_error(
 
     Asserted against a SEEDED sentinel, not against an empty database. The per-test
     database starts empty, so a before/after row count says nothing: an implementation
-    that deleted every row on empty input would leave 0 == 0 and pass. The sentinel's
-    full state is compared so the claim is "nothing changed", not "the count is stable"
-    — a truncate-and-reinsert would keep the count too.
+    that deleted every row on empty input would leave 0 == 0 and pass.
+
+    And compared over EVERY column, not a chosen few. Three hand-picked fields is a
+    digest: an empty call that reset some unwatched column — `status` back to
+    "unknown", say — passes a spot-check while having written to a table it was given
+    nothing about. The whole row is snapshotted so "no-op" means what it says
+    (TEST-25).
     """
     await bulk_upsert(
         db_session, Contract, [_contract_row(910301, issuer_name="Sentinel Pilot")]
     )
-    before = await _fetch(db_session, 910301)
-    before_state = (before.issuer_name, before.title, before.price)
+
+    def _whole_row(row: Contract) -> dict:
+        return {
+            column.name: getattr(row, column.name)
+            for column in Contract.__table__.columns
+        }
+
+    before_state = _whole_row(await _fetch(db_session, 910301))
 
     await bulk_upsert(db_session, Contract, [], preserve_on_null=frozenset())
     await bulk_upsert(db_session, Contract, [])
 
     rows = (await db_session.execute(select(Contract))).scalars().all()
     assert len(rows) == 1, "the empty call touched rows it was given nothing about"
-    after = await _fetch(db_session, 910301)
-    assert (after.issuer_name, after.title, after.price) == before_state
+    assert _whole_row(await _fetch(db_session, 910301)) == before_state

@@ -2661,13 +2661,18 @@ async def test_absent_item_flags_persist_as_null_and_false(db_session: AsyncSess
         return_value=[
             # Neither flag supplied: the shape ESI sends for an ordinary packaged item.
             {"record_id": 9201071, "type_id": 587, "quantity": 1, "is_included": True},
-            # Both supplied, and is_singleton TRUE — an assembled item. Public contract
-            # payloads never carry the flag, so without this row the default and a
-            # hardcoded False are indistinguishable: the mapping could ignore a
-            # supplied value entirely and every fixture would still agree with it.
+            # The two flags DISAGREE in both directions, across two rows. Supplying
+            # them together and both true makes them indistinguishable: reading
+            # is_singleton out of `is_blueprint_copy` — an ordinary copy/paste between
+            # adjacent boolean keys — then satisfies every assertion. Each row pins one
+            # flag as set while the other is absent.
             {
                 "record_id": 9201072, "type_id": 588, "quantity": 1,
-                "is_included": True, "is_singleton": True, "is_blueprint_copy": True,
+                "is_included": True, "is_singleton": True,
+            },
+            {
+                "record_id": 9201073, "type_id": 589, "quantity": 1,
+                "is_included": True, "is_blueprint_copy": True,
             },
         ]
     )
@@ -2679,15 +2684,20 @@ async def test_absent_item_flags_persist_as_null_and_false(db_session: AsyncSess
         for item in (
             await db_session.execute(
                 select(ContractItem).where(
-                    ContractItem.record_id.in_([9201071, 9201072])
+                    ContractItem.record_id.in_([9201071, 9201072, 9201073])
                 )
             )
         ).scalars()
     }
+    # Neither supplied.
     assert items[9201071].is_blueprint_copy is None, "absent must not become False"
     assert items[9201071].is_singleton is False, "the documented default did not apply"
-    assert items[9201072].is_blueprint_copy is True, "a supplied flag was not carried"
-    assert items[9201072].is_singleton is True, "a supplied flag was overridden"
+    # Only is_singleton supplied — so a mapping reading it from the blueprint key fails.
+    assert items[9201072].is_singleton is True, "a supplied singleton flag was overridden"
+    assert items[9201072].is_blueprint_copy is None, "the blueprint flag leaked from singleton"
+    # Only is_blueprint_copy supplied — the mirror.
+    assert items[9201073].is_blueprint_copy is True, "a supplied blueprint flag was dropped"
+    assert items[9201073].is_singleton is False, "the singleton flag leaked from blueprint"
 
 
 @pytest.mark.parametrize("limit", [5, 3], ids=["limit_above_batch", "limit_equals_batch"])
