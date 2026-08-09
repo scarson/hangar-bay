@@ -392,7 +392,7 @@ four per-file registers as work orders.
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
 | 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
 | 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ✅ DONE — logic **28/28**, components **10/10**, e2e pins **3/3**. PR #170 (C1–C4, plus a typecheck lane for `e2e/` that had never existed) and PR #171 (C5–C10). vitest 322 → 416, e2e 140 → 146 |
-| 5 | Nice-to-have (60) | 🔄 **swept 2026-08-09** — 60 register rows reduce to **58 distinct open items**: one fully struck, one cross-register duplicate merged, three partials narrowed. See §Wave 5 sweep below for the row-by-row evidence. Authoring proceeds register by register from that table |
+| 5 | Nice-to-have (60) | 🔄 **in progress** — swept first (§Wave 5 sweep): 60 register rows reduce to **58 distinct open items**, one struck, one cross-register duplicate merged, three partials narrowed. **Backend-read 10/10 closed** — 18 tests, backend 733 → 751, every one mutation-verified. Remaining: backend-write 18 (N-10 struck, N-11 partial), frontend-logic 13 (N-9, N-13 partial), frontend-components 17 (N-11 merged into frontend-logic N-11) |
 
 Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
 (TEST-12), footprint-free discipline on shared fixtures (TEST-23), five frontend lanes for any
@@ -462,6 +462,49 @@ dropped:
 - **frontend-components N-18** — "no mobile live-smoke project" is a `playwright.config.ts` change
   that adds a lane running against a real backend, not a test. Out of scope for a test-only wave;
   flagged for Sam.
+
+### Wave 5 — backend-read register closed (10/10)
+
+Eighteen tests, backend **733 → 751**. Every one mutation-verified with the pre-existing
+suite held green, save the one documented overlap below.
+
+| Row | Closed by | Mutant killed |
+|---|---|---|
+| N-1 | `test_a_page_past_the_end_serves_an_empty_page_that_still_counts_the_corpus`, `..._of_the_joined_path_loads_from_an_empty_id_list` | short-circuiting on an empty PAGE rather than an empty RESULT; skipping the empty `IN` as a pointless filter |
+| N-2 | `test_the_joined_path_puts_nulls_last_whichever_way_every_nullable_sort_runs` (parametrized over `NULLABLE_SORTS`) | `nulls_last()` deleted from `_fetch_page_joined` |
+| N-3 | `test_composition_reports_an_unmeasured_volume_as_null_not_zero` | NULL volume coalesced to `0` |
+| N-4 | `test_a_courier_with_no_destination_name_is_labelled_courier_alone`, `test_a_contract_with_nothing_to_name_it_by_falls_back_to_its_id` | the courier arm rewritten to the id fallback; the id fallback retexted |
+| N-5 | `test_a_whitespace_only_title_counts_as_absent` | `.strip()` dropped from the title guard |
+| N-6 | `test_detail_returns_its_items_in_record_id_order` | the detail sort deleted |
+| N-7 | `test_taxonomy_breaks_a_name_tie_by_id_so_the_order_is_total` | the id element dropped from each sort key (verified separately per list) |
+| N-8 | `test_a_stale_enrichment_settles_coverage_without_the_category_sweep` | the two coverage conditions reordered |
+| N-9 | `test_scrubbing_an_error_for_the_log_leaves_the_exception_as_it_found_it` | the `finally` restore removed |
+| N-10 | `test_detail_still_serves_a_delisted_but_unexpired_contract`, `test_min_runs_admits_the_esi_sentinel_and_rejects_one_below_it` | `still_listed_by_esi()` added to the detail query; `ge=-1` narrowed to `ge=0` |
+
+**One mutation could not be isolated further, and that is the finding.** Deleting
+`nulls_last()` from `_fetch_page_joined` kills all six new parametrized cases *and*
+`test_a_new_sort_survives_the_grouped_joined_pagination_path`. That pre-existing test is
+the prior coverage the register counted as "2 of 6", and the branch is a single shared
+line — there is no narrower edit. Recorded rather than papered over, because TEST-12's
+isolation rule normally reads as "a mutation that takes pre-existing tests down is not
+evidence", and the exception is a branch that was already partially covered.
+
+**Two fixture defects the tests caught before the assertions did**, both worth carrying:
+
+- A helper computing `datetime.now()` per row silently delisted every row but the last.
+  `still_listed_by_esi` is an exact `last_seen_at >= max(last_seen_at) in region` with no
+  tolerance, and ingestion stamps one run's whole batch with ONE value — so co-listed
+  fixture rows must share an identical stamp, not adjacent ones. A helper defaulting the
+  stamp internally builds a state ingestion cannot produce (TEST-18's rule applied to a
+  timestamp rather than a column).
+- Giving the two non-NULL rows the same `volume` (to make `reward_per_volume` differ) tied
+  the volume sort, so the `contract_id` tiebreaker produced ascending order in BOTH
+  directions and the descending assertion failed on a fixture defect. Caught only because
+  the assertion reads the full ordered list; "the NULL row is last" would have passed.
+
+**Fixture regions:** 99999977 and 99999978 claimed. Next free **99999979**, which is the
+LAST id in the plan's 99999960–99999979 allocation — the next wave to need one must
+either extend the allocation or reuse, and should say which.
 
 ### Wave 4 — register row 23, and the standard the campaign now uses
 
