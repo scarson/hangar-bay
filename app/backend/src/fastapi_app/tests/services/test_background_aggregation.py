@@ -1413,6 +1413,68 @@ async def test_two_distinct_missing_groups_are_both_repaired(db_session: AsyncSe
     assert {row.esi_id: row.name for row in rows} == {18: "Mineral", 25: "Frigate"}
     assert {row.esi_id: row.parent_category_id for row in rows} == {18: 4, 25: 6}
 
+async def test_one_run_stamps_every_contract_with_one_shared_fresh_last_seen_at(
+    db_session: AsyncSession,
+):
+    """One run writes ONE last_seen_at value, and it is the current time.
+
+    A contract is judged still-listed by matching the newest stamp in its region, so
+    per-row stamp drift within a batch would make the late half of a run read as
+    delisted against its own early half. The matcher and read-path suites hand-write
+    last_seen_at on fixtures — legitimate for the reader side, but it means the WRITER
+    is the untested half of the seam (TEST-18).
+    """
+    service = _make_service()
+    cids = [890001, 890002, 890003]
+
+    before = datetime.now(timezone.utc)
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    after = datetime.now(timezone.utc)
+
+    rows = (await db_session.execute(
+        select(Contract).where(Contract.contract_id.in_(cids))
+    )).scalars().all()
+    assert len(rows) == 3
+
+    stamps = {row.last_seen_at for row in rows}
+    assert len(stamps) == 1, "one run must write one last_seen_at across the whole batch"
+    stamp = stamps.pop()
+    # Bounded on both sides, so a column default or a frozen constant cannot pass.
+    assert before <= stamp <= after
+
+
+async def test_re_sighting_a_contract_advances_its_last_seen_at(
+    db_session: AsyncSession,
+):
+    """The upsert must RESTAMP an already-stored contract on conflict.
+
+    If last_seen_at stopped being written — dropped from the row dict, or added to
+    the preserve-on-null set — every re-sighted contract would fall behind its
+    region's watermark one run later and read as delisted site-wide, and no existing
+    test would go red.
+    """
+    service = _make_service()
+    await service._process_contracts(db_session, [_ship_contract_dict(890101)])
+
+    row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 890101)
+    )).scalar_one()
+
+    # Back-date to a value no run could produce, so "advanced" is decided by the
+    # writer rather than by clock resolution between two near-instant runs.
+    stale = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    await db_session.execute(
+        update(Contract).where(Contract.contract_id == 890101).values(last_seen_at=stale)
+    )
+    await db_session.refresh(row)
+    assert row.last_seen_at == stale  # the back-date really took
+
+    before = datetime.now(timezone.utc)
+    await service._process_contracts(db_session, [_ship_contract_dict(890101)])
+    await db_session.refresh(row)
+
+    assert row.last_seen_at >= before
+
 
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
     """A contract whose item fetch failed is retried by the NEXT run, with no sweep.
