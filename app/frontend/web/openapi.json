@@ -1789,6 +1789,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "maxLength": 100,
                   "minLength": 3,
                   "type": "string"
                 },

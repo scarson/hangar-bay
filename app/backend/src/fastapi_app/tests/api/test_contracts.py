@@ -238,3 +238,14 @@ async def test_a_read_path_failure_serves_the_fixed_body_with_no_internals(
     assert response.status_code == 500
     assert response.json() == {"detail": "An unexpected server error occurred."}
     assert "SECRET-BIND-TEXT" not in response.text
+
+
+async def test_a_search_above_max_length_is_rejected_at_the_wire(client: AsyncClient):
+    """The search box carries ship and contract names — nothing legitimate needs
+    more than 100 characters, and without a ceiling arbitrary-length text binds
+    into a double-wildcard ILIKE over two columns on an anonymous endpoint."""
+    over = await client.get("/contracts/", params={"search": "x" * 101})
+    assert over.status_code == 422
+
+    at_cap = await client.get("/contracts/", params={"search": "x" * 100})
+    assert at_cap.status_code == 200
