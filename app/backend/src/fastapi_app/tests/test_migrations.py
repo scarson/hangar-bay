@@ -151,6 +151,50 @@ def test_offline_downgrade_renders_a_transaction_wrapped_locked_guard():
     assert begin < lock < guard < alter < commit
 
 
+def test_offline_issuer_downgrade_renders_a_locked_guard_then_drops_the_indexes():
+    """The issuer downgrade's emitted SQL carries the same atomicity contract as the
+    price one, plus a step order of its own.
+
+    a7c44d19e582 reuses the f2a91c3b7e04 shape — LOCK TABLE is only legal inside a
+    transaction block, and the lock must precede the guard so the check and the
+    alteration cannot be split by a concurrent writer — but only the price migration's
+    rendering was pinned. Deleting a7c's LOCK TABLE line, or its lock_timeout preamble,
+    regressed silently.
+
+    The step order is the exact inverse of the upgrade (which sets the timeout, creates
+    the system_id index, creates the location_id index, then widens): narrow first, then
+    drop the indexes in reverse creation order. Pinned so a reordering has to be
+    deliberate.
+    """
+    import io
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+
+    buffer = io.StringIO()
+    cfg = Config(
+        str(Path(__file__).resolve().parents[2] / "alembic.ini"),
+        output_buffer=buffer,
+    )
+    command.downgrade(cfg, "a7c44d19e582:f2a91c3b7e04", sql=True)
+    rendered = buffer.getvalue()
+
+    begin = rendered.index("BEGIN;")
+    timeout = rendered.index("SET lock_timeout")
+    lock = rendered.index("LOCK TABLE contracts IN ACCESS EXCLUSIVE MODE")
+    guard = rendered.index("cannot narrow issuer columns to int32")
+    narrow = rendered.index("ALTER COLUMN issuer_corporation_id TYPE INTEGER")
+    drop_location = rendered.index("DROP INDEX ix_contracts_start_location_id")
+    drop_system = rendered.index("DROP INDEX ix_contracts_start_location_system_id")
+    commit = rendered.index("COMMIT")
+
+    assert begin < timeout < lock < guard < narrow < drop_location < drop_system < commit
+    # Both columns narrow in ONE statement: a width change rewrites the table, so two
+    # ALTERs would rewrite it twice under the same exclusive lock.
+    assert rendered.count("ALTER TABLE contracts ALTER COLUMN") == 1
+
+
 def test_downgrade_refuses_while_an_issuer_id_exceeds_int32(blank_migrated_sync_connection):
     """The issuer-narrowing downgrade must fail with a stated reason once CCP has
     allocated beyond int32 — not with an incidental out-of-range error, and for

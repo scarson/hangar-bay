@@ -1475,6 +1475,29 @@ async def test_re_sighting_a_contract_advances_its_last_seen_at(
 
     assert row.last_seen_at >= before
 
+async def test_an_issuer_id_above_int32_survives_the_writer(db_session: AsyncSession):
+    """A CCP id beyond 2^31 must ingest, end to end.
+
+    Migration a7c44d19e582 widened issuer_id/issuer_corporation_id to BIGINT precisely
+    so an out-of-range id could not poison ingestion the way a price-less contract did
+    before f2a91c3b7e04 — but only the price half got the write-path test its own
+    docstring invokes (TEST-22). The issuer half had schema tests alone: model/migration
+    equivalence pins the column TYPE, and nothing ever pushed a spec-extreme VALUE
+    through _process_contracts, which is where the poisoning actually happened.
+    """
+    service = _make_service()
+    contract = _ship_contract_dict(890201)
+    contract["issuer_id"] = 3_000_000_000
+    contract["issuer_corporation_id"] = 3_000_000_001
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 890201)
+    )).scalar_one()
+    assert row.issuer_id == 3_000_000_000
+    assert row.issuer_corporation_id == 3_000_000_001
+
 
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
     """A contract whose item fetch failed is retried by the NEXT run, with no sweep.
