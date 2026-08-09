@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -59,7 +59,10 @@ async def list_contract_taxonomy(
 
 @router.get("/{contract_id}", response_model=ContractDetailSchema)
 async def get_contract(
-    contract_id: int,
+    # Bounded to the ids that can exist: ESI contract ids are positive int64,
+    # and an unbounded int previously rode past validation into the driver,
+    # which surfaced an out-of-range id as a 500 instead of a 422.
+    contract_id: Annotated[int, Path(ge=1, le=2**63 - 1)],
     db: AsyncSession = Depends(get_db),
 ):
     """

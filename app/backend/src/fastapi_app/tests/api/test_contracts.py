@@ -249,3 +249,100 @@ async def test_a_search_above_max_length_is_rejected_at_the_wire(client: AsyncCl
 
     at_cap = await client.get("/contracts/", params={"search": "x" * 100})
     assert at_cap.status_code == 200
+
+
+# --- The detail path's own guardrails (coverage register C-1..C-3) ---
+
+async def test_detail_serves_404_for_an_absent_contract(client: AsyncClient, db_session: AsyncSession):
+    """The 404 branch had zero tests anywhere in the suite."""
+    response = await client.get("/contracts/424242")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Contract not found"}
+
+
+async def test_detail_rejects_a_non_integer_id_at_the_wire(client: AsyncClient):
+    response = await client.get("/contracts/not-a-number")
+    assert response.status_code == 422
+
+
+async def test_detail_rejects_ids_outside_the_representable_range(client: AsyncClient):
+    """An id above int64 previously rode past validation into the driver and
+    surfaced as a 500; ids that cannot exist are a validation failure, not a
+    server error. Zero and negatives fall under the same floor."""
+    over = await client.get("/contracts/99999999999999999999")
+    assert over.status_code == 422
+
+    zero = await client.get("/contracts/0")
+    assert zero.status_code == 422
+
+
+# --- Endpoint 422 sweep over the list params (coverage register C-11..C-13) ---
+
+async def test_page_zero_and_negatives_are_rejected(client: AsyncClient):
+    """page ge=1 stands between a caller and a negative OFFSET 500."""
+    for value in ("0", "-1"):
+        response = await client.get(f"/contracts/?page={value}")
+        assert response.status_code == 422, f"page={value}"
+
+
+async def test_below_floor_numeric_bounds_are_rejected_per_family(client: AsyncClient):
+    """Every numeric family's floor, one row each — testing one does not cover
+    its siblings. runs floors at -1 (the ESI sentinel the wire tolerates), the
+    rest at 0."""
+    cases = {
+        "min_price": "-1", "max_price": "-1",
+        "min_collateral": "-1", "max_collateral": "-1",
+        "min_runs": "-2", "max_runs": "-2",
+        "min_me": "-1", "max_me": "-1",
+        "min_te": "-1", "max_te": "-1",
+    }
+    for param, value in cases.items():
+        response = await client.get(f"/contracts/?{param}={value}")
+        assert response.status_code == 422, f"{param}={value}"
+
+
+async def test_malformed_value_types_are_rejected_per_param(client: AsyncClient):
+    """Type junk per param family: id-list members, booleans, and both sort
+    enums each parse through different validators."""
+    cases = [
+        "region_ids=abc",
+        "category_id=1.5",
+        "is_bpc=maybe",
+        "sort_by=bogus_field",
+        "sort_direction=sideways",
+    ]
+    for query in cases:
+        response = await client.get(f"/contracts/?{query}")
+        assert response.status_code == 422, query
+
+
+async def test_primary_label_prefers_the_offered_ship_over_an_earlier_named_item(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The hull is the headline on a ship marketplace: a fitted-hull contract
+    whose module row precedes the ship row must still headline the ship. With
+    the module first by record_id, named[0] alone produces the wrong answer —
+    only the ship-priority branch produces this label."""
+    db_session.add_all([
+        Contract(
+            contract_id=31, title="Fitted hull", price=100, collateral=0.0,
+            is_ship_contract=True, type="item_exchange", status="outstanding",
+            issuer_id=1, issuer_corporation_id=1, for_corporation=False,
+            date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"),
+            date_expired=LIVE_EXPIRY, start_location_id=60003760,
+        ),
+        ContractItem(
+            record_id=310001, contract_id=31, type_id=12058,
+            type_name="1MN Afterburner I", quantity=1, is_included=True,
+            is_singleton=False, category="module",
+        ),
+        ContractItem(
+            record_id=310002, contract_id=31, type_id=587, type_name="Rifter",
+            quantity=1, is_included=True, is_singleton=False, category="ship",
+        ),
+    ])
+    await db_session.flush()
+
+    response = await client.get("/contracts/")
+    assert response.status_code == 200
+    assert response.json()["items"][0]["primary_label"] == "Rifter"
