@@ -12,9 +12,9 @@ corrects them.
 
 | | |
 |---|---|
-| `origin/dev` tip | `fc454de` (PR #173 merge) |
-| Open PRs | **#174** (backend-write 9/18) — CI green; codex rounds 1-2 done (9 findings, all real, all fixed), round 3 required because the round-2 rework changed test logic |
-| Baselines | backend **770** · frontend eslint/tsc clean, vitest **416 ×2**, e2e **146** |
+| `origin/dev` tip | `9c278f2` (PR #174 merge) |
+| Open PRs | **none** — #173, #174 and #175 all merged |
+| Baselines | backend **772** · frontend eslint/tsc clean, vitest **416 ×2**, e2e **146** |
 | Worktree | `.claude/worktrees/coverage-wave-5-da9c1c`, provisioned (`.venv`, `node_modules`, `app/backend/src/.env`) |
 | Sam's queue | C-11's third hazard · production DB allow rule `198.37.143.189/32` (ENV-8) · the dev→main release · design decisions D-a–D-k · **NEW: two decisions in §5** |
 
@@ -22,9 +22,9 @@ corrects them.
 
 - **PR #173** — the Wave 5 sweep + backend-read nice-to-haves **10/10**. Backend 733 → 753.
   Two adversarial-review rounds, four findings, all real, all fixed.
-- **PR #174** (open) — backend-write nice-to-haves **9 of 18**. Backend 753 → 770.
-  **Nine** review findings over two rounds, all real, all fixed; a third round is owed
-  because the round-2 rework changed test logic (see §3's re-run rule).
+- **PR #174** — backend-write nice-to-haves **9 of 18**. Backend 753 → 772.
+  **Thirteen** review findings over FIVE rounds, all real, all fixed; rounds produced
+  6 → 3 → 3 → 1 → 0. Merged on the clean round.
 
 **Two of my own tests could not fail, for structural reasons, and both are worth knowing:**
 
@@ -134,6 +134,35 @@ terminated both times. The rule behind it is TEST-25's evidence test.
 Tell codex **not to run `npm test` from `app/frontend/web`** — but see §4, the real trigger is
 broader than that one command.
 
+**Two refinements this session earned, both of which made the review TERMINATE.**
+
+**Split findings into two categories in the prompt, and say only one blocks.** By round 3 the
+survivor tables had begun mixing *(a) the new test fails to constrain what it CLAIMS* with
+*(b) adjacent production behavior these rows never claimed to cover* — fractional-second
+precision, negative dev-limit config, SQLite-only preserve semantics. Category (b) items are
+real observations but they are not defects in the rows under review, and leaving them
+unseparated makes a converging review look like it is still finding problems. Bound each row's
+claim to its register row plus the test's own docstring, and tell codex not to promote a (b) to
+an (a) by reading a docstring expansively. Round 4 then classified 1 blocker against 13 adjacent;
+round 5 returned an empty (a) and the PR merged. Rounds went **6 → 3 → 3 → 1 → 0**.
+
+**Say explicitly that an empty list is the desired outcome.** Add: *"do not manufacture a
+category (a) finding to avoid an empty list; an empty list is the expected and desired outcome of
+a converging review, and reporting one falsely is worse than missing one."* A reviewer with an
+implicit incentive to justify its invocation will keep producing findings forever, which is the
+same non-termination the old "name a wrong implementation" framing had, reached by a different
+route.
+
+**And a rule for the mutation harness itself, which lied once here.** A run reported a mutant
+killed with every parametrized case failing; the edit that DEFINED the mutant's helper had
+silently not applied, so the mutant referenced an undefined name and every case died on a
+`NameError` rather than on behavior. Applied correctly, exactly one case failed. **Assert on the
+symbols a mutation INTRODUCES, not only on the text it replaces**, and read the per-case
+breakdown rather than the summary line — a broken mutant fails everything, which is
+indistinguishable from a thorough test at the summary and obvious one line deeper. TEST-12's rule
+applies to the harness as much as to the tests: a red run is evidence only if the mutation is the
+one you intended.
+
 ### Test discipline
 
 TDD for production code (watch RED first). Mutation-verify load-bearing tests (TEST-12) — restore
@@ -229,11 +258,11 @@ assertion was identified in the sweep at breakfast and committed in my own test 
 > Hangar Bay: read `docs/superpowers/handoffs/2026-08-09-coverage-wave-5-continued-handoff.md`
 > first — its §3 process rules are binding (Routine PRs are agent-merged on a mechanically-gated
 > green check; codex adversarial review framed as "name a plausible EDIT these tests would not
-> catch"; TDD + mutation verification; five frontend lanes). State: `origin/dev` at `fc454de`,
-> backend **770**, frontend 416×2 + 146 e2e. Wave 5's sweep is DONE — its results are in the
+> catch"; TDD + mutation verification; five frontend lanes). State: `origin/dev` at `9c278f2`, ZERO open PRs,
+> backend **772**, frontend 416×2 + 146 e2e. Wave 5's sweep is DONE — its results are in the
 > coverage report's §Wave 5 sweep; do not re-run it.
 >
-> Queue: land PR #174 if still open, then **backend-write's remaining 9 rows** (§2.1 names each and
+> Queue: **backend-write's remaining 9 rows** (§2.1 names each and
 > what it needs — N-8 is the only production edit, a hoist of two function-local `500` literals).
 > Then **frontend-logic 13** and **frontend-components 17** — §2.2 records which rows the sweep
 > already narrowed, including that logic N-11 and components N-11 are ONE gap and that
