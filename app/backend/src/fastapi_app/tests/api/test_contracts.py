@@ -346,3 +346,179 @@ async def test_primary_label_prefers_the_offered_ship_over_an_earlier_named_item
     response = await client.get("/contracts/")
     assert response.status_code == 200
     assert response.json()["items"][0]["primary_label"] == "Rifter"
+
+
+async def test_a_courier_with_no_destination_name_is_labelled_courier_alone(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The bare "Courier" label, distinct from the "Courier to X" one already pinned.
+
+    A courier carries no items and frequently no title, so the label falls all the way
+    through to the type branch. That branch has two arms and only the named-destination
+    one is asserted anywhere: with end_location_name NULL — which is every courier whose
+    destination the name cache has not resolved yet — the label must still say what the
+    contract IS rather than degrading to the id fallback.
+    """
+    db_session.add(
+        Contract(
+            contract_id=41, title=None, price=0, collateral=1_000_000,
+            is_ship_contract=False, type="courier", status="outstanding",
+            issuer_id=41, issuer_corporation_id=41, for_corporation=False,
+            date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"),
+            date_expired=LIVE_EXPIRY, start_location_id=60003760,
+            end_location_name=None,
+        )
+    )
+    await db_session.flush()
+
+    response = await client.get("/contracts/")
+    assert response.status_code == 200
+    assert response.json()["items"][0]["primary_label"] == "Courier"
+
+
+async def test_a_contract_with_nothing_to_name_it_by_falls_back_to_its_id(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The last-resort label: no named item, no title, and not a courier.
+
+    Reached by a contract whose items ESI has not enriched with type_names yet — the
+    ordinary state between ingestion and the next name-resolution pass — so the fallback
+    is a live path rather than a defensive one. It is the only branch that can produce a
+    label at all here, and nothing reads it today.
+    """
+    db_session.add_all([
+        Contract(
+            contract_id=42, title=None, price=100, collateral=0.0,
+            is_ship_contract=True, type="item_exchange", status="outstanding",
+            issuer_id=42, issuer_corporation_id=42, for_corporation=False,
+            date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"),
+            date_expired=LIVE_EXPIRY, start_location_id=60003760,
+        ),
+        # Unnamed: present, offered, and useless for labelling.
+        ContractItem(
+            record_id=420001, contract_id=42, type_id=587, type_name=None,
+            quantity=1, is_included=True, is_singleton=False,
+        ),
+    ])
+    await db_session.flush()
+
+    response = await client.get("/contracts/")
+    assert response.status_code == 200
+    assert response.json()["items"][0]["primary_label"] == "Contract 42"
+
+
+async def test_a_whitespace_only_title_counts_as_absent(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """`_primary_label`'s own comment calls "" the common real ESI shape; whitespace is
+    the same claim one step further, and the guard spells it `.strip()` rather than a
+    bare truthiness check for exactly that reason.
+
+    The discriminating observation is the label's VALUE, not merely that a label exists:
+    dropping `.strip()` from the guard leaves `contract.title` truthy, and the row
+    headlines as an empty string — a blank cell where the contract's identity belongs.
+    """
+    db_session.add(
+        Contract(
+            contract_id=43, title="   ", price=100, collateral=0.0,
+            is_ship_contract=True, type="item_exchange", status="outstanding",
+            issuer_id=43, issuer_corporation_id=43, for_corporation=False,
+            date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"),
+            date_expired=LIVE_EXPIRY, start_location_id=60003760,
+        )
+    )
+    await db_session.flush()
+
+    response = await client.get("/contracts/")
+    assert response.status_code == 200
+    assert response.json()["items"][0]["primary_label"] == "Contract 43"
+
+
+async def test_composition_reports_an_unmeasured_volume_as_null_not_zero(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """A contract the corpus carries no volume for must say so, not claim zero.
+
+    `total_volume` is the contract's own volume and the column is nullable, so the
+    NULL arm runs against real rows. Zero is a measurement — "this lot occupies no
+    space" — and a lot of blueprint copies genuinely measures near zero, so the two
+    readings are not interchangeable at the surface that renders them.
+
+    Asserted alongside `total_item_rows` so a mutation that drops the composition
+    object wholesale fails on a missing breakdown rather than on a NULL that agrees
+    with the expectation by accident.
+    """
+    db_session.add_all([
+        Contract(
+            contract_id=44, title="Unmeasured lot", price=100, collateral=0.0,
+            is_ship_contract=True, type="item_exchange", status="outstanding",
+            issuer_id=44, issuer_corporation_id=44, for_corporation=False,
+            date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"),
+            date_expired=LIVE_EXPIRY, start_location_id=60003760,
+            volume=None,
+        ),
+        ContractItem(
+            record_id=440001, contract_id=44, type_id=587, type_name="Rifter",
+            quantity=1, is_included=True, is_singleton=False,
+            category="ship", category_id=6,
+        ),
+        ContractItem(
+            record_id=440002, contract_id=44, type_id=12058,
+            type_name="1MN Afterburner I", quantity=1, is_included=True,
+            is_singleton=False, category="module", category_id=7,
+        ),
+    ])
+    await db_session.flush()
+
+    response = await client.get("/contracts/")
+    assert response.status_code == 200
+    composition = response.json()["items"][0]["composition"]
+    assert composition is not None
+    assert composition["total_item_rows"] == 2
+    assert composition["total_volume"] is None
+
+
+async def test_detail_returns_its_items_in_record_id_order(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """The item table renders identically on every request only because the detail
+    builder sorts; without it the array carries whatever order the heap returns.
+
+    Pinned as the ORDERED list rather than as membership: a set assertion passes under
+    every permutation, which is precisely the regression. The fixture inserts in
+    descending record_id so unsorted row order and sorted row order disagree, and it
+    interleaves a requested (is_included=False) row to state the second half of the
+    contract — the detail array is the contract's FULL item list, not the offered
+    subset the derived fields are computed from.
+    """
+    db_session.add_all([
+        Contract(
+            contract_id=45, title="Ordered contents", price=100, collateral=0.0,
+            is_ship_contract=True, type="item_exchange", status="outstanding",
+            issuer_id=45, issuer_corporation_id=45, for_corporation=False,
+            date_issued=datetime.fromisoformat("2025-01-01T00:00:00Z"),
+            date_expired=LIVE_EXPIRY, start_location_id=60003760,
+        ),
+        ContractItem(
+            record_id=450003, contract_id=45, type_id=587, type_name="Rifter",
+            quantity=1, is_included=True, is_singleton=False, category="ship",
+        ),
+        ContractItem(
+            record_id=450002, contract_id=45, type_id=34, type_name="Tritanium",
+            quantity=100, is_included=False, is_singleton=False, category="material",
+        ),
+        ContractItem(
+            record_id=450001, contract_id=45, type_id=12058,
+            type_name="1MN Afterburner I", quantity=1, is_included=True,
+            is_singleton=False, category="module",
+        ),
+    ])
+    await db_session.flush()
+
+    response = await client.get("/contracts/45")
+    assert response.status_code == 200
+    assert [item["record_id"] for item in response.json()["items"]] == [
+        450001,
+        450002,
+        450003,
+    ]
