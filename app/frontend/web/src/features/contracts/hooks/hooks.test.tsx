@@ -338,3 +338,86 @@ describe('useTaxonomy polling', () => {
     }
   })
 })
+
+describe('search freezing and field-wise search equality', () => {
+  it('converges when the caller hands it a fresh search object every render', async () => {
+    // The route's validateSearch builds a NEW ContractSearch (and new id arrays) on
+    // every render, so `sameSearch` has to compare by VALUE. Compare the id lists by
+    // reference instead and the adjust-state-during-render below fires on every pass,
+    // which React reports as "Too many re-renders" — a hard crash of the app's main
+    // view that nothing in the suite reproduced.
+    const calls = stubFetch(() => jsonResponse(PAGE))
+    const { result, rerender } = renderHook(
+      () => useContracts(parseContractSearch({ region_ids: [10000002, 10000043] })),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const settled = calls.filter((url) => listCall([url])).length
+
+    rerender()
+    rerender()
+    rerender()
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // Equal-by-value lists in fresh arrays must not look like a changed query.
+    expect(calls.filter((url) => listCall([url])).length).toBe(settled)
+  })
+
+  it('treats a NaN bound as equal to itself, per Object.is', async () => {
+    // Defence in depth: the parser sanitizes NaN away, so this is unreachable from
+    // the address bar today. It is asserted because the comparison is written with
+    // Object.is specifically — swapping in `!==` makes NaN perpetually unequal to
+    // itself and reintroduces the render loop above by a different route.
+    const calls = stubFetch(() => jsonResponse(PAGE))
+    const withNaN = { ...parseContractSearch({}), min_price: Number.NaN }
+    const { result, rerender } = renderHook(() => useContracts({ ...withNaN }), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const settled = calls.filter((url) => listCall([url])).length
+    rerender()
+    rerender()
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(calls.filter((url) => listCall([url])).length).toBe(settled)
+  })
+
+  it('folds a sort click during the debounce window into the settled request', async () => {
+    // Documented behaviour (useContracts.ts): while the text is mid-edit the WHOLE
+    // effective query freezes, so an independent control click does not fire a
+    // request under the OLD text and then a second under the new one. Nothing
+    // asserted it, so a regression that unfroze the non-search params would double
+    // every mid-word sort click into two corpus-scale requests.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const calls = stubFetch(() => jsonResponse(PAGE))
+      const listCalls = () => calls.filter((url) => listCall([url])).length
+
+      const { result, rerender } = renderHook(
+        ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
+        { wrapper, initialProps: { raw: { search: 'rifter' } } },
+      )
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      const beforeTyping = listCalls()
+      expect(beforeTyping).toBeGreaterThan(0)
+
+      // A keystroke opens the window...
+      rerender({ raw: { search: 'rifterr' } })
+      // ...and a sort click lands inside it.
+      rerender({ raw: { search: 'rifterr', sort_by: 'price' } })
+
+      // Frozen: neither the new text nor the new sort has been requested yet.
+      await vi.advanceTimersByTimeAsync(100)
+      expect(listCalls()).toBe(beforeTyping)
+
+      // Once the text settles, ONE request carries both changes.
+      await vi.advanceTimersByTimeAsync(400)
+      await waitFor(() => expect(listCalls()).toBe(beforeTyping + 1))
+      const last = calls.filter((url) => listCall([url])).at(-1)!
+      expect(last).toContain('search=rifterr')
+      expect(last).toContain('sort_by=price')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
