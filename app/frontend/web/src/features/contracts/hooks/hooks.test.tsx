@@ -471,21 +471,24 @@ describe('sameSearch array comparison', () => {
   // A clause that stops discriminating makes lastSettled miss the change, so the next
   // mid-word edit freezes the rows against a filter the reader has already left.
   it.each([
-    { label: 'an appended id (length)', next: [10000002, 10000043], expected: 20000045 },
-    { label: 'a substituted id (element)', next: [10000043], expected: 10000043 },
-    { label: 'a cleared list (array vs undefined)', next: undefined, expected: 0 },
+    { label: 'an appended id (length)', next: [10000002, 10000043], expected: [10000002, 10000043] },
+    { label: 'a substituted id (element)', next: [10000043], expected: [10000043] },
+    { label: 'a reordered, sum-preserving pair', next: [10000043, 10000002], expected: [10000043, 10000002] },
+    { label: 'a cleared list (array vs undefined)', next: undefined, expected: [] },
   ])('records $label as a change and freezes against it', async ({ next, expected }) => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
-      // The responder echoes the SUM of the region_ids the request carried, so the
-      // effective query is observable through data. The sum rather than the count on
-      // purpose: a same-length substitution ([A] -> [B]) is exactly what the
-      // elementwise clause exists for, and a count cannot see it. A call-count
-      // assertion cannot see any of this — reverting to an earlier key is served from
-      // the react-query cache with no fetch at all.
+      // The responder echoes the ORDERED region_ids the request carried, so the
+      // effective query is observable through data. Deliberately the exact list and
+      // not a digest of it: a count cannot see a same-length substitution, and a sum
+      // cannot see a reorder or any swap that preserves the total ([1,4] vs [2,3]).
+      // Every lossy observable admits a comparator that is wrong in exactly the way
+      // the observable is blind to (TEST-25). A call-count assertion is blinder
+      // still — reverting to an earlier key is served from the react-query cache
+      // with no fetch at all.
       stubFetch((url) => {
-        const regions = new URL(url, 'http://x').searchParams.getAll('region_ids')
-        return jsonResponse({ ...PAGE, total: regions.reduce((sum, id) => sum + Number(id), 0) })
+        const regions = new URL(url, 'http://x').searchParams.getAll('region_ids').map(Number)
+        return jsonResponse({ ...PAGE, coverage: { ...PAGE.coverage, ingested_region_ids: regions } })
       })
 
       const { result, rerender } = renderHook(
@@ -497,19 +500,66 @@ describe('sameSearch array comparison', () => {
           },
         },
       )
-      await waitFor(() => expect(result.current.data?.total).toBe(10000002))
+      const observed = () => result.current.data?.coverage.ingested_region_ids
+      await waitFor(() => expect(observed()).toEqual([10000002]))
 
       // Settled: the changed list is requested and must be RECORDED as the new settled.
       rerender({ raw: { search: 'rifter', region_ids: next } })
-      await waitFor(() => expect(result.current.data?.total).toBe(expected))
+      await waitFor(() => expect(observed()).toEqual(expected))
 
       // Now type. The freeze must hold the NEW list, not revert to the original.
       rerender({ raw: { search: 'rifterr', region_ids: next } })
       await vi.advanceTimersByTimeAsync(100)
-      expect(result.current.data?.total).toBe(expected)
+      expect(observed()).toEqual(expected)
 
       await vi.advanceTimersByTimeAsync(400)
-      await waitFor(() => expect(result.current.data?.total).toBe(expected))
+      await waitFor(() => expect(observed()).toEqual(expected))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('sameSearch resists digest-shaped comparators', () => {
+  it('records a length- AND sum-preserving id swap as a change', async () => {
+    // [A, D] -> [B, C] with A+D === B+C and both length 2. Every digest a plausible
+    // "cheap" comparator might use — length, sum, or both — is identical across this
+    // transition, so only a genuine elementwise comparison sees it. The parametrized
+    // cases above cannot reach this shape because each changes the length.
+    //
+    // The FREEZE is the discriminator, not the settled request: while settled the
+    // hook reads the live search either way, so a comparator that wrongly reported
+    // "equal" only reveals itself once lastSettled has to supply the frozen query.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      stubFetch((url) => {
+        const regions = new URL(url, 'http://x').searchParams.getAll('region_ids').map(Number)
+        return jsonResponse({ ...PAGE, coverage: { ...PAGE.coverage, ingested_region_ids: regions } })
+      })
+
+      const before = [10000001, 10000004]
+      const after = [10000002, 10000003] // same length, same sum, different elements
+
+      const { result, rerender } = renderHook(
+        ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
+        {
+          wrapper,
+          initialProps: { raw: { search: 'rifter', region_ids: before } as Record<string, unknown> },
+        },
+      )
+      const observed = () => result.current.data?.coverage.ingested_region_ids
+      await waitFor(() => expect(observed()).toEqual(before))
+
+      rerender({ raw: { search: 'rifter', region_ids: after } })
+      await waitFor(() => expect(observed()).toEqual(after))
+
+      // Type: the frozen query must be the swapped list, not the original.
+      rerender({ raw: { search: 'rifterr', region_ids: after } })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(observed()).toEqual(after)
+
+      await vi.advanceTimersByTimeAsync(400)
+      await waitFor(() => expect(observed()).toEqual(after))
     } finally {
       vi.useRealTimers()
     }
