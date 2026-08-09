@@ -2192,3 +2192,100 @@ describe('search request debouncing', () => {
     expect(listCalls(calls)[0]).toContain('search=drake')
   })
 })
+
+describe('ContractDetailPage Reward row', () => {
+  // Register C6. `data.reward != null && data.reward > 0` is two decisions, and
+  // neither the render nor the suppression was asserted anywhere. Zero is falsy, so
+  // the `> 0` half is what stops a price-only contract growing a meaningless
+  // "0 ISK" Reward row — and a truthiness-narrowed regression keeps both arms
+  // looking right until you check the zero case specifically.
+  it('renders the reward on a courier, where it is the headline figure', async () => {
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, type: 'courier', reward: 4_500_000 })))
+
+    renderApp('/contracts/101')
+
+    const reward = await screen.findByText('Reward')
+    expect(reward.parentElement).toHaveTextContent('4,500,000')
+  })
+
+  it.each([
+    { label: 'zero', reward: 0 },
+    { label: 'absent', reward: null },
+  ])('suppresses the row entirely when the reward is $label', async ({ reward }) => {
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, reward })))
+
+    renderApp('/contracts/101')
+
+    // Wait on a sibling field so the assertion runs against a rendered page rather
+    // than against one that has not loaded yet — otherwise it passes vacuously.
+    await screen.findByText('Price')
+    expect(screen.queryByText('Reward')).not.toBeInTheDocument()
+  })
+})
+
+describe('ContractDetailPage empty contents', () => {
+  it('says so plainly when the contract records no items', async () => {
+    // Register C7: the standard courier/loan detail state, asserted nowhere. Without
+    // it the Contents heading renders above nothing at all, which reads as a failed
+    // load rather than as a contract that legitimately carries no items.
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, type: 'courier', items: [] })))
+
+    renderApp('/contracts/101')
+
+    expect(await screen.findByText(/No item data recorded for this contract/)).toBeInTheDocument()
+    // The heading still stands, so the card is an explanation rather than a gap.
+    expect(screen.getByRole('heading', { name: 'Contents' })).toBeInTheDocument()
+  })
+})
+
+describe('ContractDetailPage watch button gate', () => {
+  // Register C10: `item.is_included && item.category === 'ship'`. Both arms
+  // unasserted at this layer. Watching a type you can only ever be ASKED for, or
+  // one that is not a ship at all, is an alert for a thing this feature does not
+  // track.
+  const OFFERED_SHIP = {
+    record_id: 1, type_id: 587, quantity: 1, is_included: true,
+    type_name: 'Rifter', category: 'ship',
+  }
+
+  // The button is auth-gated (`if (!user) return null`), so these must sign in. Using
+  // the anonymous stub made the NEGATIVE arms pass for the wrong reason — no button
+  // renders for a signed-out reader whatever the item is — which the positive arm
+  // caught by failing.
+  const AUTHED = { character_id: 42, character_name: 'Pilot', watchlist_alerts_enabled: true }
+  const signedIn = (handler: (url: string) => Response) => (url: string) =>
+    /\/api\/v1\/me$/.test(url) ? jsonResponse(AUTHED) : handler(url)
+
+  it('offers the watch button on an OFFERED ship', async () => {
+    stubFetch(signedIn(() => jsonResponse({ ...CONTRACT, items: [OFFERED_SHIP] })))
+
+    renderApp('/contracts/101')
+
+    const offered = within(await screen.findByRole('region', { name: /^Offered/ }))
+    expect(offered.getByText(/Rifter/)).toBeInTheDocument()
+    expect(offered.getByRole('button', { name: /watch/i })).toBeInTheDocument()
+  })
+
+  it.each([
+    {
+      label: 'a REQUESTED ship (wrong side)',
+      item: { ...OFFERED_SHIP, record_id: 3, is_included: false },
+      region: /^Requested/,
+    },
+    {
+      label: 'an offered NON-ship (wrong category)',
+      item: { ...OFFERED_SHIP, record_id: 4, type_id: 34, type_name: 'Tritanium', category: null },
+      region: /^Offered/,
+    },
+  ])('withholds it from $label', async ({ item, region }) => {
+    stubFetch(signedIn(() => jsonResponse({ ...CONTRACT, items: [item] })))
+
+    renderApp('/contracts/101')
+
+    // The row itself must be present — otherwise "no watch button" would hold
+    // merely because nothing rendered.
+    const scope = within(await screen.findByRole('region', { name: region }))
+    expect(scope.getByText(new RegExp(item.type_name))).toBeInTheDocument()
+    expect(scope.queryByRole('button', { name: /watch/i })).not.toBeInTheDocument()
+  })
+})
