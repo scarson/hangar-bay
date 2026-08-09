@@ -190,3 +190,46 @@ test.describe('responsive filter-rail disclosure', () => {
     ])
   })
 })
+
+/**
+ * Scenario 6 — responsive column visibility (register C5).
+ *
+ * The unit layer can assert that `hiddenClass` reaches the <th>/<td>, but jsdom
+ * evaluates no media queries, so only a real browser can say whether the class then
+ * does its job. Both projects run this: the SAME assertions with opposite
+ * expectations, which is what makes it a breakpoint test rather than two snapshots.
+ *
+ * Location is `max-lg:hidden` (gone on mobile at 412px, present on desktop) and
+ * Issued is `max-sm:hidden` (likewise). Deadline and Price are deliberately never
+ * hidden and are asserted visible on BOTH, so a rule that hid everything below `lg`
+ * would fail here rather than looking like a pass on mobile.
+ */
+test.describe('responsive column visibility', () => {
+  test.beforeEach(async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptContractList(page, pageOf(SEVEN_SHIPS))
+  })
+
+  test('hides the recoverable columns on narrow viewports and keeps the essential ones', async ({
+    page,
+  }, testInfo) => {
+    await page.goto('/contracts')
+    await expect(rowLinks(page).first()).toBeVisible()
+
+    const header = (name: string) => page.getByRole('columnheader', { name })
+    const mobile = testInfo.project.name === 'mobile'
+
+    // Never hidden at any width: Price carries the headline figure, and the days a
+    // hauler has to deliver in appear nowhere else in the app.
+    await expect(header('Price (ISK)')).toBeVisible()
+
+    // Recoverable from the detail page, so they stand down when space is tight.
+    if (mobile) {
+      await expect(header('Location')).toBeHidden()
+      await expect(header('Issued')).toBeHidden()
+    } else {
+      await expect(header('Location')).toBeVisible()
+      await expect(header('Issued')).toBeVisible()
+    }
+  })
+})

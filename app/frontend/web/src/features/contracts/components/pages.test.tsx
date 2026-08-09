@@ -766,7 +766,7 @@ describe('contract-type segments', () => {
     // which is what makes the header a control rather than a one-way switch.
     const calls = stubFetch(anonymousMe(segmentedPage))
 
-    renderApp(
+    const { router } = renderApp(
       '/contracts?contract_type=courier&ships_only=false&sort_by=days_to_complete&sort_direction=desc',
     )
     await screen.findByText('Jita to Amarr rush')
@@ -775,6 +775,15 @@ describe('contract-type segments', () => {
       within(screen.getByRole('columnheader', { name: /Deadline/ })).getByRole('button'),
     )
 
+    // URL as well as wire: the first click asserts both, and a flip that reached the
+    // request without reaching the address bar would produce a link that does not
+    // reproduce what the reader is looking at.
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        sort_by: 'days_to_complete',
+        sort_direction: 'asc',
+      }),
+    )
     await waitFor(() => {
       const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
       expect(listCall).toContain('sort_direction=asc')
@@ -2283,11 +2292,14 @@ describe('ContractDetailPage Reward row', () => {
 })
 
 describe('ContractDetailPage empty contents', () => {
-  it('says so plainly when the contract records no items', async () => {
-    // Register C7: the standard courier/loan detail state, asserted nowhere. Without
-    // it the Contents heading renders above nothing at all, which reads as a failed
-    // load rather than as a contract that legitimately carries no items.
-    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, type: 'courier', items: [] })))
+  // Both item-less types, not just courier: the register names the courier/LOAN
+  // state, and a single courier fixture is satisfied by a gate that requires
+  // `type === 'courier'` — which would silently drop the card from every loan.
+  it.each(['courier', 'loan'])('says so plainly when a %s records no items', async (type) => {
+    // Register C7. Without the card the Contents heading renders above nothing at
+    // all, which reads as a failed load rather than as a contract that legitimately
+    // carries no items.
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, type, items: [] })))
 
     renderApp('/contracts/101')
 
@@ -2346,5 +2358,43 @@ describe('ContractDetailPage watch button gate', () => {
     const scope = within(await screen.findByRole('region', { name: region }))
     expect(scope.getByText(new RegExp(item.type_name))).toBeInTheDocument()
     expect(scope.queryByRole('button', { name: /watch/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('responsive column classes reach the DOM', () => {
+  // The columns.test.ts policy states which columns hide at which breakpoint, but
+  // that is METADATA — deleting `column.hiddenClass` from the <th>/<td> className in
+  // ContractTable leaves every one of those assertions green while mobile rendering
+  // breaks entirely. This asserts the class actually lands on both the header and
+  // the body cell; e2e/responsive.spec.ts asserts the breakpoint then does its job,
+  // which jsdom cannot (it evaluates no media queries).
+  it.each([
+    { column: 'Location', hiddenClass: 'max-lg:hidden' },
+    { column: 'Issued', hiddenClass: 'max-sm:hidden' },
+  ])('applies $hiddenClass to the $column header AND its cells', async ({ column, hiddenClass }) => {
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+
+    renderApp('/contracts')
+    await screen.findByRole('columnheader', { name: new RegExp(column) })
+
+    const header = screen.getByRole('columnheader', { name: new RegExp(column) })
+    expect(header).toHaveClass(hiddenClass)
+
+    // The body cell too: hiding only the header leaves an orphaned column of data
+    // under a missing heading, which is worse than either alone.
+    const index = screen.getAllByRole('columnheader').indexOf(header)
+    const bodyRow = screen.getAllByRole('row')[1]
+    expect(within(bodyRow).getAllByRole('cell')[index]).toHaveClass(hiddenClass)
+  })
+
+  it('leaves an always-visible column with no breakpoint class at all', () => {
+    // Anti-vacuity: proves toHaveClass above is discriminating rather than matching
+    // some class every cell happens to carry.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+    renderApp('/contracts')
+
+    return screen.findByRole('columnheader', { name: /Price/ }).then((price) => {
+      expect(price.className).not.toContain('hidden')
+    })
   })
 })
