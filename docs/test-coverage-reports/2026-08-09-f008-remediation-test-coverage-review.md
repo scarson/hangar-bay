@@ -366,7 +366,7 @@ four per-file registers as work orders.
 | Wave | Scope | Status |
 |---|---|---|
 | 1 | Security-critical (4) | ✅ DONE — PR #163 (three test-only + this report committed), PR #164 (search max_length, `Review — public API contract`, held for Sam) |
-| 2 | Backend read correctness (13: legacy sorts both ways, min_collateral, detail 404/422/overflow, endpoint 422 sweep C-11..C-13, watermark fallback, primary-label discriminator, readiness expiry) | ⬜ queued — register: subagent-backend-read-findings.md §3 |
+| 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
 | 3 | Backend write correctness (11) + O2's backend partition pin | ⬜ queued — register: subagent-backend-write-findings.md §2 |
 | 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ⬜ queued — registers: the two frontend reports |
 | 5 | Nice-to-have (60) | ⬜ queued — sweep last; drop any a wave above already covered |
