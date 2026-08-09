@@ -35,6 +35,15 @@ def upgrade() -> None:
     # Pre-deploy command on a live database; fail fast rather than queue behind
     # the outgoing instance's ingestion transaction.
     op.execute("SET lock_timeout = '30s'")
+    # One statement for both columns: a width change rewrites the table, and
+    # separate ALTERs would do that twice under the same exclusive lock. The
+    # rewrite also rebuilds every index on the table, so the new indexes are
+    # created AFTER it rather than built once and immediately rebuilt.
+    op.execute(
+        "ALTER TABLE contracts "
+        "ALTER COLUMN issuer_id TYPE BIGINT, "
+        "ALTER COLUMN issuer_corporation_id TYPE BIGINT"
+    )
     op.create_index(
         'ix_contracts_start_location_system_id', 'contracts',
         ['start_location_system_id'], unique=False,
@@ -42,13 +51,6 @@ def upgrade() -> None:
     op.create_index(
         'ix_contracts_start_location_id', 'contracts',
         ['start_location_id'], unique=False,
-    )
-    # One statement for both columns: a width change rewrites the table, and
-    # separate ALTERs would do that twice under the same exclusive lock.
-    op.execute(
-        "ALTER TABLE contracts "
-        "ALTER COLUMN issuer_id TYPE BIGINT, "
-        "ALTER COLUMN issuer_corporation_id TYPE BIGINT"
     )
 
 
@@ -76,11 +78,14 @@ def downgrade() -> None:
         $$
         """
     )
+    # Indexes drop BEFORE the narrowing rewrite: the rewrite rebuilds every
+    # index it finds, and rebuilding two indexes to drop them one statement
+    # later is pure added time under the exclusive lock.
+    op.drop_index('ix_contracts_start_location_id', table_name='contracts')
+    op.drop_index('ix_contracts_start_location_system_id', table_name='contracts')
     # Single statement, single table rewrite — mirror of the upgrade.
     op.execute(
         "ALTER TABLE contracts "
         "ALTER COLUMN issuer_corporation_id TYPE INTEGER, "
         "ALTER COLUMN issuer_id TYPE INTEGER"
     )
-    op.drop_index('ix_contracts_start_location_id', table_name='contracts')
-    op.drop_index('ix_contracts_start_location_system_id', table_name='contracts')
