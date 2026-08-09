@@ -2515,6 +2515,15 @@ async def test_every_mapped_contract_field_lands_on_its_own_column(
     service = _make_service()
     payload = _ship_contract_dict(920101)
     payload.update({
+        # The identifiers, each a different number, so a key swapped for its
+        # neighbour is visible. `type` belongs here as much as any of them: it is
+        # read straight off the payload beside `status`, and the two are adjacent
+        # string keys — the plainest copy/paste there is.
+        "type": "auction",
+        "issuer_id": 771,
+        "issuer_corporation_id": 772,
+        "start_location_id": 60003760,
+        "end_location_id": 60003761,
         "status": "outstanding",
         "title": "Distinctly Titled Lot",
         "for_corporation": True,
@@ -2538,6 +2547,16 @@ async def test_every_mapped_contract_field_lands_on_its_own_column(
             select(Contract).where(Contract.contract_id == 920101)
         )
     ).scalar_one()
+    # `type` first, because it is the field with the widest blast radius: it drives
+    # the segment counts, the ingestion item-fetch partition and watchlist
+    # eligibility, and a wrong value is invisible to all of them at write time
+    # because each of those reads the SOURCE payload rather than the stored row.
+    assert row.type == "auction"
+    assert row.issuer_id == 771
+    assert row.issuer_corporation_id == 772
+    assert row.start_location_id == 60003760
+    assert row.end_location_id == 60003761
+    assert row.start_location_region_id == 10000002  # stamped by the fetch loop
     assert row.status == "outstanding"
     assert row.title == "Distinctly Titled Lot"
     assert row.for_corporation is True
@@ -2611,7 +2630,9 @@ async def test_a_populated_date_completed_is_parsed_and_an_absent_one_is_null(
     )
 
 
-async def test_a_malformed_esi_date_takes_the_whole_batch_down_with_it():
+async def test_a_malformed_esi_date_takes_the_whole_batch_down_with_it(
+    db_session: AsyncSession,
+):
     """CHARACTERIZATION, not endorsement: one bad date string kills every contract beside it.
 
     `_parse_esi_datetime` calls `datetime.fromisoformat` with no guard, from inside the
@@ -2622,28 +2643,48 @@ async def test_a_malformed_esi_date_takes_the_whole_batch_down_with_it():
     contract fetched that cycle. That is the hazard shape a NOT NULL `price` already
     demonstrated in production (TEST-22 / FASTAPI-3).
 
-    Observed at `_build_contract_rows` rather than through `_process_contracts` because
-    the batch semantics live in the comprehension: asserting here shows NO rows are
-    produced at all, which is the property. Note the limit of that choice — the raise
-    happens before any upsert, so nothing is written and no transaction is poisoned;
-    and a refactor that built and wrote per contract would change the persistence blast
-    radius without failing this test.
+    Observed at `_process_contracts`, the layer that DEFINES the blast radius, and
+    asserted on what persisted: the healthy sibling must be absent. Observing at
+    `_build_contract_rows` instead would pin only that the comprehension raises, which a
+    refactor building and writing per contract would still satisfy while no longer
+    losing the batch — the survivor is the whole point of the row, so the test has to
+    stand where the behavior is decided.
+
+    The session stays usable afterwards because the `ValueError` is raised while
+    building rows in memory, before any statement is issued — nothing is written and no
+    transaction is poisoned.
 
     Pinned so the behavior is visible and any change to it is deliberate. Whether it
     SHOULD abort is a decision, not a defect to fix inside a test-only wave — skipping
     the contract and persisting a NULL date both change what the site shows. Recorded
     for Sam in the coverage report.
     """
+    service = _make_service()
     good = _ship_contract_dict(920105)
     bad = _ship_contract_dict(920106)
     bad["date_issued"] = "not-a-date"
 
-    # The healthy sibling alone builds fine, so the batch below fails for the reason
+    # The healthy sibling persists on its own, so the batch below fails for the reason
     # named and not because the fixture was malformed all along (TEST-12 vacuity guard).
-    assert len(bg_agg._build_contract_rows([good], {})) == 1
+    await service._process_contracts(db_session, [_ship_contract_dict(920111)])
+    assert (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 920111)
+        )
+    ).scalar_one_or_none() is not None
 
     with pytest.raises(ValueError):
-        bg_agg._build_contract_rows([good, bad], {})
+        await service._process_contracts(db_session, [good, bad])
+
+    # The blast radius: the healthy contract in the same call did not land either.
+    survivors = (
+        await db_session.execute(
+            select(Contract.contract_id).where(
+                Contract.contract_id.in_([920105, 920106])
+            )
+        )
+    ).scalars().all()
+    assert survivors == []
 
 
 async def test_absent_item_flags_persist_as_null_and_false(db_session: AsyncSession):
@@ -2724,7 +2765,10 @@ async def test_apply_dev_limit_passes_through_a_batch_at_or_under_the_limit(
     limited = service._apply_dev_limit(batch)
 
     assert [c["contract_id"] for c in limited] == [920108, 920109, 920110]
-    assert "DEV_MODE" not in caplog.text
+    # No WARNING at all, rather than "no line containing DEV_MODE". The claim is that a
+    # limit which does not fire is silent; excluding one marker string leaves every
+    # other warning text free to appear in dev logs on every run forever.
+    assert [r.getMessage() for r in caplog.records if r.levelname == "WARNING"] == []
 
 
 async def test_freshness_recorder_treats_an_unparseable_prior_as_no_prior(
