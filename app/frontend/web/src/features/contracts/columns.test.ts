@@ -62,3 +62,65 @@ describe('columnsFor', () => {
     }
   })
 })
+
+describe('responsive column visibility', () => {
+  /**
+   * Which columns stand down at which breakpoint, stated as a COMPLETE map rather
+   * than a few spot checks. The mobile Playwright project runs every spec, so a
+   * dropped `hiddenClass` produces an overflowing table on small screens that no
+   * assertion anywhere would have caught — the register found this asserted at no
+   * layer at all.
+   *
+   * Written as the whole policy so the escape hatch closes too: a NEW column that
+   * nobody classified fails the exhaustiveness check below rather than silently
+   * defaulting to always-visible.
+   */
+  const HIDDEN_AT: Record<string, string | undefined> = {
+    // Always visible: the columns that name the row or carry its headline figure.
+    name: undefined,
+    type: undefined,
+    price: undefined,
+    buyout: undefined,
+    expires: undefined,
+    route: undefined,
+    reward: undefined,
+    reward_per_volume: undefined,
+    // Deliberately never hidden despite being narrow — the days a hauler has to
+    // deliver in appear nowhere else in the app, so hiding it deletes a field
+    // Criterion 5.3 requires.
+    days_to_complete: undefined,
+    // The readiness-gated blueprint trio. Never hidden at a breakpoint either —
+    // asserted independently above, and restated here so the exhaustiveness check
+    // covers the widest column set rather than only the ungated one.
+    runs: undefined,
+    me: undefined,
+    te: undefined,
+    // Stand down on small screens; each is recoverable from the detail page.
+    location: 'max-lg:hidden',
+    issued: 'max-sm:hidden',
+    collateral: 'max-lg:hidden',
+    volume: 'max-lg:hidden',
+  }
+
+  const everyColumn = () =>
+    [undefined, ...CONTRACT_TYPES].flatMap((type) => columnsFor(type, true))
+
+  it('classifies every column that any segment can show', () => {
+    // Exhaustiveness: an unclassified column is the failure this guards, since the
+    // map above would otherwise only describe the columns someone remembered.
+    const keys = new Set(everyColumn().map((column) => column.key))
+    for (const key of keys) {
+      expect(Object.keys(HIDDEN_AT)).toContain(key)
+    }
+    // ...and nothing in the map has gone stale against the real column sets.
+    for (const key of Object.keys(HIDDEN_AT)) {
+      expect([...keys]).toContain(key)
+    }
+  })
+
+  it('hides exactly the columns the policy says, at exactly those breakpoints', () => {
+    for (const column of everyColumn()) {
+      expect(column.hiddenClass).toBe(HIDDEN_AT[column.key])
+    }
+  })
+})
