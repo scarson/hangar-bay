@@ -10,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.watchlist_matcher as wm
 from fastapi_app.models import Contract, ContractItem, Notification, User, WatchlistItem
+from fastapi_app.schemas.contracts import (
+    ITEM_BEARING_CONTRACT_TYPES,
+    ITEMLESS_CONTRACT_TYPES,
+)
 from fastapi_app.services.watchlist_matcher import (
     ConcurrencyLockError,
     WatchlistMatcherService,
@@ -90,6 +94,82 @@ async def test_match_creates_price_honest_notification(db_session: AsyncSession)
     assert note.watch_type_id == 621
     assert note.contract_id == 5001
     assert note.message == "Caracal available in an auction priced 10,500,000 ISK in Jita IV - Moon 4"
+
+async def test_an_item_exchange_contract_matches_and_renders_its_own_label(
+    db_session: AsyncSession,
+):
+    """The positive arm of the contract-type gate, and the only route to its label.
+
+    Every matcher fixture is an auction (the `_contract` default), so item_exchange —
+    the commoner of the two item-bearing types — was never matched and
+    _SHIP_TYPE_LABELS' "an item exchange" was never rendered. Dropping item_exchange
+    from the gate's tuple passed the entire suite.
+    """
+    u = await _user(db_session)
+    await _watch(db_session, u, type_id=621, type_name="Caracal", max_price=20_000_000)
+    await _contract(db_session, cid=5011, price=10_500_000, ctype="item_exchange",
+                    location="Jita IV - Moon 4")
+    await _item(db_session, cid=5011, type_id=621)
+
+    matched, created = await _service()._match_and_notify(db_session)
+    assert matched == 1 and created == 1
+    note = (await db_session.execute(select(Notification))).scalar_one()
+    assert note.contract_id == 5011
+    assert note.message == (
+        "Caracal available in an item exchange priced 10,500,000 ISK in Jita IV - Moon 4"
+    )
+
+
+@pytest.mark.parametrize("item_bearing_type", sorted(ITEM_BEARING_CONTRACT_TYPES))
+async def test_every_item_bearing_contract_type_matches(
+    db_session: AsyncSession, item_bearing_type: str
+):
+    """The positive arm, parametrized over the partition rather than a hand-listed pair.
+
+    The matcher's gate is the third site that used to restate `(item_exchange, auction)`
+    as a literal; it now reads the same enum-derived constant as the ingestion writer and
+    the read path. Deriving the parametrization too is what makes that load-bearing: a
+    sixth item-bearing ContractType is covered here the moment it is added, instead of
+    ingesting items nobody is ever alerted about.
+    """
+    u = await _user(db_session)
+    await _watch(db_session, u, type_id=621, max_price=None)
+    await _contract(db_session, cid=5031, price=1_000_000, ctype=item_bearing_type)
+    await _item(db_session, cid=5031, type_id=621)
+
+    matched, created = await _service()._match_and_notify(db_session)
+
+    assert (matched, created) == (1, 1)
+    note = (await db_session.execute(select(Notification))).scalar_one()
+    assert note.contract_id == 5031
+
+
+@pytest.mark.parametrize("itemless_type", sorted(ITEMLESS_CONTRACT_TYPES))
+async def test_a_contract_outside_the_item_bearing_types_never_matches(
+    db_session: AsyncSession, itemless_type: str
+):
+    """The negative arm: a type the gate excludes must not alert, even when the row
+    carries an INCLUDED item of a watched type at a matching price.
+
+    A control auction of the same shape runs alongside it, so this cannot pass
+    vacuously — the fixture is proven to satisfy every OTHER clause of the predicate,
+    leaving the type gate as the only thing that can be excluding it.
+    """
+    u = await _user(db_session)
+    await _watch(db_session, u, type_id=621, max_price=None)
+
+    await _contract(db_session, cid=5021, price=1_000_000, ctype=itemless_type)
+    await _item(db_session, cid=5021, type_id=621)
+
+    control = 5022
+    await _contract(db_session, cid=control, price=1_000_000, ctype="auction")
+    await _item(db_session, cid=control, type_id=621)
+
+    matched, created = await _service()._match_and_notify(db_session)
+
+    assert (matched, created) == (1, 1)  # the control matched; the gated one did not
+    note = (await db_session.execute(select(Notification))).scalar_one()
+    assert note.contract_id == control
 
 
 # ---------- idempotency: first run N>0, second run zero ----------
@@ -421,6 +501,78 @@ async def test_run_matching_reuses_app_session_factory(monkeypatch: pytest.Monke
     assert entered["count"] == 1, (
         "run_matching must obtain its session from fastapi_app.db.AsyncSessionLocal"
     )
+
+@pytest.mark.parametrize("failing_step", ["match", "prune", "commit"])
+async def test_run_matching_swallows_a_failure_at_the_job_boundary(
+    db_session: AsyncSession, caplog, monkeypatch: pytest.MonkeyPatch, failing_step: str
+):
+    """An APScheduler job must never let an exception escape: the scheduler treats a
+    raising job as a crashing one and the matcher stops running until a redeploy.
+
+    The three failure sites inside the lock — the match query, the prune, and the
+    commit — all funnel into one generic handler that has to log the structured
+    failure event and return. Nothing exercised any of them, so narrowing that
+    `except Exception` (or removing it in favour of "let it bubble") was invisible.
+    """
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    events: list[tuple[tuple, dict]] = []
+    real_log_key_event = wm.log_key_event
+
+    def recording_log_key_event(*args, **kwargs):
+        events.append((args, kwargs))
+        return real_log_key_event(*args, **kwargs)
+
+    monkeypatch.setattr(wm, "log_key_event", recording_log_key_event)
+
+    async def _boom_match(self_, db):
+        raise RuntimeError("simulated match failure")
+
+    async def _boom_prune(self_, db):
+        raise RuntimeError("simulated prune failure")
+
+    async def _ok_match(self_, db):
+        return 0, 0
+
+    async def _ok_prune(self_, db):
+        return 0
+
+    monkeypatch.setattr(
+        wm.WatchlistMatcherService, "_match_and_notify",
+        _boom_match if failing_step == "match" else _ok_match,
+    )
+    monkeypatch.setattr(
+        wm.WatchlistMatcherService, "_prune",
+        _boom_prune if failing_step == "prune" else _ok_prune,
+    )
+
+    engine = create_async_engine(TEST_DATABASE_URL)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    def session_factory():
+        session = maker()
+        if failing_step == "commit":
+            async def boom():
+                raise RuntimeError("simulated commit failure")
+            session.commit = boom
+        return session
+
+    monkeypatch.setattr(wm, "AsyncSessionLocal", session_factory, raising=False)
+
+    store: dict = {}
+    with patch.object(wm.aioredis, "from_url", return_value=FakeLockRedis(store)):
+        with caplog.at_level("ERROR"):
+            await _service().run_matching()  # must not raise
+    await engine.dispose()
+
+    assert "Watchlist matcher run failed" in caplog.text
+    run_events = [kw for args, kw in events if args[1] == "watchlist_match_run"]
+    assert len(run_events) == 1
+    assert run_events[0]["success"] is False
+    assert f"simulated {failing_step} failure" in run_events[0]["error_message"]
+    # The lock is released even on the failing path, so the next tick can run.
+    assert wm.WATCHLIST_MATCH_LOCK_KEY not in store
 
 
 # ---------- NULL price: ESI marks price optional; the column is nullable ----------

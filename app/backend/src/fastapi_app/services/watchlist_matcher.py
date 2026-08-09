@@ -18,7 +18,7 @@ from ..core.logging import get_logger, log_key_event
 from ..models.account import Notification, WatchlistItem
 from ..models.contracts import Contract, ContractItem
 from ..models.user import User
-from ..schemas.contracts import ContractType
+from ..schemas.contracts import ITEM_BEARING_CONTRACT_TYPES, ContractType
 from .contract_service import still_listed_by_esi
 
 logger = logging.getLogger(__name__)
@@ -156,9 +156,7 @@ class WatchlistMatcherService:
             .where(
                 User.watchlist_alerts_enabled.is_(True),
                 ContractItem.is_included.is_(True),
-                Contract.type.in_(
-                    (ContractType.item_exchange.value, ContractType.auction.value)
-                ),
+                Contract.type.in_(sorted(ITEM_BEARING_CONTRACT_TYPES)),
                 Contract.date_expired > func.now(),
                 Contract.date_completed.is_(None),
                 # "Outstanding" is the same question the contracts list asks, so it gets

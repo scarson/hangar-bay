@@ -44,9 +44,21 @@ this file — they are the evidence; this file is the severity-organized view.
 
 - **O1a (WirePage omits `unknown_system_excluded`)** — STILL OPEN.
 - **O1b (fixture tiebreak localeCompare vs Python ordinal)** — STILL OPEN.
-- **O2 (type-partition invariant)** — PARTIALLY ADDRESSED: frontend partition now pinned
-  (`filters.test.ts:70`); `background_aggregation.py:720` still hard-codes
-  `["item_exchange", "auction"]` with no test pinning it to the enum.
+- **O2 (type-partition invariant)** — CLOSED (Wave 3), at **all three backend sites**.
+  `ITEMLESS_CONTRACT_TYPES` / `ITEM_BEARING_CONTRACT_TYPES` now live beside `ContractType`
+  in `schemas/contracts.py`, and every consumer reads them: the read path
+  (`contract_service`), the ingestion writer (`background_aggregation._fetch_item_rows`,
+  which hard-coded `["item_exchange", "auction"]`) and the watchlist matcher
+  (`watchlist_matcher._match_and_notify`, which hard-coded the same pair as a tuple —
+  found during Wave 3's adversarial review, and NOT part of O2's original register).
+  A contract type is therefore classified in exactly one place. The frontend partition
+  was already pinned (`filters.test.ts:70`).
+
+  Both backend gates have tests parametrized over the derived constants rather than a
+  hand-listed pair, so a sixth `ContractType` is covered the moment it is added. Verified
+  by actually adding a hypothetical sixth member: the derived writer handles it, while the
+  old literal fails the new test. Without the matcher fix, that sixth type would have been
+  ingested with items and recognized by the read path while silently never alerting.
 - **PR #156 deferred e2e null-price pin** — STILL OPEN.
 
 ## What is demonstrably strong
@@ -367,10 +379,50 @@ four per-file registers as work orders.
 |---|---|---|
 | 1 | Security-critical (4) | ✅ DONE — PR #163 (three test-only + this report committed), PR #164 (search max_length, `Review — public API contract`, held for Sam) |
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
-| 3 | Backend write correctness (11) + O2's backend partition pin | ⬜ queued — register: subagent-backend-write-findings.md §2 |
+| 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
 | 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ⬜ queued — registers: the two frontend reports |
 | 5 | Nice-to-have (60) | ⬜ queued — sweep last; drop any a wave above already covered |
 
 Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
 (TEST-12), footprint-free discipline on shared fixtures (TEST-23), five frontend lanes for any
 frontend commit, Routine classification unless a wave touches schema or the public contract.
+
+### Wave 3 residual — one mocked-behavior hazard is Sam's call
+
+C-11 flagged three tests that assert against a double rather than against real logic. Two are
+now closed for real:
+
+- `_RELEASE_LOCK_LUA` executes against a live Valkey for BOTH the aggregation and matcher
+  scripts (`tests/test_lock_script.py`). Previously every lock test drove `FakeLockRedis.eval`,
+  which reimplements the compare-and-delete in Python, so the Lua source was never run and a
+  `KEYS[1]`/`ARGV[1]` swap passed the whole suite — mutation-verified, that swap now fails.
+- `bulk_upsert`'s SQLite branch runs on a real in-memory `sqlite+aiosqlite` engine, backing the
+  docstring's "Supported on PostgreSQL and SQLite" claim that nothing had ever executed.
+
+The third needs a decision rather than a test.
+`test_plain_upsert_still_merges_on_dialects_without_conflict_support` drives a hand-rolled
+`_RecordingSession` whose `merge` appends to a list — it asserts `db.merge` is *called*, not
+that merge-based upsert semantics work. The real fallback (`db_upsert.py:77-79`) runs only on a
+dialect that is neither PostgreSQL nor SQLite, and the project has no third dialect to exercise
+it against, so no test can close this the way the other two closed. Per CLAUDE.md's rule on
+tests that exercise mocked behavior, flagging rather than choosing:
+
+- **(a) Delete the fallback and its test.** Every environment is PostgreSQL; SQLite exists only
+  for that branch and its new unit test. Deleting production code needs explicit approval.
+- **(b) Keep it, rename the test** to say it pins dialect *dispatch*, not merge semantics, so
+  nobody reads it as coverage of behavior it does not cover.
+- **(c) Accept the residual** as recorded here and move on.
+
+Until one of those is chosen, Wave 3 stands at **10 of 11 correctness rows closed**, not DONE —
+the wave table says so rather than rounding up. Whoever picks an option should flip the Wave 3
+row at the same time.
+
+### Wave 3 erratum against the write-path register
+
+`subagent-backend-write-findings.md` C-9 describes a7c44d19e582's downgrade as dropping the two
+location indexes **before** the narrowing rewrite. It does the reverse — narrow, then drop in
+reverse creation order, which is the exact inverse of the upgrade and the correct shape. The
+register's stated ordering property does not exist in the code; the test written for C-9 pins
+what the migration actually emits (independently confirmed during adversarial review). No code
+change was made: editing an already-applied migration to satisfy a misreading would be the
+wrong repair.

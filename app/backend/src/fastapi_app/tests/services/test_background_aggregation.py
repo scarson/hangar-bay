@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.background_aggregation as bg_agg
 from fastapi_app.models.contracts import Contract, ContractItem, EsiTaxonomyCache
+from fastapi_app.schemas.contracts import ITEM_BEARING_CONTRACT_TYPES, ContractType
 from fastapi_app.services.background_aggregation import ContractAggregationService
 from fastapi_app.tests.core.test_esi_client import _etag_client, _etag_response
 from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
@@ -1242,6 +1243,290 @@ async def test_a_nameless_group_payload_is_repaired_from_observed_items(
     assert row.name == "Frigate"
     assert row.parent_category_id == 6
 
+async def test_a_non_dict_esi_payload_degrades_one_id_and_the_run_continues(
+    db_session: AsyncSession, caplog
+):
+    """A surprise payload SHAPE degrades that one id; it must never kill the run.
+
+    The guard exists because of a live incident: the list-shaped ETag helper flattened
+    object payloads into keys, so a lookup handed back a list and the `.get()` calls
+    downstream took the whole run down. Every other resolution-failure test raises FROM
+    the fetch, which exercises the try/except one branch above and leaves this guard
+    unproven — remove the isinstance check and those tests all still pass.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8611, "type_id": 587, "quantity": 1, "is_included": True},
+        {"record_id": 8612, "type_id": 34, "quantity": 5000, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            # The incident shape: a list where an object belongs.
+            34: [{"name": "Tritanium", "group_id": 18}],
+        }[type_id]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    with caplog.at_level("WARNING"):
+        await service._process_contracts(db_session, [_ship_contract_dict(861)])
+
+    assert "Unexpected type payload shape for 34: list" in caplog.text
+
+    items = {
+        item.record_id: item
+        for item in (await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 861)
+        )).scalars()
+    }
+    # The healthy id resolves as normal — the degradation is scoped to one lookup...
+    assert items[8611].type_name == "Tristan"
+    assert items[8611].category_id == 6
+    # ...and the malformed one lands as absent enrichment rather than an exception.
+    assert items[8612].type_name is None
+    assert items[8612].category_id is None
+
+    contract = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 861)
+    )).scalar_one()
+    assert contract.is_ship_contract is True
+    # Unresolved category => not COMPLETED, so the contract stays in the re-fetch set
+    # and recovers once ESI returns object-shaped payloads again.
+    assert contract.item_processing_status == "ENRICHMENT_INCOMPLETE"
+
+
+async def test_two_distinct_missing_categories_are_both_repaired(
+    db_session: AsyncSession,
+):
+    """The observed-category walk must yield EVERY distinct category, not just the first.
+
+    _OBSERVED_CATEGORY_IDS_SQL is a hand-written loose index scan: the base case reads
+    `min(category_id)` and the recursive step walks to the next-greater one. With items
+    of a single category the base case alone is a correct answer, so a regression that
+    dropped the whole `UNION ALL` step would pass every other repair test while the
+    self-healing cache silently repaired only the lowest-numbered category forever.
+    Two categories is the smallest fixture that can tell the two apart.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8711, "type_id": 587, "quantity": 1, "is_included": True},
+        {"record_id": 8712, "type_id": 34, "quantity": 5000, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            34: {"name": "Tritanium", "group_id": 18, "market_group_id": 1857},
+        }[type_id]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {
+            25: {"name": "Frigate", "category_id": 6},
+            18: {"name": "Mineral", "category_id": 4},
+        }[group_id]
+    )
+    service.esi_client.get_universe_category = AsyncMock(
+        side_effect=RuntimeError("ESI down")
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(871)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "category")
+    )).scalars().all() == []
+    # Both categories reached the items table — that is the only record of them.
+    assert {
+        row.category_id for row in (await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 871)
+        )).scalars()
+    } == {4, 6}
+
+    # Next run: fresh service (the retry must be DB-observed, not in-memory), ESI
+    # healed, courier-only batch so nothing in this run's enrichment mentions either
+    # category. Both must still be repaired.
+    service = _make_service()
+    service.esi_client.get_universe_category = AsyncMock(
+        side_effect=lambda category_id: {6: {"name": "Ship"}, 4: {"name": "Material"}}[
+            category_id
+        ]
+    )
+    courier = _ship_contract_dict(872)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    rows = (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "category")
+    )).scalars().all()
+    assert {row.esi_id: row.name for row in rows} == {4: "Material", 6: "Ship"}
+
+
+async def test_two_distinct_missing_groups_are_both_repaired(db_session: AsyncSession):
+    """The observed-group walk must yield EVERY distinct group (categories' sibling).
+
+    _OBSERVED_GROUP_IDS_SQL is the same loose index scan one taxonomy level down and
+    carries the same single-value blind spot: with one group in the corpus the base
+    case is indistinguishable from the full recursion.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8811, "type_id": 587, "quantity": 1, "is_included": True},
+        {"record_id": 8812, "type_id": 34, "quantity": 5000, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            34: {"name": "Tritanium", "group_id": 18, "market_group_id": 1857},
+        }[type_id]
+    )
+    # Both payloads carry a category but no name, so neither writes a cache row.
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {25: {"category_id": 6}, 18: {"category_id": 4}}[
+            group_id
+        ]
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(881)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "group")
+    )).scalars().all() == []
+    assert {
+        row.group_id for row in (await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 881)
+        )).scalars()
+    } == {18, 25}
+
+    service = _make_service()
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {
+            25: {"name": "Frigate", "category_id": 6},
+            18: {"name": "Mineral", "category_id": 4},
+        }[group_id]
+    )
+    courier = _ship_contract_dict(882)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    rows = (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "group")
+    )).scalars().all()
+    assert {row.esi_id: row.name for row in rows} == {18: "Mineral", 25: "Frigate"}
+    assert {row.esi_id: row.parent_category_id for row in rows} == {18: 4, 25: 6}
+
+async def test_one_run_stamps_every_contract_with_one_shared_fresh_last_seen_at(
+    db_session: AsyncSession,
+):
+    """One run writes ONE last_seen_at value, and it is the current time.
+
+    A contract is judged still-listed by matching the newest stamp in its region, so
+    per-row stamp drift within a batch would make the late half of a run read as
+    delisted against its own early half. The matcher and read-path suites hand-write
+    last_seen_at on fixtures — legitimate for the reader side, but it means the WRITER
+    is the untested half of the seam (TEST-18).
+    """
+    service = _make_service()
+    cids = [890001, 890002, 890003]
+
+    before = datetime.now(timezone.utc)
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    after = datetime.now(timezone.utc)
+
+    rows = (await db_session.execute(
+        select(Contract).where(Contract.contract_id.in_(cids))
+    )).scalars().all()
+    assert len(rows) == 3
+
+    stamps = {row.last_seen_at for row in rows}
+    assert len(stamps) == 1, "one run must write one last_seen_at across the whole batch"
+    stamp = stamps.pop()
+    # Bounded on both sides, so a column default or a frozen constant cannot pass.
+    assert before <= stamp <= after
+
+
+async def test_re_sighting_a_contract_advances_its_last_seen_at(
+    db_session: AsyncSession,
+):
+    """The upsert must RESTAMP an already-stored contract on conflict.
+
+    If last_seen_at stopped being written — dropped from the row dict, or added to
+    the preserve-on-null set — every re-sighted contract would fall behind its
+    region's watermark one run later and read as delisted site-wide, and no existing
+    test would go red.
+    """
+    service = _make_service()
+    await service._process_contracts(db_session, [_ship_contract_dict(890101)])
+
+    row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 890101)
+    )).scalar_one()
+
+    # Back-date to a value no run could produce, so "advanced" is decided by the
+    # writer rather than by clock resolution between two near-instant runs.
+    stale = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    await db_session.execute(
+        update(Contract).where(Contract.contract_id == 890101).values(last_seen_at=stale)
+    )
+    await db_session.refresh(row)
+    assert row.last_seen_at == stale  # the back-date really took
+
+    before = datetime.now(timezone.utc)
+    await service._process_contracts(db_session, [_ship_contract_dict(890101)])
+    await db_session.refresh(row)
+
+    assert row.last_seen_at >= before
+
+async def test_an_issuer_id_above_int32_survives_the_writer(db_session: AsyncSession):
+    """A CCP id beyond 2^31 must ingest, end to end.
+
+    Migration a7c44d19e582 widened issuer_id/issuer_corporation_id to BIGINT precisely
+    so an out-of-range id could not poison ingestion the way a price-less contract did
+    before f2a91c3b7e04 — but only the price half got the write-path test its own
+    docstring invokes (TEST-22). The issuer half had schema tests alone: model/migration
+    equivalence pins the column TYPE, and nothing ever pushed a spec-extreme VALUE
+    through _process_contracts, which is where the poisoning actually happened.
+    """
+    service = _make_service()
+    contract = _ship_contract_dict(890201)
+    contract["issuer_id"] = 3_000_000_000
+    contract["issuer_corporation_id"] = 3_000_000_001
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 890201)
+    )).scalar_one()
+    assert row.issuer_id == 3_000_000_000
+    assert row.issuer_corporation_id == 3_000_000_001
+
+@pytest.mark.parametrize("contract_type", sorted(t.value for t in ContractType))
+async def test_items_are_fetched_for_exactly_the_item_bearing_contract_types(
+    db_session: AsyncSession, contract_type: str
+):
+    """The writer's item-fetch partition must be the enum-derived one, for every type.
+
+    _fetch_item_rows decides which contracts to ask ESI for items. The read path
+    already derives that partition from the enum "so a contract type can only ever be
+    classified in one place", but the writer restated it as a literal, so the two could
+    drift: add a type to ContractType and the reader classifies it item-bearing while
+    the writer silently never fetches its items — contracts that permanently look empty.
+
+    Parametrized over the whole enum rather than a hand-listed pair, so a new member is
+    covered the moment it is added instead of the next time somebody remembers to.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[])
+    contract = _ship_contract_dict(890301)
+    contract["type"] = contract_type
+
+    await service._process_contracts(db_session, [contract])
+
+    if contract_type in ITEM_BEARING_CONTRACT_TYPES:
+        service.esi_client.get_contract_items.assert_awaited_once_with(890301)
+    else:
+        # No ESI round-trip at all for a type that cannot carry items.
+        service.esi_client.get_contract_items.assert_not_awaited()
+
 
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
     """A contract whose item fetch failed is retried by the NEXT run, with no sweep.
@@ -1509,6 +1794,123 @@ async def test_freshness_recorder_overwrites_a_non_object_prior_record(
     assert isinstance(record, dict)
     assert record["outcome"] == "success"
     assert record["last_success_at"] == record["finished_at"]
+
+async def test_run_aggregation_skips_cleanly_when_the_lock_is_already_held(
+    caplog, monkeypatch: pytest.MonkeyPatch
+):
+    """A run that cannot take the lock must do nothing at all and return quietly.
+
+    This is the scenario the whole lock exists for, and the aggregation side had no
+    test for it: the suite pins release, TTL derivation and token mismatch, but never
+    a PRE-HELD lock. A regression that let the run proceed anyway (concurrent
+    ingestion) or let ConcurrencyLockError escape to the scheduler (a crash-looping
+    job) was invisible here — the matcher suite pins both arms, aggregation neither.
+    """
+    entered = {"count": 0}
+    monkeypatch.setattr(
+        bg_agg, "AsyncSessionLocal", lambda: entered.__setitem__("count", entered["count"] + 1),
+        raising=False,
+    )
+
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[])
+
+    held_by_someone_else = "another-runners-token"
+    store: dict = {bg_agg.AGGREGATION_LOCK_KEY: held_by_someone_else}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        with caplog.at_level("INFO"):
+            await service.run_aggregation()  # must not raise
+
+    service.esi_client.get_public_contracts.assert_not_awaited()  # no ESI traffic
+    assert entered["count"] == 0  # no session opened
+    assert INGEST_KEY not in store  # no freshness record from a run that never ran
+    # The other runner's lock is neither stolen nor released by the skipping run.
+    assert store[bg_agg.AGGREGATION_LOCK_KEY] == held_by_someone_else
+    assert "existing concurrency lock" in caplog.text
+
+
+async def test_freshness_failure_when_every_region_fetch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Total ESI outage: no exception propagates, so the outcome must derive from the
+    counters (ok == 0) rather than from the forced-failure path.
+
+    Success, all-304, partial and forced (commit raise) are pinned; this natural
+    all-failed path is the readiness signal for an ESI outage and had no test that
+    last_success_at survives it and the gauge stays put.
+    """
+    import json as _json
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=RuntimeError("ESI 500"))
+
+    prior = "2026-07-18T00:00:00+00:00"
+    store: dict = {
+        INGEST_KEY: _json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 2,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure"
+    assert record["regions_ok"] == 0
+    assert record["regions_failed"] == 2
+    # Staleness is always measured against the last REAL refresh.
+    assert record["last_success_at"] == prior
+    assert record["finished_at"] != prior  # the record was rewritten, not left alone
+    assert _gauge_value() == before
+
+
+@pytest.mark.parametrize("failing_op", ["get", "set"])
+async def test_a_freshness_cache_failure_never_fails_the_run(caplog, failing_op: str):
+    """A cache blip while RECORDING the outcome must not turn a healthy ingest into a
+    failed job — the recorder's own try/except is what guarantees that.
+
+    Narrow or delete that except and a Valkey hiccup after a clean commit propagates
+    out of _record_run_outcome into run_aggregation's forced-failure handler, which
+    records failure and re-raises: a successful run reported as broken.
+
+    Both cache calls the recorder makes are covered: the prior-record GET and the
+    record SET. They sit inside the same try today, but parametrizing means a refactor
+    that lifts either one out of the guard fails here instead of in production.
+    """
+    from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
+
+    class _RecorderCacheFails(_FakeLockRedis):
+        """Lock traffic works; only the freshness call under test blows up."""
+
+        async def get(self, key):
+            if failing_op == "get" and key == INGEST_KEY:
+                raise RuntimeError("valkey blip")
+            return await super().get(key)
+
+        async def set(self, key, value, nx=False, ex=None):
+            if failing_op == "set" and key == INGEST_KEY:
+                raise RuntimeError("valkey blip")
+            return await super().set(key, value, nx=nx, ex=ex)
+
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=_NotModified("304"))
+
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_RecorderCacheFails(store)):
+        with caplog.at_level("WARNING"):
+            await service.run_aggregation()  # must not raise
+
+    service.esi_client.get_public_contracts.assert_awaited()  # the run really ran
+    assert "failed to record ingest outcome" in caplog.text
+    assert INGEST_KEY not in store
+    # And the swallow does not strand the lock: release still happened in the finally.
+    assert bg_agg.AGGREGATION_LOCK_KEY not in store
 
 
 async def test_run_aggregation_rejects_non_list_region_config(caplog):

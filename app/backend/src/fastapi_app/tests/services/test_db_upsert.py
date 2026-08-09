@@ -153,3 +153,56 @@ async def test_preserved_null_on_a_fresh_insert_stays_null(db_session: AsyncSess
 
     row = await _fetch(db_session, 910004)
     assert row.issuer_name is None
+
+
+async def test_the_sqlite_branch_upserts_and_honors_preserve_on_null():
+    """bulk_upsert's SQLite branch executes for the first time here.
+
+    The docstring promises "compatible with both PostgreSQL and SQLite" and
+    "Supported on PostgreSQL and SQLite only", but the suite runs PostgreSQL
+    exclusively, so the sqlite arm — including its preserve_on_null coalesce — had
+    never run in any test. A compatibility claim no test backs is indistinguishable
+    from dead code; aiosqlite is already a declared dependency, so backing it costs an
+    in-memory engine.
+
+    EsiTaxonomyCache is the model under test because its composite (kind, esi_id)
+    primary key also exercises multi-column index_elements, and parent_category_id is
+    the nullable column the coalesce needs.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import StaticPool
+
+    from fastapi_app.models.contracts import EsiTaxonomyCache
+
+    # StaticPool so every checkout reaches the SAME in-memory database.
+    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(EsiTaxonomyCache.__table__.create)
+
+        async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+            assert db.bind.dialect.name == "sqlite"  # the branch under test really ran
+
+            base = {"kind": "group", "esi_id": 25, "fetched_at": datetime(2026, 7, 1, tzinfo=timezone.utc)}
+            await bulk_upsert(db, EsiTaxonomyCache, [
+                {**base, "name": "Frigate", "parent_category_id": 6},
+            ])
+
+            await bulk_upsert(
+                db, EsiTaxonomyCache,
+                [{**base, "name": "Frigate Mk2", "parent_category_id": None}],
+                preserve_on_null={"parent_category_id"},
+            )
+            row = (await db.execute(select(EsiTaxonomyCache))).scalar_one()
+            assert row.name == "Frigate Mk2"     # ON CONFLICT DO UPDATE fired on sqlite
+            assert row.parent_category_id == 6   # ...and the NULL was coalesced away
+
+            # Control: the same NULL without preserve_on_null clears the column, so the
+            # assertion above is about the coalesce and not about sqlite ignoring NULLs.
+            await bulk_upsert(db, EsiTaxonomyCache, [
+                {**base, "name": "Frigate Mk3", "parent_category_id": None},
+            ])
+            await db.refresh(row)
+            assert row.parent_category_id is None
+    finally:
+        await engine.dispose()

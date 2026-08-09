@@ -20,6 +20,8 @@ from ..schemas.contracts import (
     ContractListResponse,
     ContractType,
     CoverageInfo,
+    ITEM_BEARING_CONTRACT_TYPES,
+    ITEMLESS_CONTRACT_TYPES,
     SortDirection,
     SortableContractFields,
     TaxonomyCategory,
@@ -403,22 +405,6 @@ async def _count_distinct_contracts(db: AsyncSession, query) -> int:
     return total_result.scalar_one()
 
 
-# Contract types ESI never returns items for. The ship flag is derived from items,
-# so a contract of one of these types is never a ship contract — which is why their
-# segment counts are read with the ships-only filter lifted (Criterion 1.8).
-_ITEMLESS_CONTRACT_TYPES = frozenset({
-    ContractType.courier.value,
-    ContractType.loan.value,
-    ContractType.unknown.value,
-})
-
-
-# The complement of _ITEMLESS_CONTRACT_TYPES over the enum, derived rather than
-# restated so a contract type can only ever be classified in one place.
-_ITEM_BEARING_CONTRACT_TYPES = frozenset(
-    contract_type.value for contract_type in ContractType
-) - _ITEMLESS_CONTRACT_TYPES
-
 # The share of the live item-bearing corpus that must be enriched at the current
 # version before the item-level filters are offered. Short of 1.0 because a resweep
 # finishes contract by contract and a handful of contracts whose ESI item fetch keeps
@@ -508,7 +494,7 @@ async def _segment_counts_and_total(
         segment: _count_under_ships_filter(
             all_by_segment[segment],
             ships_by_segment[segment],
-            None if segment in _ITEMLESS_CONTRACT_TYPES else filters.is_ship_contract,
+            None if segment in ITEMLESS_CONTRACT_TYPES else filters.is_ship_contract,
         )
         for segment in all_by_segment
     }
@@ -866,7 +852,7 @@ def _live_item_bearing_contracts():
     return (
         Contract.date_expired > func.now(),
         still_listed_by_esi(),
-        Contract.type.in_(sorted(_ITEM_BEARING_CONTRACT_TYPES)),
+        Contract.type.in_(sorted(ITEM_BEARING_CONTRACT_TYPES)),
     )
 
 
