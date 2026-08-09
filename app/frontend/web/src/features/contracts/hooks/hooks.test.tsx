@@ -460,3 +460,58 @@ describe('lastSettled tracks the newest settled search', () => {
     }
   })
 })
+
+describe('sameSearch array comparison', () => {
+  // The id lists are compared length-then-elementwise. Each transition below breaks a
+  // DIFFERENT clause, and all three are invisible to an equal-arrays test:
+  //   append      -> defeats `left.length !== right.length` alone
+  //   substitute  -> defeats `left.some(...)` alone
+  //   clear       -> defeats the Array.isArray(left) && Array.isArray(right) guard,
+  //                  where one side becomes undefined
+  // A clause that stops discriminating makes lastSettled miss the change, so the next
+  // mid-word edit freezes the rows against a filter the reader has already left.
+  it.each([
+    { label: 'an appended id (length)', next: [10000002, 10000043], expected: 20000045 },
+    { label: 'a substituted id (element)', next: [10000043], expected: 10000043 },
+    { label: 'a cleared list (array vs undefined)', next: undefined, expected: 0 },
+  ])('records $label as a change and freezes against it', async ({ next, expected }) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      // The responder echoes the SUM of the region_ids the request carried, so the
+      // effective query is observable through data. The sum rather than the count on
+      // purpose: a same-length substitution ([A] -> [B]) is exactly what the
+      // elementwise clause exists for, and a count cannot see it. A call-count
+      // assertion cannot see any of this — reverting to an earlier key is served from
+      // the react-query cache with no fetch at all.
+      stubFetch((url) => {
+        const regions = new URL(url, 'http://x').searchParams.getAll('region_ids')
+        return jsonResponse({ ...PAGE, total: regions.reduce((sum, id) => sum + Number(id), 0) })
+      })
+
+      const { result, rerender } = renderHook(
+        ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
+        {
+          wrapper,
+          initialProps: {
+            raw: { search: 'rifter', region_ids: [10000002] } as Record<string, unknown>,
+          },
+        },
+      )
+      await waitFor(() => expect(result.current.data?.total).toBe(10000002))
+
+      // Settled: the changed list is requested and must be RECORDED as the new settled.
+      rerender({ raw: { search: 'rifter', region_ids: next } })
+      await waitFor(() => expect(result.current.data?.total).toBe(expected))
+
+      // Now type. The freeze must hold the NEW list, not revert to the original.
+      rerender({ raw: { search: 'rifterr', region_ids: next } })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(result.current.data?.total).toBe(expected)
+
+      await vi.advanceTimersByTimeAsync(400)
+      await waitFor(() => expect(result.current.data?.total).toBe(expected))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
