@@ -79,9 +79,14 @@ describe('sameSearch (exhaustive)', () => {
     const probes: Partial<ContractSearch>[] = [
       { search: 'rifter' }, { min_price: 1 }, { max_price: 2 }, { is_bpc: true },
       { ships_only: false }, { page: 2 }, { size: 25 }, { sort_by: 'price' },
-      { sort_direction: 'asc' }, // base is 'desc'; a probe equal to base proves nothing { min_runs: 1 }, { max_runs: 2 },
+      // 'asc' because base is 'desc': a probe equal to base would prove nothing.
+      { sort_direction: 'asc' },
+      { min_runs: 1 }, { max_runs: 2 },
       { min_me: 1 }, { max_me: 2 }, { min_te: 1 }, { max_te: 2 },
     ]
+    // Guards the list against silent shrinkage — an earlier revision put a trailing
+    // comment on this line and commented two probes out of existence.
+    expect(probes.length).toBe(15)
     for (const probe of probes) {
       expect(sameSearch(base, { ...base, ...probe })).toBe(false)
     }
