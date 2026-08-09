@@ -2401,6 +2401,11 @@ describe('responsive column classes reach the DOM', () => {
 
     const index = screen.getAllByRole('columnheader').indexOf(price)
     const bodyRow = screen.getAllByRole('row')[1]
-    expect(within(bodyRow).getAllByRole('cell')[index].className).not.toContain('hidden')
+    const cell = within(bodyRow).getAllByRole('cell')[index]
+    expect(cell.className).not.toContain('hidden')
+    // ...and nothing INSIDE it either: wrapping the figure in a hidden span leaves the
+    // padded <td> box visible while the number itself disappears, which a class check
+    // on the cell alone cannot see.
+    expect(cell.querySelector('[class*="hidden"]')).toBeNull()
   })
 })

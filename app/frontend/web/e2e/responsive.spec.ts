@@ -229,7 +229,14 @@ test.describe('responsive column visibility', () => {
     const priceIndex = await page
       .locator('thead th')
       .evaluateAll((ths, label) => ths.findIndex((th) => th.textContent?.includes(label)), 'Price (ISK)')
-    await expect(page.locator('tbody tr').first().locator('td').nth(priceIndex)).toBeVisible()
+    expect(priceIndex).toBeGreaterThanOrEqual(0) // nth(-1) would silently inspect the LAST cell
+    const priceCell = page.locator('tbody tr').first().locator('td').nth(priceIndex)
+    await expect(priceCell).toBeVisible()
+    // The FIGURE, not just its container: a hidden wrapper inside the cell leaves the
+    // padded <td> box visible while the number itself vanishes. Locating the text makes
+    // the assertion about what the reader can actually read, whichever element carries
+    // the class.
+    await expect(priceCell.getByText(/\d/)).toBeVisible()
 
     // Recoverable from the detail page, so they stand down when space is tight.
     if (mobile) {
