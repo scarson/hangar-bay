@@ -2630,8 +2630,11 @@ async def test_a_populated_date_completed_is_parsed_and_an_absent_one_is_null(
     )
 
 
+@pytest.mark.parametrize(
+    "date_field", ["date_issued", "date_expired", "date_completed"]
+)
 async def test_a_malformed_esi_date_takes_the_whole_batch_down_with_it(
-    db_session: AsyncSession,
+    db_session: AsyncSession, date_field: str
 ):
     """CHARACTERIZATION, not endorsement: one bad date string kills every contract beside it.
 
@@ -2654,6 +2657,14 @@ async def test_a_malformed_esi_date_takes_the_whole_batch_down_with_it(
     building rows in memory, before any statement is issued — nothing is written and no
     transaction is poisoned.
 
+    Parametrized over ALL THREE parsed date fields, because "anywhere" is the claim and
+    the three are independent mapping expressions. Two are required (`c["date_issued"]`,
+    `c["date_expired"]`) and one is optional (`c.get("date_completed")`) — and that
+    distinction is exactly the seam a tolerant-parsing edit would follow: making only the
+    optional field degrade to None leaves both required-field cases aborting as before,
+    so a test that corrupts only `date_issued` would never notice that a malformed
+    completion date had stopped costing the batch.
+
     Pinned so the behavior is visible and any change to it is deliberate. Whether it
     SHOULD abort is a decision, not a defect to fix inside a test-only wave — skipping
     the contract and persisting a NULL date both change what the site shows. Recorded
@@ -2662,7 +2673,7 @@ async def test_a_malformed_esi_date_takes_the_whole_batch_down_with_it(
     service = _make_service()
     good = _ship_contract_dict(920105)
     bad = _ship_contract_dict(920106)
-    bad["date_issued"] = "not-a-date"
+    bad[date_field] = "not-a-date"
 
     # The healthy sibling persists on its own, so the batch below fails for the reason
     # named and not because the fixture was malformed all along (TEST-12 vacuity guard).
