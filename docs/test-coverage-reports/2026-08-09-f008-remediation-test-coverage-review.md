@@ -355,3 +355,22 @@ record carries the initial `regions_ok=0, regions_failed=0` (437-438) — reason
 ### Frontend logic and components
 
 Full registers in their reports (60+ rows): `subagent-frontend-logic-findings.md` (28 correctness / 13 nice-to-have; summary at its §Summary counts) and `subagent-frontend-components-findings.md` (10 / 18; queued-input statuses at its §1).
+
+---
+
+## Remediation status (living — update per wave)
+
+**Sam's directive (2026-08-09): fix ALL gaps.** Execution proceeds in waves, one PR each, using the
+four per-file registers as work orders.
+
+| Wave | Scope | Status |
+|---|---|---|
+| 1 | Security-critical (4) | ✅ DONE — PR #163 (three test-only + this report committed), PR #164 (search max_length, `Review — public API contract`, held for Sam) |
+| 2 | Backend read correctness (13: legacy sorts both ways, min_collateral, detail 404/422/overflow, endpoint 422 sweep C-11..C-13, watermark fallback, primary-label discriminator, readiness expiry) | ⬜ queued — register: subagent-backend-read-findings.md §3 |
+| 3 | Backend write correctness (11) + O2's backend partition pin | ⬜ queued — register: subagent-backend-write-findings.md §2 |
+| 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ⬜ queued — registers: the two frontend reports |
+| 5 | Nice-to-have (60) | ⬜ queued — sweep last; drop any a wave above already covered |
+
+Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
+(TEST-12), footprint-free discipline on shared fixtures (TEST-23), five frontend lanes for any
+frontend commit, Routine classification unless a wave touches schema or the public contract.

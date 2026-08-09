@@ -66,9 +66,11 @@ now). Its §1 release runbook pointer remains authoritative and is NOT restated:
    location indexes (schema → `Review` classification, could fold into a wave with D-g's
    issuer-int64 widening). The bigger items (Valkey cache-aside, ESI fan-out semaphore, ingestion
    streaming) each deserve their own plan.
-2. **Test-coverage review of the F008 surface** (`test-coverage-review` skill). Inputs already
-   queued: O1/O2 from the consolidated report (fixture wire-mirror drift, type-partition
-   invariant) and PR #156's deferred e2e null-price type pin.
+2. **Test-coverage review — EXECUTED, remediation IN PROGRESS under Sam's fix-all directive.**
+   The review ran (4 security-critical / 62 correctness / 60 nice-to-have); Wave 1
+   (security-critical) shipped via PRs #163/#164. Waves 2-5 are queued with per-file work-order
+   registers: see `docs/test-coverage-reports/2026-08-09-f008-remediation-test-coverage-review.md`
+   §Remediation status.
 3. **Reward-per-jump spec + plan.** Groundwork is better than the task list assumed: the courier
    spike ([`2026-08-01-courier-route-jumps-spike.md`](../specs/2026-08-01-courier-route-jumps-spike.md))
    measured the live population (161 ESI calls, 8.4 s cold) and F008 spec §15.2 records what the
