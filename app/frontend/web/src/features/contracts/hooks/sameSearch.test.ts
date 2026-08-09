@@ -87,8 +87,9 @@ describe('sameSearch (property-based)', () => {
     // comparator checking only the first k positions is never challenged by random
     // pairs — that is exactly how a fixed-depth implementation survived the first
     // draft of this file. So the pair is CONSTRUCTED: take a list, change one element
-    // at a uniformly-chosen index, and require the predicate to notice. This one
-    // SAMPLES; the deterministic depth guarantee is the deepest-index property below.
+    // at a SAMPLED index (`fc.nat() % length` is modulo-biased toward the front, not
+    // uniform), and require the predicate to notice. This one samples; the deterministic
+    // depth guarantee is the deepest-index property below.
     fc.assert(
       fc.property(
         fc.array(fc.integer({ min: 1, max: 4 }), { minLength: 1, maxLength: MAX_LIST }),
@@ -107,9 +108,9 @@ describe('sameSearch (property-based)', () => {
   })
 
   it('sees a change at index MAX_LIST - 1, deterministically', () => {
-    // The random-index property above reaches deep positions only by luck: on a list of
-    // length L it picks the final slot 1/L of the time, so a comparator inspecting the
-    // first k positions survives unless a long list happens to draw a late index. This
+    // The sampled-index property above reaches deep positions only by luck, and its
+    // index draw is biased toward the front, so a comparator inspecting the first k
+    // positions survives unless a long list happens to draw a late index. This
     // pins the length and targets its last index, so on EVERY run it is a counterexample
     // to any fixed-prefix comparator of depth 23 or less. Depth MAX_LIST or more passes;
     // that is the stated cutoff.
