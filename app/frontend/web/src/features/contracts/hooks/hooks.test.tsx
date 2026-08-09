@@ -6,6 +6,7 @@ import { jsonResponse } from '../../../test/http'
 import { parseContractSearch } from '../filters'
 import { useContracts } from './useContracts'
 import { useContract } from './useContract'
+import { useTaxonomy } from './useTaxonomy'
 
 const PAGE = {
   total: 1,
@@ -252,6 +253,86 @@ describe('useTaxonomy timeout', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
       expect(listCalls).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('useContract retry policy', () => {
+  // retryDelay is flattened so the assertion is about the retry COUNT rather than
+  // about how long the backoff makes the test wait; `retry` is deliberately left
+  // to the hook, which is the thing under test.
+  function retryWrapper({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+
+  it('retries a non-404 detail failure exactly once', async () => {
+    // `failureCount < 1` means one retry, not none and not the library default of
+    // three. A 500 on a detail page is usually transient; three attempts against a
+    // genuinely down backend is three times the load for the same failure.
+    let calls = 0
+    vi.stubGlobal('fetch', async () => {
+      calls += 1
+      return new Response('', { status: 500 })
+    })
+
+    const { result } = renderHook(() => useContract(101), { wrapper: retryWrapper })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(calls).toBe(2) // the initial attempt plus exactly one retry
+  })
+
+  it('never retries a 404, which is an answer rather than a failure', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', async () => {
+      calls += 1
+      return new Response('', { status: 404 })
+    })
+
+    const { result } = renderHook(() => useContract(999), { wrapper: retryWrapper })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(calls).toBe(1)
+  })
+})
+
+describe('useTaxonomy polling', () => {
+  it('re-polls readiness on its own, so a not-ready surface recovers unattended', async () => {
+    // Decision-log D1: the item surface "degrades on its own" — a corpus that
+    // finishes enriching must light the item filters up without a reload. That is
+    // refetchInterval and nothing else; delete it and the app stays not-ready until
+    // the reader navigates. Nothing asserted it.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      let taxonomyCalls = 0
+      vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+        if (/\/contracts\/taxonomy$/.test(url)) {
+          taxonomyCalls += 1
+          return jsonResponse({ categories: [], groups: [], coverage: null })
+        }
+        return jsonResponse(PAGE)
+      })
+
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const wrap = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      )
+      const { result } = renderHook(() => useTaxonomy(), { wrapper: wrap })
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      expect(taxonomyCalls).toBe(1)
+
+      // Just short of the poll interval nothing more has been asked for...
+      await vi.advanceTimersByTimeAsync(5 * 60_000 - 1_000)
+      expect(taxonomyCalls).toBe(1)
+
+      // ...and past it, the probe goes again with no interaction at all.
+      await vi.advanceTimersByTimeAsync(2_000)
+      await waitFor(() => expect(taxonomyCalls).toBe(2))
     } finally {
       vi.useRealTimers()
     }
