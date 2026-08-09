@@ -42,8 +42,12 @@ this file — they are the evidence; this file is the severity-organized view.
 
 ## Queued-input statuses
 
-- **O1a (WirePage omits `unknown_system_excluded`)** — STILL OPEN.
-- **O1b (fixture tiebreak localeCompare vs Python ordinal)** — STILL OPEN.
+- **O1a (WirePage omits `unknown_system_excluded`)** — CLOSED (Wave 4). Field added, supplied
+  by both page builders, and guarded by a compile-time check over the KEYS of the generated
+  `ContractListResponse` (assignability alone cannot catch a MISSING field).
+- **O1b (fixture tiebreak localeCompare vs Python ordinal)** — CLOSED (Wave 4). The composition
+  tiebreak is now an explicit ordinal comparison; `localeCompare` is locale-dependent and
+  roughly case-insensitive, and agreed with the backend only over same-case ASCII.
 - **O2 (type-partition invariant)** — CLOSED (Wave 3), at **all three backend sites**.
   `ITEMLESS_CONTRACT_TYPES` / `ITEM_BEARING_CONTRACT_TYPES` now live beside `ContractType`
   in `schemas/contracts.py`, and every consumer reads them: the read path
@@ -59,7 +63,14 @@ this file — they are the evidence; this file is the severity-organized view.
   by actually adding a hypothetical sixth member: the derived writer handles it, while the
   old literal fails the new test. Without the matcher fix, that sixth type would have been
   ingested with items and recognized by the read path while silently never alerting.
-- **PR #156 deferred e2e null-price pin** — STILL OPEN.
+- **PR #156 deferred e2e null-price pin** — CLOSED (Wave 4). A fixture assigns `price: null` and
+  a desktop+mobile journey asserts the dash. This is what made the nullable wire type
+  load-bearing: narrowing `WireContract.price` back to `number` now fails typecheck, and did
+  not before — because **`tsc -b` had never covered `e2e/` at all** (tsconfig.json referenced
+  only the app and node projects, and Playwright transpiles without checking). A
+  `tsconfig.e2e.json` now joins the references; enabling it immediately surfaced a real defect,
+  `sorting.spec`'s price comparator doing arithmetic on a `number | null` and yielding NaN for
+  an unpriced row.
 
 ## What is demonstrably strong
 
@@ -380,7 +391,7 @@ four per-file registers as work orders.
 | 1 | Security-critical (4) | ✅ DONE — PR #163 (three test-only + this report committed), PR #164 (search max_length, `Review — public API contract`, held for Sam) |
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
 | 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
-| 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ⬜ queued — registers: the two frontend reports |
+| 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ⚠️ **partial** — PR #170 (`Routine`): frontend logic **28/28**, all three e2e pins closed, components **4/10** (C1–C4; C3 came via Wave 3). Remaining: **C5–C10** — responsive column visibility, detail Reward row, empty-items Contents card, five of six BlueprintFilter bounds, the Deadline header sort journey, the WatchButton gate. vitest 322 → 375, e2e 140 → 142 |
 | 5 | Nice-to-have (60) | ⬜ queued — sweep last; drop any a wave above already covered |
 
 Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
