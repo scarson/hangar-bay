@@ -392,11 +392,76 @@ four per-file registers as work orders.
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
 | 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
 | 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ✅ DONE — logic **28/28**, components **10/10**, e2e pins **3/3**. PR #170 (C1–C4, plus a typecheck lane for `e2e/` that had never existed) and PR #171 (C5–C10). vitest 322 → 416, e2e 140 → 146 |
-| 5 | Nice-to-have (60) | ⬜ queued — **sweep before writing anything**: waves 3-4 closed several of these incidentally, and re-testing them is the main way this wave wastes effort. Known-closed, verify then strike: backend-write **N-10** (courier triggers zero `get_contract_items`) and the "an item exchange" label half of **N-11**, both closed by Wave 3's enum-parametrized tests. Frontend-logic **N-9** is now PARTIAL rather than open — the exact mutant it names ("deleting `sortField: 'days_to_complete'` from the Deadline column passes it") is killed by Wave 4's C9 test, and Wave 4 added a direct `sortableFieldsFor` assertion for the unreachable sort fields plus a full-column-set responsive map; only its per-segment membership SNAPSHOT remains. Record every intentional skip in this section rather than dropping it silently |
+| 5 | Nice-to-have (60) | 🔄 **swept 2026-08-09** — 60 register rows reduce to **58 distinct open items**: one fully struck, one cross-register duplicate merged, three partials narrowed. See §Wave 5 sweep below for the row-by-row evidence. Authoring proceeds register by register from that table |
 
 Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
 (TEST-12), footprint-free discipline on shared fixtures (TEST-23), five frontend lanes for any
 frontend commit, Routine classification unless a wave touches schema or the public contract.
+
+### Wave 5 sweep — what waves 3–4 already closed (2026-08-09)
+
+Wave 5's first action was a sweep, not a test: waves 3–4 closed several nice-to-haves
+incidentally, and re-testing them is the main way this wave wastes effort. Every claim below was
+verified against the suite at `origin/dev` `7486df5`, not taken from register prose.
+
+**Baseline at sweep time, all lanes green:** backend **733** · vitest **416 ×2 lanes** ·
+e2e **146** (7 skipped: the live-smoke project) · eslint and `tsc -b` clean.
+
+#### Struck
+
+| Row | Register | Verdict | Evidence |
+|---|---|---|---|
+| **N-10** | backend-write | ✅ **CLOSED — struck** | `test_items_are_fetched_for_exactly_the_item_bearing_contract_types` (`services/test_background_aggregation.py:1528`) asserts `get_contract_items.assert_not_awaited()` on the item-less arm. It closes the row *more strongly than asked*: the row wanted a courier-only run, and the test is parametrized over the whole `ContractType` enum via `ITEM_BEARING_CONTRACT_TYPES`, so loan and unknown are covered too and a sixth type is covered the moment it is added |
+
+#### Narrowed (partial — the remainder is still Wave 5 work)
+
+| Row | Register | Closed half | Remaining |
+|---|---|---|---|
+| **N-11** | backend-write | `_SHIP_TYPE_LABELS`' `"an item exchange"` now renders — `test_an_item_exchange_contract_matches_and_renders_its_own_label` asserts the whole message string (`services/test_watchlist_matcher.py:119`) | `location=None → "an unknown location"` is still unrendered by any test (`watchlist_matcher.py:57`); the `"a contract"` fallback label remains unreachable behind the query's type gate and needs a decision — test it as defense-in-depth, or record it as deliberately unreachable |
+| **N-9** | frontend-logic | The mutant the row names is dead, and `columns.test.ts`'s responsive `HIDDEN_AT` map states the whole column policy exhaustively | `columns.test.ts:25` is still the **self-referential** assertion the row objected to — it derives the expected set from `columnsFor` and compares it to `sortableFieldsFor`, so both sides move together. The per-segment membership SNAPSHOT is still open |
+| **N-13** | frontend-logic | **Not previously known-closed.** Both `useDebouncedValue` halves are done — `'re-arms against the new delay when ONLY delayMs changes'` and `'drops its pending timer on unmount'` (`lib/useDebouncedValue.test.ts:67,97`), added by Wave 4 alongside its C25 work | `raiseApiError` non-401 leaving `['auth','me']` untouched — `lib/api/client.test.ts` throws a 400 but never asserts the cache was left alone. This is the row's whole remaining content |
+
+#### Merged — one gap, counted twice
+
+**frontend-logic N-11 and frontend-components N-11 are the same gap.** Both name
+`columns.tsx:141–143` (the `EXPIRES_COLUMN` `text-warn` cellClass fork on an expired row). The two
+subagents reviewed overlapping surface — `columns.tsx` belongs to the logic reviewer by the
+components reviewer's own stated boundary, but the rendered class is a component-layer
+observation, so both registered it. One test closes both rows; do not write two.
+
+#### Register erratum — a third row whose prose is wrong
+
+The handoff's rule ("treat register prose as evidence, not as ground truth") earns its keep again.
+**frontend-logic N-1** reads "`hasOfferedItemFilters` appears unused and untested (dead export or
+missing consumer test)". It is **not** a dead export: `FilterRail.tsx:48` calls it as one disjunct
+of `hasActiveFilters`. Only the second half of the row's disjunction is real — it has a live
+consumer and no test. This matters because "dead export" would have pointed at deleting production
+code, which needs Sam's explicit approval; "missing consumer test" is ordinary Routine test work.
+This is the third wrong register row across the campaign, after the a7c downgrade ordering (Wave 3
+erratum below) and the two parser-unreachable `DEFAULT_DIRECTION` rows in Wave 4.
+
+#### Sweep arithmetic
+
+60 register rows − 1 struck (backend-write N-10) − 1 duplicate merged (frontend N-11) =
+**58 distinct open items**, three of which (backend-write N-11, frontend-logic N-9, N-13) are
+narrowed to a fraction of their original scope.
+
+#### Rows that are not test work, flagged before authoring starts
+
+Three rows cannot be closed by writing a test alone. They are recorded here rather than silently
+dropped:
+
+- **backend-write N-8** — the contract and item upsert batch loops use function-local literals
+  (`batch_size = 500` at `background_aggregation.py:545`, `BATCH_SIZE = 500` at `:588`). Unlike
+  `UPDATE_ID_CHUNK_SIZE` they cannot be monkeypatched, so a boundary test needs 500+ row fixtures.
+  The row's own prescription is a production change — hoist both to module level — which makes the
+  TEST-11 boundary test possible. Routine, but it is a code edit and takes TDD.
+- **backend-write N-11's `"a contract"` fallback** — unreachable behind the matcher's type gate, so
+  either it is defense-in-depth worth a direct unit call, or it is dead and should be noted as
+  such. Recorded as a decision, not a gap.
+- **frontend-components N-18** — "no mobile live-smoke project" is a `playwright.config.ts` change
+  that adds a lane running against a real backend, not a test. Out of scope for a test-only wave;
+  flagged for Sam.
 
 ### Wave 4 — register row 23, and the standard the campaign now uses
 
