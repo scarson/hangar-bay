@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
+import { sortableFieldsFor } from './columns'
 import {
   CONTRACT_TYPES,
+  DEFAULT_DIRECTION,
   DEFAULT_PAGE,
   DEFAULT_SIZE,
   ITEM_BEARING_TYPES,
   ITEM_LESS_TYPES,
+  MAX_SIZE,
   MIN_SEARCH_LENGTH,
   SORT_FIELDS,
   activeSegment,
@@ -338,5 +341,174 @@ describe('toApiQuery', () => {
       min_te: 2,
       max_te: 20,
     })
+  })
+})
+
+describe('DEFAULT_DIRECTION per field', () => {
+  // The expected directions are LITERAL here, never read from DEFAULT_DIRECTION:
+  // asserting the parser's output against the same constant the parser reads would
+  // agree with whatever that constant said, including a wrong value. Task 1.2 exists
+  // because these were once a flat desc, and it shipped with 2 of 9 fields pinned.
+  it.each([
+    { field: 'date_issued', segment: undefined, expected: 'desc' },
+    { field: 'date_expired', segment: undefined, expected: 'asc' },
+    { field: 'price', segment: undefined, expected: 'asc' },
+    { field: 'ship_name', segment: undefined, expected: 'asc' },
+    { field: 'buyout', segment: 'auction', expected: 'asc' },
+    { field: 'reward_per_volume', segment: 'courier', expected: 'desc' },
+    { field: 'days_to_complete', segment: 'courier', expected: 'desc' },
+  ])(
+    'sort_by=$field on segment $segment starts $expected',
+    ({ field, segment, expected }) => {
+      const parsed = parseContractSearch(
+        segment === undefined
+          ? { sort_by: field }
+          : { sort_by: field, contract_type: segment },
+      )
+      // Anti-vacuity: prove the field survived reconciliation, or the direction
+      // assertion below would be about whatever field it fell back to instead.
+      expect(parsed.sort_by).toBe(field)
+      expect(parsed.sort_direction).toBe(expected)
+    },
+  )
+
+  it.each(['collateral', 'volume'])(
+    '%s carries a DEFAULT_DIRECTION entry no segment can reach',
+    (field) => {
+      // No column set in columns.tsx declares a sortField for these two, so
+      // sortableFieldsFor never contains them and reconcileSort drops the request.
+      // Their DEFAULT_DIRECTION entries are therefore unreachable through the
+      // parser today. Pinned rather than quietly skipped: adding a sortable column
+      // for either, or dropping the constant's entry, should be a deliberate change
+      // that shows up here.
+      expect(SORT_FIELDS).toContain(field)
+      // The literal direction, not merely "an entry exists" — otherwise flipping
+      // either value passes and this row is counted as covered while asserting
+      // nothing about it.
+      const expected: Record<string, 'asc' | 'desc'> = { collateral: 'asc', volume: 'desc' }
+      expect(DEFAULT_DIRECTION[field as keyof typeof DEFAULT_DIRECTION]).toBe(expected[field])
+      expect(sortableFieldsFor(undefined).has(field as never)).toBe(false)
+
+      const parsed = parseContractSearch({ sort_by: field })
+      expect(parsed.sort_by).toBe('date_issued')
+      expect(parsed.sort_direction).toBe('desc')
+    },
+  )
+
+  it('reconciles a widened sort away when several types are selected', () => {
+    // Several types means no single segment, so the expressible set is the default
+    // one; a courier-only field cannot survive it.
+    const parsed = parseContractSearch({
+      sort_by: 'reward_per_volume',
+      contract_type: ['courier', 'auction'],
+    })
+    expect(activeSegment(parsed)).toBeUndefined()
+    expect(parsed.sort_by).toBe('date_issued')
+    expect(parsed.sort_direction).toBe('desc')
+  })
+})
+
+describe('parseContractSearch junk and bounds', () => {
+  it.each([
+    { label: 'empty string', raw: '' },
+    { label: 'a number', raw: 42 },
+    { label: 'an array', raw: ['abc'] },
+    { label: 'null', raw: null },
+  ])('drops a search of $label', ({ raw }) => {
+    expect(parseContractSearch({ search: raw }).search).toBeUndefined()
+  })
+
+  it('keeps a non-empty string search verbatim, untrimmed', () => {
+    // The URL keeps what was typed; trimming is toApiQuery's job, not the parser's.
+    expect(parseContractSearch({ search: '  rifter  ' }).search).toBe('  rifter  ')
+  })
+
+  it.each([
+    { label: 'a string', raw: 'true' },
+    { label: 'a number', raw: 1 },
+    { label: 'null', raw: null },
+  ])('drops an is_bpc of $label', ({ raw }) => {
+    expect(parseContractSearch({ is_bpc: raw }).is_bpc).toBeUndefined()
+  })
+
+  it.each([true, false])('keeps a genuine boolean is_bpc (%s)', (raw) => {
+    expect(parseContractSearch({ is_bpc: raw }).is_bpc).toBe(raw)
+  })
+
+  it.each([
+    { label: 'zero', raw: 0 },
+    { label: 'negative', raw: -3 },
+    { label: 'fractional', raw: 1.5 },
+    { label: 'junk', raw: 'abc' },
+  ])('falls a page of $label back to the default', ({ raw }) => {
+    expect(parseContractSearch({ page: raw }).page).toBe(DEFAULT_PAGE)
+  })
+
+  it('keeps page 1, the minimum boundary', () => {
+    expect(parseContractSearch({ page: 1 }).page).toBe(1)
+  })
+
+  it('keeps size at exactly MAX_SIZE and falls back one past it', () => {
+    // The cap is the request-cost ceiling; off-by-one here is the whole point.
+    expect(parseContractSearch({ size: MAX_SIZE }).size).toBe(MAX_SIZE)
+    expect(parseContractSearch({ size: MAX_SIZE + 1 }).size).toBe(DEFAULT_SIZE)
+  })
+
+  it.each([
+    { label: 'zero', raw: 0 },
+    { label: 'negative', raw: -1 },
+    { label: 'fractional', raw: 10.5 },
+  ])('falls a size of $label back to the default', ({ raw }) => {
+    expect(parseContractSearch({ size: raw }).size).toBe(DEFAULT_SIZE)
+  })
+
+  it('keeps size 1, the minimum boundary', () => {
+    expect(parseContractSearch({ size: 1 }).size).toBe(1)
+  })
+
+  it.each(['region_ids', 'category_id', 'group_id', 'contract_type'])(
+    'reads an empty %s array as absent, not as an empty filter',
+    (key) => {
+      // An empty list must mean "no filter". Sending [] would compile to an
+      // IN () that matches nothing, turning a cleared control into a blank page.
+      expect(parseContractSearch({ [key]: [] })[key as 'region_ids']).toBeUndefined()
+    },
+  )
+})
+
+describe('activeSegment', () => {
+  it('is undefined when nothing is selected', () => {
+    expect(activeSegment(parseContractSearch({}))).toBeUndefined()
+  })
+
+  it('is undefined when several types are selected', () => {
+    const parsed = parseContractSearch({ contract_type: ['courier', 'auction'] })
+    expect(parsed.contract_type).toHaveLength(2)
+    expect(activeSegment(parsed)).toBeUndefined()
+  })
+})
+
+describe('toApiQuery search gating', () => {
+  it('sends the TRIMMED search value, not the raw one', () => {
+    // The URL keeps what the reader typed, spaces and all; the wire must carry the
+    // trimmed value. Passing s.search through raw satisfies every other assertion in
+    // this file, so without this the regression is invisible.
+    expect(toApiQuery(parseContractSearch({ search: '  rifter  ' })).search).toBe('rifter')
+  })
+
+  it('gates on the TRIMMED length, so padded sub-minimum text is still withheld', () => {
+    // '  ab  ' is 6 characters raw and 2 trimmed. Measuring the raw length would send
+    // it and earn a 422 from the backend's min_length.
+    const padded = ' '.repeat(4) + 'a'.repeat(MIN_SEARCH_LENGTH - 1)
+    const parsed = parseContractSearch({ search: padded })
+    expect(parsed.search).toBe(padded) // still in the URL: the reader is mid-typing
+    expect(toApiQuery(parsed).search).toBeUndefined() // but never on the wire
+  })
+
+  it('sends a value that reaches the minimum only after trimming', () => {
+    const exact = '  ' + 'a'.repeat(MIN_SEARCH_LENGTH) + '  '
+    expect(toApiQuery(parseContractSearch({ search: exact })).search).toBe(
+      'a'.repeat(MIN_SEARCH_LENGTH),
+    )
   })
 })

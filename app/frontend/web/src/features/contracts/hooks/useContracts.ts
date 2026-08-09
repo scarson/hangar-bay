@@ -20,7 +20,15 @@ const SEARCH_DEBOUNCE_MS = 300
 // Field-wise equality over ContractSearch: scalars by Object.is, the id-list
 // params elementwise. Generic over the keys so a future param cannot silently
 // fall outside the comparison.
-function sameSearch(a: ContractSearch, b: ContractSearch): boolean {
+//
+// Exported for its own test. Example-based tests cannot close this predicate: for
+// any finite set of fixtures there is a comparator checking exactly the positions
+// those fixtures vary; an example rules out the implementations that differ ON it,
+// which is never all of them.
+// sameSearch.test.ts drives it with GENERATED input against an independent
+// reference instead, bounded by that file's MAX_LIST rather than by which cases
+// somebody remembered to write. See its header for what that does and does not buy.
+export function sameSearch(a: ContractSearch, b: ContractSearch): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof ContractSearch>
   for (const key of keys) {
     const left = a[key]

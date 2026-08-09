@@ -71,9 +71,18 @@ function sortedNames(sortBy: string | null, direction: string | null): string[] 
     const cb = byName[b]
     let delta: number
     switch (sortBy) {
-      case 'price':
-        delta = ca.price - cb.price
+      case 'price': {
+        const pa = ca.price
+        const pb = cb.price
+        // A null price sorts LAST in both directions, as the backend does, so it
+        // must be decided before the direction factor is applied below rather than
+        // flipped by it. Surfaced by putting e2e under the typecheck lane: the wire
+        // type has been `number | null` since the price-nullable migration, and this
+        // arithmetic silently produced NaN for such a row.
+        if (pa === null || pb === null) return pa === pb ? 0 : pa === null ? 1 : -1
+        delta = pa - pb
         break
+      }
       case 'ship_name':
         delta = shipName(ca).localeCompare(shipName(cb))
         break

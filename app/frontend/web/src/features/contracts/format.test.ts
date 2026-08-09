@@ -407,3 +407,26 @@ function courierBetween(origin: string | null, destination: string | null): Cont
     end_location_id: null,
   }
 }
+
+describe('formatComposition volume boundary', () => {
+  it('renders a zero total volume as a measurement rather than dropping it', () => {
+    // 0 is falsy, so a `!= null` guard narrowed to a truthiness check would silently
+    // stop reporting the volume of every genuinely zero-volume contract while every
+    // other composition test kept passing.
+    const rendered = formatComposition({
+      categories: [{ name: 'ship', item_row_count: 1 }],
+      total_volume: 0,
+    } as Parameters<typeof formatComposition>[0])
+    expect(rendered).toContain('0 m³')
+  })
+
+  it('omits the figure entirely when the corpus carries no volume', () => {
+    // The other side of the same guard: absence is not a measurement of zero.
+    const rendered = formatComposition({
+      categories: [{ name: 'ship', item_row_count: 1 }],
+      total_volume: null,
+    } as Parameters<typeof formatComposition>[0])
+    expect(rendered).not.toContain('m³')
+    expect(rendered).toContain('1 ship')
+  })
+})

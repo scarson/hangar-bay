@@ -6,6 +6,7 @@ import { jsonResponse } from '../../../test/http'
 import { parseContractSearch } from '../filters'
 import { useContracts } from './useContracts'
 import { useContract } from './useContract'
+import { useTaxonomy } from './useTaxonomy'
 
 const PAGE = {
   total: 1,
@@ -252,6 +253,355 @@ describe('useTaxonomy timeout', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
       expect(listCalls).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('useContract retry policy', () => {
+  // retryDelay is flattened so the assertion is about the retry COUNT rather than
+  // about how long the backoff makes the test wait; `retry` is deliberately left
+  // to the hook, which is the thing under test.
+  function retryWrapper({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+
+  it('retries a non-404 detail failure exactly once', async () => {
+    // `failureCount < 1` means one retry, not none and not the library default of
+    // three. A 500 on a detail page is usually transient; three attempts against a
+    // genuinely down backend is three times the load for the same failure.
+    let calls = 0
+    vi.stubGlobal('fetch', async () => {
+      calls += 1
+      return new Response('', { status: 500 })
+    })
+
+    const { result } = renderHook(() => useContract(101), { wrapper: retryWrapper })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(calls).toBe(2) // the initial attempt plus exactly one retry
+  })
+
+  it('never retries a 404, which is an answer rather than a failure', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', async () => {
+      calls += 1
+      return new Response('', { status: 404 })
+    })
+
+    const { result } = renderHook(() => useContract(999), { wrapper: retryWrapper })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(calls).toBe(1)
+  })
+})
+
+describe('useTaxonomy polling', () => {
+  it('re-polls readiness on its own, so a not-ready surface recovers unattended', async () => {
+    // Decision-log D1: the item surface "degrades on its own" — a corpus that
+    // finishes enriching must light the item filters up without a reload. That is
+    // refetchInterval and nothing else; delete it and the app stays not-ready until
+    // the reader navigates. Nothing asserted it.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      let taxonomyCalls = 0
+      vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+        if (/\/contracts\/taxonomy$/.test(url)) {
+          taxonomyCalls += 1
+          return jsonResponse({ categories: [], groups: [], coverage: null })
+        }
+        return jsonResponse(PAGE)
+      })
+
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const wrap = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      )
+      const { result } = renderHook(() => useTaxonomy(), { wrapper: wrap })
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      expect(taxonomyCalls).toBe(1)
+
+      // Just short of the poll interval nothing more has been asked for...
+      await vi.advanceTimersByTimeAsync(5 * 60_000 - 1_000)
+      expect(taxonomyCalls).toBe(1)
+
+      // ...and past it, the probe goes again with no interaction at all.
+      await vi.advanceTimersByTimeAsync(2_000)
+      await waitFor(() => expect(taxonomyCalls).toBe(2))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('search freezing and field-wise search equality', () => {
+  it('converges when the caller hands it a fresh search object every render', async () => {
+    // The route's validateSearch builds a NEW ContractSearch (and new id arrays) on
+    // every render, so `sameSearch` has to compare by VALUE. Compare the id lists by
+    // reference instead and the adjust-state-during-render below fires on every pass,
+    // which React reports as "Too many re-renders" — a hard crash of the app's main
+    // view that nothing in the suite reproduced.
+    const calls = stubFetch(() => jsonResponse(PAGE))
+    const { result, rerender } = renderHook(
+      () => useContracts(parseContractSearch({ region_ids: [10000002, 10000043] })),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const settled = calls.filter((url) => listCall([url])).length
+
+    rerender()
+    rerender()
+    rerender()
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // Equal-by-value lists in fresh arrays must not look like a changed query.
+    expect(calls.filter((url) => listCall([url])).length).toBe(settled)
+  })
+
+  it('treats a NaN bound as equal to itself, per Object.is', async () => {
+    // Defence in depth: the parser sanitizes NaN away, so this is unreachable from
+    // the address bar today. It is asserted because the comparison is written with
+    // Object.is specifically — swapping in `!==` makes NaN perpetually unequal to
+    // itself and reintroduces the render loop above by a different route.
+    const calls = stubFetch(() => jsonResponse(PAGE))
+    const withNaN = { ...parseContractSearch({}), min_price: Number.NaN }
+    const { result, rerender } = renderHook(() => useContracts({ ...withNaN }), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const settled = calls.filter((url) => listCall([url])).length
+    rerender()
+    rerender()
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(calls.filter((url) => listCall([url])).length).toBe(settled)
+  })
+
+  it('folds a sort click during the debounce window into the settled request', async () => {
+    // Documented behaviour (useContracts.ts): while the text is mid-edit the WHOLE
+    // effective query freezes, so an independent control click does not fire a
+    // request under the OLD text and then a second under the new one. Nothing
+    // asserted it, so a regression that unfroze the non-search params would double
+    // every mid-word sort click into two corpus-scale requests.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const calls = stubFetch(() => jsonResponse(PAGE))
+      const listCalls = () => calls.filter((url) => listCall([url])).length
+
+      const { result, rerender } = renderHook(
+        ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
+        { wrapper, initialProps: { raw: { search: 'rifter' } as Record<string, unknown> } },
+      )
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      const beforeTyping = listCalls()
+      expect(beforeTyping).toBeGreaterThan(0)
+
+      // A keystroke opens the window...
+      rerender({ raw: { search: 'rifterr' } })
+      // ...and a sort click lands inside it.
+      rerender({ raw: { search: 'rifterr', sort_by: 'price' } })
+
+      // Frozen: neither the new text nor the new sort has been requested yet.
+      await vi.advanceTimersByTimeAsync(100)
+      expect(listCalls()).toBe(beforeTyping)
+
+      // Once the text settles, ONE request carries both changes.
+      await vi.advanceTimersByTimeAsync(400)
+      await waitFor(() => expect(listCalls()).toBe(beforeTyping + 1))
+      const last = calls.filter((url) => listCall([url])).at(-1)!
+      expect(last).toContain('search=rifterr')
+      expect(last).toContain('sort_by=price')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('lastSettled tracks the newest settled search', () => {
+  it('freezes against the LATEST settled search, not a stale one', async () => {
+    // sameSearch wrongly reporting two unequal searches as equal is invisible to the
+    // fresh-object test (which only proves equal-by-value converges) AND to a
+    // call-count assertion: reverting to an earlier query key is served from the
+    // react-query cache with no fetch at all. So this asserts on DATA — the responder
+    // echoes the requested size into `total`, making the effective query observable.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      stubFetch((url) => {
+        const size = Number(new URL(url, 'http://x').searchParams.get('size') ?? 50)
+        return jsonResponse({ ...PAGE, total: size })
+      })
+
+      const { result, rerender } = renderHook(
+        ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
+        { wrapper, initialProps: { raw: { search: 'rifter' } as Record<string, unknown> } },
+      )
+      await waitFor(() => expect(result.current.data?.total).toBe(50))
+
+      // Settled: the new size is requested immediately and must be RECORDED.
+      rerender({ raw: { search: 'rifter', size: 25 } })
+      await waitFor(() => expect(result.current.data?.total).toBe(25))
+
+      // Now type. The query freezes — and it must freeze at size=25. A lastSettled
+      // that stopped advancing would fall back to the initial search and the rows
+      // would revert to the size=50 page underneath the reader mid-word.
+      rerender({ raw: { search: 'rifterr', size: 25 } })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(result.current.data?.total).toBe(25)
+
+      await vi.advanceTimersByTimeAsync(400)
+      await waitFor(() => expect(result.current.data?.total).toBe(25))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('sameSearch array comparison', () => {
+  // The id lists are compared length-then-elementwise. Each transition below breaks a
+  // DIFFERENT clause, and all three are invisible to an equal-arrays test:
+  //   append      -> defeats `left.length !== right.length` alone
+  //   substitute  -> defeats `left.some(...)` alone
+  //   clear       -> defeats the Array.isArray(left) && Array.isArray(right) guard,
+  //                  where one side becomes undefined
+  // A clause that stops discriminating makes lastSettled miss the change, so the next
+  // mid-word edit freezes the rows against a filter the reader has already left.
+  it.each([
+    { label: 'an appended id (length)', next: [10000002, 10000043], expected: [10000002, 10000043] },
+    { label: 'a substituted id (element)', next: [10000043], expected: [10000043] },
+    { label: 'a reordered, sum-preserving pair', next: [10000043, 10000002], expected: [10000043, 10000002] },
+    { label: 'a cleared list (array vs undefined)', next: undefined, expected: [] },
+  ])('records $label as a change and freezes against it', async ({ next, expected }) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      // The responder echoes the ORDERED region_ids the request carried, so the
+      // effective query is observable through data. Deliberately the exact list and
+      // not a digest of it: a count cannot see a same-length substitution, and a sum
+      // cannot see a reorder or any swap that preserves the total ([1,4] vs [2,3]).
+      // Every lossy observable admits a comparator that is wrong in exactly the way
+      // the observable is blind to (TEST-25). A call-count assertion is blinder
+      // still — reverting to an earlier key is served from the react-query cache
+      // with no fetch at all.
+      stubFetch((url) => {
+        const regions = new URL(url, 'http://x').searchParams.getAll('region_ids').map(Number)
+        return jsonResponse({ ...PAGE, coverage: { ...PAGE.coverage, ingested_region_ids: regions } })
+      })
+
+      const { result, rerender } = renderHook(
+        ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
+        {
+          wrapper,
+          initialProps: {
+            raw: { search: 'rifter', region_ids: [10000002] } as Record<string, unknown>,
+          },
+        },
+      )
+      const observed = () => result.current.data?.coverage.ingested_region_ids
+      await waitFor(() => expect(observed()).toEqual([10000002]))
+
+      // Settled: the changed list is requested and must be RECORDED as the new settled.
+      rerender({ raw: { search: 'rifter', region_ids: next } })
+      await waitFor(() => expect(observed()).toEqual(expected))
+
+      // Now type. The freeze must hold the NEW list, not revert to the original.
+      rerender({ raw: { search: 'rifterr', region_ids: next } })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(observed()).toEqual(expected)
+
+      await vi.advanceTimersByTimeAsync(400)
+      await waitFor(() => expect(observed()).toEqual(expected))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('sameSearch resists digest-shaped comparators', () => {
+  it('records a length- AND sum-preserving id swap as a change', async () => {
+    // [A, D] -> [B, C] with A+D === B+C and both length 2. Every digest a plausible
+    // "cheap" comparator might use — length, sum, or both — is identical across this
+    // transition, so only a genuine elementwise comparison sees it. The parametrized
+    // cases above cannot reach this shape because each changes the length.
+    //
+    // The FREEZE is the discriminator, not the settled request: while settled the
+    // hook reads the live search either way, so a comparator that wrongly reported
+    // "equal" only reveals itself once lastSettled has to supply the frozen query.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      stubFetch((url) => {
+        const regions = new URL(url, 'http://x').searchParams.getAll('region_ids').map(Number)
+        return jsonResponse({ ...PAGE, coverage: { ...PAGE.coverage, ingested_region_ids: regions } })
+      })
+
+      const before = [10000001, 10000004]
+      const after = [10000002, 10000003] // same length, same sum, different elements
+
+      const { result, rerender } = renderHook(
+        ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
+        {
+          wrapper,
+          initialProps: { raw: { search: 'rifter', region_ids: before } as Record<string, unknown> },
+        },
+      )
+      const observed = () => result.current.data?.coverage.ingested_region_ids
+      await waitFor(() => expect(observed()).toEqual(before))
+
+      rerender({ raw: { search: 'rifter', region_ids: after } })
+      await waitFor(() => expect(observed()).toEqual(after))
+
+      // Type: the frozen query must be the swapped list, not the original.
+      rerender({ raw: { search: 'rifterr', region_ids: after } })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(observed()).toEqual(after)
+
+      await vi.advanceTimersByTimeAsync(400)
+      await waitFor(() => expect(observed()).toEqual(after))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('sameSearch compares every element, not just the first', () => {
+  it('records a change in a NON-FIRST id as a change', async () => {
+    // [A, B] -> [A, C]: same length, same leading element, differing only in the
+    // tail. A comparator that checked `length && Object.is(left[0], right[0])`
+    // passes append, substitution, clearing and even the sum-preserving swap, and
+    // fails only here — the swap changes the head too, so it cannot reach this shape.
+    // `.some()` is an ALL-elements claim; the fixture has to exercise it as one.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      stubFetch((url) => {
+        const regions = new URL(url, 'http://x').searchParams.getAll('region_ids').map(Number)
+        return jsonResponse({ ...PAGE, coverage: { ...PAGE.coverage, ingested_region_ids: regions } })
+      })
+
+      const before = [10000002, 10000003]
+      const after = [10000002, 10000004] // same head, same length, different tail
+
+      const { result, rerender } = renderHook(
+        ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
+        {
+          wrapper,
+          initialProps: { raw: { search: 'rifter', region_ids: before } as Record<string, unknown> },
+        },
+      )
+      const observed = () => result.current.data?.coverage.ingested_region_ids
+      await waitFor(() => expect(observed()).toEqual(before))
+
+      rerender({ raw: { search: 'rifter', region_ids: after } })
+      await waitFor(() => expect(observed()).toEqual(after))
+
+      rerender({ raw: { search: 'rifterr', region_ids: after } })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(observed()).toEqual(after)
+
+      await vi.advanceTimersByTimeAsync(400)
+      await waitFor(() => expect(observed()).toEqual(after))
     } finally {
       vi.useRealTimers()
     }
