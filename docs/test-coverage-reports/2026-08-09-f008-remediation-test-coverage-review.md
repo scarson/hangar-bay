@@ -392,7 +392,7 @@ four per-file registers as work orders.
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
 | 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
 | 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ✅ DONE — logic **28/28**, components **10/10**, e2e pins **3/3**. PR #170 (C1–C4, plus a typecheck lane for `e2e/` that had never existed) and PR #171 (C5–C10). vitest 322 → 416, e2e 140 → 146 |
-| 5 | Nice-to-have (60) | 🔄 **in progress** — swept first (§Wave 5 sweep): 60 register rows reduce to **58 distinct open items**, one struck, one cross-register duplicate merged, three partials narrowed. **Backend-read 10/10 closed** — 18 tests, backend 733 → 751, every one mutation-verified. Remaining: backend-write 18 (N-10 struck, N-11 partial), frontend-logic 13 (N-9, N-13 partial), frontend-components 17 (N-11 merged into frontend-logic N-11) |
+| 5 | Nice-to-have (60) | 🔄 **in progress** — swept first (§Wave 5 sweep): 60 register rows reduce to **58 distinct open items**, one struck, one cross-register duplicate merged, three partials narrowed. **Backend-read 10/10 closed** — 20 tests, backend 733 → 753, every one mutation-verified; two adversarial-review findings fixed. Remaining: backend-write 18 (N-10 struck, N-11 partial), frontend-logic 13 (N-9, N-13 partial), frontend-components 17 (N-11 merged into frontend-logic N-11) |
 
 Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
 (TEST-12), footprint-free discipline on shared fixtures (TEST-23), five frontend lanes for any
@@ -471,14 +471,14 @@ suite held green, save the one documented overlap below.
 | Row | Closed by | Mutant killed |
 |---|---|---|
 | N-1 | `test_a_page_past_the_end_serves_an_empty_page_that_still_counts_the_corpus`, `..._of_the_joined_path_loads_from_an_empty_id_list` | short-circuiting on an empty PAGE rather than an empty RESULT; skipping the empty `IN` as a pointless filter |
-| N-2 | `test_the_joined_path_puts_nulls_last_whichever_way_every_nullable_sort_runs` (parametrized over `NULLABLE_SORTS`) | `nulls_last()` deleted from `_fetch_page_joined` |
+| N-2 | `test_the_joined_path_puts_nulls_last_for_the_item_bearing_sorts` / `..._for_the_courier_only_sorts` / `test_the_two_joined_corpora_between_them_cover_every_nullable_sort` | `nulls_last()` deleted from `_fetch_page_joined`; `buyout` dropped from `NULLABLE_SORTS` (kills only the buyout case, which is what per-sort coverage buys); a seventh nullable sort added without a corpus |
 | N-3 | `test_composition_reports_an_unmeasured_volume_as_null_not_zero` | NULL volume coalesced to `0` |
 | N-4 | `test_a_courier_with_no_destination_name_is_labelled_courier_alone`, `test_a_contract_with_nothing_to_name_it_by_falls_back_to_its_id` | the courier arm rewritten to the id fallback; the id fallback retexted |
 | N-5 | `test_a_whitespace_only_title_counts_as_absent` | `.strip()` dropped from the title guard |
 | N-6 | `test_detail_returns_its_items_in_record_id_order` | the detail sort deleted |
 | N-7 | `test_taxonomy_breaks_a_name_tie_by_id_so_the_order_is_total` | the id element dropped from each sort key (verified separately per list) |
 | N-8 | `test_a_stale_enrichment_settles_coverage_without_the_category_sweep` | the two coverage conditions reordered |
-| N-9 | `test_scrubbing_an_error_for_the_log_leaves_the_exception_as_it_found_it` | the `finally` restore removed |
+| N-9 | `test_scrubbing_an_error_for_the_log_leaves_the_exception_as_it_found_it` (parametrized over both initial `hide_parameters` states) | the `finally` restore removed; the restore hardcoded to `False` |
 | N-10 | `test_detail_still_serves_a_delisted_but_unexpired_contract`, `test_min_runs_admits_the_esi_sentinel_and_rejects_one_below_it` | `still_listed_by_esi()` added to the detail query; `ge=-1` narrowed to `ge=0` |
 
 **One mutation could not be isolated further, and that is the finding.** Deleting
@@ -505,6 +505,47 @@ evidence", and the exception is a branch that was already partially covered.
 **Fixture regions:** 99999977 and 99999978 claimed. Next free **99999979**, which is the
 LAST id in the plan's 99999960–99999979 allocation — the next wave to need one must
 either extend the allocation or reuse, and should say which.
+
+#### Adversarial review of this work — two findings, both real, both fixed
+
+The edit framing produced two findings on the first round, and both were the kind the
+rule is meant to surface: reachable from the production code alone, carrying nothing that
+could only have come from the tests.
+
+**1. N-9 was not actually closed.** The test initialized `hide_parameters` only to
+`False`, so the mutant `finally: exc.hide_parameters = False` — the obvious
+simplification of a save/restore pair — survived the whole 751-test suite. The case it
+misses is the *common* one: the application engine sets `hide_parameters=True` (`db.py`),
+so an engine-raised error arrives already hidden, and a restore hardcoded to `False`
+would UNHIDE its binds on every later rendering. That is the precise leak the function
+exists to prevent, inverted. Fixed by parametrizing over both initial states and
+asserting the flag returns to what it was, with the rendering re-derived rather than
+assumed. Both mutants now die.
+
+**2. The nullable-sort corpus built rows ingestion cannot produce.** One fixture gave
+`item_exchange` contracts non-NULL `buyout`, `reward` AND `days_to_complete` at once. ESI
+sends `buyout` only on auctions and `reward`/`days_to_complete` only on couriers, and
+`_build_contract_rows` maps each straight through, so no writer can populate both
+families on one row — a TEST-18 violation, in a test whose whole subject is what the
+reader sees.
+
+Splitting it surfaced something the original fixture had hidden: **no single contract
+type can carry all six nullable columns**, and the two families reach the joined path by
+*different levers*. Auctions are item-bearing, so `type_ids` forces the join. Couriers are
+item-less, so `type_ids` can never reach them — `search` is the only lever, and it works
+only because the item join is an OUTER join whose predicate ORs `Contract.title` against
+the item name. A single fixture could not have exercised both without lying about one.
+
+The exhaustiveness property survived the split: `test_the_two_joined_corpora_between_them_cover_every_nullable_sort`
+asserts the two hand-written tuples union to `NULLABLE_SORTS`, so a seventh nullable sort
+still fails loudly rather than being quietly uncovered.
+
+**A live seam this created.** The two courier cases depend on `search` implying the item
+join. If the open offered-only search decision changes `_needs_item_join`, they keep
+passing but silently relocate to the simple path — coverage lost with no failure. Stated
+in the test docstring so whoever takes that decision re-points them.
+
+Backend **751 → 753** after the rework.
 
 ### Wave 4 — register row 23, and the standard the campaign now uses
 

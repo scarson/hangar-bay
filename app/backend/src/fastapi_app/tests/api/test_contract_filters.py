@@ -2889,110 +2889,206 @@ async def test_min_runs_admits_the_esi_sentinel_and_rejects_one_below_it(
 # --- NULL placement on the JOINED fetch path, for every nullable sort (region 99999978) ---
 #
 # `nulls_last()` is applied by both fetch paths from the same `sort_by in NULLABLE_SORTS`
-# test, but the two paths build different order expressions around it: the simple path
-# orders the column directly, the joined path orders an AGGREGATE of it (min for asc,
-# max for desc) over a grouped distinct-id query. NULL propagates through min/max, so the
+# test, but the two build different order expressions around it: the simple path orders
+# the column directly, the joined path orders an AGGREGATE of it (min for asc, max for
+# desc) over a grouped distinct-id query. NULL propagates through min/max, so the
 # placement holds for the same reason — but "for the same reason" is an argument, not a
-# test, and only two of the six nullable sorts have ever run it on the joined side.
+# test, and only two of the six nullable sorts had ever run it on the joined side.
 #
-# Parametrized over NULLABLE_SORTS itself rather than a hand-listed set, so a seventh
-# nullable sort is covered the moment it joins the frozenset instead of the next time
-# somebody remembers to add a case.
+# Split into two corpora because NO SINGLE CONTRACT TYPE can carry all six columns, and
+# a fixture giving one type all of them would be a state ingestion cannot produce
+# (TEST-18). ESI sends `buyout` only on auctions and `reward`/`days_to_complete` only on
+# couriers, and `_build_contract_rows` maps each straight through, so the writer can
+# never populate both families on one row.
+#
+# The two corpora also reach the joined path by different levers, because the types
+# differ in whether they carry items at all:
+#   - auctions are item-bearing, so `type_ids` forces the join;
+#   - couriers are item-less, so only `search` can — the item join is an OUTER join and
+#     the search predicate ORs `Contract.title` against the item name, which is what
+#     lets a contract with no items reach the joined path at all.
 
 NULLS_JOINED_REGION = 99999978
 NULLS_JOINED_TYPE_ID = 34567
+NULLS_COURIER_TITLE_STEM = "Nullsorted Courier"
+
+# Auctions carry buyout; item-bearing, so they also carry price, volume and item names.
+ITEM_BEARING_JOINED_SORTS = ("buyout", "price", "volume", "ship_name")
+# Couriers carry the delivery reward and window; the ratio needs the reward.
+COURIER_JOINED_SORTS = ("days_to_complete", "reward_per_volume")
+
+
+def _nulls_contract(cid, *, ctype, seen, items=None, **columns) -> Contract:
+    """One fixture row.
+
+    `seen` is shared across a corpus: the delisting watermark is an exact
+    `last_seen_at >= max(last_seen_at) in region` with no tolerance, and one ingestion
+    run stamps its whole batch with one value, so adjacent-but-different stamps would
+    delist every row but the last.
+    """
+    return Contract(
+        contract_id=cid,
+        title=columns.pop("title", f"Null Placement {cid}"),
+        collateral=0.0,
+        status="outstanding",
+        type=ctype,
+        issuer_id=978,
+        issuer_corporation_id=978,
+        for_corporation=False,
+        start_location_id=60003760,
+        start_location_region_id=NULLS_JOINED_REGION,
+        date_issued=seen - timedelta(days=1),
+        date_expired=seen + timedelta(days=7),
+        last_seen_at=seen,
+        items=items or [],
+        **columns,
+    )
+
+
+def _nulls_ship_item(cid: int, type_name) -> ContractItem:
+    return ContractItem(
+        record_id=cid * 10 + 1,
+        type_id=NULLS_JOINED_TYPE_ID,
+        type_name=type_name,
+        quantity=1,
+        is_included=True,
+        is_singleton=False,
+        category="ship",
+    )
 
 
 @pytest_asyncio.fixture
-async def joined_null_corpus(db_session: AsyncSession):
-    """Three contracts sharing one item type, ordered low / high / nothing-at-all.
+async def joined_auction_corpus(db_session: AsyncSession):
+    """Three auctions ordered low / high / nothing-at-all in every column an auction carries.
 
-    Every nullable sort reads the same shape from this corpus: 978001 sorts before
-    978002 ascending, and 978003 carries NULL in all six columns at once. One fixture
-    serves all six because the assertion is about WHERE NULL LANDS, which is the one
-    thing the six have in common.
-
-    All three carry the identical `last_seen_at`, the way one ingestion run stamps a
-    batch — adjacent-but-different stamps would delist two of the three against the
-    region watermark and leave a single-row corpus that no ordering can discriminate.
+    Every sorted column is DISTINCT between the two non-NULL rows, volume included: a
+    shared value ties the sort, the `contract_id` tiebreaker then produces ascending
+    order in BOTH directions, and the descending assertion fails on a fixture defect
+    rather than on a placement one.
     """
     seen = datetime.now(timezone.utc)
-
-    def _contract(cid, *, price, volume, buyout, days, reward, ship_name):
-        return Contract(
-            contract_id=cid, title=f"Null Placement {cid}", price=price,
-            collateral=0.0, status="outstanding", type="item_exchange",
-            issuer_id=978, issuer_corporation_id=978, for_corporation=False,
-            is_ship_contract=True, start_location_id=60003760,
-            start_location_region_id=NULLS_JOINED_REGION,
-            date_issued=seen - timedelta(days=1), date_expired=seen + timedelta(days=7),
-            last_seen_at=seen, volume=volume, buyout=buyout,
-            days_to_complete=days, reward=reward,
-            items=[
-                ContractItem(
-                    record_id=cid * 10 + 1, type_id=NULLS_JOINED_TYPE_ID,
-                    type_name=ship_name, quantity=1, is_included=True,
-                    is_singleton=False, category="ship",
-                )
-            ],
-        )
-
     db_session.add_all([
-        # Every sorted column is DISTINCT between these two, volume included: a shared
-        # volume ties the volume sort, the contract_id tiebreaker then produces
-        # ascending order in both directions, and the descending assertion fails on a
-        # fixture defect rather than on a placement one. reward_per_volume still has to
-        # order the same way, so the rewards are chosen against the volumes:
-        # 10 000 / 100 = 100 ...
-        _contract(978001, price=1_000_000, volume=100.0, buyout=1_000_000,
-                  days=1, reward=10_000, ship_name="Apocalypse"),
-        # ... against 1 800 000 / 200 = 9 000.
-        _contract(978002, price=9_000_000, volume=200.0, buyout=9_000_000,
-                  days=9, reward=1_800_000, ship_name="Zealot"),
-        # NULL in every sorted column at once, including the item's name.
-        _contract(978003, price=None, volume=None, buyout=None,
-                  days=None, reward=None, ship_name=None),
+        _nulls_contract(
+            978001, ctype="auction", seen=seen, is_ship_contract=True,
+            price=1_000_000, buyout=1_000_000, volume=100.0,
+            items=[_nulls_ship_item(978001, "Apocalypse")],
+        ),
+        _nulls_contract(
+            978002, ctype="auction", seen=seen, is_ship_contract=True,
+            price=9_000_000, buyout=9_000_000, volume=200.0,
+            items=[_nulls_ship_item(978002, "Zealot")],
+        ),
+        # Every one of those columns absent at once — each is optional on ESI's public
+        # route — and the item present but unnamed, which is what an auction looks like
+        # between ingestion and the next name-resolution pass.
+        _nulls_contract(
+            978003, ctype="auction", seen=seen, is_ship_contract=True,
+            price=None, buyout=None, volume=None,
+            items=[_nulls_ship_item(978003, None)],
+        ),
     ])
     await db_session.flush()
-    return seen
 
 
-@pytest.mark.parametrize(
-    "sort_by",
-    sorted(field.value for field in NULLABLE_SORTS),
-)
-async def test_the_joined_path_puts_nulls_last_whichever_way_every_nullable_sort_runs(
-    client: AsyncClient, joined_null_corpus, sort_by: str
+@pytest_asyncio.fixture
+async def joined_courier_corpus(db_session: AsyncSession):
+    """Three couriers, item-less the way ingestion leaves them — it fetches no items for
+    a type that cannot carry any — sharing a title stem so one search matches all three."""
+    seen = datetime.now(timezone.utc)
+    db_session.add_all([
+        # reward / volume = 10 000 / 100 = 100 ...
+        _nulls_contract(
+            978101, ctype="courier", seen=seen, price=0,
+            title=f"{NULLS_COURIER_TITLE_STEM} Alpha",
+            reward=10_000, volume=100.0, days_to_complete=1,
+        ),
+        # ... against 1 800 000 / 200 = 9 000.
+        _nulls_contract(
+            978102, ctype="courier", seen=seen, price=0,
+            title=f"{NULLS_COURIER_TITLE_STEM} Beta",
+            reward=1_800_000, volume=200.0, days_to_complete=9,
+        ),
+        _nulls_contract(
+            978103, ctype="courier", seen=seen, price=0,
+            title=f"{NULLS_COURIER_TITLE_STEM} Gamma",
+            reward=None, volume=None, days_to_complete=None,
+        ),
+    ])
+    await db_session.flush()
+
+
+async def _assert_nulls_last_both_ways(client: AsyncClient, base: str, sort_by: str, ids):
+    """Both directions, asserted as the FULL ordered id list.
+
+    Both directions, because `nulls_last` is direction-independent by construction and a
+    regression that simply dropped the call puts NULLs first in exactly one of the two —
+    an assertion on one direction alone is satisfied by the database's default placement
+    half the time. The full list rather than "the NULL row is last", because the latter
+    also passes when the two REAL values have swapped, which is a different regression in
+    the same expression (TEST-25).
+    """
+    low, high, absent = ids
+    ascending = await client.get(f"{base}&sort_by={sort_by}&sort_direction=asc")
+    assert ascending.status_code == 200
+    assert [r["contract_id"] for r in ascending.json()["items"]] == [
+        low, high, absent,
+    ], f"{sort_by} asc"
+
+    descending = await client.get(f"{base}&sort_by={sort_by}&sort_direction=desc")
+    assert descending.status_code == 200
+    assert [r["contract_id"] for r in descending.json()["items"]] == [
+        high, low, absent,
+    ], f"{sort_by} desc"
+
+
+@pytest.mark.parametrize("sort_by", ITEM_BEARING_JOINED_SORTS)
+async def test_the_joined_path_puts_nulls_last_for_the_item_bearing_sorts(
+    client: AsyncClient, joined_auction_corpus, sort_by: str
 ):
     """A missing value is not a low one, on the joined path as much as the simple one.
 
-    `type_ids` forces `_needs_item_join` for the five contract-column sorts; ship_name
-    reaches the same path on its own. Both directions are asserted because nulls_last is
-    direction-independent by construction and a regression that simply dropped the call
-    would put NULLs first in exactly one of the two — an assertion on one direction alone
-    is satisfied by the database's default placement half the time.
-
-    The order is observed as the full ordered id list rather than as "978003 is last":
-    the latter also passes when the two REAL values have swapped, which is a different
-    regression in the same expression (TEST-25).
+    `type_ids` forces `_needs_item_join` for the three contract-column sorts; ship_name
+    reaches the same path on its own.
     """
-    base = (
-        f"/contracts/?region_ids={NULLS_JOINED_REGION}"
-        f"&type_ids={NULLS_JOINED_TYPE_ID}&sort_by={sort_by}"
+    await _assert_nulls_last_both_ways(
+        client,
+        f"/contracts/?region_ids={NULLS_JOINED_REGION}&type_ids={NULLS_JOINED_TYPE_ID}",
+        sort_by,
+        (978001, 978002, 978003),
     )
 
-    ascending = await client.get(f"{base}&sort_direction=asc")
-    assert ascending.status_code == 200
-    assert [row["contract_id"] for row in ascending.json()["items"]] == [
-        978001,
-        978002,
-        978003,
-    ], f"{sort_by} asc"
 
-    descending = await client.get(f"{base}&sort_direction=desc")
-    assert descending.status_code == 200
-    assert [row["contract_id"] for row in descending.json()["items"]] == [
-        978002,
-        978001,
-        978003,
-    ], f"{sort_by} desc"
+@pytest.mark.parametrize("sort_by", COURIER_JOINED_SORTS)
+async def test_the_joined_path_puts_nulls_last_for_the_courier_only_sorts(
+    client: AsyncClient, joined_courier_corpus, sort_by: str
+):
+    """The same placement for the two columns only couriers carry.
+
+    A courier holds no items, so `type_ids` cannot reach it — `search` is the only lever
+    that puts an item-less contract on the joined path, and it works because the item
+    join is an OUTER join and the predicate ORs the contract title against the item name.
+
+    That makes these two cases sensitive to the still-open offered-only search decision:
+    if `_needs_item_join` stops treating `search` as needing the join, they keep passing
+    but silently relocate to the simple path. Stated rather than hidden — whoever takes
+    that decision should re-point these two at whatever lever replaces it.
+    """
+    search = NULLS_COURIER_TITLE_STEM.replace(" ", "+")
+    await _assert_nulls_last_both_ways(
+        client,
+        f"/contracts/?region_ids={NULLS_JOINED_REGION}&search={search}",
+        sort_by,
+        (978101, 978102, 978103),
+    )
+
+
+async def test_the_two_joined_corpora_between_them_cover_every_nullable_sort():
+    """Exhaustiveness over `NULLABLE_SORTS` itself, since splitting into two corpora
+    replaced a parametrization that read the frozenset directly.
+
+    Without this, adding a seventh nullable sort leaves the joined path untested for it
+    and nothing says so — the hand-written tuples above would simply not mention it.
+    """
+    assert set(ITEM_BEARING_JOINED_SORTS) | set(COURIER_JOINED_SORTS) == {
+        field.value for field in NULLABLE_SORTS
+    }

@@ -435,39 +435,58 @@ async def test_a_failing_statement_does_not_log_its_bound_search_text(
     assert "statement timeout" in failures[0]["error_message"]
 
 
-async def test_scrubbing_an_error_for_the_log_leaves_the_exception_as_it_found_it():
-    """The scrub borrows `hide_parameters`; it must give it back.
+def _timeout_error_carrying(secret: str) -> StatementError:
+    """A StatementError of the class the log site actually meets, holding `secret` as a bind.
 
-    The exception is not consumed at the log site — `get_contracts` re-raises it, so
-    the object outlives the render and travels on to whatever handles it. Flipping the
-    flag permanently would silently strip the binds from every LATER rendering of that
-    same exception, including the driver diagnosis the `error_message` field exists to
-    preserve, and nothing downstream would report a missing field.
-
-    Observed through the RENDERING rather than through the flag: asserting
-    `hide_parameters is False` pins the bookkeeping, while re-rendering pins the
-    behavior the bookkeeping controls (TEST-25). Both are asserted, in that order, so
-    a failure says which one broke.
+    TEST-21: a hand-rolled RuntimeError renders parameter-free, so it cannot show whether
+    the scrub did anything. The real failure class appends `[parameters: {...}]`, and on
+    the search path those binds hold the user's raw query text.
     """
-    secret = "Tristan sale"
-    error = StatementError(
+    return StatementError(
         "canceling statement due to statement timeout",
         "SELECT contracts.contract_id FROM contracts WHERE contracts.title ILIKE %(title_1)s",
         {"title_1": f"%{secret}%"},
         Exception("canceling statement due to statement timeout"),
     )
-    # Vacuity guard: the restore is only observable while the default rendering
-    # carries the binds. If that stopped being true this test would pass having
-    # constrained nothing (TEST-12).
-    assert error.hide_parameters is False
-    assert secret in str(error)
+
+
+@pytest.mark.parametrize("initially_hidden", [False, True])
+async def test_scrubbing_an_error_for_the_log_leaves_the_exception_as_it_found_it(
+    initially_hidden: bool,
+):
+    """The scrub borrows `hide_parameters`; it must give back what it took.
+
+    The exception is not consumed at the log site — `get_contracts` re-raises it, so the
+    object outlives the render and travels on to whatever handles it. The restore must
+    therefore return the SAVED value, not a constant, and both starting states are real:
+    the application engine sets `hide_parameters=True` (`db.py`), so errors raised through
+    it arrive already hidden, while an exception from a session built anywhere else
+    arrives at the default False.
+
+    Parametrized over both because a restore hardcoded to `False` — the obvious
+    simplification of a save/restore pair — is invisible to the False case and is exactly
+    backwards for the True one: it would UNHIDE the binds of every engine-raised error on
+    every later rendering, which is the leak this function exists to prevent.
+
+    Observed through the RENDERING as well as the flag (TEST-25): the flag pins the
+    bookkeeping, re-rendering pins the behavior the bookkeeping controls.
+    """
+    secret = "Tristan sale"
+    error = _timeout_error_carrying(secret)
+    error.hide_parameters = initially_hidden
+
+    # Vacuity guard: the whole property is only observable while an UNHIDDEN rendering
+    # carries the binds. Checked on a fresh instance so the guard holds for both
+    # parameter cases without depending on the one under test (TEST-12).
+    assert secret in str(_timeout_error_carrying(secret))
 
     scrubbed = contract_service._error_without_bound_parameters(error)
 
     assert secret not in scrubbed, "the render did not scrub"
     assert "statement timeout" in scrubbed, "the render scrubbed the diagnosis too"
-    assert error.hide_parameters is False, "the flag was not restored"
-    assert secret in str(error), "a later rendering of the same exception lost its binds"
+    assert error.hide_parameters is initially_hidden, "the flag was not restored as found"
+    # The behavior the flag controls, re-derived rather than assumed.
+    assert (secret in str(error)) is (not initially_hidden)
 
 
 async def test_full_dimension_logs_carry_the_type_and_taxonomy_filters(
