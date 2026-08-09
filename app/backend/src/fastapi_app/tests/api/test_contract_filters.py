@@ -2895,18 +2895,26 @@ async def test_min_runs_admits_the_esi_sentinel_and_rejects_one_below_it(
 # placement holds for the same reason — but "for the same reason" is an argument, not a
 # test, and only two of the six nullable sorts had ever run it on the joined side.
 #
-# Split into two corpora because NO SINGLE CONTRACT TYPE can carry all six columns, and
-# a fixture giving one type all of them would be a state ingestion cannot produce
-# (TEST-18). ESI sends `buyout` only on auctions and `reward`/`days_to_complete` only on
-# couriers, and `_build_contract_rows` maps each straight through, so the writer can
-# never populate both families on one row.
-#
-# The two corpora also reach the joined path by different levers, because the types
-# differ in whether they carry items at all:
+# Split into two corpora, one contract TYPE and one join LEVER each, because the types
+# differ in whether they carry items at all and therefore in how they reach the joined
+# path:
 #   - auctions are item-bearing, so `type_ids` forces the join;
 #   - couriers are item-less, so only `search` can — the item join is an OUTER join and
 #     the search predicate ORs `Contract.title` against the item name, which is what
 #     lets a contract with no items reach the joined path at all.
+#
+# NOT split because one type cannot carry both column families. ESI's schema DESCRIBES
+# `buyout` as auction-only and `reward`/`days_to_complete` as courier-only, but those
+# descriptions state intent, not payload presence: sampling the live public route for
+# The Forge (2026-08-09) found 42/42 auctions carrying `reward` and `days_to_complete`
+# as ZERO placeholders, 16/16 couriers carrying `price=0`, and item exchanges carrying
+# nonzero `reward`. `_build_contract_rows` maps all three through with no type check, so
+# a mixed-family row is a state the writer really can produce.
+#
+# That sampling matters for what these fixtures represent. Zero is not NULL and does not
+# sort like it, so the NULL rows below are the SPARSE case rather than the ordinary one —
+# they pin where a genuinely absent value lands, which is rarer in the live corpus than
+# the schema's "for Couriers only" wording suggests.
 
 NULLS_JOINED_REGION = 99999978
 NULLS_JOINED_TYPE_ID = 34567
@@ -3068,10 +3076,15 @@ async def test_the_joined_path_puts_nulls_last_for_the_courier_only_sorts(
     that puts an item-less contract on the joined path, and it works because the item
     join is an OUTER join and the predicate ORs the contract title against the item name.
 
-    That makes these two cases sensitive to the still-open offered-only search decision:
-    if `_needs_item_join` stops treating `search` as needing the join, they keep passing
-    but silently relocate to the simple path. Stated rather than hidden — whoever takes
-    that decision should re-point these two at whatever lever replaces it.
+    These two cases are therefore sensitive to the still-open offered-only search
+    decision, but NOT in the way that is easy to assume. Simply dropping `search` from
+    `_needs_item_join` does not relocate them to the simple path quietly — it fails them
+    outright with empty results, because the search predicate still names
+    `ContractItem.type_name` and, without the join, matches nothing for a contract with
+    no items. The change to watch for is the broader one: a search rewritten as a
+    correlated EXISTS needs no join, and under it these two would keep passing while
+    silently testing the simple path instead. Whoever takes that decision should
+    re-point them at whatever lever replaces `search`.
     """
     search = NULLS_COURIER_TITLE_STEM.replace(" ", "+")
     await _assert_nulls_last_both_ways(

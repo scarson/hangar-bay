@@ -522,28 +522,56 @@ exists to prevent, inverted. Fixed by parametrizing over both initial states and
 asserting the flag returns to what it was, with the rendering re-derived rather than
 assumed. Both mutants now die.
 
-**2. The nullable-sort corpus built rows ingestion cannot produce.** One fixture gave
-`item_exchange` contracts non-NULL `buyout`, `reward` AND `days_to_complete` at once. ESI
-sends `buyout` only on auctions and `reward`/`days_to_complete` only on couriers, and
-`_build_contract_rows` maps each straight through, so no writer can populate both
-families on one row — a TEST-18 violation, in a test whose whole subject is what the
-reader sees.
+**2. The nullable-sort corpus was reworked — but the finding's premise was wrong, and
+round 2 caught that.** Round 1 objected that one fixture gave `item_exchange` contracts
+non-NULL `buyout`, `reward` AND `days_to_complete` at once, calling it a TEST-18
+violation on the grounds that ESI sends each family only on its own contract type. That
+rationale is **false**, and it was written into this report before anyone checked it.
 
-Splitting it surfaced something the original fixture had hidden: **no single contract
-type can carry all six nullable columns**, and the two families reach the joined path by
-*different levers*. Auctions are item-bearing, so `type_ids` forces the join. Couriers are
-item-less, so `type_ids` can never reach them — `search` is the only lever, and it works
-only because the item join is an OUTER join whose predicate ORs `Contract.title` against
-the item name. A single fixture could not have exercised both without lying about one.
+Round 2 checked it against the live public route (The Forge, pinned compatibility date,
+2026-08-09): **42/42 sampled auctions carried `reward` and `days_to_complete`** — as
+zero-valued placeholders — **16/16 couriers carried `price=0`**, and item exchanges
+carried nonzero `reward`. `_build_contract_rows` maps all three through with no type
+check, so a mixed-family row is a state the writer really can produce. ESI's schema
+descriptions ("for Couriers only") state *intent*, not payload presence.
 
-The exhaustiveness property survived the split: `test_the_two_joined_corpora_between_them_cover_every_nullable_sort`
-asserts the two hand-written tuples union to `NULLABLE_SORTS`, so a seventh nullable sort
-still fails loudly rather than being quietly uncovered.
+The split is **kept**, on its real merit rather than the stated one: one contract type
+and one join lever per corpus, which is what made the levers legible. And it was the
+split that surfaced the genuinely useful structural fact — the two families reach the
+joined path *differently*. Auctions are item-bearing, so `type_ids` forces the join.
+Couriers are item-less, so `type_ids` can never reach them; `search` is the only lever,
+and it works only because the item join is an OUTER join whose predicate ORs
+`Contract.title` against the item name.
 
-**A live seam this created.** The two courier cases depend on `search` implying the item
-join. If the open offered-only search decision changes `_needs_item_join`, they keep
-passing but silently relocate to the simple path — coverage lost with no failure. Stated
-in the test docstring so whoever takes that decision re-points them.
+**The corpus finding worth carrying: ESI sends zero placeholders, not absent fields.**
+Zero is not NULL and does not sort like it. So the NULL rows in these fixtures pin the
+SPARSE case, not the ordinary one — a genuinely absent `reward` is rarer in the live
+corpus than the schema wording implies. This also promotes a nice-to-have elsewhere from
+theoretical to live: frontend-logic **N-6** (`formatIsk(0)` → `'0'`, the courier price)
+describes real production rows, since 16/16 sampled couriers carried exactly that.
+
+**Correction to the seam recorded above.** The first draft claimed that dropping `search`
+from `_needs_item_join` would leave the courier cases passing while silently relocating
+to the simple path. Round 2 applied that exact edit: both cases **fail** with empty
+results, because the search predicate still names `ContractItem.type_name` and matches
+nothing for an item-less contract once the join is gone. The edit that *would* relocate
+them silently is the broader one — a search rewritten as a correlated EXISTS needs no
+join at all. The docstring now names that edit instead.
+
+The exhaustiveness property survived the split:
+`test_the_two_joined_corpora_between_them_cover_every_nullable_sort` asserts the two
+hand-written tuples union to `NULLABLE_SORTS`, mutation-verified by adding a seventh.
+
+**The process lesson, which is the more valuable half.** Round 1 produced two findings. I
+reproduced the mutant behind the first before fixing it, and it was real. I did **not**
+check the domain premise behind the second — I took "ESI sends X only on Y" on the
+reviewer's authority and wrote it into a persistent artifact as fact. It took a second
+round, and a live API sample, to falsify it. The handoff's rule that register prose is
+evidence rather than ground truth applies to REVIEWER prose identically, and an
+empirical claim about upstream payloads is exactly the kind that must be sampled rather
+than reasoned about (TEST-15: prove the instrument can see the thing before trusting what
+it reports). Two of the three wrong claims this campaign has recorded were assertions
+about what ESI sends.
 
 Backend **751 → 753** after the rework.
 
