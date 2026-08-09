@@ -391,39 +391,38 @@ four per-file registers as work orders.
 | 1 | Security-critical (4) | ✅ DONE — PR #163 (three test-only + this report committed), PR #164 (search max_length, `Review — public API contract`, held for Sam) |
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
 | 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
-| 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ⚠️ **partial** — PR #170 (`Routine`): frontend logic **28/28**, all three e2e pins closed, components **4/10** (C1–C4; C3 came via Wave 3). Remaining: **C5–C10** — responsive column visibility, detail Reward row, empty-items Contents card, five of six BlueprintFilter bounds, the Deadline header sort journey, the WatchButton gate. vitest 322 → 385, e2e 140 → 144 |
+| 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ⚠️ **partial** — PR #170 (`Routine`): frontend logic **28/28** (row 23 closed property-based, see below), all three e2e pins closed, components **4/10** (C1–C4; C3 came via Wave 3). Remaining: **C5–C10** — responsive column visibility, detail Reward row, empty-items Contents card, five of six BlueprintFilter bounds, the Deadline header sort journey, the WatchButton gate. vitest 322 → 388, e2e 140 → 144 |
 | 5 | Nice-to-have (60) | ⬜ queued — sweep last; drop any a wave above already covered |
 
 Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
 (TEST-12), footprint-free discipline on shared fixtures (TEST-23), five frontend lanes for any
 frontend commit, Routine classification unless a wave touches schema or the public contract.
 
-### Wave 4 — register row 23, and the standard it is closed to
+### Wave 4 — register row 23, and the standard the campaign now uses
 
 Row 23 (`sameSearch`'s array branches) took six adversarial review rounds, each naming a
 different passing-but-wrong comparator: `length+sum`, `length+first`, `length+first+last`,
-then `length + slice(0,4)`. It is closed here to a **stated** standard rather than to the
-reviewer's, and the difference matters:
+`length+slice(0,4)`. Each was correct, and the sequence was never going to end — an example
+fixture only excludes implementations that differ on that example, and a bounded exhaustive
+sweep of depth N is satisfied by `slice(0, N)`.
 
-- **What is verified.** `sameSearch` is checked against an independently-written reference
-  deep-equal over EVERY id list from a 3-symbol alphabet up to length 4, plus the absent and
-  empty cases — 122 lists, 14,884 ordered pairs. No implementation disagreeing with the intended
-  semantics anywhere in that domain can pass. That kills every positional comparator and every
-  digest (count, sum, set-equality) inside it, including two no review round proposed.
-- **What is NOT excluded, and cannot be.** A comparator correct up to length 4 and wrong beyond
-  (`left.slice(0, 4).every(...)`) still passes. This is not a fixable gap: for a domain of depth
-  N there is always a `slice(0, N)` implementation that is correct on it, so "name a wrong
-  implementation that passes" is unsatisfiable for ANY finite test. Meeting it would require a
-  correctness proof, which is not what a test suite is.
-- **Why this is the right stopping point.** The register asked that a list param be varied
-  mid-debounce at all ("no test varies a list param mid-debounce; reference-equality regression
-  → render loop caught by nothing"). Exhaustive agreement over a bounded domain is strictly
-  stronger than that. The residual is a known, stated class rather than an unexamined one.
+**Resolved by changing the tool, not by arguing the standard.** `sameSearch` is exported and
+checked with fast-check against an independently-written reference deep-equal, over generated
+id lists rather than fixtures. Every comparator named across all six rounds now dies, as do
+fixed-depth comparators at 4, 11, 20 and 23, order-blind set equality, both clause deletions,
+and the reference-equality bug the register was originally about.
 
-Recorded as a disagreement rather than settled: the reviewer holds row 23 open on the stronger
-standard, which would make Wave 4's logic register 27/28 rather than 28/28. Sam's call which
-standard the campaign uses — the answer applies to every predicate the remaining waves touch,
-not just this row.
+**Stated residual:** a comparator inspecting more than `MAX_LIST` (24) positions still passes.
+That is inherent to testing a predicate over unbounded input. The difference from the example
+approach is that widening the guarantee is now one constant rather than one hand-written case
+per position.
+
+**The rule this settles, which applies to every remaining wave** (recorded in TEST-25): a mutant
+is evidence only if it carries no information that could only have come from the test suite.
+`slice(0,4)`'s `4` is the fixture depth; "first and last" are the positions the fixtures vary.
+Reference-equality and clause deletion are reachable from the code alone and do count. Review
+prompts should ask "name a plausible EDIT these tests would not catch" — that question can
+terminate; "name a wrong implementation that passes" cannot.
 
 ### Wave 3 residual — one mocked-behavior hazard is Sam's call
 
