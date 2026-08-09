@@ -1,5 +1,5 @@
 // ABOUTME: Property-based check of sameSearch against an independent reference deep-equal.
-// ABOUTME: Generated inputs, unbounded length — example fixtures cannot close this predicate.
+// ABOUTME: Generated inputs up to MAX_LIST elements; example fixtures cannot close this predicate.
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import type { ContractSearch } from '../filters'
@@ -20,12 +20,17 @@ import { sameSearch } from './useContracts'
  * A bounded exhaustive sweep does not terminate it either: for a domain of maximum
  * length N there is always a `slice(0, N)` implementation correct on the whole domain.
  *
- * Generated inputs do terminate it. fast-check draws arrays of ARBITRARY length, so no
- * implementation that agrees with the reference only up to some fixed depth survives —
- * including every comparator named above and every one nobody has thought of yet. This
- * is not a proof, and it is not claimed as one; it is the strongest thing a test can be
- * about a predicate over unbounded input, and it removes the "pick a depth" objection
- * rather than arguing with it.
+ * Generated input does not escape that bound either — a generator has a maximum size, so
+ * strictly this rules out implementations that go wrong at any depth UP TO `MAX_LIST`,
+ * and a comparator inspecting more positions than that still passes. That residual is
+ * real and is not claimed away.
+ *
+ * What changes is the shape of the cost. With examples, each additional position of
+ * guarantee is another hand-authored fixture, which is why six review rounds produced six
+ * counterexamples. Here the guarantee is one constant: raising `MAX_LIST` widens it for
+ * every property at once, and the generator explores the space between rather than only
+ * the points someone thought to write down. That is what makes the regress terminate; it
+ * is not a proof and is not offered as one.
  *
  * `sameSearch` is exported for this. That is justified here and would not be for a
  * weaker test: the predicate is high blast radius (a wrong answer either freezes the
