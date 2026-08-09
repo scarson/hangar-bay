@@ -43,13 +43,12 @@ def upgrade() -> None:
         'ix_contracts_start_location_id', 'contracts',
         ['start_location_id'], unique=False,
     )
-    op.alter_column(
-        'contracts', 'issuer_id',
-        existing_type=sa.Integer(), type_=sa.BigInteger(), existing_nullable=False,
-    )
-    op.alter_column(
-        'contracts', 'issuer_corporation_id',
-        existing_type=sa.Integer(), type_=sa.BigInteger(), existing_nullable=False,
+    # One statement for both columns: a width change rewrites the table, and
+    # separate ALTERs would do that twice under the same exclusive lock.
+    op.execute(
+        "ALTER TABLE contracts "
+        "ALTER COLUMN issuer_id TYPE BIGINT, "
+        "ALTER COLUMN issuer_corporation_id TYPE BIGINT"
     )
 
 
@@ -77,13 +76,11 @@ def downgrade() -> None:
         $$
         """
     )
-    op.alter_column(
-        'contracts', 'issuer_corporation_id',
-        existing_type=sa.BigInteger(), type_=sa.Integer(), existing_nullable=False,
-    )
-    op.alter_column(
-        'contracts', 'issuer_id',
-        existing_type=sa.BigInteger(), type_=sa.Integer(), existing_nullable=False,
+    # Single statement, single table rewrite — mirror of the upgrade.
+    op.execute(
+        "ALTER TABLE contracts "
+        "ALTER COLUMN issuer_corporation_id TYPE INTEGER, "
+        "ALTER COLUMN issuer_id TYPE INTEGER"
     )
     op.drop_index('ix_contracts_start_location_id', table_name='contracts')
     op.drop_index('ix_contracts_start_location_system_id', table_name='contracts')
