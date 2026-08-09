@@ -1,6 +1,17 @@
 import { expect, test } from '@playwright/test'
-import { expiryInDays, makeContract, makeShipItem, pageOf } from './fixtures/contracts'
-import { interceptContractList, interceptCurrentUser, interceptTaxonomy } from './helpers/api'
+import {
+  expiryInDays,
+  makeContract,
+  makeContractDetail,
+  makeShipItem,
+  pageOf,
+} from './fixtures/contracts'
+import {
+  interceptContractDetail,
+  interceptContractList,
+  interceptCurrentUser,
+  interceptTaxonomy,
+} from './helpers/api'
 
 /**
  * The price-nullable journey PR #156 deferred.
@@ -52,4 +63,27 @@ test('a contract with no price renders a dash, not a zero', async ({ page }) => 
 
   await expect(unpricedRow).not.toContainText('0 ISK')
   await expect(unpricedRow).toContainText('—')
+})
+
+test('the detail view of an unpriced contract also shows a dash', async ({ page }) => {
+  // The register asked for BOTH surfaces. The list and the detail render price
+  // through different components, so covering only the list leaves the detail's
+  // null branch walked by nothing above the unit layer.
+  await interceptContractDetail(
+    page,
+    makeContractDetail({
+      contract_id: UNPRICED.contract_id,
+      price: null,
+      date_issued: UNPRICED.date_issued,
+      date_expired: UNPRICED.date_expired,
+      items: [makeShipItem('Rifter')],
+    }),
+  )
+
+  await page.goto(`/contracts/${UNPRICED.contract_id}`)
+
+  const price = page.getByText('Price', { exact: true }).locator('..')
+  await expect(price).toBeVisible()
+  await expect(price).not.toContainText('0 ISK')
+  await expect(price).toContainText('—')
 })

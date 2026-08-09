@@ -421,3 +421,42 @@ describe('search freezing and field-wise search equality', () => {
     }
   })
 })
+
+describe('lastSettled tracks the newest settled search', () => {
+  it('freezes against the LATEST settled search, not a stale one', async () => {
+    // sameSearch wrongly reporting two unequal searches as equal is invisible to the
+    // fresh-object test (which only proves equal-by-value converges) AND to a
+    // call-count assertion: reverting to an earlier query key is served from the
+    // react-query cache with no fetch at all. So this asserts on DATA — the responder
+    // echoes the requested size into `total`, making the effective query observable.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      stubFetch((url) => {
+        const size = Number(new URL(url, 'http://x').searchParams.get('size') ?? 50)
+        return jsonResponse({ ...PAGE, total: size })
+      })
+
+      const { result, rerender } = renderHook(
+        ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
+        { wrapper, initialProps: { raw: { search: 'rifter' } as Record<string, unknown> } },
+      )
+      await waitFor(() => expect(result.current.data?.total).toBe(50))
+
+      // Settled: the new size is requested immediately and must be RECORDED.
+      rerender({ raw: { search: 'rifter', size: 25 } })
+      await waitFor(() => expect(result.current.data?.total).toBe(25))
+
+      // Now type. The query freezes — and it must freeze at size=25. A lastSettled
+      // that stopped advancing would fall back to the initial search and the rows
+      // would revert to the size=50 page underneath the reader mid-word.
+      rerender({ raw: { search: 'rifterr', size: 25 } })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(result.current.data?.total).toBe(25)
+
+      await vi.advanceTimersByTimeAsync(400)
+      await waitFor(() => expect(result.current.data?.total).toBe(25))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

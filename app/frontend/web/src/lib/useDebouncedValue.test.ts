@@ -99,15 +99,12 @@ describe('useDebouncedValue', () => {
       initialProps: { value: 'a' },
     })
     rerender({ value: 'ab' })
+    expect(vi.getTimerCount()).toBe(1) // armed, so the assertion below is not vacuous
     unmount()
 
-    // A setState on an unmounted component is the leak here; advancing past the
-    // window must be quiet.
-    expect(() =>
-      act(() => {
-        vi.advanceTimersByTime(DELAY * 2)
-      }),
-    ).not.toThrow()
+    // Checked IMMEDIATELY: advancing first would let the timer fire and remove
+    // itself, after which React silently swallows the post-unmount state update and
+    // the count reads 0 whether or not the cleanup ran at all.
     expect(vi.getTimerCount()).toBe(0)
   })
 })

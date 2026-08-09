@@ -382,7 +382,11 @@ describe('DEFAULT_DIRECTION per field', () => {
       // for either, or dropping the constant's entry, should be a deliberate change
       // that shows up here.
       expect(SORT_FIELDS).toContain(field)
-      expect(DEFAULT_DIRECTION[field as keyof typeof DEFAULT_DIRECTION]).toBeDefined()
+      // The literal direction, not merely "an entry exists" — otherwise flipping
+      // either value passes and this row is counted as covered while asserting
+      // nothing about it.
+      const expected: Record<string, 'asc' | 'desc'> = { collateral: 'asc', volume: 'desc' }
+      expect(DEFAULT_DIRECTION[field as keyof typeof DEFAULT_DIRECTION]).toBe(expected[field])
       expect(sortableFieldsFor(undefined).has(field as never)).toBe(false)
 
       const parsed = parseContractSearch({ sort_by: field })

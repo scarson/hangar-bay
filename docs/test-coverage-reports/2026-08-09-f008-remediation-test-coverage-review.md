@@ -64,7 +64,7 @@ this file — they are the evidence; this file is the severity-organized view.
   old literal fails the new test. Without the matcher fix, that sixth type would have been
   ingested with items and recognized by the read path while silently never alerting.
 - **PR #156 deferred e2e null-price pin** — CLOSED (Wave 4). A fixture assigns `price: null` and
-  a desktop+mobile journey asserts the dash. This is what made the nullable wire type
+  desktop+mobile journeys assert the dash on BOTH the list and the detail surface (they render price through different components). This is what made the nullable wire type
   load-bearing: narrowing `WireContract.price` back to `number` now fails typecheck, and did
   not before — because **`tsc -b` had never covered `e2e/` at all** (tsconfig.json referenced
   only the app and node projects, and Playwright transpiles without checking). A
@@ -391,7 +391,7 @@ four per-file registers as work orders.
 | 1 | Security-critical (4) | ✅ DONE — PR #163 (three test-only + this report committed), PR #164 (search max_length, `Review — public API contract`, held for Sam) |
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
 | 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
-| 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ⚠️ **partial** — PR #170 (`Routine`): frontend logic **28/28**, all three e2e pins closed, components **4/10** (C1–C4; C3 came via Wave 3). Remaining: **C5–C10** — responsive column visibility, detail Reward row, empty-items Contents card, five of six BlueprintFilter bounds, the Deadline header sort journey, the WatchButton gate. vitest 322 → 375, e2e 140 → 142 |
+| 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ⚠️ **partial** — PR #170 (`Routine`): frontend logic **28/28**, all three e2e pins closed, components **4/10** (C1–C4; C3 came via Wave 3). Remaining: **C5–C10** — responsive column visibility, detail Reward row, empty-items Contents card, five of six BlueprintFilter bounds, the Deadline header sort journey, the WatchButton gate. vitest 322 → 376, e2e 140 → 144 |
 | 5 | Nice-to-have (60) | ⬜ queued — sweep last; drop any a wave above already covered |
 
 Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
