@@ -70,8 +70,11 @@ class Contract(Base):
     # populates returns an empty page that reads as "no matches" (ESI-3).
     status: Mapped[str] = mapped_column(String, nullable=False)
     type: Mapped[str] = mapped_column(String, nullable=False)
-    issuer_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    issuer_corporation_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    # BigInteger because ESI publishes both as int64: CCP allocating an id above
+    # 2^31 would otherwise poison ingestion the same way a price-less contract
+    # did before f2a91c3b7e04 made price nullable.
+    issuer_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    issuer_corporation_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     start_location_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     start_location_system_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # NULL where the destination is a player structure (no tokenless resolution
@@ -130,6 +133,12 @@ class Contract(Base):
         Index('ix_contracts_date_expired', 'date_expired'),
         # Serves the per-region watermark lookup (max(last_seen_at) grouped by region).
         Index('ix_contracts_region_last_seen', 'start_location_region_id', 'last_seen_at'),
+        # The system/station filter columns. start_location_id was the 2026-08-02
+        # perf audit's own control experiment for unindexed scan cost, and
+        # start_location_system_id is additionally scanned IS NULL by
+        # _count_unknown_system_excluded on every system-filtered request.
+        Index('ix_contracts_start_location_system_id', 'start_location_system_id'),
+        Index('ix_contracts_start_location_id', 'start_location_id'),
         Index('ix_contracts_collateral', 'collateral'),
         Index('ix_contracts_volume', 'volume'),
         Index('ix_contracts_buyout', 'buyout'),
