@@ -565,3 +565,45 @@ describe('sameSearch resists digest-shaped comparators', () => {
     }
   })
 })
+
+describe('sameSearch compares every element, not just the first', () => {
+  it('records a change in a NON-FIRST id as a change', async () => {
+    // [A, B] -> [A, C]: same length, same leading element, differing only in the
+    // tail. A comparator that checked `length && Object.is(left[0], right[0])`
+    // passes append, substitution, clearing and even the sum-preserving swap, and
+    // fails only here — the swap changes the head too, so it cannot reach this shape.
+    // `.some()` is an ALL-elements claim; the fixture has to exercise it as one.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      stubFetch((url) => {
+        const regions = new URL(url, 'http://x').searchParams.getAll('region_ids').map(Number)
+        return jsonResponse({ ...PAGE, coverage: { ...PAGE.coverage, ingested_region_ids: regions } })
+      })
+
+      const before = [10000002, 10000003]
+      const after = [10000002, 10000004] // same head, same length, different tail
+
+      const { result, rerender } = renderHook(
+        ({ raw }: { raw: Record<string, unknown> }) => useContracts(parseContractSearch(raw)),
+        {
+          wrapper,
+          initialProps: { raw: { search: 'rifter', region_ids: before } as Record<string, unknown> },
+        },
+      )
+      const observed = () => result.current.data?.coverage.ingested_region_ids
+      await waitFor(() => expect(observed()).toEqual(before))
+
+      rerender({ raw: { search: 'rifter', region_ids: after } })
+      await waitFor(() => expect(observed()).toEqual(after))
+
+      rerender({ raw: { search: 'rifterr', region_ids: after } })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(observed()).toEqual(after)
+
+      await vi.advanceTimersByTimeAsync(400)
+      await waitFor(() => expect(observed()).toEqual(after))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
