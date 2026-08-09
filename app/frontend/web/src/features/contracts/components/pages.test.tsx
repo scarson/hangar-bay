@@ -728,6 +728,65 @@ describe('contract-type segments', () => {
     })
   })
 
+  it('sorts by Deadline from its header, and shows the sort it applied', async () => {
+    // Register C9. days_to_complete is a SERVER sort (§6.2), so the header exists to
+    // disclose it — a sort reachable only by hand-editing the URL, with no header to
+    // show or clear it, is the invisible-ordering defect the column's own comment
+    // names. Untested in unit AND e2e, so nothing connected the click to the wire.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    const { router } = renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    const header = screen.getByRole('columnheader', { name: /Deadline/ })
+    await userEvent.click(within(header).getByRole('button'))
+
+    // URL...
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ sort_by: 'days_to_complete' }),
+    )
+    // ...wire...
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_by=days_to_complete')
+      // DEFAULT_DIRECTION for this field is desc — most days to deliver in first.
+      expect(listCall).toContain('sort_direction=desc')
+    })
+    // ...and the header says so, which is the whole reason it is clickable.
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: /Deadline/ })).toHaveAttribute(
+        'aria-sort',
+        'descending',
+      ),
+    )
+  })
+
+  it('flips the Deadline direction when its header is clicked again', async () => {
+    // Re-clicking the ACTIVE field reverses it rather than re-applying the default,
+    // which is what makes the header a control rather than a one-way switch.
+    const calls = stubFetch(anonymousMe(segmentedPage))
+
+    renderApp(
+      '/contracts?contract_type=courier&ships_only=false&sort_by=days_to_complete&sort_direction=desc',
+    )
+    await screen.findByText('Jita to Amarr rush')
+
+    await userEvent.click(
+      within(screen.getByRole('columnheader', { name: /Deadline/ })).getByRole('button'),
+    )
+
+    await waitFor(() => {
+      const listCall = calls.filter((u) => u.includes('/api/v1/contracts/')).at(-1)!
+      expect(listCall).toContain('sort_direction=asc')
+    })
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: /Deadline/ })).toHaveAttribute(
+        'aria-sort',
+        'ascending',
+      ),
+    )
+  })
+
   it('resets the ship-name sort to a field the courier set can disclose', async () => {
     // The courier Contract column deliberately drops the ship_name sortField —
     // and the courier set has no Issued column either, so the parser's fallback
