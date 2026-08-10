@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import Select, Update, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.background_aggregation as bg_agg
@@ -27,6 +27,52 @@ from fastapi_app.tests.core.test_esi_client import _etag_client, _etag_response
 from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
 
 pytestmark = pytest.mark.asyncio
+
+
+def _recording_statements(session):
+    """Capture the SQL constructs executed on `session` so a test can assert HOW MANY
+    statements a chunked loop issued, not merely that every row eventually landed.
+
+    Two different regressions live in every chunked loop here and they are invisible to
+    each other. A loop that stops after its first chunk DROPS rows, which row assertions
+    catch. A loop that was never chunked at all lands every row in one oversized
+    statement — correct in a three-row fixture, and fatal at corpus scale where it blows
+    asyncpg's 32767 bind-parameter ceiling and rolls back the run (TEST-11). Only a
+    statement count catches the second, and it is the one these loops exist to prevent.
+    """
+    executed: list = []
+    original = session.execute
+
+    async def recording(statement, *args, **kwargs):
+        executed.append(statement)
+        return await original(statement, *args, **kwargs)
+
+    session.execute = recording
+    return executed, original
+
+
+def _updates_setting(statements, column: str) -> list:
+    """The recorded UPDATEs whose SET clause assigns `column`.
+
+    Filtering by the assigned column rather than by SQL text keeps each loop's count
+    separate: three UPDATE loops run over the same table in one pass, and a test that
+    counted all of them would fail when a DIFFERENT loop changed its chunking.
+    """
+    return [
+        s for s in statements
+        if isinstance(s, Update) and column in s.compile().params
+    ]
+
+
+def _selects_reading(statements, column: str) -> list:
+    """The recorded SELECTs that read `column` — how the station read-back is told
+    apart from the enrichment-skip SELECT, which reads contract_id and chunks its own
+    id list over the same table in the same pass."""
+    return [
+        s for s in statements
+        if isinstance(s, Select)
+        and column in {c.name for c in s.selected_columns}
+    ]
 
 
 def _make_service() -> ContractAggregationService:
@@ -359,6 +405,66 @@ async def test_lock_release_does_not_delete_a_reacquired_lock(caplog):
 
     assert store.get(bg_agg.AGGREGATION_LOCK_KEY) == "second-runner-token"
     assert "token mismatch" in caplog.text
+
+
+async def test_the_lock_is_released_when_the_locked_body_raises(caplog):
+    """A run that dies inside the lock must still hand the lock back.
+
+    Release-on-success is pinned; release after a FAILING body is not the same claim,
+    and it is the one that matters — a lock left held by a crashed run blocks every
+    later tick for a full TTL, so ingestion stops until the key expires. The
+    freshness tests reach this path but assert on the freshness record, never on the
+    key. Moving the release out of `finally` into the success path passes them all.
+    """
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        service = _make_service()
+        with pytest.raises(RuntimeError, match="body blew up"):
+            async with service._concurrency_lock():
+                assert bg_agg.AGGREGATION_LOCK_KEY in store  # held while the body runs
+                raise RuntimeError("body blew up")
+
+    assert bg_agg.AGGREGATION_LOCK_KEY not in store
+    assert "Releasing concurrency lock" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "path", ["acquired_then_returned", "acquired_then_raised", "never_acquired"]
+)
+async def test_the_redis_client_is_closed_on_every_lock_path(path: str):
+    """The lock creates its own Redis client per run, so it owns closing it.
+
+    Three routes leave the context manager and each has to close: a clean body, a
+    raising body, and the acquisition that never got the lock at all. The last is the
+    easiest to lose, because it exits through a raise before the release branch and
+    nothing else about that path is observable — the key belongs to another runner
+    and is meant to be left alone. Leaking one connection per skipped tick is a slow
+    exhaustion of Valkey's connection budget, which is a production symptom with no
+    local reproduction.
+    """
+    already_held = {bg_agg.AGGREGATION_LOCK_KEY: "another-runners-token"}
+    store: dict = already_held if path == "never_acquired" else {}
+    fake = _FakeLockRedis(store)
+    with patch.object(bg_agg.aioredis, "from_url", return_value=fake):
+        service = _make_service()
+        if path == "never_acquired":
+            with pytest.raises(bg_agg.ConcurrencyLockError):
+                async with service._concurrency_lock():
+                    pass
+        elif path == "acquired_then_raised":
+            with pytest.raises(RuntimeError):
+                async with service._concurrency_lock():
+                    raise RuntimeError("body blew up")
+        else:
+            async with service._concurrency_lock():
+                pass
+
+    assert fake.aclose_calls == 1
+    # And it must be the LAST thing the client is asked to do. A close followed by any
+    # further command reopens the connection underneath it, so the client reads as
+    # closed while the connection it owns is still leaked — which is the harm this test
+    # is named for, and the count alone cannot see it.
+    assert fake.ops[-1] == "aclose"
 
 
 async def test_process_contracts_persists_bpc_flag_and_is_bpc_filter_matches(
@@ -3415,3 +3521,440 @@ async def test_a_malformed_optional_date_clears_a_previously_stored_one(
             select(Contract.date_completed).where(Contract.contract_id == 920300)
         )
     ).scalar_one() is None, f"{label}: a stale completion date survived the degrade"
+
+
+# --- Upsert batch boundaries (register N-8) ----------------------------------
+#
+# Both upsert loops in _process_contracts slice their row list at a module-level
+# size so no single statement approaches asyncpg's 32767 bind-parameter ceiling.
+# The sizes were function-local literals until this row: unmonkeypatchable, so
+# crossing either boundary meant a 500-row fixture and neither loop had a test.
+# TEST-11 is the rule they are here for — a chunked writer whose fixture fits in
+# one chunk passes identically with the loop replaced by a single first-slice
+# write.
+
+
+async def test_the_contract_upsert_crosses_its_batch_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """With the contract batch size forced to 2 and THREE contracts, the loop must
+    issue TWO bounded writes of 2 and 1 — and every contract must persist.
+
+    The sizes are asserted, not just the rows, because "every row landed" is equally
+    true of a loop that was never chunked at all: one `bulk_upsert(..., contract_values)`
+    passes a row assertion while removing the bound this constant exists to enforce, and
+    only shows up at corpus scale as an asyncpg bind-parameter overflow that rolls back
+    the run (TEST-11). Dropping the last slice and never slicing at all are opposite
+    regressions, and the recorded sizes are what separates them.
+    """
+    monkeypatch.setattr(bg_agg, "CONTRACT_UPSERT_BATCH_SIZE", 2)
+
+    batches: list[int] = []
+    real_bulk_upsert = bg_agg.bulk_upsert
+
+    async def recording_bulk_upsert(session, model, rows, **kwargs):
+        if model is Contract:
+            batches.append(len(rows))
+        return await real_bulk_upsert(session, model, rows, **kwargs)
+
+    monkeypatch.setattr(bg_agg, "bulk_upsert", recording_bulk_upsert)
+
+    service = _make_service()
+    cids = [920400, 920401, 920402]
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+
+    assert batches == [2, 1]
+    stored = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(Contract.contract_id.in_(cids))
+            )
+        ).scalars()
+    )
+    assert stored == set(cids)
+
+
+async def test_the_item_upsert_crosses_its_batch_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """Same boundary one level down: with the item batch size forced to 2 and THREE
+    items on one contract, the loop must issue TWO bounded writes of 2 and 1, and
+    every item row must land.
+
+    Sized independently of the contract loop — item rows carry fewer columns, so the
+    two loops have different headroom under the same bind cap and one must be
+    testable without moving the other. The sizes are asserted for the same reason as
+    the contract loop's: a single unbounded `bulk_upsert(..., all_items)` satisfies
+    every row assertion here while removing the bound entirely.
+    """
+    monkeypatch.setattr(bg_agg, "ITEM_UPSERT_BATCH_SIZE", 2)
+
+    batches: list[int] = []
+    real_bulk_upsert = bg_agg.bulk_upsert
+
+    async def recording_bulk_upsert(session, model, rows, **kwargs):
+        if model is ContractItem:
+            batches.append(len(rows))
+        return await real_bulk_upsert(session, model, rows, **kwargs)
+
+    monkeypatch.setattr(bg_agg, "bulk_upsert", recording_bulk_upsert)
+
+    service = _make_service()
+    record_ids = [9204100, 9204101, 9204102]
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": rid, "type_id": 587, "quantity": 1, "is_included": True}
+            for rid in record_ids
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(920410)])
+
+    assert batches == [2, 1]
+    stored = set(
+        (
+            await db_session.execute(
+                select(ContractItem.record_id).where(
+                    ContractItem.contract_id == 920410
+                )
+            )
+        ).scalars()
+    )
+    assert stored == set(record_ids)
+
+
+# --- Station read-back chunking and mixed batches (register N-7) -------------
+
+
+async def test_the_known_station_read_back_crosses_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """The contracts-table read-back chunks its id list too, and its loop had no
+    boundary test — the two existing ones cover the status UPDATEs and the skip SELECT.
+
+    Three DISTINCT stations, not one: a read-back that stops after its first chunk
+    still answers correctly for a single station, so a one-station fixture cannot tell
+    the loop from its first step (TEST-24). The stations are seeded through the writer
+    so the already-known state is one ingestion really produces (TEST-26), and the
+    second run's lookup is armed to RAISE — an unresolved station then writes NULL,
+    which is what makes a dropped chunk visible in the stored rows rather than only in
+    the call count.
+    """
+    service = _make_service()
+    stations = {60003760: 30000142, 60008494: 30002187, 60011866: 30002510}
+
+    async def system_for(station_id: int) -> dict:
+        return {"station_id": station_id, "system_id": stations[station_id]}
+
+    service.esi_client.get_universe_station = AsyncMock(side_effect=system_for)
+
+    def _at(cid: int, station_id: int) -> dict:
+        contract = dict(_ship_contract_dict(cid))
+        contract["start_location_id"] = station_id
+        contract["type"] = "courier"
+        return contract
+
+    seeded = [_at(920500 + i, s) for i, s in enumerate(stations)]
+    await service._process_contracts(db_session, seeded)
+
+    # Every station is now stored. Force one chunk per station and re-ingest with the
+    # lookup broken: anything the read-back misses cannot be recovered from ESI.
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 1)
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=RuntimeError("ESI is down")
+    )
+    statements, original_execute = _recording_statements(db_session)
+    try:
+        await service._process_contracts(db_session, seeded)
+    finally:
+        db_session.execute = original_execute
+
+    # One SELECT per chunk in the start role. Three chunks of one station each, so a
+    # loop that ran to completion issued three; a de-chunked read-back issues ONE and
+    # still returns every pair, which is why the rows below cannot see it.
+    assert len(_selects_reading(statements, "start_location_system_id")) == 3
+    rows = (
+        await db_session.execute(
+            select(Contract.start_location_id, Contract.start_location_system_id)
+            .where(Contract.contract_id.in_([c["contract_id"] for c in seeded]))
+        )
+    ).all()
+    assert dict(rows) == stations
+    service.esi_client.get_universe_station.assert_not_awaited()
+
+
+async def test_a_batch_mixing_a_known_station_with_an_unknown_one_fetches_only_the_unknown(
+    db_session: AsyncSession,
+):
+    """The read-back returns a PARTIAL answer, and the code has to fall through to ESI
+    for the remainder rather than treating any hit as a complete one.
+
+    The all-known test pins the skip and the all-unknown tests pin the fetch; neither
+    can see an early return taken whenever the read-back found *something*, which would
+    leave every station first seen in a batch alongside a known one permanently NULL.
+    """
+    service = _make_service()
+
+    known = dict(_ship_contract_dict(920510))
+    known["start_location_id"] = 60003760
+    known["type"] = "courier"
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 60003760, "system_id": 30000142}
+    )
+    await service._process_contracts(db_session, [known])
+
+    fresh = dict(_ship_contract_dict(920511))
+    fresh["start_location_id"] = 60008494
+    fresh["type"] = "courier"
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 60008494, "system_id": 30002187}
+    )
+    await service._process_contracts(db_session, [known, fresh])
+
+    rows = (
+        await db_session.execute(
+            select(Contract.contract_id, Contract.start_location_system_id)
+            .where(Contract.contract_id.in_([920510, 920511]))
+        )
+    ).all()
+    assert dict(rows) == {920510: 30000142, 920511: 30002187}
+    # Only the station the read-back could not answer for costs a request.
+    service.esi_client.get_universe_station.assert_awaited_once_with(60008494)
+
+
+# --- The two unchunk-tested status UPDATE loops (register N-9) ---------------
+#
+# test_id_list_updates_batch_across_the_chunk_boundary crosses the boundary for the
+# COMPLETED-set and ship-flag loops. The ENRICHMENT_INCOMPLETE loop and the
+# non-ship clear are separate loops over separate id sets, each able to stop after
+# its first chunk independently of the two that are pinned.
+
+
+async def test_the_incomplete_status_update_crosses_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """Every contract whose enrichment degraded must be marked retryable, not just the
+    first chunk's worth — a contract left at its previous status is silently withheld
+    from the recovery the status exists to trigger."""
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 1)
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: [
+            {"record_id": cid, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    # Type resolution fails, so every item lands with no type_name and no category:
+    # all three contracts belong to the incomplete set and none to the completed one.
+    service.esi_client.get_universe_type = AsyncMock(side_effect=RuntimeError("ESI 500"))
+
+    cids = [920520, 920521, 920522]
+    statements, original_execute = _recording_statements(db_session)
+    try:
+        await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    finally:
+        db_session.execute = original_execute
+
+    # Three chunks of one id each. A single UPDATE over the whole set marks all three
+    # contracts correctly too, so the statuses below cannot tell chunked from
+    # unchunked — only the count can, and unchunked is the regression that breaks at
+    # corpus scale rather than in this fixture.
+    assert len(_updates_setting(statements, "item_processing_status")) == 3
+
+    statuses = (
+        await db_session.execute(
+            select(Contract.item_processing_status)
+            .where(Contract.contract_id.in_(cids))
+            .order_by(Contract.contract_id)
+        )
+    ).scalars().all()
+    assert statuses == ["ENRICHMENT_INCOMPLETE"] * 3
+
+
+async def test_the_non_ship_clear_crosses_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """The clear arm of the ship flag chunks its own id list, and a first-chunk-only
+    clear leaves stale positives in the ships-only default view — which is precisely
+    what an ENRICHMENT_VERSION bump exists to repair.
+
+    Both states come from the writer: run one flags all three as ships, the bump
+    re-enriches them as non-ships (a corrected answer, not a degraded one), and the
+    clear must reach every one of them across three chunks.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: [
+            {"record_id": cid, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    cids = [920530, 920531, 920532]
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    flags = (
+        await db_session.execute(
+            select(Contract.is_ship_contract)
+            .where(Contract.contract_id.in_(cids))
+            .order_by(Contract.contract_id)
+        )
+    ).scalars().all()
+    assert flags == [True] * 3, "precondition: all three stale flags must be set first"
+
+    monkeypatch.setattr(bg_agg, "ENRICHMENT_VERSION", bg_agg.ENRICHMENT_VERSION + 1)
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 1)
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Mining Barge", "category_id": 25}
+    )
+    db_session.expire_all()
+    statements, original_execute = _recording_statements(db_session)
+    try:
+        await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    finally:
+        db_session.execute = original_execute
+
+    # Only the CLEAR arm assigns is_ship_contract here: the set arm runs over an empty
+    # id set because the corrected enrichment resolves these as a non-ship category, so
+    # this count belongs to the clear loop alone and does not move when a neighbouring
+    # loop changes. Three chunks of one id; one unbounded UPDATE clears all three flags
+    # just as correctly and is invisible to the rows below.
+    assert len(_updates_setting(statements, "is_ship_contract")) == 3
+
+    db_session.expire_all()
+    rows = (
+        await db_session.execute(
+            select(Contract.contract_id, Contract.is_ship_contract)
+            .where(Contract.contract_id.in_(cids))
+        )
+    ).all()
+    assert dict(rows) == {cid: False for cid in cids}
+
+
+# --- Failure BEFORE the region fetch (register N-18) -------------------------
+
+
+@pytest.mark.parametrize("failing_site", ["esi_client_enter", "session_factory"])
+async def test_a_failure_before_the_region_fetch_records_failure_with_zero_counters(
+    monkeypatch: pytest.MonkeyPatch, failing_site: str
+):
+    """A run that dies before it ever asks ESI for a region still has to leave a
+    freshness record, and the counters it carries are their initial 0/0.
+
+    Every other forced-failure test fails at or after the fetch, so the counters it
+    asserts were populated by _fetch_regions; none of them can see the pre-fetch
+    window, where regions_ok and regions_failed are still the initial values declared
+    beside the lock. That window is the one an operator most needs recorded — a
+    ContractAggregationService that cannot open its ESI client or its session is
+    broken in a way no region-level counter will ever describe — and a
+    "record only when we have counters worth recording" edit is invisible without it.
+
+    Two failing sites, not one: the same outcome is reached through the ESI client's
+    __aenter__ and through the session factory, on different sides of the `async with`
+    nesting (TEST-28 — one behavior, two routes, and instrumentation naturally attaches
+    to whichever route the author was looking at).
+    """
+    import json as _json
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[])
+
+    if failing_site == "esi_client_enter":
+        service.esi_client.__aenter__.side_effect = RuntimeError("ESI client unusable")
+    else:
+        def boom_factory():
+            raise RuntimeError("session factory unusable")
+
+        monkeypatch.setattr(bg_agg, "AsyncSessionLocal", boom_factory, raising=False)
+
+    prior = "2026-07-18T00:00:00+00:00"
+    store: dict = {
+        INGEST_KEY: _json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 2,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()  # must not raise: the scheduler owns this job
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure"
+    assert record["regions_ok"] == 0
+    assert record["regions_failed"] == 0
+    # The record was rewritten rather than left alone — a run that stops this early
+    # must still move finished_at, or staleness cannot tell "no run" from "run failed".
+    assert record["finished_at"] != prior
+    assert record["last_success_at"] == prior
+    assert _gauge_value() == before
+    # The claim is that this happened BEFORE the fetch. Without this the test passes
+    # identically for a failure anywhere in the run, since 0/0 is also what a
+    # zero-region config would record.
+    service.esi_client.get_public_contracts.assert_not_awaited()
+
+
+async def test_the_upsert_batch_sizes_stay_under_asyncpgs_bind_parameter_ceiling(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """The two boundary tests constrain each loop against ITS configured size. This
+    constrains the size itself, which they cannot.
+
+    Both of them replace the constants with 2, so a throughput tune raising either one
+    past the ceiling is invisible to them — and the overflow never appears in a fixture.
+    It appears at corpus scale, as asyncpg refusing a statement and the whole run
+    rolling back, which is the outage the chunking exists to prevent.
+
+    The row WIDTH is read from the rows the writer actually hands to bulk_upsert, not
+    from the model (TEST-18: the model declares what may exist, the writer decides what
+    does) and not from a hand-copied count that would drift. Adding a mapped column
+    therefore moves this guard on its own, which is the other way the product can cross
+    the ceiling without either constant changing.
+    """
+    ASYNCPG_MAX_BIND_PARAMS = 32_767
+
+    widths: dict = {}
+    real_bulk_upsert = bg_agg.bulk_upsert
+
+    async def recording_bulk_upsert(session, model, rows, **kwargs):
+        if rows:
+            widths[model] = max(widths.get(model, 0), max(len(row) for row in rows))
+        return await real_bulk_upsert(session, model, rows, **kwargs)
+
+    monkeypatch.setattr(bg_agg, "bulk_upsert", recording_bulk_upsert)
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 9206000, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(920600)])
+
+    # Neither product is a measurement until the instrument has seen both row shapes
+    # (TEST-15): an absent model would otherwise make its half of this test vacuous.
+    assert Contract in widths and ContractItem in widths
+
+    assert bg_agg.CONTRACT_UPSERT_BATCH_SIZE * widths[Contract] <= ASYNCPG_MAX_BIND_PARAMS
+    assert bg_agg.ITEM_UPSERT_BATCH_SIZE * widths[ContractItem] <= ASYNCPG_MAX_BIND_PARAMS

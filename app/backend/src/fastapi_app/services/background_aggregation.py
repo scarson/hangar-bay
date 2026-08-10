@@ -50,6 +50,15 @@ _RELEASE_LOCK_LUA = (
 # id-list UPDATEs so no statement ever exceeds the cap.
 UPDATE_ID_CHUNK_SIZE = 1000
 
+# Rows per upsert statement, sized against the same 32767 bind-parameter ceiling.
+# Two constants rather than one because the two writers bind different widths:
+# contract rows supply ~26 columns (500 rows binds ~13,000 parameters), item rows
+# ~17 (~8,500) — 12 mapped from the ESI payload plus the five keys enrichment adds
+# before the upsert. They coincide at 500 today; tying them together would mean a
+# headroom change forced by one row shape silently resizing the other.
+CONTRACT_UPSERT_BATCH_SIZE = 500
+ITEM_UPSERT_BATCH_SIZE = 500
+
 # Bounded concurrency for the cold-cache type/group enrichment fan-out: without
 # it, thousands of unique types resolve as strictly sequential ESI round-trips,
 # minutes of added runtime that also push a run past the lock TTL.
@@ -671,7 +680,7 @@ class ContractAggregationService:
         persisted_ids = {row["contract_id"] for row in contract_values}
         contracts = [c for c in contracts if c.get("contract_id") in persisted_ids]
 
-        batch_size = 500  # Number of contracts to process in each batch
+        batch_size = CONTRACT_UPSERT_BATCH_SIZE
         total_contracts = len(contract_values)
         logger.info(f"Upserting {total_contracts} contracts in batches of {batch_size}.")
 
@@ -711,10 +720,7 @@ class ContractAggregationService:
 
         if all_items:
             logger.info(f"Preparing to upsert {len(all_items)} contract items in batches.")
-            # Sized against asyncpg's 32,767 bind-parameter ceiling: item rows
-            # carry ~17 supplied columns, so 500 rows binds ~8,500 parameters.
-            # The contract upsert above uses the same figure.
-            BATCH_SIZE = 500
+            BATCH_SIZE = ITEM_UPSERT_BATCH_SIZE
             for i in range(0, len(all_items), BATCH_SIZE):
                 batch_items = all_items[i:i + BATCH_SIZE]
                 logger.info(f"Upserting batch of {len(batch_items)} contract items (items {i + 1}-{i + len(batch_items)} of {len(all_items)}).")
