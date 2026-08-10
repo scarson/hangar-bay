@@ -361,6 +361,61 @@ async def test_lock_release_does_not_delete_a_reacquired_lock(caplog):
     assert "token mismatch" in caplog.text
 
 
+async def test_the_lock_is_released_when_the_locked_body_raises(caplog):
+    """A run that dies inside the lock must still hand the lock back.
+
+    Release-on-success is pinned; release after a FAILING body is not the same claim,
+    and it is the one that matters — a lock left held by a crashed run blocks every
+    later tick for a full TTL, so ingestion stops until the key expires. The
+    freshness tests reach this path but assert on the freshness record, never on the
+    key. Moving the release out of `finally` into the success path passes them all.
+    """
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        service = _make_service()
+        with pytest.raises(RuntimeError, match="body blew up"):
+            async with service._concurrency_lock():
+                assert bg_agg.AGGREGATION_LOCK_KEY in store  # held while the body runs
+                raise RuntimeError("body blew up")
+
+    assert bg_agg.AGGREGATION_LOCK_KEY not in store
+    assert "Releasing concurrency lock" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "path", ["acquired_then_returned", "acquired_then_raised", "never_acquired"]
+)
+async def test_the_redis_client_is_closed_on_every_lock_path(path: str):
+    """The lock creates its own Redis client per run, so it owns closing it.
+
+    Three routes leave the context manager and each has to close: a clean body, a
+    raising body, and the acquisition that never got the lock at all. The last is the
+    easiest to lose, because it exits through a raise before the release branch and
+    nothing else about that path is observable — the key belongs to another runner
+    and is meant to be left alone. Leaking one connection per skipped tick is a slow
+    exhaustion of Valkey's connection budget, which is a production symptom with no
+    local reproduction.
+    """
+    already_held = {bg_agg.AGGREGATION_LOCK_KEY: "another-runners-token"}
+    store: dict = already_held if path == "never_acquired" else {}
+    fake = _FakeLockRedis(store)
+    with patch.object(bg_agg.aioredis, "from_url", return_value=fake):
+        service = _make_service()
+        if path == "never_acquired":
+            with pytest.raises(bg_agg.ConcurrencyLockError):
+                async with service._concurrency_lock():
+                    pass
+        elif path == "acquired_then_raised":
+            with pytest.raises(RuntimeError):
+                async with service._concurrency_lock():
+                    raise RuntimeError("body blew up")
+        else:
+            async with service._concurrency_lock():
+                pass
+
+    assert fake.aclose_calls == 1
+
+
 async def test_process_contracts_persists_bpc_flag_and_is_bpc_filter_matches(
     db_session: AsyncSession, client: AsyncClient
 ):
@@ -3415,3 +3470,76 @@ async def test_a_malformed_optional_date_clears_a_previously_stored_one(
             select(Contract.date_completed).where(Contract.contract_id == 920300)
         )
     ).scalar_one() is None, f"{label}: a stale completion date survived the degrade"
+
+
+# --- Upsert batch boundaries (register N-8) ----------------------------------
+#
+# Both upsert loops in _process_contracts slice their row list at a module-level
+# size so no single statement approaches asyncpg's 32767 bind-parameter ceiling.
+# The sizes were function-local literals until this row: unmonkeypatchable, so
+# crossing either boundary meant a 500-row fixture and neither loop had a test.
+# TEST-11 is the rule they are here for — a chunked writer whose fixture fits in
+# one chunk passes identically with the loop replaced by a single first-slice
+# write.
+
+
+async def test_the_contract_upsert_crosses_its_batch_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """With the contract batch size forced to 2 and THREE contracts, every contract
+    must still persist — i.e. the loop runs past its first slice."""
+    monkeypatch.setattr(bg_agg, "CONTRACT_UPSERT_BATCH_SIZE", 2)
+
+    service = _make_service()
+    cids = [920400, 920401, 920402]
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+
+    stored = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(Contract.contract_id.in_(cids))
+            )
+        ).scalars()
+    )
+    assert stored == set(cids)
+
+
+async def test_the_item_upsert_crosses_its_batch_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """Same boundary one level down: with the item batch size forced to 2 and THREE
+    items on one contract, every item row must land.
+
+    Sized independently of the contract loop — item rows carry fewer columns, so the
+    two loops have different headroom under the same bind cap and one must be
+    testable without moving the other.
+    """
+    monkeypatch.setattr(bg_agg, "ITEM_UPSERT_BATCH_SIZE", 2)
+
+    service = _make_service()
+    record_ids = [9204100, 9204101, 9204102]
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": rid, "type_id": 587, "quantity": 1, "is_included": True}
+            for rid in record_ids
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(920410)])
+
+    stored = set(
+        (
+            await db_session.execute(
+                select(ContractItem.record_id).where(
+                    ContractItem.contract_id == 920410
+                )
+            )
+        ).scalars()
+    )
+    assert stored == set(record_ids)

@@ -10,6 +10,11 @@ class FakeLockRedis:
         # Records the ex= (TTL seconds) each successful set carried, keyed like store —
         # lets tests assert on the mutual-exclusion window, not just key presence.
         self.set_ttls: dict = {}
+        # Counts aclose() so a test can observe the client being closed. Nothing about
+        # the lock KEY changes when the close is skipped, so a connection leaked once
+        # per run — including on the run that never acquired the lock — is invisible to
+        # every other assertion available here.
+        self.aclose_calls = 0
 
     async def set(self, key, value, nx=False, ex=None):
         if nx and key in self.store:
@@ -29,4 +34,4 @@ class FakeLockRedis:
         return 0
 
     async def aclose(self):
-        pass
+        self.aclose_calls += 1
