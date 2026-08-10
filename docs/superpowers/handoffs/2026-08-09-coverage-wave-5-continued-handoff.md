@@ -12,9 +12,9 @@ corrects them.
 
 | | |
 |---|---|
-| `origin/dev` tip | `9c278f2` (PR #174 merge) |
-| Open PRs | **none** — #173, #174 and #175 all merged |
-| Baselines | backend **772** · frontend eslint/tsc clean, vitest **416 ×2**, e2e **146** |
+| `origin/dev` tip | `5b519a2` (PR #177 merge) |
+| Open PRs | **#178** — the malformed-date policy, `Review — data-integrity path`, HELD FOR SAM |
+| Baselines | backend **773** · frontend eslint/tsc clean, vitest **416 ×2**, e2e **146** |
 | Worktree | `.claude/worktrees/coverage-wave-5-da9c1c`, provisioned (`.venv`, `node_modules`, `app/backend/src/.env`) |
 | Sam's queue | C-11's third hazard · production DB allow rule `198.37.143.189/32` (ENV-8) · the dev→main release · design decisions D-a–D-k · **NEW: two decisions in §5** |
 
@@ -39,6 +39,20 @@ corrects them.
   Comparing row counts gave `0 == 0`, which an implementation that deleted every row also
   satisfies. Seed a sentinel and compare its full state; a truncate-and-reinsert keeps
   the count too.
+
+**Three more that cost real time, from the #178 rounds:**
+
+- **Testing the INSERT path is not testing the path production uses.** Ingestion re-sights
+  the whole corpus every run, so the upsert's `ON CONFLICT` arm is where stored data
+  actually meets new data — different SQL from a fresh insert. A `preserve_on_null`
+  mutant survived the entire 798-test suite except the two cases written for it.
+- **A mutation harness whose snapshot path fails to resolve leaves the mutant ON DISK.**
+  `/tmp` resolves differently in Git Bash and Windows Python; the `finally` restore raised
+  and left the mutation in production code. Snapshot BESIDE the file being mutated, assert
+  the snapshot exists before mutating, and grep for the mutant afterwards.
+- **`git checkout -- <file>` restores from HEAD and discards uncommitted work.** TEST-12
+  says this in writing. It was done anyway while cleaning up a mutant helper, losing three
+  uncommitted fixes. Tests written first are the only reason the loss was loud.
 
 Also worth carrying: **a relational assertion is a digest.** `date_expired > date_issued`
 held for a mapping that replaced every persisted expiry with one constant. Assert the
@@ -214,6 +228,29 @@ New, learned this session:
 
 ## 5. Open for Sam
 
+**Both decisions from the first brief are now IMPLEMENTED.** The two items below that used
+to be open are resolved; what remains for Sam is the merge decision on #178 and the
+alerting gap.
+
+- **Decision 1 — malformed-date blast radius: DONE, awaiting merge.** PR **#178**, held
+  because it changes the ingestion write path. A malformed REQUIRED date skips that
+  contract (counted on `hangar_bay_ingest_contracts_skipped_total{reason="malformed_date"}`,
+  logged with contract id and field); a malformed OPTIONAL date stores NULL; and a run
+  that fetched contracts but stored NONE records `failure` rather than freshening the
+  staleness clock over an empty write. Backend 775 → 798, ten review rounds, fourteen
+  findings, all real, ending CONVERGED.
+- **Decision 2 — the `"a contract"` label: DONE and MERGED** (PR #177). The fallback was
+  not dead code, it was the symptom of the last hand-listed copy of a partition
+  `ITEM_BEARING_CONTRACT_TYPES` derives. `set(_SHIP_TYPE_LABELS)` is now asserted equal to
+  it, so a sixth `ContractType` fails a test naming the type missing its label.
+- **STILL OPEN and Sam's alone: there is no alert rule.** The metric exists and the
+  success gauge already did; whether to alert on either lives in Grafana Cloud, outside
+  this repo. #178 bounds the damage of a malformed date and makes a wholesale rejection
+  record `failure` — it does not make anyone AWARE. That was the larger half of the
+  original finding and it is untouched.
+
+### Previously open, unchanged
+
 Carried forward, unchanged: **C-11's third mocked-behavior hazard** (options in the coverage
 report's Wave 3 residual section), the production DB allow rule, the dev→main release, and design
 decisions D-a–D-k.
@@ -258,8 +295,8 @@ assertion was identified in the sweep at breakfast and committed in my own test 
 > Hangar Bay: read `docs/superpowers/handoffs/2026-08-09-coverage-wave-5-continued-handoff.md`
 > first — its §3 process rules are binding (Routine PRs are agent-merged on a mechanically-gated
 > green check; codex adversarial review framed as "name a plausible EDIT these tests would not
-> catch"; TDD + mutation verification; five frontend lanes). State: `origin/dev` at `9c278f2`, ZERO open PRs,
-> backend **772**, frontend 416×2 + 146 e2e. Wave 5's sweep is DONE — its results are in the
+> catch"; TDD + mutation verification; five frontend lanes). State: `origin/dev` at `5b519a2`,
+> backend **773**, frontend 416×2 + 146 e2e. Wave 5's sweep is DONE — its results are in the
 > coverage report's §Wave 5 sweep; do not re-run it.
 >
 > Queue: **backend-write's remaining 9 rows** (§2.1 names each and
