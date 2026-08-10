@@ -3330,3 +3330,26 @@ async def test_every_shape_of_bad_required_date_is_counted_and_named(
     assert any(
         "920280" in line and field in line for line in warnings
     ), f"{field}/{shape} was skipped unnamed: {warnings}"
+
+
+async def test_a_contract_with_both_dates_malformed_counts_once(
+    db_session: AsyncSession,
+):
+    """The counter's unit is one dropped CONTRACT, not one validation error.
+
+    Every other fixture corrupts a single field, so a refactor that validated both
+    required dates — collecting errors rather than raising at the first, which is the
+    ordinary way to give better diagnostics — could increment once per error and pass
+    all of them. One contract would then read as two dropped listings, and a metric
+    that overstates data loss is as unusable as one that understates it: the number is
+    only worth alerting on if it means what its name says.
+    """
+    service = _make_service()
+    before = _skipped_total()
+    payload = _ship_contract_dict(920290)
+    payload["date_issued"] = "not-a-date"
+    payload["date_expired"] = None
+
+    await service._process_contracts(db_session, [payload])
+
+    assert _skipped_total() - before == 1, "one contract counted as more than one drop"
