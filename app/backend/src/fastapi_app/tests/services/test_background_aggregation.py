@@ -460,6 +460,11 @@ async def test_the_redis_client_is_closed_on_every_lock_path(path: str):
                 pass
 
     assert fake.aclose_calls == 1
+    # And it must be the LAST thing the client is asked to do. A close followed by any
+    # further command reopens the connection underneath it, so the client reads as
+    # closed while the connection it owns is still leaked — which is the harm this test
+    # is named for, and the count alone cannot see it.
+    assert fake.ops[-1] == "aclose"
 
 
 async def test_process_contracts_persists_bpc_flag_and_is_bpc_filter_matches(
@@ -3901,3 +3906,55 @@ async def test_a_failure_before_the_region_fetch_records_failure_with_zero_count
     # identically for a failure anywhere in the run, since 0/0 is also what a
     # zero-region config would record.
     service.esi_client.get_public_contracts.assert_not_awaited()
+
+
+async def test_the_upsert_batch_sizes_stay_under_asyncpgs_bind_parameter_ceiling(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """The two boundary tests constrain each loop against ITS configured size. This
+    constrains the size itself, which they cannot.
+
+    Both of them replace the constants with 2, so a throughput tune raising either one
+    past the ceiling is invisible to them — and the overflow never appears in a fixture.
+    It appears at corpus scale, as asyncpg refusing a statement and the whole run
+    rolling back, which is the outage the chunking exists to prevent.
+
+    The row WIDTH is read from the rows the writer actually hands to bulk_upsert, not
+    from the model (TEST-18: the model declares what may exist, the writer decides what
+    does) and not from a hand-copied count that would drift. Adding a mapped column
+    therefore moves this guard on its own, which is the other way the product can cross
+    the ceiling without either constant changing.
+    """
+    ASYNCPG_MAX_BIND_PARAMS = 32_767
+
+    widths: dict = {}
+    real_bulk_upsert = bg_agg.bulk_upsert
+
+    async def recording_bulk_upsert(session, model, rows, **kwargs):
+        if rows:
+            widths[model] = max(widths.get(model, 0), max(len(row) for row in rows))
+        return await real_bulk_upsert(session, model, rows, **kwargs)
+
+    monkeypatch.setattr(bg_agg, "bulk_upsert", recording_bulk_upsert)
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 9206000, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(920600)])
+
+    # Neither product is a measurement until the instrument has seen both row shapes
+    # (TEST-15): an absent model would otherwise make its half of this test vacuous.
+    assert Contract in widths and ContractItem in widths
+
+    assert bg_agg.CONTRACT_UPSERT_BATCH_SIZE * widths[Contract] <= ASYNCPG_MAX_BIND_PARAMS
+    assert bg_agg.ITEM_UPSERT_BATCH_SIZE * widths[ContractItem] <= ASYNCPG_MAX_BIND_PARAMS
