@@ -11,16 +11,16 @@ backend-write queue is **DONE** and MUST NOT be re-run.
 
 | | |
 |---|---|
-| `origin/dev` tip | `b4a67b9` (PR #182 merge) |
-| Open PRs | **#183** — frontend-logic 10/13, all lanes green, adversarial review in flight |
-| Baselines | backend **822** · vitest **445 ×2 lanes** · e2e **146** (7 skipped: live-smoke) · eslint + `tsc -b` clean |
-| Worktree | `.claude/worktrees/coverage-wave-5-da9c1c`, on `test/frontend-logic-register` |
+| `origin/dev` tip | `91cea97` (PR #183 merge) |
+| Open PRs | **none** |
+| Baselines | backend **822** · vitest **455 ×2 lanes** · e2e **146** (7 skipped: live-smoke) · eslint + `tsc -b` clean |
+| Worktree | `.claude/worktrees/coverage-wave-5-da9c1c`, on `docs/handoff-sync` (branch a merged PR left behind; reset it to origin/dev) |
 | Sam's queue | **Decision 1 on reward-per-jump (§3)** · the alerting gap · C-11's third hazard · production DB allow rule `198.37.143.189/32` (ENV-8) · the dev→main release · D-a–D-k |
 
 ## 1. What shipped
 
 - **PR #182** (merged `b4a67b9`) — backend-write register **18/18**. Backend 799 → 822.
-- **PR #183** (open) — frontend-logic **10/13** plus one production fix. vitest 416 → 445.
+- **PR #183** (merged `91cea97`) — frontend-logic **10/13** plus one production fix. vitest 416 → **455**. Its adversarial review found four category-(a) gaps on the first pass — all correct, all fixed — and CONVERGED with an empty list on the second.
 - **Reward-per-jump spec + plan** — committed, awaiting Sam. See §3.
 - **Three pitfalls updates** (§5) — the durable form of this session's lessons.
 
@@ -222,11 +222,10 @@ comment beside the branch already says so and testing it changes no behaviour. H
 
 ```
 Hangar Bay: read docs/superpowers/handoffs/2026-08-10-wave-5-backend-closed-frontend-started-handoff.md
-first — its §4 process rules are binding. State: origin/dev at b4a67b9, backend 822, vitest 445×2,
-e2e 146, eslint/tsc clean. PR #183 is OPEN (frontend-logic 10/13 + one production fix, all five
-lanes green) with a codex adversarial review in flight — read _cx.log in the worktree for its
-verdict, fix any category (a) findings, re-run codex on non-trivial rework, then merge through the
-mechanical gate. The backend-write register is CLOSED 18/18 and MUST NOT be re-run.
+first — its §4 process rules are binding. State: origin/dev at 91cea97, backend 822, vitest 455×2,
+e2e 146, eslint/tsc clean, ZERO open PRs. PR #183 merged frontend-logic 10/13 plus one production
+fix, its adversarial review converged on the second pass. The backend-write register is CLOSED
+18/18 and frontend-logic is 10/13 — neither closed part may be re-run.
 
 Queue: frontend-logic's last 3 rows (§2.1 — N-9 is the sortableFieldsFor per-segment snapshot
 replacing a TEST-27 self-referential assertion; N-10 the blueprint cell; N-11 the EXPIRES_COLUMN
