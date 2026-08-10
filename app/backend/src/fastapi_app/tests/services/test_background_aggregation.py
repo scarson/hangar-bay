@@ -3543,3 +3543,253 @@ async def test_the_item_upsert_crosses_its_batch_boundary(
         ).scalars()
     )
     assert stored == set(record_ids)
+
+
+# --- Station read-back chunking and mixed batches (register N-7) -------------
+
+
+async def test_the_known_station_read_back_crosses_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """The contracts-table read-back chunks its id list too, and its loop had no
+    boundary test — the two existing ones cover the status UPDATEs and the skip SELECT.
+
+    Three DISTINCT stations, not one: a read-back that stops after its first chunk
+    still answers correctly for a single station, so a one-station fixture cannot tell
+    the loop from its first step (TEST-24). The stations are seeded through the writer
+    so the already-known state is one ingestion really produces (TEST-26), and the
+    second run's lookup is armed to RAISE — an unresolved station then writes NULL,
+    which is what makes a dropped chunk visible in the stored rows rather than only in
+    the call count.
+    """
+    service = _make_service()
+    stations = {60003760: 30000142, 60008494: 30002187, 60011866: 30002510}
+
+    async def system_for(station_id: int) -> dict:
+        return {"station_id": station_id, "system_id": stations[station_id]}
+
+    service.esi_client.get_universe_station = AsyncMock(side_effect=system_for)
+
+    def _at(cid: int, station_id: int) -> dict:
+        contract = dict(_ship_contract_dict(cid))
+        contract["start_location_id"] = station_id
+        contract["type"] = "courier"
+        return contract
+
+    seeded = [_at(920500 + i, s) for i, s in enumerate(stations)]
+    await service._process_contracts(db_session, seeded)
+
+    # Every station is now stored. Force one chunk per station and re-ingest with the
+    # lookup broken: anything the read-back misses cannot be recovered from ESI.
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 1)
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=RuntimeError("ESI is down")
+    )
+    await service._process_contracts(db_session, seeded)
+
+    rows = (
+        await db_session.execute(
+            select(Contract.start_location_id, Contract.start_location_system_id)
+            .where(Contract.contract_id.in_([c["contract_id"] for c in seeded]))
+        )
+    ).all()
+    assert dict(rows) == stations
+    service.esi_client.get_universe_station.assert_not_awaited()
+
+
+async def test_a_batch_mixing_a_known_station_with_an_unknown_one_fetches_only_the_unknown(
+    db_session: AsyncSession,
+):
+    """The read-back returns a PARTIAL answer, and the code has to fall through to ESI
+    for the remainder rather than treating any hit as a complete one.
+
+    The all-known test pins the skip and the all-unknown tests pin the fetch; neither
+    can see an early return taken whenever the read-back found *something*, which would
+    leave every station first seen in a batch alongside a known one permanently NULL.
+    """
+    service = _make_service()
+
+    known = dict(_ship_contract_dict(920510))
+    known["start_location_id"] = 60003760
+    known["type"] = "courier"
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 60003760, "system_id": 30000142}
+    )
+    await service._process_contracts(db_session, [known])
+
+    fresh = dict(_ship_contract_dict(920511))
+    fresh["start_location_id"] = 60008494
+    fresh["type"] = "courier"
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 60008494, "system_id": 30002187}
+    )
+    await service._process_contracts(db_session, [known, fresh])
+
+    rows = (
+        await db_session.execute(
+            select(Contract.contract_id, Contract.start_location_system_id)
+            .where(Contract.contract_id.in_([920510, 920511]))
+        )
+    ).all()
+    assert dict(rows) == {920510: 30000142, 920511: 30002187}
+    # Only the station the read-back could not answer for costs a request.
+    service.esi_client.get_universe_station.assert_awaited_once_with(60008494)
+
+
+# --- The two unchunk-tested status UPDATE loops (register N-9) ---------------
+#
+# test_id_list_updates_batch_across_the_chunk_boundary crosses the boundary for the
+# COMPLETED-set and ship-flag loops. The ENRICHMENT_INCOMPLETE loop and the
+# non-ship clear are separate loops over separate id sets, each able to stop after
+# its first chunk independently of the two that are pinned.
+
+
+async def test_the_incomplete_status_update_crosses_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """Every contract whose enrichment degraded must be marked retryable, not just the
+    first chunk's worth — a contract left at its previous status is silently withheld
+    from the recovery the status exists to trigger."""
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 1)
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: [
+            {"record_id": cid, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    # Type resolution fails, so every item lands with no type_name and no category:
+    # all three contracts belong to the incomplete set and none to the completed one.
+    service.esi_client.get_universe_type = AsyncMock(side_effect=RuntimeError("ESI 500"))
+
+    cids = [920520, 920521, 920522]
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+
+    statuses = (
+        await db_session.execute(
+            select(Contract.item_processing_status)
+            .where(Contract.contract_id.in_(cids))
+            .order_by(Contract.contract_id)
+        )
+    ).scalars().all()
+    assert statuses == ["ENRICHMENT_INCOMPLETE"] * 3
+
+
+async def test_the_non_ship_clear_crosses_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """The clear arm of the ship flag chunks its own id list, and a first-chunk-only
+    clear leaves stale positives in the ships-only default view — which is precisely
+    what an ENRICHMENT_VERSION bump exists to repair.
+
+    Both states come from the writer: run one flags all three as ships, the bump
+    re-enriches them as non-ships (a corrected answer, not a degraded one), and the
+    clear must reach every one of them across three chunks.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: [
+            {"record_id": cid, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    cids = [920530, 920531, 920532]
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    flags = (
+        await db_session.execute(
+            select(Contract.is_ship_contract)
+            .where(Contract.contract_id.in_(cids))
+            .order_by(Contract.contract_id)
+        )
+    ).scalars().all()
+    assert flags == [True] * 3, "precondition: all three stale flags must be set first"
+
+    monkeypatch.setattr(bg_agg, "ENRICHMENT_VERSION", bg_agg.ENRICHMENT_VERSION + 1)
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 1)
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Mining Barge", "category_id": 25}
+    )
+    db_session.expire_all()
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+
+    db_session.expire_all()
+    rows = (
+        await db_session.execute(
+            select(Contract.contract_id, Contract.is_ship_contract)
+            .where(Contract.contract_id.in_(cids))
+        )
+    ).all()
+    assert dict(rows) == {cid: False for cid in cids}
+
+
+# --- Failure BEFORE the region fetch (register N-18) -------------------------
+
+
+@pytest.mark.parametrize("failing_site", ["esi_client_enter", "session_factory"])
+async def test_a_failure_before_the_region_fetch_records_failure_with_zero_counters(
+    monkeypatch: pytest.MonkeyPatch, failing_site: str
+):
+    """A run that dies before it ever asks ESI for a region still has to leave a
+    freshness record, and the counters it carries are their initial 0/0.
+
+    Every other forced-failure test fails at or after the fetch, so the counters it
+    asserts were populated by _fetch_regions; none of them can see the pre-fetch
+    window, where regions_ok and regions_failed are still the initial values declared
+    beside the lock. That window is the one an operator most needs recorded — a
+    ContractAggregationService that cannot open its ESI client or its session is
+    broken in a way no region-level counter will ever describe — and a
+    "record only when we have counters worth recording" edit is invisible without it.
+
+    Two failing sites, not one: the same outcome is reached through the ESI client's
+    __aenter__ and through the session factory, on different sides of the `async with`
+    nesting (TEST-28 — one behavior, two routes, and instrumentation naturally attaches
+    to whichever route the author was looking at).
+    """
+    import json as _json
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[])
+
+    if failing_site == "esi_client_enter":
+        service.esi_client.__aenter__.side_effect = RuntimeError("ESI client unusable")
+    else:
+        def boom_factory():
+            raise RuntimeError("session factory unusable")
+
+        monkeypatch.setattr(bg_agg, "AsyncSessionLocal", boom_factory, raising=False)
+
+    prior = "2026-07-18T00:00:00+00:00"
+    store: dict = {
+        INGEST_KEY: _json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 2,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()  # must not raise: the scheduler owns this job
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure"
+    assert record["regions_ok"] == 0
+    assert record["regions_failed"] == 0
+    # The record was rewritten rather than left alone — a run that stops this early
+    # must still move finished_at, or staleness cannot tell "no run" from "run failed".
+    assert record["finished_at"] != prior
+    assert record["last_success_at"] == prior
+    assert _gauge_value() == before
+    # The claim is that this happened BEFORE the fetch. Without this the test passes
+    # identically for a failure anywhere in the run, since 0/0 is also what a
+    # zero-region config would record.
+    service.esi_client.get_public_contracts.assert_not_awaited()
