@@ -244,8 +244,19 @@ def test_downgrade_refuses_while_an_issuer_id_exceeds_int32(blank_migrated_sync_
 
 
 def test_clean_downgrade_restores_int32_issuer_columns(blank_migrated_sync_connection):
-    """With no oversized ids the downgrade must actually narrow — the guard test
-    alone stays green if the alteration is dropped. Head restored in finally."""
+    """With no oversized ids the downgrade must actually narrow AND drop both indexes
+    it created — the guard test alone stays green if either step is dropped.
+
+    The index half was previously caught only by accident: a retained index makes the
+    `finally` re-upgrade fail on a duplicate name, so the regression surfaced as a
+    teardown error naming neither the migration step nor the index, in whichever test
+    happened to run the restore. Read from pg_indexes it is a stated assertion instead.
+
+    Their PRESENCE is asserted first: an empty result from a query that never could
+    have matched is not evidence of absence (TEST-15), and these index names are
+    exactly the sort of string a rename would quietly invalidate. Head restored in
+    `finally` because the fixture is session-scoped (TEST-23).
+    """
     from pathlib import Path
 
     from alembic import command
@@ -255,6 +266,27 @@ def test_clean_downgrade_restores_int32_issuer_columns(blank_migrated_sync_conne
     conn = blank_migrated_sync_connection
     cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     cfg.attributes["connection"] = conn
+
+    location_indexes = (
+        "ix_contracts_start_location_id",
+        "ix_contracts_start_location_system_id",
+    )
+
+    def present_location_indexes() -> set[str]:
+        return set(
+            conn.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes WHERE tablename = 'contracts' "
+                    "AND indexname = ANY(:names)"
+                ),
+                {"names": list(location_indexes)},
+            ).scalars()
+        )
+
+    assert present_location_indexes() == set(location_indexes), (
+        "precondition: the instrument must be able to see these indexes at head"
+    )
+
     command.downgrade(cfg, "f2a91c3b7e04")
     conn.commit()
 
@@ -269,6 +301,7 @@ def test_clean_downgrade_restores_int32_issuer_columns(blank_migrated_sync_conne
             ).all()
         )
         assert types == {"issuer_id": "integer", "issuer_corporation_id": "integer"}
+        assert present_location_indexes() == set()
     finally:
         command.upgrade(cfg, "head")
         conn.commit()
