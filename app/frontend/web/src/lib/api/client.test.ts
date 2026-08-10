@@ -96,3 +96,34 @@ describe('raiseApiError', () => {
     }
   })
 })
+
+describe('raiseApiError leaves the identity cache alone on a non-401', () => {
+  it('invalidates the identity query for a 401 and for nothing else', async () => {
+    // The 401 arm is what collapses the header to anonymous when the server-side
+    // session is gone. Its converse is the part nothing asserted: a 400 from an
+    // unrelated mutation must NOT invalidate ['auth','me'], because doing so refetches
+    // identity and flickers the header on every ordinary validation error.
+    //
+    // Observed by INVALIDATION STATE rather than by counting refetches: a refetch
+    // counter is blind here, since an invalidated query with no mounted observer does
+    // not refetch at all (TEST-25 — pick an observable that differs under the mutation).
+    const qc = new QueryClient()
+    const identity = ['auth', 'me']
+    qc.setQueryData(identity, { character_name: 'Pilot' })
+
+    const isStale = () => qc.getQueryState(identity)?.isInvalidated === true
+
+    expect(isStale()).toBe(false) // the instrument can read the un-invalidated state
+
+    expect(() => raiseApiError(qc, 400, 'watchlist is full')).toThrow(ApiError)
+    expect(isStale()).toBe(false)
+
+    expect(() => raiseApiError(qc, 403, 'forbidden')).toThrow(ApiError)
+    expect(isStale()).toBe(false)
+
+    // And the positive arm, so the check above is not passing because the instrument
+    // cannot see an invalidation at all (TEST-15).
+    expect(() => raiseApiError(qc, 401)).toThrow(ApiError)
+    expect(isStale()).toBe(true)
+  })
+})
