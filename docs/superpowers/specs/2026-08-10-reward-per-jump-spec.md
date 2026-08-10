@@ -318,6 +318,61 @@ The spike's cost estimate for B is an estimate for reproducing the second.
 - **Store all three preferences (the spike's recommendation).** Rejected in §4; `insecure` answers
   a question no surface asks.
 
+### Phase 0 Task 0.1 — the edge list, actually fetched (2026-08-10)
+
+Run at Sam's request while a PR was in CI. **Nothing was vendored into the repository**; both files
+were fetched to a scratch directory and analysed there, because vendoring is the decision this task
+exists to inform rather than pre-empt.
+
+**Sources.** `https://www.fuzzwork.co.uk/dump/latest/csv/` — `mapSolarSystemJumps.csv` (936,638
+bytes) and `mapSolarSystems.csv` (2,367,191 bytes), both `text/csv`, both `Last-Modified` the same
+day they were fetched. That freshness matters: the spike recorded that the legacy CCP SDE URL still
+answers 200 while serving data frozen since 2025-07, and this dump is demonstrably not that.
+
+**Every figure the spike measured reproduced exactly.**
+
+| Claim | Spike | Measured |
+|---|---|---|
+| Edge-list size | 937 KB | 936,638 bytes |
+| Directed edge rows | 13,978 | 13,978 (6,989 undirected) |
+| Solar systems | 8,490 | 8,490 |
+| Connected components | 4 | **4 — sizes 5,228 / 27 / 7 / 6** |
+
+The component sizes are the ones the spike named: main New Eden, Pochven (27, gate-isolated —
+the sample members are Pochven systems), and two Jove pockets. A BFS from Jita to a Pochven system
+returns no route, which is the correct answer and is what the plan's unreachability test asserts.
+
+**The security source covers the graph completely.** Of the 5,268 systems appearing in the edge
+list, **zero** lack a security value. (The other ~3,222 systems in the file have no stargates at
+all — wormhole space — which is why they are absent from the edge list rather than a gap in it.)
+This is the check the plan's Task 1.1 exists for, and it passes on the source files.
+
+**The decisive measurement — Decision 1's premise holds.**
+
+| Route | Our BFS | ESI |
+|---|---|---|
+| Jita → Amarr, shortest | **11** | 11 (`shortest`) |
+| Jita → Amarr, high-sec only | **34** | 45 (`secure`) |
+
+Our shortest agrees with CCP's exactly, which is the validation that makes the rest trustworthy.
+And the all-high-sec route is **34 jumps where ESI's `secure` returns 45** — the ~32% inflation the
+spec's argument rests on, now measured on the real graph rather than quoted from the survey. A
+reward-per-jump computed from ESI's `secure` would understate this route's value by about a third.
+
+Ahbazon reads 0.421 and is correctly classified as low-sec by the `>= 0.45` cutoff, so the constant
+and the chokepoint story both check out.
+
+**Licensing remains open, and it is the one thing this task could not settle.** There is no licence
+page for the dump. The site carries CCP's standard third-party notice — *"CCP hf. has granted
+permission to fuzzwork.co.uk to use EVE Online and all associated logos and designs"* — which
+speaks to Fuzzwork's own use and not to onward redistribution by us. **This is now the only
+unresolved input to Decision 1**, and it is Sam's call, not a technical question.
+
+**What this changes about the recommendation.** Everything technical that could have falsified it
+came back clean, so the residual risk is no longer "does the graph work" but "may we ship the
+data". If the answer is no, Option A remains serviceable at the cost of a denominator that is
+wrong by roughly a third on long routes — and the measurement above is what that cost now rests on.
+
 ### What I am still uncertain about
 
 - **Licensing.** The strongest reason to pick A, and I cannot resolve it. Flagged as Sam's.
