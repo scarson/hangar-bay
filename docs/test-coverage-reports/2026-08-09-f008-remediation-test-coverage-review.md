@@ -392,7 +392,7 @@ four per-file registers as work orders.
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
 | 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
 | 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ✅ DONE — logic **28/28**, components **10/10**, e2e pins **3/3**. PR #170 (C1–C4, plus a typecheck lane for `e2e/` that had never existed) and PR #171 (C5–C10). vitest 322 → 416, e2e 140 → 146 |
-| 5 | Nice-to-have (60) | 🔄 **in progress** — swept first (§Wave 5 sweep): 60 register rows reduce to **58 distinct open items**, one struck, one cross-register duplicate merged, three partials narrowed. **Backend-read 10/10 closed** — 20 tests, backend 733 → 753, every one mutation-verified; two adversarial-review findings fixed. Remaining: backend-write 18 (N-10 struck, N-11 partial), frontend-logic 13 (N-9, N-13 partial), frontend-components 17 (N-11 merged into frontend-logic N-11) |
+| 5 | Nice-to-have (60) | 🔄 **in progress** — swept first (§Wave 5 sweep): 60 register rows reduce to **58 distinct open items**. **Backend-read 10/10 closed** (PR #173). **Backend-write 9/18 closed** (PR #174: N-1..N-5, N-11, N-15, N-16, N-19). Backend 733 → 799. Remaining: backend-write **9** (N-6, N-7, N-8, N-9, N-12, N-13, N-14, N-17, N-18), frontend-logic **13**, frontend-components **17** |
 
 Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
 (TEST-12), footprint-free discipline on shared fixtures (TEST-23), five frontend lanes for any
@@ -574,6 +574,67 @@ it reports). Two of the three wrong claims this campaign has recorded were asser
 about what ESI sends.
 
 Backend **751 → 753** after the rework.
+
+### Wave 5 — the two decisions Sam took, and what they changed in the code
+
+Both open decisions from this campaign's residual list were taken on 2026-08-10 and are merged.
+
+**The malformed-date blast radius (PR #178, `Review`).** The characterization test written during
+the backend-write wave recorded that one unreadable date discarded the whole ingest run — and the
+brief prepared for Sam established three facts that made the decision: `_fetch_regions` concatenates
+every page of every configured region before ONE `_process_contracts` call, so the radius was every
+region at once; it did not self-heal, because the ETag validator is stored at fetch time and a 304
+serves the cached body straight back into processing, re-failing hourly for as long as the contract
+stayed listed (up to two weeks for a public contract); and nobody would find out, since `/ready`
+reports the failure but deliberately never fails readiness, no alert rule exists in the repo, and
+the frontend has no staleness surface.
+
+Sam chose a **per-field policy**, which the column constraints force: `date_issued` and
+`date_expired` are required and NOT NULL (and `date_expired` is the liveness predicate and the
+default sort), so an unreadable one skips that contract, counted on
+`hangar_bay_ingest_contracts_skipped_total{reason="malformed_date"}` and logged with contract id and
+field; `date_completed` is optional and nullable, so an unreadable one stores NULL.
+
+**A run that fetched contracts and stored NONE now records `failure`.** This was not in the original
+decision — it came out of review round 2, and it matters more than the parsing change. The realistic
+triggers for an unreadable date (an ESI serialization change, a compatibility-date bump) are
+GLOBAL: they corrupt every contract at once. Per-contract skipping therefore turned the modal
+failure into a run that reported success while writing nothing, advancing the success gauge and
+resetting the staleness clock over an empty write. Bounding the blast radius had made the likeliest
+outage SILENT. The guard fires on "stored none", not "skipped any" — failing every run that skipped
+one contract would paint the freshness signal permanently red, which is the same alarm fatigue by
+another route.
+
+**The unreachable `"a contract"` label (PR #177, `Routine`).** Not dead code: the symptom of the
+last hand-listed copy of a partition that `ITEM_BEARING_CONTRACT_TYPES` DERIVES. Adding a member to
+`ContractType` — forced, since an unknown value 422s — widens the matcher's gate automatically while
+`_SHIP_TYPE_LABELS` stays put, so the new type's alerts would render through the vague fallback.
+`set(_SHIP_TYPE_LABELS)` is now asserted equal to the derived set, and a sixth `ContractType` fails a
+test naming the type missing its label. The fallback stays, documented as defense in depth.
+
+**STILL OPEN, and Sam's alone: there is no alert rule.** #178 bounds the damage and makes a
+wholesale rejection record `failure` — it does not make anyone AWARE. That was the larger half of
+the original finding and it lives in Grafana Cloud, outside this repo.
+
+### Wave 5 — what ten review rounds cost and bought
+
+PR #178 took **ten adversarial review rounds and fourteen category-(a) findings**, all real, ending
+in an explicit `CONVERGED` verdict. Two were production defects introduced by the fix itself, not
+test gaps: filtering the skipped contract out of the upsert but not out of the payload list going to
+item enrichment (children inserted for a parent never written → FK abort → healthy siblings rolled
+back, i.e. the original outage restored one layer down wearing an IntegrityError), and the
+silent-success regression above.
+
+**Two process refinements made the review terminate**, and both belong in any future codex prompt:
+
+1. **Split findings into two categories and say only one blocks.** By round 3 the survivor tables
+   had begun mixing *"the new test fails to constrain what it CLAIMS"* with *"adjacent behavior
+   these rows never claimed to cover"*. Bounding each row's claim to its register row plus the
+   test's own docstring, and telling the reviewer not to promote (b) to (a) by reading a docstring
+   expansively, is what stopped the review widening indefinitely.
+2. **State that an empty list is the DESIRED outcome.** A reviewer with an implicit incentive to
+   justify its invocation keeps producing findings — the same non-termination the old "name a wrong
+   implementation that passes" framing had, reached by a different route.
 
 ### Wave 4 — register row 23, and the standard the campaign now uses
 
