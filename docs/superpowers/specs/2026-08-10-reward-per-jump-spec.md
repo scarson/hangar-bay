@@ -355,9 +355,13 @@ This is the check the plan's Task 1.1 exists for, and it passes on the source fi
 | Jita → Amarr, high-sec only | **34** | 45 (`secure`) |
 
 Our shortest agrees with CCP's exactly, which is the validation that makes the rest trustworthy.
-And the all-high-sec route is **34 jumps where ESI's `secure` returns 45** — the ~32% inflation the
-spec's argument rests on, now measured on the real graph rather than quoted from the survey. A
-reward-per-jump computed from ESI's `secure` would understate this route's value by about a third.
+And the all-high-sec route is **34 jumps where ESI's `secure` returns 45** — the divergence the
+spec's argument rests on, now measured on the real graph rather than quoted from the survey.
+
+Stated precisely, because the two figures are different quantities and blurring them would flatter
+the argument: `secure` inflates the DENOMINATOR by 45/34 ≈ **32%**, which understates the resulting
+reward-per-jump RATIO by 34/45 ≈ **24%**. The §2 text's "~25% cheaper per jump" is the ratio figure
+and is the one that reaches a reader of the courier tab.
 
 Ahbazon reads 0.421 and is correctly classified as low-sec by the `>= 0.45` cutoff, so the constant
 and the chokepoint story both check out.
