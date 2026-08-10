@@ -11,8 +11,12 @@ import {
   MIN_SEARCH_LENGTH,
   SORT_FIELDS,
   activeSegment,
+  hasOfferedItemFilters,
+  isItemLessSelection,
   parseContractSearch,
+  requiresOfferedItem,
   toApiQuery,
+  type ContractSearch,
 } from './filters'
 
 describe('parseContractSearch', () => {
@@ -510,5 +514,101 @@ describe('toApiQuery search gating', () => {
     expect(toApiQuery(parseContractSearch({ search: exact })).search).toBe(
       'a'.repeat(MIN_SEARCH_LENGTH),
     )
+  })
+})
+
+describe('hasOfferedItemFilters', () => {
+  // Not a dead export: FilterRail calls it inside hasActiveFilters to decide whether
+  // the rail shows an active-filter state. It had no test of its own, so the whole
+  // predicate could be inverted or emptied without anything failing.
+
+  const OFFERED_ITEM_FILTER_CASES: [string, Partial<Record<string, unknown>>][] = [
+    ['category_id', { category_id: [6] }],
+    ['group_id', { group_id: [25] }],
+    ['min_runs', { min_runs: 1 }],
+    ['max_runs', { max_runs: 10 }],
+    ['min_me', { min_me: 1 }],
+    ['max_me', { max_me: 10 }],
+    ['min_te', { min_te: 1 }],
+    ['max_te', { max_te: 10 }],
+    ['is_bpc', { is_bpc: true }],
+  ]
+
+  it.each(OFFERED_ITEM_FILTER_CASES)('counts %s as an offered-item filter', (_key, raw) => {
+    // Parametrized over the whole set rather than a sampled pair: a member dropped
+    // from OFFERED_ITEM_FILTERS is a filter the rail stops reporting as active, and
+    // one hand-picked example cannot see which member went.
+    expect(hasOfferedItemFilters(parseContractSearch(raw))).toBe(true)
+  })
+
+  it('is false for a search carrying none of them', () => {
+    // The negative arm, and the reason the positives are not vacuous: a predicate
+    // hardcoded to `true` would pass all nine cases above.
+    expect(hasOfferedItemFilters(parseContractSearch({ min_price: 1_000_000 }))).toBe(false)
+    expect(hasOfferedItemFilters(parseContractSearch({}))).toBe(false)
+  })
+
+  it('counts is_bpc=false, which requiresOfferedItem deliberately does not', () => {
+    // The two predicates split exactly here and the split is load-bearing.
+    // `is_bpc=false` is a filter the user set, so the rail must show it as active —
+    // but it compiles to NOT EXISTS(offered copy), which every item-less contract
+    // satisfies, so it must NOT make the selection unsatisfiable. Folding the two
+    // together in either direction breaks one of them.
+    const search = parseContractSearch({ is_bpc: false })
+    expect(hasOfferedItemFilters(search)).toBe(true)
+    expect(requiresOfferedItem(search)).toBe(false)
+  })
+})
+
+describe('isItemLessSelection', () => {
+  it('is true for an empty selection, because every one of its zero types is item-less', () => {
+    // Deliberate and pinned rather than incidental: `[].every()` is vacuously true, so
+    // an empty contract_type array reads as an all-item-less selection and stands the
+    // item-level controls down. The reachable shape is `undefined` (no selection),
+    // which returns false — the guard above `.every()` is what separates them, and
+    // removing it would make "no selection at all" hide the item filters site-wide.
+    expect(isItemLessSelection({ contract_type: [] } as ContractSearch)).toBe(true)
+    expect(isItemLessSelection({ contract_type: undefined } as ContractSearch)).toBe(false)
+  })
+
+  it('is false as soon as one selected type carries items', () => {
+    expect(isItemLessSelection(parseContractSearch({ contract_type: 'courier' }))).toBe(true)
+    expect(
+      isItemLessSelection(parseContractSearch({ contract_type: ['courier', 'item_exchange'] })),
+    ).toBe(false)
+  })
+})
+
+describe('price bounds reject junk of every shape', () => {
+  it.each([
+    ['non-numeric text', 'abc'],
+    ['an empty string', ''],
+    ['whitespace', '   '],
+    ['Infinity', Infinity],
+    ['a NaN', NaN],
+  ])('drops %s rather than binding it', (_label, value) => {
+    // The negative-value case is pinned already; these are the OTHER ways a hand-edited
+    // URL reaches the parser. Each shape fails toNumber by a different route — Number()
+    // returning NaN, the empty-string short circuit, and Number.isFinite rejecting an
+    // infinity — so one example cannot stand for the rest (TEST-28: one behaviour,
+    // several routes to it).
+    expect(parseContractSearch({ min_price: value }).min_price).toBeUndefined()
+    expect(parseContractSearch({ max_price: value }).max_price).toBeUndefined()
+  })
+})
+
+describe('toApiQuery passes is_bpc through unchanged', () => {
+  it.each([
+    ['true', true],
+    ['false', false],
+  ])('sends is_bpc=%s to the API', (_label, value) => {
+    // false is the case that matters: a truthiness-based mapping would drop it, and the
+    // request would silently ask for every contract instead of only those with no
+    // offered copy. Asserted as a strict identity so `undefined` cannot pass for false.
+    expect(toApiQuery(parseContractSearch({ is_bpc: value })).is_bpc).toBe(value)
+  })
+
+  it('omits is_bpc entirely when the user set no such filter', () => {
+    expect(toApiQuery(parseContractSearch({})).is_bpc).toBeUndefined()
   })
 })
