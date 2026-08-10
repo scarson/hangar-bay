@@ -2806,18 +2806,40 @@ async def test_a_malformed_required_date_skips_only_its_own_contract(
     assert landed == {920201, 920203}
 
 
+@pytest.mark.parametrize(
+    "bad_value, label",
+    [
+        ("not-a-date", "unreadable_string"),
+        (12345, "wrong_type_int"),
+        (["2026-07-05T12:30:00Z"], "wrong_type_list"),
+    ],
+)
 async def test_a_malformed_optional_date_costs_the_contract_nothing(
-    db_session: AsyncSession,
+    db_session: AsyncSession, bad_value, label: str
 ):
     """date_completed is optional, nullable, and absent from every public payload.
 
     A contract is not worth withholding from the site over a field the public route
     never sends and no read path consults — so the malformed value becomes the NULL it
     would have been had ESI simply omitted it, and the contract lands.
+
+    Parametrized over JSON SHAPES, not just unreadable strings, and deliberately over
+    the same shapes as the required-date test: the two parsers are separate functions,
+    so narrowing this one to `except ValueError` — the conventional exception for
+    `fromisoformat`, reachable without ever seeing a test — passes every string case
+    while an integer or a list raises AttributeError and aborts the run. That is the
+    outage this policy exists to prevent, surviving in the half of it that is supposed
+    to be the forgiving one.
+
+    The counter is asserted unchanged in the same test rather than in a sibling: the
+    claim is that a degraded optional date costs the contract NOTHING, and a metric
+    reading "contracts dropped" while the contract persists is part of that cost. An
+    alert hung on a number that rises during healthy operation is an alert nobody keeps.
     """
     service = _make_service()
+    before = _skipped_total()
     payload = _ship_contract_dict(920204)
-    payload["date_completed"] = "not-a-date"
+    payload["date_completed"] = bad_value
 
     await service._process_contracts(db_session, [payload])
 
@@ -2826,7 +2848,8 @@ async def test_a_malformed_optional_date_costs_the_contract_nothing(
             select(Contract).where(Contract.contract_id == 920204)
         )
     ).scalar_one()
-    assert row.date_completed is None
+    assert row.date_completed is None, label
+    assert _skipped_total() == before, f"{label}: a persisted contract was counted as dropped"
 
 
 async def test_a_skipped_contract_names_itself_and_the_field_in_the_log(
@@ -3176,28 +3199,3 @@ async def test_every_skipped_contract_is_counted_and_named_including_the_null_br
     assert any(
         "920261" in line and "date_expired" in line for line in warnings
     ), warnings
-
-
-async def test_a_malformed_optional_date_is_not_counted_as_a_dropped_contract(
-    db_session: AsyncSession,
-):
-    """The counter's name is "contracts dropped", and a contract that persists was not.
-
-    Counting the optional-date degrade would make the metric read as steady data loss
-    while the site is in fact serving every contract it fetched — and an alert hung on
-    a number that rises during healthy operation is an alert nobody keeps.
-    """
-    service = _make_service()
-    before = _skipped_total()
-    payload = _ship_contract_dict(920262)
-    payload["date_completed"] = "not-a-date"
-
-    await service._process_contracts(db_session, [payload])
-
-    landed = (
-        await db_session.execute(
-            select(Contract.contract_id).where(Contract.contract_id == 920262)
-        )
-    ).scalar_one_or_none()
-    assert landed == 920262, "the contract was dropped, not degraded"
-    assert _skipped_total() == before
