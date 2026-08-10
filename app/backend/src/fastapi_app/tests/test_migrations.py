@@ -267,30 +267,34 @@ def test_clean_downgrade_restores_int32_issuer_columns(blank_migrated_sync_conne
     cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     cfg.attributes["connection"] = conn
 
-    location_indexes = (
+    location_indexes = {
         "ix_contracts_start_location_id",
         "ix_contracts_start_location_system_id",
-    )
+    }
 
-    def present_location_indexes() -> set[str]:
+    def contract_indexes() -> set[str]:
+        """EVERY index on contracts, not just the two by name.
+
+        A probe that asks only about the two names reads empty when the downgrade
+        RENAMES them instead of dropping them, so the schema is wrong and the
+        assertion agrees with it. Comparing whole sets makes a surviving index visible
+        under any name it might have taken.
+        """
         return set(
             conn.execute(
-                text(
-                    "SELECT indexname FROM pg_indexes WHERE tablename = 'contracts' "
-                    "AND indexname = ANY(:names)"
-                ),
-                {"names": list(location_indexes)},
+                text("SELECT indexname FROM pg_indexes WHERE tablename = 'contracts'")
             ).scalars()
         )
 
-    assert present_location_indexes() == set(location_indexes), (
+    at_head = contract_indexes()
+    assert location_indexes <= at_head, (
         "precondition: the instrument must be able to see these indexes at head"
     )
 
-    command.downgrade(cfg, "f2a91c3b7e04")
-    conn.commit()
-
     try:
+        command.downgrade(cfg, "f2a91c3b7e04")
+        conn.commit()
+
         types = dict(
             conn.execute(
                 text(
@@ -301,7 +305,14 @@ def test_clean_downgrade_restores_int32_issuer_columns(blank_migrated_sync_conne
             ).all()
         )
         assert types == {"issuer_id": "integer", "issuer_corporation_id": "integer"}
-        assert present_location_indexes() == set()
+        assert contract_indexes() == at_head - location_indexes
     finally:
+        # The downgrade is INSIDE the try so a failure in it still reaches this
+        # restoration, and the rollback precedes the upgrade so an aborted
+        # transaction — which a failed assertion above can leave open — cannot turn
+        # the restore into a second failure. The fixture is session-scoped (TEST-23):
+        # one database and one connection shared by every later consumer, so leaving
+        # it unrestored breaks tests that never touched migrations.
+        conn.rollback()
         command.upgrade(cfg, "head")
         conn.commit()

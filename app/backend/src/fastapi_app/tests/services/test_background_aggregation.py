@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import Select, Update, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.background_aggregation as bg_agg
@@ -27,6 +27,52 @@ from fastapi_app.tests.core.test_esi_client import _etag_client, _etag_response
 from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
 
 pytestmark = pytest.mark.asyncio
+
+
+def _recording_statements(session):
+    """Capture the SQL constructs executed on `session` so a test can assert HOW MANY
+    statements a chunked loop issued, not merely that every row eventually landed.
+
+    Two different regressions live in every chunked loop here and they are invisible to
+    each other. A loop that stops after its first chunk DROPS rows, which row assertions
+    catch. A loop that was never chunked at all lands every row in one oversized
+    statement — correct in a three-row fixture, and fatal at corpus scale where it blows
+    asyncpg's 32767 bind-parameter ceiling and rolls back the run (TEST-11). Only a
+    statement count catches the second, and it is the one these loops exist to prevent.
+    """
+    executed: list = []
+    original = session.execute
+
+    async def recording(statement, *args, **kwargs):
+        executed.append(statement)
+        return await original(statement, *args, **kwargs)
+
+    session.execute = recording
+    return executed, original
+
+
+def _updates_setting(statements, column: str) -> list:
+    """The recorded UPDATEs whose SET clause assigns `column`.
+
+    Filtering by the assigned column rather than by SQL text keeps each loop's count
+    separate: three UPDATE loops run over the same table in one pass, and a test that
+    counted all of them would fail when a DIFFERENT loop changed its chunking.
+    """
+    return [
+        s for s in statements
+        if isinstance(s, Update) and column in s.compile().params
+    ]
+
+
+def _selects_reading(statements, column: str) -> list:
+    """The recorded SELECTs that read `column` — how the station read-back is told
+    apart from the enrichment-skip SELECT, which reads contract_id and chunks its own
+    id list over the same table in the same pass."""
+    return [
+        s for s in statements
+        if isinstance(s, Select)
+        and column in {c.name for c in s.selected_columns}
+    ]
 
 
 def _make_service() -> ContractAggregationService:
@@ -3486,14 +3532,33 @@ async def test_a_malformed_optional_date_clears_a_previously_stored_one(
 async def test_the_contract_upsert_crosses_its_batch_boundary(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ):
-    """With the contract batch size forced to 2 and THREE contracts, every contract
-    must still persist — i.e. the loop runs past its first slice."""
+    """With the contract batch size forced to 2 and THREE contracts, the loop must
+    issue TWO bounded writes of 2 and 1 — and every contract must persist.
+
+    The sizes are asserted, not just the rows, because "every row landed" is equally
+    true of a loop that was never chunked at all: one `bulk_upsert(..., contract_values)`
+    passes a row assertion while removing the bound this constant exists to enforce, and
+    only shows up at corpus scale as an asyncpg bind-parameter overflow that rolls back
+    the run (TEST-11). Dropping the last slice and never slicing at all are opposite
+    regressions, and the recorded sizes are what separates them.
+    """
     monkeypatch.setattr(bg_agg, "CONTRACT_UPSERT_BATCH_SIZE", 2)
+
+    batches: list[int] = []
+    real_bulk_upsert = bg_agg.bulk_upsert
+
+    async def recording_bulk_upsert(session, model, rows, **kwargs):
+        if model is Contract:
+            batches.append(len(rows))
+        return await real_bulk_upsert(session, model, rows, **kwargs)
+
+    monkeypatch.setattr(bg_agg, "bulk_upsert", recording_bulk_upsert)
 
     service = _make_service()
     cids = [920400, 920401, 920402]
     await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
 
+    assert batches == [2, 1]
     stored = set(
         (
             await db_session.execute(
@@ -3508,13 +3573,26 @@ async def test_the_item_upsert_crosses_its_batch_boundary(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ):
     """Same boundary one level down: with the item batch size forced to 2 and THREE
-    items on one contract, every item row must land.
+    items on one contract, the loop must issue TWO bounded writes of 2 and 1, and
+    every item row must land.
 
     Sized independently of the contract loop — item rows carry fewer columns, so the
     two loops have different headroom under the same bind cap and one must be
-    testable without moving the other.
+    testable without moving the other. The sizes are asserted for the same reason as
+    the contract loop's: a single unbounded `bulk_upsert(..., all_items)` satisfies
+    every row assertion here while removing the bound entirely.
     """
     monkeypatch.setattr(bg_agg, "ITEM_UPSERT_BATCH_SIZE", 2)
+
+    batches: list[int] = []
+    real_bulk_upsert = bg_agg.bulk_upsert
+
+    async def recording_bulk_upsert(session, model, rows, **kwargs):
+        if model is ContractItem:
+            batches.append(len(rows))
+        return await real_bulk_upsert(session, model, rows, **kwargs)
+
+    monkeypatch.setattr(bg_agg, "bulk_upsert", recording_bulk_upsert)
 
     service = _make_service()
     record_ids = [9204100, 9204101, 9204102]
@@ -3533,6 +3611,7 @@ async def test_the_item_upsert_crosses_its_batch_boundary(
 
     await service._process_contracts(db_session, [_ship_contract_dict(920410)])
 
+    assert batches == [2, 1]
     stored = set(
         (
             await db_session.execute(
@@ -3585,8 +3664,16 @@ async def test_the_known_station_read_back_crosses_the_chunk_boundary(
     service.esi_client.get_universe_station = AsyncMock(
         side_effect=RuntimeError("ESI is down")
     )
-    await service._process_contracts(db_session, seeded)
+    statements, original_execute = _recording_statements(db_session)
+    try:
+        await service._process_contracts(db_session, seeded)
+    finally:
+        db_session.execute = original_execute
 
+    # One SELECT per chunk in the start role. Three chunks of one station each, so a
+    # loop that ran to completion issued three; a de-chunked read-back issues ONE and
+    # still returns every pair, which is why the rows below cannot see it.
+    assert len(_selects_reading(statements, "start_location_system_id")) == 3
     rows = (
         await db_session.execute(
             select(Contract.start_location_id, Contract.start_location_system_id)
@@ -3663,7 +3750,17 @@ async def test_the_incomplete_status_update_crosses_the_chunk_boundary(
     service.esi_client.get_universe_type = AsyncMock(side_effect=RuntimeError("ESI 500"))
 
     cids = [920520, 920521, 920522]
-    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    statements, original_execute = _recording_statements(db_session)
+    try:
+        await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    finally:
+        db_session.execute = original_execute
+
+    # Three chunks of one id each. A single UPDATE over the whole set marks all three
+    # contracts correctly too, so the statuses below cannot tell chunked from
+    # unchunked — only the count can, and unchunked is the regression that breaks at
+    # corpus scale rather than in this fixture.
+    assert len(_updates_setting(statements, "item_processing_status")) == 3
 
     statuses = (
         await db_session.execute(
@@ -3716,7 +3813,18 @@ async def test_the_non_ship_clear_crosses_the_chunk_boundary(
         return_value={"name": "Mining Barge", "category_id": 25}
     )
     db_session.expire_all()
-    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    statements, original_execute = _recording_statements(db_session)
+    try:
+        await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    finally:
+        db_session.execute = original_execute
+
+    # Only the CLEAR arm assigns is_ship_contract here: the set arm runs over an empty
+    # id set because the corrected enrichment resolves these as a non-ship category, so
+    # this count belongs to the clear loop alone and does not move when a neighbouring
+    # loop changes. Three chunks of one id; one unbounded UPDATE clears all three flags
+    # just as correctly and is invisible to the rows below.
+    assert len(_updates_setting(statements, "is_ship_contract")) == 3
 
     db_session.expire_all()
     rows = (

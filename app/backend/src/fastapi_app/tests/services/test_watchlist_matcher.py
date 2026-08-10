@@ -844,6 +844,12 @@ async def test_run_matching_drives_a_real_match_through_to_a_committed_notificat
         await _contract(seed, cid=7500, price=10_500_000, ctype="item_exchange",
                         location="Jita IV - Moon 4")
         await _item(seed, cid=7500, type_id=621, record_id=75000)
+        # Something for the prune to actually delete: an aged notification whose
+        # contract is gone. Without it `pruned` is 0 whether _prune ran or not, and
+        # "only prune when nothing matched" — a plausible misplaced optimization —
+        # passes every other assertion in this test.
+        await _note(seed, u, cid=7599,
+                    created_at=datetime.now(timezone.utc) - timedelta(days=100))
         await seed.commit()
         seeded_user_id = u.id
 
@@ -865,6 +871,7 @@ async def test_run_matching_drives_a_real_match_through_to_a_committed_notificat
 
         async with maker() as check:
             notes = (await check.execute(select(Notification))).scalars().all()
+            # The aged one is gone and the new one is here: both halves of the job ran.
             assert len(notes) == 1
             assert notes[0].user_id == seeded_user_id
             assert notes[0].contract_id == 7500
@@ -888,12 +895,18 @@ async def test_run_matching_drives_a_real_match_through_to_a_committed_notificat
     assert run_events[0]["success"] is True
     assert run_events[0]["matches"] == 1
     assert run_events[0]["created"] == 1
-    assert run_events[0]["pruned"] == 0
+    assert run_events[0]["pruned"] == 1
     # The lock is handed back so the next scheduler tick can run.
     assert wm.WATCHLIST_MATCH_LOCK_KEY not in store
 
 
-async def test_an_unlabelled_contract_type_renders_a_vague_noun_rather_than_raising():
+@pytest.mark.parametrize(
+    "gated_type",
+    sorted(ITEM_BEARING_CONTRACT_TYPES) + ["a_type_nobody_labelled"],
+)
+async def test_an_unlabelled_contract_type_renders_a_vague_noun_rather_than_raising(
+    monkeypatch: pytest.MonkeyPatch, gated_type: str
+):
     """The label fallback is defense in depth, and this is the only way to reach it.
 
     The match query gates on ITEM_BEARING_CONTRACT_TYPES and the label table is asserted
@@ -902,11 +915,15 @@ async def test_an_unlabelled_contract_type_renders_a_vague_noun_rather_than_rais
     only for as long as the drift guard holds. What it defends against is the window
     where a new ContractType has widened the gate but not yet the table: a KeyError
     there aborts the whole matching run over one alert's wording, silencing every
-    user's alerts, so degrading to a vague noun is the deliberate behaviour and worth
-    pinning directly rather than recording as dead code.
+    user's alerts, so degrading to a vague noun is the deliberate behaviour.
 
-    Called as a unit because there is no other route; the type is a string the enum
-    does not contain, which is exactly the shape a not-yet-labelled member arrives in.
+    The label table is EMPTIED rather than left alone, so the types exercised here are
+    ones the gate ADMITS. A fallback conditioned on the type being outside
+    ITEM_BEARING_CONTRACT_TYPES — with a bare index for the recognized ones — renders
+    correctly for a wholly unknown string while raising for exactly the drift the
+    docstring names, so the unknown string alone does not constrain this claim; it is
+    kept as the last parametrization because a type outside the enum is a real shape too.
     """
-    rendered = wm._render_message("Caracal", "a_type_nobody_labelled", 10_500_000, "Jita IV")
+    monkeypatch.setattr(wm, "_SHIP_TYPE_LABELS", {})
+    rendered = wm._render_message("Caracal", gated_type, 10_500_000, "Jita IV")
     assert rendered == "Caracal available in a contract priced 10,500,000 ISK in Jita IV"

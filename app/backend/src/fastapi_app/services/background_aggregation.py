@@ -53,7 +53,8 @@ UPDATE_ID_CHUNK_SIZE = 1000
 # Rows per upsert statement, sized against the same 32767 bind-parameter ceiling.
 # Two constants rather than one because the two writers bind different widths:
 # contract rows supply ~26 columns (500 rows binds ~13,000 parameters), item rows
-# ~12 (~6,000). They coincide at 500 today; tying them together would mean a
+# ~17 (~8,500) — 12 mapped from the ESI payload plus the five keys enrichment adds
+# before the upsert. They coincide at 500 today; tying them together would mean a
 # headroom change forced by one row shape silently resizing the other.
 CONTRACT_UPSERT_BATCH_SIZE = 500
 ITEM_UPSERT_BATCH_SIZE = 500
