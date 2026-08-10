@@ -3139,3 +3139,65 @@ async def test_a_run_that_persists_something_still_records_success(
     record = json.loads(store[INGEST_KEY])
     assert record["outcome"] == "success"
     assert record["last_success_at"] == record["finished_at"]
+
+
+async def test_every_skipped_contract_is_counted_and_named_including_the_null_branch(
+    db_session: AsyncSession, caplog
+):
+    """One record per skipped contract, however that contract reached the skip.
+
+    Two skips in one batch, reaching MalformedContractDate by DIFFERENT routes: an
+    unreadable string raises out of the parse, while an explicit null parses cleanly
+    and is rejected afterwards by the `parsed is None` guard. Instrumentation hung on
+    the parser's `except` arm alone — the obvious place to put it — counts and logs the
+    first and silently drops the second.
+
+    The batch also makes rate-limiting visible: a warning budget of one per batch, a
+    reasonable-looking response to systemic corruption, would leave the second contract
+    unnamed while the counter still read two. Both signals are asserted per contract,
+    since each is the sole evidence for a listing the site will not show.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    before = _skipped_total()
+
+    unreadable, explicit_null = _ship_contract_dict(920260), _ship_contract_dict(920261)
+    unreadable["date_issued"] = "not-a-date"
+    explicit_null["date_expired"] = None
+
+    await service._process_contracts(db_session, [unreadable, explicit_null])
+
+    assert _skipped_total() - before == 2, "a skip via the null branch went uncounted"
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any(
+        "920260" in line and "date_issued" in line for line in warnings
+    ), warnings
+    assert any(
+        "920261" in line and "date_expired" in line for line in warnings
+    ), warnings
+
+
+async def test_a_malformed_optional_date_is_not_counted_as_a_dropped_contract(
+    db_session: AsyncSession,
+):
+    """The counter's name is "contracts dropped", and a contract that persists was not.
+
+    Counting the optional-date degrade would make the metric read as steady data loss
+    while the site is in fact serving every contract it fetched — and an alert hung on
+    a number that rises during healthy operation is an alert nobody keeps.
+    """
+    service = _make_service()
+    before = _skipped_total()
+    payload = _ship_contract_dict(920262)
+    payload["date_completed"] = "not-a-date"
+
+    await service._process_contracts(db_session, [payload])
+
+    landed = (
+        await db_session.execute(
+            select(Contract.contract_id).where(Contract.contract_id == 920262)
+        )
+    ).scalar_one_or_none()
+    assert landed == 920262, "the contract was dropped, not degraded"
+    assert _skipped_total() == before
