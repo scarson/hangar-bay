@@ -409,6 +409,16 @@ A durable-cache read-back (as `_select_known_station_systems` does for station�
 
 **Where It Stands:** **Resolved.** Hangar Bay sends `X-Compatibility-Date: 2026-07-21`, the newest published date, chosen deliberately rather than inherited. Nothing broke in the move: every route we consume was byte-identical from the old `2020-01-01` floor through `2026-07-21`, and all nine are unauthenticated. The pin unblocks `/meta/status`, which does not exist at the old floor and which ESI-1 wants for upstream health. One consequence to carry forward: `/route/{origin}/{destination}` is a hard cutover at `2025-09-30` — `GET` with query parameters below it, `POST` with a JSON body, renamed preference values and an object envelope at or above it, with the old shape returning 404. Any future work that calls `/route/` must use the POST form. The monitor exists so that the *next* date question does not require a spike. It replaces a set of VCR cassettes that were deleted in PR #110 — they had been intended to catch this class of drift and could not, because they recorded our own app talking to itself (testing-pitfalls TEST-14) and because a live sample can only reveal drift the sample happens to contain.
 
+### JS-1: `Number()` coerces a whitespace-only string to 0, not NaN
+
+**The Flaw:** `Number('   ')` is `0`. A junk filter written as `typeof v === 'string' && v !== '' ? Number(v) : NaN` therefore lets a whitespace-only value through as a legitimate zero. Where 0 is itself a valid value for the field — every numeric query param here: `min_price`, `max_price`, `min_runs`, `min_me`, `min_te` and their maxima — nothing downstream can tell the accident from a deliberate zero.
+
+**Why It Matters:** The effect is not a crash but a filter the reader never set: an active chip in the rail, a bound in the request, and a value that travels into a saved search and a shared URL. It is reachable from any hand-edited or copy-pasted URL.
+
+**The Fix:** Trim before the emptiness check, not just compare against `''` — `typeof v === 'string' ? v.trim() : v`, then test that for emptiness. Valid input is unaffected, since `Number(' 5 ')` was already 5. Fix it in the one shared coercion helper rather than per field, because every numeric param shares the trap.
+
+**Where It Stands:** **Resolved** in `app/frontend/web/src/features/contracts/filters.ts` (`toNumber`), 2026-08-10. Found while closing a coverage row that listed `'abc'`, `''` and `Infinity` — all three already passed; whitespace was the fourth shape and the only one that failed. Pinned by a parametrized case per shape, since each fails the coercion by a different route.
+
 ### §4.C — Review Checklist
 
 - [ ] **Every ESI request names an explicit version prefix** (`/v1`, `/v3`, …), not `/latest` (ESI-1)

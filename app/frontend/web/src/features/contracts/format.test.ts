@@ -430,3 +430,66 @@ describe('formatComposition volume boundary', () => {
     expect(rendered).toContain('1 ship')
   })
 })
+
+describe('formatIsk absent and zero', () => {
+  it('dashes an undefined amount exactly as it dashes a null one', () => {
+    // The guard is `== null`, which is deliberately loose so it catches both. A
+    // tightened `=== null` would leave `undefined` reaching Intl.format and rendering
+    // "NaN" in a price cell, and every existing formatIsk assertion passes a number or
+    // an explicit null, so none of them can see it.
+    expect(formatIsk(undefined)).toBe('—')
+  })
+
+  it('renders a genuine zero as a numeral, never as the absent dash', () => {
+    // Not a hypothetical: live ESI sampling during the coverage review found 16 of 16
+    // courier contracts carrying price=0, because a courier is a job offer rather than
+    // a sale — its money is the reward and the collateral. A truthiness guard here
+    // would render every one of them "—", which reads as "we do not know this price"
+    // for the one contract type whose price is known and is zero.
+    expect(formatIsk(0)).toBe('0')
+  })
+})
+
+describe('formatVolume precision boundaries', () => {
+  it('shows the smallest volume two decimals can state rather than calling it too small', () => {
+    // SMALLEST_SHOWN_VOLUME is the boundary and the comparison is strictly `<`, so the
+    // boundary value itself is showable. Loosening to `<=` would send exactly-0.005 to
+    // "<0.01" — a claim that the number is below a precision it in fact reaches.
+    expect(formatVolume(0.005)).toBe('0.01')
+    // Just under it is the other side of the same comparison.
+    expect(formatVolume(0.004)).toBe('<0.01')
+  })
+
+  it('keeps the decimals right up to the threshold and drops them at it', () => {
+    // VOLUME_PRECISION_THRESHOLD is likewise strict: 100 is formatted without
+    // decimals (already pinned) and everything below it keeps them. Only a value
+    // immediately below the boundary can tell a `<` from a `<=` here.
+    expect(formatVolume(99.99)).toBe('99.99')
+    expect(formatVolume(99.5)).toBe('99.5')
+  })
+})
+
+describe('formatComposition with no categories', () => {
+  it('says only what it measured when the server sent no categories at all', () => {
+    // An empty category list is not the same as an unnamed one: there is nothing to
+    // name and nothing to bucket, so "other" must not appear with a count of zero.
+    // The volume is still a real measurement and is still reported.
+    const rendered = formatComposition({
+      categories: [],
+      total_item_rows: 0,
+      total_volume: 12.5,
+    })
+    expect(rendered).toBe('12.5 m³')
+  })
+
+  it('renders nothing at all when there are neither categories nor a volume', () => {
+    // Both sources of content absent. The join must produce an empty string rather
+    // than a stray separator, which is what a cell would show as a bare "·".
+    const rendered = formatComposition({
+      categories: [],
+      total_item_rows: 0,
+      total_volume: null,
+    })
+    expect(rendered).toBe('')
+  })
+})

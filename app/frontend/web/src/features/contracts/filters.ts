@@ -168,8 +168,13 @@ export function isItemLessSelection(search: ContractSearch): boolean {
 }
 
 function toNumber(value: unknown): number | undefined {
+  // Trimmed before the emptiness check, not just compared against '': Number('   ')
+  // is 0, not NaN, so a whitespace-only value would otherwise bind a bound the reader
+  // never set — and 0 is a legitimate value for every field this feeds, so nothing
+  // downstream can tell that one apart from a deliberate zero.
+  const trimmed = typeof value === 'string' ? value.trim() : value
   const n =
-    typeof value === 'number' ? value : typeof value === 'string' && value !== '' ? Number(value) : NaN
+    typeof trimmed === 'number' ? trimmed : typeof trimmed === 'string' && trimmed !== '' ? Number(trimmed) : NaN
   return Number.isFinite(n) ? n : undefined
 }
 
