@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import Settings  # Settings type for hinting
 from ..core.esi_client_class import ESIClient  # ESIClient class for type hint
 from ..core.exceptions import ESINotModifiedError  # Restored ESINotModifiedError
-from ..core.metrics import last_ingest_success_timestamp
+from ..core.metrics import contracts_skipped_total, last_ingest_success_timestamp
 
 from ..db import AsyncSessionLocal
 from ..models.contracts import Contract, ContractItem, EsiTaxonomyCache  # Models
@@ -81,6 +81,28 @@ def _chunk_ids(ids: Iterable[int]) -> Iterator[list[int]]:
         yield id_list[start : start + UPDATE_ID_CHUNK_SIZE]
 
 
+class MalformedContractDate(ValueError):
+    """A date ESI marks REQUIRED could not be parsed, named down to the field.
+
+    Carries the contract id and the field so the log line can say which contract and
+    which date, rather than only the offending string — a bare ValueError leaves an
+    operator unable to aim the one workaround available to them (dropping the region
+    from AGGREGATION_REGION_IDS), because nothing in it names a region or a contract.
+    """
+
+    def __init__(self, contract_id, field: str, detail: str):
+        # Every argument goes to super() so the exception survives pickle/copy with its
+        # fields intact; the readable form is built in __str__ rather than baked into
+        # args, which would make the round-tripped copy carry a different message.
+        super().__init__(contract_id, field, detail)
+        self.contract_id = contract_id
+        self.field = field
+        self.detail = detail
+
+    def __str__(self) -> str:
+        return f"contract {self.contract_id}: unparseable {self.field}: {self.detail}"
+
+
 def _parse_esi_datetime(date_string: str | None) -> datetime | None:
     """Parse ESI's ISO 8601 date strings into datetime objects."""
     if date_string is None:
@@ -88,6 +110,33 @@ def _parse_esi_datetime(date_string: str | None) -> datetime | None:
     # ESI dates are like "2024-05-20T14:47:32Z". The 'Z' means UTC.
     # fromisoformat handles this correctly if we replace 'Z' with '+00:00'.
     return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+
+
+def _parse_required_esi_datetime(contract: dict, field: str) -> datetime:
+    """Parse a date the contract cannot be stored without, naming it if it fails.
+
+    Both required dates back NOT NULL columns and `date_expired` is the liveness
+    predicate and the default sort, so there is no honest value to substitute for an
+    unparseable one — the caller drops the contract instead.
+    """
+    try:
+        return _parse_esi_datetime(contract[field])
+    except ValueError as exc:
+        raise MalformedContractDate(contract.get("contract_id"), field, str(exc)) from exc
+
+
+def _parse_optional_esi_datetime(date_string: str | None) -> datetime | None:
+    """Parse a date whose column is nullable, serving NULL when it cannot be read.
+
+    Only `date_completed` qualifies: ESI marks it optional, the public route never
+    sends it at all, and no read path consults it. A contract is not worth withholding
+    from the site over a field that would have been NULL had ESI simply omitted it.
+    """
+    try:
+        return _parse_esi_datetime(date_string)
+    except ValueError:
+        logger.warning("Unparseable optional date %r; storing NULL.", date_string)
+        return None
 
 
 def _collect_resolvable_ids(contracts: List[dict]) -> list[int]:
@@ -235,10 +284,39 @@ def _build_contract_rows(
     Every row carries the SAME seen_at for the whole run: a contract is judged present
     by matching the newest stamp in its region, which only works if one run writes one
     value. The upsert copies mapped columns on conflict, so re-sighting restamps.
+
+    A contract whose REQUIRED dates cannot be parsed is dropped from the batch rather
+    than taking the batch with it. `_fetch_regions` concatenates every page of every
+    configured region before a single call here, so an exception escaping this function
+    discards the whole run's ingest — and because the ETag validator is stored at fetch
+    time and a 304 serves the cached body back, the same contract would re-fail every
+    run for as long as it stayed listed, which for a public contract is up to two weeks.
+    Skips are counted and named (see MalformedContractDate) so the loss is visible.
     """
     seen_at = seen_at or datetime.now(timezone.utc)
     station_to_system = station_to_system or {}
-    return [
+    rows = []
+    for contract in contracts:
+        try:
+            rows.append(
+                _build_one_contract_row(
+                    contract, id_to_name_map, station_to_system, seen_at
+                )
+            )
+        except MalformedContractDate as exc:
+            contracts_skipped_total.labels(reason="malformed_date").inc()
+            logger.warning("Skipping contract with an unreadable date: %s", exc)
+    return rows
+
+
+def _build_one_contract_row(
+    c: dict,
+    id_to_name_map: dict,
+    station_to_system: dict[int, int],
+    seen_at: datetime,
+) -> dict:
+    """One contract's upsert row. Raises MalformedContractDate if a required date is unreadable."""
+    return (
         {
             "contract_id": c["contract_id"],
             "issuer_id": c["issuer_id"],
@@ -256,9 +334,9 @@ def _build_contract_rows(
             "status": c.get("status", "unknown"),
             "title": c.get("title"),
             "for_corporation": c.get("for_corporation", False),
-            "date_issued": _parse_esi_datetime(c["date_issued"]),
-            "date_expired": _parse_esi_datetime(c["date_expired"]),
-            "date_completed": _parse_esi_datetime(c.get("date_completed")),
+            "date_issued": _parse_required_esi_datetime(c, "date_issued"),
+            "date_expired": _parse_required_esi_datetime(c, "date_expired"),
+            "date_completed": _parse_optional_esi_datetime(c.get("date_completed")),
             "price": c.get("price"),
             "collateral": c.get("collateral", 0.0),  # Default to 0.0 if null
             "last_seen_at": seen_at,
@@ -279,8 +357,7 @@ def _build_contract_rows(
             # enrichment_version to 0 on every re-sighting, re-queueing the corpus
             # forever. Column defaults cover fresh inserts.
         }
-        for c in contracts
-    ]
+    )
 
 
 class ConcurrencyLockError(Exception):
