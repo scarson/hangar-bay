@@ -3333,7 +3333,7 @@ async def test_every_shape_of_bad_required_date_is_counted_and_named(
 
 
 async def test_a_contract_with_both_dates_malformed_counts_once(
-    db_session: AsyncSession,
+    db_session: AsyncSession, caplog
 ):
     """The counter's unit is one dropped CONTRACT, not one validation error.
 
@@ -3344,6 +3344,7 @@ async def test_a_contract_with_both_dates_malformed_counts_once(
     that overstates data loss is as unusable as one that understates it: the number is
     only worth alerting on if it means what its name says.
     """
+    caplog.set_level("WARNING")
     service = _make_service()
     before = _skipped_total()
     payload = _ship_contract_dict(920290)
@@ -3353,3 +3354,17 @@ async def test_a_contract_with_both_dates_malformed_counts_once(
     await service._process_contracts(db_session, [payload])
 
     assert _skipped_total() - before == 1, "one contract counted as more than one drop"
+    assert (
+        await db_session.execute(
+            select(Contract.contract_id).where(Contract.contract_id == 920290)
+        )
+    ).scalar_one_or_none() is None
+
+    # Collapsing to one count must not also collapse to an unnamed warning: an
+    # aggregate "unreadable required dates" line satisfies the count while naming
+    # neither field, which is the diagnosis gap this policy was partly written to close.
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any(
+        "920290" in line and ("date_issued" in line or "date_expired" in line)
+        for line in warnings
+    ), warnings
