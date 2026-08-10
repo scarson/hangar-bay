@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import Settings  # Settings type for hinting
 from ..core.esi_client_class import ESIClient  # ESIClient class for type hint
 from ..core.exceptions import ESINotModifiedError  # Restored ESINotModifiedError
-from ..core.metrics import last_ingest_success_timestamp
+from ..core.metrics import contracts_skipped_total, last_ingest_success_timestamp
 
 from ..db import AsyncSessionLocal
 from ..models.contracts import Contract, ContractItem, EsiTaxonomyCache  # Models
@@ -81,6 +81,28 @@ def _chunk_ids(ids: Iterable[int]) -> Iterator[list[int]]:
         yield id_list[start : start + UPDATE_ID_CHUNK_SIZE]
 
 
+class MalformedContractDate(ValueError):
+    """A date ESI marks REQUIRED could not be parsed, named down to the field.
+
+    Carries the contract id and the field so the log line can say which contract and
+    which date, rather than only the offending string — a bare ValueError leaves an
+    operator unable to aim the one workaround available to them (dropping the region
+    from AGGREGATION_REGION_IDS), because nothing in it names a region or a contract.
+    """
+
+    def __init__(self, contract_id, field: str, detail: str):
+        # Every argument goes to super() so the exception survives pickle/copy with its
+        # fields intact; the readable form is built in __str__ rather than baked into
+        # args, which would make the round-tripped copy carry a different message.
+        super().__init__(contract_id, field, detail)
+        self.contract_id = contract_id
+        self.field = field
+        self.detail = detail
+
+    def __str__(self) -> str:
+        return f"contract {self.contract_id}: unparseable {self.field}: {self.detail}"
+
+
 def _parse_esi_datetime(date_string: str | None) -> datetime | None:
     """Parse ESI's ISO 8601 date strings into datetime objects."""
     if date_string is None:
@@ -88,6 +110,50 @@ def _parse_esi_datetime(date_string: str | None) -> datetime | None:
     # ESI dates are like "2024-05-20T14:47:32Z". The 'Z' means UTC.
     # fromisoformat handles this correctly if we replace 'Z' with '+00:00'.
     return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+
+
+# Every way a JSON value can fail to be a readable date. Narrower than this and the
+# isolation is only about unparseable STRINGS: an absent key raises KeyError, and a
+# number or a list raises AttributeError on `.replace()` — each of which aborts the run
+# exactly as the string case used to, under a different traceback.
+_UNREADABLE_DATE_ERRORS = (AttributeError, KeyError, TypeError, ValueError)
+
+
+def _parse_required_esi_datetime(contract: dict, field: str) -> datetime:
+    """Parse a date the contract cannot be stored without, naming it if it fails.
+
+    Both required dates back NOT NULL columns and `date_expired` is the liveness
+    predicate and the default sort, so there is no honest value to substitute for an
+    unparseable one — the caller drops the contract instead.
+
+    An explicit `null` is treated as malformed rather than passed along: it parses
+    cleanly to None and would then fail the NOT NULL insert, which aborts the whole
+    transaction — the outage this policy exists to prevent, reached from inside the
+    parser that is supposed to prevent it.
+    """
+    try:
+        parsed = _parse_esi_datetime(contract[field])
+    except _UNREADABLE_DATE_ERRORS as exc:
+        raise MalformedContractDate(contract.get("contract_id"), field, str(exc)) from exc
+    if parsed is None:
+        raise MalformedContractDate(
+            contract.get("contract_id"), field, "required date is null or absent"
+        )
+    return parsed
+
+
+def _parse_optional_esi_datetime(date_string) -> datetime | None:
+    """Parse a date whose column is nullable, serving NULL when it cannot be read.
+
+    Only `date_completed` qualifies: ESI marks it optional, the public route never
+    sends it at all, and no read path consults it. A contract is not worth withholding
+    from the site over a field that would have been NULL had ESI simply omitted it.
+    """
+    try:
+        return _parse_esi_datetime(date_string)
+    except _UNREADABLE_DATE_ERRORS:
+        logger.warning("Unreadable optional date %r; storing NULL.", date_string)
+        return None
 
 
 def _collect_resolvable_ids(contracts: List[dict]) -> list[int]:
@@ -235,10 +301,39 @@ def _build_contract_rows(
     Every row carries the SAME seen_at for the whole run: a contract is judged present
     by matching the newest stamp in its region, which only works if one run writes one
     value. The upsert copies mapped columns on conflict, so re-sighting restamps.
+
+    A contract whose REQUIRED dates cannot be parsed is dropped from the batch rather
+    than taking the batch with it. `_fetch_regions` concatenates every page of every
+    configured region before a single call here, so an exception escaping this function
+    discards the whole run's ingest — and because the ETag validator is stored at fetch
+    time and a 304 serves the cached body back, the same contract would re-fail every
+    run for as long as it stayed listed, which for a public contract is up to two weeks.
+    Skips are counted and named (see MalformedContractDate) so the loss is visible.
     """
     seen_at = seen_at or datetime.now(timezone.utc)
     station_to_system = station_to_system or {}
-    return [
+    rows = []
+    for contract in contracts:
+        try:
+            rows.append(
+                _build_one_contract_row(
+                    contract, id_to_name_map, station_to_system, seen_at
+                )
+            )
+        except MalformedContractDate as exc:
+            contracts_skipped_total.labels(reason="malformed_date").inc()
+            logger.warning("Skipping contract with an unreadable date: %s", exc)
+    return rows
+
+
+def _build_one_contract_row(
+    c: dict,
+    id_to_name_map: dict,
+    station_to_system: dict[int, int],
+    seen_at: datetime,
+) -> dict:
+    """One contract's upsert row. Raises MalformedContractDate if a required date is unreadable."""
+    return (
         {
             "contract_id": c["contract_id"],
             "issuer_id": c["issuer_id"],
@@ -256,9 +351,9 @@ def _build_contract_rows(
             "status": c.get("status", "unknown"),
             "title": c.get("title"),
             "for_corporation": c.get("for_corporation", False),
-            "date_issued": _parse_esi_datetime(c["date_issued"]),
-            "date_expired": _parse_esi_datetime(c["date_expired"]),
-            "date_completed": _parse_esi_datetime(c.get("date_completed")),
+            "date_issued": _parse_required_esi_datetime(c, "date_issued"),
+            "date_expired": _parse_required_esi_datetime(c, "date_expired"),
+            "date_completed": _parse_optional_esi_datetime(c.get("date_completed")),
             "price": c.get("price"),
             "collateral": c.get("collateral", 0.0),  # Default to 0.0 if null
             "last_seen_at": seen_at,
@@ -279,8 +374,7 @@ def _build_contract_rows(
             # enrichment_version to 0 on every re-sighting, re-queueing the corpus
             # forever. Column defaults cover fresh inserts.
         }
-        for c in contracts
-    ]
+    )
 
 
 class ConcurrencyLockError(Exception):
@@ -437,6 +531,7 @@ class ContractAggregationService:
             async with self._concurrency_lock() as redis_client:  # Handles concurrent job runs
                 regions_ok = 0
                 regions_failed = 0
+                ingested_nothing = False
                 try:
                     # Use the ESIClient as a context manager to ensure its http_client is initialized.
                     async with self.esi_client:
@@ -455,14 +550,34 @@ class ContractAggregationService:
                             else:
                                 all_contracts_data = self._apply_dev_limit(all_contracts_data)
 
-                                await self._process_contracts(db_session, all_contracts_data)
+                                persisted = await self._process_contracts(
+                                    db_session, all_contracts_data
+                                )
 
                                 await db_session.commit()
                                 logger.info("Public contract aggregation run finished successfully and changes committed.")
 
+                                # Fetched contracts but stored none: the run ingested
+                                # nothing, whatever the reason, and reporting success
+                                # would freshen the staleness clock over an empty
+                                # write. The realistic cause of wholesale rejection is
+                                # an upstream FORMAT change, which corrupts every
+                                # contract at once rather than one — so this is the
+                                # shape a silent outage would actually take.
+                                if persisted == 0:
+                                    ingested_nothing = True
+                                    logger.error(
+                                        "Fetched %s contracts and persisted none; "
+                                        "recording this run as a failure.",
+                                        len(all_contracts_data),
+                                    )
+
                     # The shared transaction committed (or completed as a valid
                     # no-op — the all-304 path); outcome derives from the counters.
-                    await self._record_run_outcome(redis_client, regions_ok, regions_failed)
+                    await self._record_run_outcome(
+                        redis_client, regions_ok, regions_failed,
+                        forced_failure=ingested_nothing,
+                    )
                 except Exception:
                     # Any processing/commit/top-level abort is a failed run no matter
                     # what the fetch counters say; record while the lock is still held.
@@ -523,7 +638,9 @@ class ContractAggregationService:
         except Exception:
             logger.warning("failed to record ingest outcome", exc_info=True)
 
-    async def _process_contracts(self, db_session: AsyncSession, contracts: List[dict]):
+    async def _process_contracts(
+        self, db_session: AsyncSession, contracts: List[dict]
+    ) -> int:
         """
         Processes a list of contracts, fetches their items, and upserts them using the provided db_session.
         """
@@ -541,6 +658,18 @@ class ContractAggregationService:
         # into the format for the database model, enriching with names and systems.
         station_to_system = await self._resolve_station_systems(db_session, contracts)
         contract_values = _build_contract_rows(contracts, id_to_name_map, station_to_system)
+
+        # A dropped contract must leave the RUN, not just this upsert.
+        # `contract_items.contract_id` is a foreign key onto `contracts`, so carrying a
+        # skipped payload on into item enrichment inserts children for a parent that was
+        # never written — PostgreSQL aborts the transaction and every healthy sibling
+        # rolls back with it. That is the whole-run blast radius this policy removes,
+        # restored one layer further down and wearing an IntegrityError instead.
+        #
+        # Derived from what actually persisted rather than from a second list of skips,
+        # so any future reason a row is dropped excludes it downstream automatically.
+        persisted_ids = {row["contract_id"] for row in contract_values}
+        contracts = [c for c in contracts if c.get("contract_id") in persisted_ids]
 
         batch_size = 500  # Number of contracts to process in each batch
         total_contracts = len(contract_values)
@@ -610,6 +739,11 @@ class ContractAggregationService:
             ship_contract_ids,
             unresolved_category_contract_ids,
         )
+
+        # How many contracts this run actually persisted. The caller needs it to tell a
+        # run that ingested nothing from one that ingested normally: skipping per
+        # contract removed the abort that used to make a systemic failure loud.
+        return len(contract_values)
 
     async def _resolve_station_systems(
         self, db_session: AsyncSession, contracts: List[dict]

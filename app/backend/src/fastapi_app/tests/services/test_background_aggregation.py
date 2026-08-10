@@ -2630,73 +2630,6 @@ async def test_a_populated_date_completed_is_parsed_and_an_absent_one_is_null(
     )
 
 
-@pytest.mark.parametrize(
-    "date_field", ["date_issued", "date_expired", "date_completed"]
-)
-async def test_a_malformed_esi_date_takes_the_whole_batch_down_with_it(
-    db_session: AsyncSession, date_field: str
-):
-    """CHARACTERIZATION, not endorsement: one bad date string kills every contract beside it.
-
-    `_parse_esi_datetime` calls `datetime.fromisoformat` with no guard, from inside the
-    list comprehension that builds rows for the ENTIRE batch. `run_aggregation`
-    concatenates every page of every configured region before calling
-    `_process_contracts` once, so the blast radius is **the whole aggregation run**, not
-    one region page — one malformed date string anywhere in the corpus discards every
-    contract fetched that cycle. That is the hazard shape a NOT NULL `price` already
-    demonstrated in production (TEST-22 / FASTAPI-3).
-
-    Observed at `_process_contracts`, the layer that DEFINES the blast radius, and
-    asserted on what persisted: the healthy sibling must be absent. Observing at
-    `_build_contract_rows` instead would pin only that the comprehension raises, which a
-    refactor building and writing per contract would still satisfy while no longer
-    losing the batch — the survivor is the whole point of the row, so the test has to
-    stand where the behavior is decided.
-
-    The session stays usable afterwards because the `ValueError` is raised while
-    building rows in memory, before any statement is issued — nothing is written and no
-    transaction is poisoned.
-
-    Parametrized over ALL THREE parsed date fields, because "anywhere" is the claim and
-    the three are independent mapping expressions. Two are required (`c["date_issued"]`,
-    `c["date_expired"]`) and one is optional (`c.get("date_completed")`) — and that
-    distinction is exactly the seam a tolerant-parsing edit would follow: making only the
-    optional field degrade to None leaves both required-field cases aborting as before,
-    so a test that corrupts only `date_issued` would never notice that a malformed
-    completion date had stopped costing the batch.
-
-    Pinned so the behavior is visible and any change to it is deliberate. Whether it
-    SHOULD abort is a decision, not a defect to fix inside a test-only wave — skipping
-    the contract and persisting a NULL date both change what the site shows. Recorded
-    for Sam in the coverage report.
-    """
-    service = _make_service()
-    good = _ship_contract_dict(920105)
-    bad = _ship_contract_dict(920106)
-    bad[date_field] = "not-a-date"
-
-    # The healthy sibling persists on its own, so the batch below fails for the reason
-    # named and not because the fixture was malformed all along (TEST-12 vacuity guard).
-    await service._process_contracts(db_session, [_ship_contract_dict(920111)])
-    assert (
-        await db_session.execute(
-            select(Contract).where(Contract.contract_id == 920111)
-        )
-    ).scalar_one_or_none() is not None
-
-    with pytest.raises(ValueError):
-        await service._process_contracts(db_session, [good, bad])
-
-    # The blast radius: the healthy contract in the same call did not land either.
-    survivors = (
-        await db_session.execute(
-            select(Contract.contract_id).where(
-                Contract.contract_id.in_([920105, 920106])
-            )
-        )
-    ).scalars().all()
-    assert survivors == []
-
 
 async def test_absent_item_flags_persist_as_null_and_false(db_session: AsyncSession):
     """ESI sends `is_blueprint_copy` true-or-ABSENT, never false (TEST-18).
@@ -2815,3 +2748,670 @@ async def test_freshness_recorder_treats_an_unparseable_prior_as_no_prior(
     # No prior success could be recovered from an unparseable record, and inventing
     # one would report the site as fresher than it is.
     assert record["last_success_at"] is None
+
+
+# --- Malformed ESI dates: per-field policy (Sam's decision, 2026-08-09) ---
+#
+# One unparseable date used to abort the WHOLE aggregation run. `_fetch_regions`
+# concatenates every page of every configured region before a single
+# `_process_contracts` call, and the ETag layer stores its validator at FETCH time and
+# serves the cached body back on a 304 — so the same bad contract was re-processed and
+# re-failed every hour for as long as it stayed listed, which for a public contract is
+# up to two weeks. Nothing surfaced it: /ready reports the failure but never fails
+# readiness, and the frontend has no staleness signal at all.
+#
+# The policy now follows the COLUMN, because the three dates are not interchangeable:
+#   - date_issued / date_expired are required by ESI and NOT NULL here, and
+#     date_expired is the liveness filter and the default sort — there is no honest
+#     value to substitute, so the contract is skipped and counted.
+#   - date_completed is optional, nullable, and never sent on the public route, so a
+#     malformed value degrades to NULL and costs the contract nothing.
+
+
+def _skip_samples() -> list:
+    """Every sample of the skip counter, across ALL reason labels.
+
+    Reading one label series cannot see a second one appearing beside it: an increment
+    under a NEW reason — say a separate label for the optional-date degrade — raises the
+    "contracts dropped" total that alerts and dashboards read, while a delta measured on
+    `malformed_date` alone stays flat and every assertion passes.
+    """
+    from fastapi_app.core.metrics import contracts_skipped_total
+
+    return [
+        sample
+        for metric in contracts_skipped_total.collect()
+        for sample in metric.samples
+        if sample.name.endswith("_total")
+    ]
+
+
+def _skipped_total() -> float:
+    """The counter's grand total, summed over every reason label."""
+    return sum(sample.value for sample in _skip_samples())
+
+
+def _skip_reasons() -> set:
+    """Which reason labels the counter has actually been incremented under."""
+    return {sample.labels["reason"] for sample in _skip_samples()}
+
+
+@pytest.mark.parametrize("date_field", ["date_issued", "date_expired"])
+async def test_a_malformed_required_date_skips_only_its_own_contract(
+    db_session: AsyncSession, date_field: str
+):
+    """The blast radius is now one row, not the run.
+
+    Both healthy siblings must land — one BEFORE the malformed contract in the batch
+    and one AFTER it, because a loop that aborted on the first bad row would still
+    persist everything ahead of it and pass a test that only looked backwards.
+    """
+    service = _make_service()
+    first, bad, last = (
+        _ship_contract_dict(920201),
+        _ship_contract_dict(920202),
+        _ship_contract_dict(920203),
+    )
+    bad[date_field] = "not-a-date"
+
+    await service._process_contracts(db_session, [first, bad, last])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920201, 920202, 920203])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920201, 920203}
+
+
+@pytest.mark.parametrize(
+    "bad_value, label",
+    [
+        ("not-a-date", "unreadable_string"),
+        (12345, "wrong_type_int"),
+        (["2026-07-05T12:30:00Z"], "wrong_type_list"),
+    ],
+)
+async def test_a_malformed_optional_date_costs_the_contract_nothing(
+    db_session: AsyncSession, bad_value, label: str
+):
+    """date_completed is optional, nullable, and absent from every public payload.
+
+    A contract is not worth withholding from the site over a field the public route
+    never sends and no read path consults — so the malformed value becomes the NULL it
+    would have been had ESI simply omitted it, and the contract lands.
+
+    Parametrized over JSON SHAPES, not just unreadable strings, and deliberately over
+    the same shapes as the required-date test: the two parsers are separate functions,
+    so narrowing this one to `except ValueError` — the conventional exception for
+    `fromisoformat`, reachable without ever seeing a test — passes every string case
+    while an integer or a list raises AttributeError and aborts the run. That is the
+    outage this policy exists to prevent, surviving in the half of it that is supposed
+    to be the forgiving one.
+
+    The counter is asserted unchanged in the same test rather than in a sibling: the
+    claim is that a degraded optional date costs the contract NOTHING, and a metric
+    reading "contracts dropped" while the contract persists is part of that cost. An
+    alert hung on a number that rises during healthy operation is an alert nobody keeps.
+    """
+    service = _make_service()
+    before = _skipped_total()
+    payload = _ship_contract_dict(920204)
+    payload["date_completed"] = bad_value
+
+    await service._process_contracts(db_session, [payload])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 920204)
+        )
+    ).scalar_one()
+    assert row.date_completed is None, label
+    assert _skipped_total() == before, f"{label}: a persisted contract was counted as dropped"
+    assert _skip_reasons() <= {"malformed_date"}, (
+        f"{label}: a degraded optional date invented a new skip reason"
+    )
+
+
+async def test_a_skipped_contract_names_itself_and_the_field_in_the_log(
+    db_session: AsyncSession, caplog
+):
+    """The old failure was not self-diagnosing, and that was half its cost.
+
+    A bare ValueError renders the offending STRING but never the contract or the
+    region, so the only operational workaround — dropping the region from
+    AGGREGATION_REGION_IDS — could not be aimed. The warning now carries the contract
+    id and the field name, which is what makes a skip actionable rather than merely
+    counted.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    bad = _ship_contract_dict(920205)
+    bad["date_expired"] = "not-a-date"
+
+    await service._process_contracts(db_session, [bad])
+
+    warnings = [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+    assert any("920205" in line and "date_expired" in line for line in warnings), warnings
+
+
+async def test_a_skipped_contract_increments_the_skip_counter(
+    db_session: AsyncSession,
+):
+    """A skip that only logs is a silent data loss with extra steps.
+
+    The counter is what makes "we are quietly dropping listings" answerable without
+    reading logs, and it is the signal an alert can be hung on — the gap this whole
+    decision surfaced. Measured as a DELTA because Prometheus instruments are
+    process-global and other tests in the same run also skip contracts.
+    """
+    service = _make_service()
+    before = _skipped_total()
+    bad = _ship_contract_dict(920206)
+    bad["date_issued"] = "not-a-date"
+
+    await service._process_contracts(db_session, [bad])
+
+    assert _skipped_total() - before == 1
+
+
+async def test_a_healthy_batch_never_touches_the_skip_counter(
+    db_session: AsyncSession,
+):
+    """The counter must mean what an alert would read it to mean.
+
+    Without this, a counter incremented unconditionally — or once per contract rather
+    than once per skip — reads as a permanent trickle of data loss and trains whoever
+    is watching to ignore it.
+    """
+    service = _make_service()
+    before = _skipped_total()
+
+    await service._process_contracts(
+        db_session, [_ship_contract_dict(920207), _ship_contract_dict(920208)]
+    )
+
+    assert _skipped_total() == before
+
+
+async def test_a_skipped_contract_is_dropped_from_ITEM_enrichment_too(
+    db_session: AsyncSession,
+):
+    """A skip has to remove the contract from the WHOLE run, not just the parent upsert.
+
+    `contract_items.contract_id` is a foreign key onto `contracts`. Skipping only the
+    parent row while the original payload list travels on to item enrichment inserts
+    children for a parent that was never written — PostgreSQL aborts the transaction and
+    every healthy sibling rolls back with it. That is the original whole-run blast radius
+    restored through a different layer, and with a worse error: an IntegrityError naming
+    a constraint instead of a ValueError naming a date.
+
+    The other skip tests cannot see this, because the shared service fixture leaves
+    `get_contract_items` returning an empty list — so no child row is ever built and the
+    foreign key is never exercised. This test arms it deliberately.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 9202101, "type_id": 587, "quantity": 1, "is_included": True},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    healthy, malformed = _ship_contract_dict(920210), _ship_contract_dict(920211)
+    malformed["date_expired"] = "not-a-date"
+
+    await service._process_contracts(db_session, [healthy, malformed])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920210, 920211])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920210}, "the healthy sibling was rolled back with the skip"
+    # Excluded from the RUN, not filtered out just before persistence: a late
+    # filter would still spend an ESI item fetch, plus type and group resolution,
+    # on a contract already known to be unstorable.
+    service.esi_client.get_contract_items.assert_awaited_once_with(920210)
+    # And no orphan child was attempted for the contract that was never written.
+    orphans = (
+        await db_session.execute(
+            select(ContractItem.record_id).where(ContractItem.contract_id == 920211)
+        )
+    ).scalars().all()
+    assert orphans == []
+
+
+@pytest.mark.parametrize(
+    "bad_value, label",
+    [
+        (None, "explicit_null"),
+        (12345, "wrong_type_int"),
+        (["2026-07-01T00:00:00Z"], "wrong_type_list"),
+    ],
+)
+async def test_a_required_date_of_the_wrong_SHAPE_is_skipped_like_a_bad_string(
+    db_session: AsyncSession, bad_value, label: str
+):
+    """"Malformed" is a claim about JSON shapes, not only about unparseable strings.
+
+    Each of these reaches a different failure: an explicit null parses to None and then
+    violates NOT NULL at insert time, while a number or a list raises AttributeError
+    inside the parser. All three abort the batch if only ValueError is isolated, which
+    is the same outage under a different traceback — and all three are ordinary upstream
+    drift rather than exotic corruption.
+    """
+    service = _make_service()
+    healthy, malformed = _ship_contract_dict(920220), _ship_contract_dict(920221)
+    malformed["date_issued"] = bad_value
+
+    await service._process_contracts(db_session, [healthy, malformed])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920220, 920221])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920220}, label
+
+
+async def test_a_required_date_that_is_absent_entirely_is_skipped(
+    db_session: AsyncSession,
+):
+    """ESI marks these required, so absence is a spec violation — and TEST-22 is the
+    record of what a spec violation costs when the writer assumes presence: a
+    price-less contract aborted every ingestion run for as long as it stayed listed.
+    Indexing the payload directly would raise KeyError past the ValueError guard."""
+    service = _make_service()
+    healthy, malformed = _ship_contract_dict(920230), _ship_contract_dict(920231)
+    del malformed["date_expired"]
+
+    await service._process_contracts(db_session, [healthy, malformed])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920230, 920231])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920230}
+
+
+async def test_the_skip_counter_counts_contracts_rather_than_batches_or_listings(
+    db_session: AsyncSession,
+):
+    """The counter's unit is one dropped contract, and two natural instrumentation
+    choices would quietly break that.
+
+    Incrementing once per batch that contained ANY malformed date undercounts a batch
+    holding several; deduplicating by contract id — a reasonable-looking way to stop a
+    single bad listing spamming an alert — undercounts the same listing on every later
+    run, which is precisely the case that matters, since a malformed contract stays
+    listed for up to two weeks and is re-processed every hour.
+
+    Both are checked here: two skips in one batch count two, and re-processing the same
+    contract counts again.
+    """
+    service = _make_service()
+    before = _skipped_total()
+    first, second = _ship_contract_dict(920240), _ship_contract_dict(920241)
+    first["date_issued"] = "not-a-date"
+    second["date_expired"] = "also-not-a-date"
+
+    await service._process_contracts(db_session, [first, second])
+    assert _skipped_total() - before == 2, "a batch of two skips counted as one"
+
+    await service._process_contracts(db_session, [first])
+    assert _skipped_total() - before == 3, "the same listing stopped counting on re-sight"
+
+
+async def test_a_run_that_persists_nothing_records_failure_though_the_fetch_worked(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+):
+    """Skipping EVERY contract is an outage, and must not be recorded as a success.
+
+    This is the case the whole per-field policy is most likely to meet. The realistic
+    triggers for an unreadable date — an ESI serialization change, a compatibility-date
+    bump — are GLOBAL, so they do not corrupt one contract, they corrupt all of them.
+    Under the old whole-batch abort that produced a loud failure: outcome `failure`,
+    last_success_at frozen, `data_stale` true within two hours.
+
+    Skipping per contract removes the abort, and with it the signal — the fetch
+    succeeded, no exception escaped, and the run would report success while having
+    written nothing at all. That trades a loud total outage for a silent one, in
+    exactly the scenario most likely to occur, which is the opposite of what bounding
+    the blast radius was for.
+
+    A run that fetched contracts and persisted none has not ingested anything,
+    whatever the reason.
+    """
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    # run_aggregation builds its OWN session from AsyncSessionLocal, which points at the
+    # real DATABASE_URL. Without this bind the run dies on "relation contracts does not
+    # exist" and records a failure — so the outcome assertion below would pass for a
+    # reason that has nothing to do with what was persisted (TEST-12).
+    monkeypatch.setattr(
+        bg_agg,
+        "AsyncSessionLocal",
+        async_sessionmaker(create_async_engine(TEST_DATABASE_URL), expire_on_commit=False),
+        raising=False,
+    )
+
+    service = _freshness_service([10000002])
+    prior = "2026-07-18T00:00:00+00:00"
+
+    malformed = _ship_contract_dict(920250)
+    malformed["date_issued"] = "not-a-date"
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[malformed])
+
+    store: dict = {
+        INGEST_KEY: json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 1,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure", "an ingest that wrote nothing reported success"
+    # And the staleness clock keeps measuring against the last REAL refresh, so
+    # /ready reports data_stale rather than resetting on an empty run.
+    assert record["last_success_at"] == prior
+
+
+async def test_a_run_that_persists_something_still_records_success(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+):
+    """The guard must fire on "nothing landed", not on "anything was skipped".
+
+    Without this, the natural over-correction — failing any run that skipped a contract
+    — turns one bad listing into a permanently red freshness signal, which is the same
+    alarm fatigue by another route.
+    """
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    # run_aggregation builds its OWN session from AsyncSessionLocal, which points at the
+    # real DATABASE_URL. Without this bind the run dies on "relation contracts does not
+    # exist" and records a failure — so the outcome assertion below would pass for a
+    # reason that has nothing to do with what was persisted (TEST-12).
+    monkeypatch.setattr(
+        bg_agg,
+        "AsyncSessionLocal",
+        async_sessionmaker(create_async_engine(TEST_DATABASE_URL), expire_on_commit=False),
+        raising=False,
+    )
+
+    service = _freshness_service([10000002])
+    healthy = _ship_contract_dict(920251)
+    malformed = _ship_contract_dict(920252)
+    malformed["date_expired"] = "not-a-date"
+    service.esi_client.get_public_contracts = AsyncMock(
+        return_value=[healthy, malformed]
+    )
+
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "success"
+    assert record["last_success_at"] == record["finished_at"]
+
+
+async def test_every_skipped_contract_is_counted_and_named_including_the_null_branch(
+    db_session: AsyncSession, caplog
+):
+    """One record per skipped contract, however that contract reached the skip.
+
+    Two skips in one batch, reaching MalformedContractDate by DIFFERENT routes: an
+    unreadable string raises out of the parse, while an explicit null parses cleanly
+    and is rejected afterwards by the `parsed is None` guard. Instrumentation hung on
+    the parser's `except` arm alone — the obvious place to put it — counts and logs the
+    first and silently drops the second.
+
+    The batch also makes rate-limiting visible: a warning budget of one per batch, a
+    reasonable-looking response to systemic corruption, would leave the second contract
+    unnamed while the counter still read two. Both signals are asserted per contract,
+    since each is the sole evidence for a listing the site will not show.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    before = _skipped_total()
+
+    unreadable, explicit_null = _ship_contract_dict(920260), _ship_contract_dict(920261)
+    unreadable["date_issued"] = "not-a-date"
+    explicit_null["date_expired"] = None
+
+    await service._process_contracts(db_session, [unreadable, explicit_null])
+
+    assert _skipped_total() - before == 2, "a skip via the null branch went uncounted"
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any(
+        "920260" in line and "date_issued" in line for line in warnings
+    ), warnings
+    assert any(
+        "920261" in line and "date_expired" in line for line in warnings
+    ), warnings
+
+
+async def test_zero_persistence_records_failure_even_when_a_region_also_failed(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """"Fetched contracts and stored none" is a failure regardless of the fetch counters.
+
+    A partial fetch is normally the better outcome than a failed one — some regions
+    answered, so `partial` keeps last_success_at moving. That makes `and regions_failed
+    == 0` a natural-looking guard to add here, preserving `partial` whenever any region
+    was already down. It is wrong: the counters describe what was FETCHED, and this run
+    wrote nothing at all, so treating it as a partial success freshens the staleness
+    clock over an empty write — the silent outage the guard exists to prevent, reached
+    through the one path that looks like a courtesy.
+
+    The all-regions-succeed case cannot see this, and neither can the existing partial
+    test, whose surviving region returns no contracts at all.
+    """
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    monkeypatch.setattr(
+        bg_agg,
+        "AsyncSessionLocal",
+        async_sessionmaker(create_async_engine(TEST_DATABASE_URL), expire_on_commit=False),
+        raising=False,
+    )
+
+    prior = "2026-07-18T00:00:00+00:00"
+    malformed = _ship_contract_dict(920270)
+    malformed["date_issued"] = "not-a-date"
+
+    async def _fetch(region_id, *args, **kwargs):
+        if region_id == 10000002:
+            return [malformed]          # answered, but nothing in it is storable
+        raise RuntimeError("region down")
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=_fetch)
+
+    store: dict = {
+        INGEST_KEY: json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 2,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = json.loads(store[INGEST_KEY])
+    # Guard against a vacuous pass: the run really did see a failed region, so the
+    # counters would have produced `partial` on their own (TEST-12).
+    assert record["regions_failed"] == 1 and record["regions_ok"] == 1
+    assert record["outcome"] == "failure"
+    assert record["last_success_at"] == prior
+
+
+_ABSENT = object()
+
+@pytest.mark.parametrize("field", ["date_issued", "date_expired"])
+@pytest.mark.parametrize(
+    "bad_value, shape",
+    [
+        ("not-a-date", "unreadable_string"),
+        (None, "explicit_null"),
+        (12345, "wrong_type_int"),
+        (_ABSENT, "absent_key"),
+    ],
+)
+async def test_every_shape_of_bad_required_date_is_counted_and_named(
+    db_session: AsyncSession, caplog, field: str, bad_value, shape: str
+):
+    """Counted and named for EVERY shape and BOTH required fields, not just one of each.
+
+    The persistence tests already cover these shapes, but persistence alone cannot see
+    where the skip happened. A prefilter that dropped unstorable contracts before
+    `_build_contract_rows` — a natural place to put a guard, and cheaper than building a
+    row to throw it away — still skips the contract while bypassing the shared counter
+    and warning entirely. The site loses a listing and nothing says so.
+
+    The four shapes reach the skip through three different mechanisms: a raise out of
+    the parse, a KeyError on the lookup, and the post-parse `parsed is None` guard. Any
+    instrumentation attached to fewer than all three leaks one of them silently.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    before = _skipped_total()
+
+    payload = _ship_contract_dict(920280)
+    if bad_value is _ABSENT:
+        del payload[field]
+    else:
+        payload[field] = bad_value
+
+    await service._process_contracts(db_session, [payload])
+
+    assert _skipped_total() - before == 1, f"{field}/{shape} was skipped uncounted"
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any(
+        "920280" in line and field in line for line in warnings
+    ), f"{field}/{shape} was skipped unnamed: {warnings}"
+
+
+async def test_a_contract_with_both_dates_malformed_counts_once(
+    db_session: AsyncSession, caplog
+):
+    """The counter's unit is one dropped CONTRACT, not one validation error.
+
+    Every other fixture corrupts a single field, so a refactor that validated both
+    required dates — collecting errors rather than raising at the first, which is the
+    ordinary way to give better diagnostics — could increment once per error and pass
+    all of them. One contract would then read as two dropped listings, and a metric
+    that overstates data loss is as unusable as one that understates it: the number is
+    only worth alerting on if it means what its name says.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    before = _skipped_total()
+    payload = _ship_contract_dict(920290)
+    payload["date_issued"] = "not-a-date"
+    payload["date_expired"] = None
+
+    await service._process_contracts(db_session, [payload])
+
+    assert _skipped_total() - before == 1, "one contract counted as more than one drop"
+    assert (
+        await db_session.execute(
+            select(Contract.contract_id).where(Contract.contract_id == 920290)
+        )
+    ).scalar_one_or_none() is None
+
+    # Collapsing to one count must not also collapse to an unnamed warning: an
+    # aggregate "unreadable required dates" line satisfies the count while naming
+    # neither field, which is the diagnosis gap this policy was partly written to close.
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any(
+        "920290" in line and ("date_issued" in line or "date_expired" in line)
+        for line in warnings
+    ), warnings
+
+
+@pytest.mark.parametrize(
+    "bad_value, label",
+    [
+        ("not-a-date", "unreadable_string"),
+        (12345, "wrong_type_int"),
+    ],
+)
+async def test_a_malformed_optional_date_clears_a_previously_stored_one(
+    db_session: AsyncSession, bad_value, label: str
+):
+    """The degrade has to hold on RE-SIGHTING, which is the only path production uses.
+
+    Every contract is re-fetched each run, so the upsert's ON CONFLICT arm is where a
+    stored date_completed actually meets a malformed one — and that arm is different SQL
+    from the fresh insert the other optional-date tests exercise. Adding date_completed
+    to preserve_on_null would keep the old value there, which is a defensible-sounding
+    change (the column is exactly the shape preserve_on_null exists for: nullable, and
+    NULL can mean "unknown this run"). It is wrong here: the policy says an unreadable
+    optional date is stored as the NULL ESI would have sent, not that the last readable
+    value is retained forever.
+
+    Seeded through the same writer rather than by hand, so the "before" state is one
+    ingestion can really produce (TEST-18).
+    """
+    service = _make_service()
+    first = _ship_contract_dict(920300)
+    first["date_completed"] = "2026-07-05T12:30:00Z"
+    await service._process_contracts(db_session, [first])
+
+    stored = (
+        await db_session.execute(
+            select(Contract.date_completed).where(Contract.contract_id == 920300)
+        )
+    ).scalar_one()
+    assert stored is not None, "the fixture never stored a value to be cleared"
+
+    resighted = _ship_contract_dict(920300)
+    resighted["date_completed"] = bad_value
+    await service._process_contracts(db_session, [resighted])
+
+    assert (
+        await db_session.execute(
+            select(Contract.date_completed).where(Contract.contract_id == 920300)
+        )
+    ).scalar_one() is None, f"{label}: a stale completion date survived the degrade"
