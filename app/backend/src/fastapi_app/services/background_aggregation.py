@@ -531,6 +531,7 @@ class ContractAggregationService:
             async with self._concurrency_lock() as redis_client:  # Handles concurrent job runs
                 regions_ok = 0
                 regions_failed = 0
+                ingested_nothing = False
                 try:
                     # Use the ESIClient as a context manager to ensure its http_client is initialized.
                     async with self.esi_client:
@@ -549,14 +550,34 @@ class ContractAggregationService:
                             else:
                                 all_contracts_data = self._apply_dev_limit(all_contracts_data)
 
-                                await self._process_contracts(db_session, all_contracts_data)
+                                persisted = await self._process_contracts(
+                                    db_session, all_contracts_data
+                                )
 
                                 await db_session.commit()
                                 logger.info("Public contract aggregation run finished successfully and changes committed.")
 
+                                # Fetched contracts but stored none: the run ingested
+                                # nothing, whatever the reason, and reporting success
+                                # would freshen the staleness clock over an empty
+                                # write. The realistic cause of wholesale rejection is
+                                # an upstream FORMAT change, which corrupts every
+                                # contract at once rather than one — so this is the
+                                # shape a silent outage would actually take.
+                                if persisted == 0:
+                                    ingested_nothing = True
+                                    logger.error(
+                                        "Fetched %s contracts and persisted none; "
+                                        "recording this run as a failure.",
+                                        len(all_contracts_data),
+                                    )
+
                     # The shared transaction committed (or completed as a valid
                     # no-op — the all-304 path); outcome derives from the counters.
-                    await self._record_run_outcome(redis_client, regions_ok, regions_failed)
+                    await self._record_run_outcome(
+                        redis_client, regions_ok, regions_failed,
+                        forced_failure=ingested_nothing,
+                    )
                 except Exception:
                     # Any processing/commit/top-level abort is a failed run no matter
                     # what the fetch counters say; record while the lock is still held.
@@ -617,7 +638,9 @@ class ContractAggregationService:
         except Exception:
             logger.warning("failed to record ingest outcome", exc_info=True)
 
-    async def _process_contracts(self, db_session: AsyncSession, contracts: List[dict]):
+    async def _process_contracts(
+        self, db_session: AsyncSession, contracts: List[dict]
+    ) -> int:
         """
         Processes a list of contracts, fetches their items, and upserts them using the provided db_session.
         """
@@ -716,6 +739,11 @@ class ContractAggregationService:
             ship_contract_ids,
             unresolved_category_contract_ids,
         )
+
+        # How many contracts this run actually persisted. The caller needs it to tell a
+        # run that ingested nothing from one that ingested normally: skipping per
+        # contract removed the abort that used to make a systemic failure loud.
+        return len(contract_values)
 
     async def _resolve_station_systems(
         self, db_session: AsyncSession, contracts: List[dict]

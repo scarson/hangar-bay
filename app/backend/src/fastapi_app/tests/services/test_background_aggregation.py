@@ -2936,6 +2936,10 @@ async def test_a_skipped_contract_is_dropped_from_ITEM_enrichment_too(
         ).scalars()
     )
     assert landed == {920210}, "the healthy sibling was rolled back with the skip"
+    # Excluded from the RUN, not filtered out just before persistence: a late
+    # filter would still spend an ESI item fetch, plus type and group resolution,
+    # on a contract already known to be unstorable.
+    service.esi_client.get_contract_items.assert_awaited_once_with(920210)
     # And no orphan child was attempted for the contract that was never written.
     orphans = (
         await db_session.execute(
@@ -3033,3 +3037,105 @@ async def test_the_skip_counter_counts_contracts_rather_than_batches_or_listings
 
     await service._process_contracts(db_session, [first])
     assert _skipped_total() - before == 3, "the same listing stopped counting on re-sight"
+
+
+async def test_a_run_that_persists_nothing_records_failure_though_the_fetch_worked(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+):
+    """Skipping EVERY contract is an outage, and must not be recorded as a success.
+
+    This is the case the whole per-field policy is most likely to meet. The realistic
+    triggers for an unreadable date — an ESI serialization change, a compatibility-date
+    bump — are GLOBAL, so they do not corrupt one contract, they corrupt all of them.
+    Under the old whole-batch abort that produced a loud failure: outcome `failure`,
+    last_success_at frozen, `data_stale` true within two hours.
+
+    Skipping per contract removes the abort, and with it the signal — the fetch
+    succeeded, no exception escaped, and the run would report success while having
+    written nothing at all. That trades a loud total outage for a silent one, in
+    exactly the scenario most likely to occur, which is the opposite of what bounding
+    the blast radius was for.
+
+    A run that fetched contracts and persisted none has not ingested anything,
+    whatever the reason.
+    """
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    # run_aggregation builds its OWN session from AsyncSessionLocal, which points at the
+    # real DATABASE_URL. Without this bind the run dies on "relation contracts does not
+    # exist" and records a failure — so the outcome assertion below would pass for a
+    # reason that has nothing to do with what was persisted (TEST-12).
+    monkeypatch.setattr(
+        bg_agg,
+        "AsyncSessionLocal",
+        async_sessionmaker(create_async_engine(TEST_DATABASE_URL), expire_on_commit=False),
+        raising=False,
+    )
+
+    service = _freshness_service([10000002])
+    prior = "2026-07-18T00:00:00+00:00"
+
+    malformed = _ship_contract_dict(920250)
+    malformed["date_issued"] = "not-a-date"
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[malformed])
+
+    store: dict = {
+        INGEST_KEY: json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 1,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure", "an ingest that wrote nothing reported success"
+    # And the staleness clock keeps measuring against the last REAL refresh, so
+    # /ready reports data_stale rather than resetting on an empty run.
+    assert record["last_success_at"] == prior
+
+
+async def test_a_run_that_persists_something_still_records_success(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+):
+    """The guard must fire on "nothing landed", not on "anything was skipped".
+
+    Without this, the natural over-correction — failing any run that skipped a contract
+    — turns one bad listing into a permanently red freshness signal, which is the same
+    alarm fatigue by another route.
+    """
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    # run_aggregation builds its OWN session from AsyncSessionLocal, which points at the
+    # real DATABASE_URL. Without this bind the run dies on "relation contracts does not
+    # exist" and records a failure — so the outcome assertion below would pass for a
+    # reason that has nothing to do with what was persisted (TEST-12).
+    monkeypatch.setattr(
+        bg_agg,
+        "AsyncSessionLocal",
+        async_sessionmaker(create_async_engine(TEST_DATABASE_URL), expire_on_commit=False),
+        raising=False,
+    )
+
+    service = _freshness_service([10000002])
+    healthy = _ship_contract_dict(920251)
+    malformed = _ship_contract_dict(920252)
+    malformed["date_expired"] = "not-a-date"
+    service.esi_client.get_public_contracts = AsyncMock(
+        return_value=[healthy, malformed]
+    )
+
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "success"
+    assert record["last_success_at"] == record["finished_at"]
