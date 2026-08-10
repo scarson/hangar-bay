@@ -41,6 +41,12 @@ _RELEASE_LOCK_LUA = (
     "return redis.call('del', KEYS[1]) else return 0 end"
 )
 
+# One label per item-bearing contract type. The set must equal
+# ITEM_BEARING_CONTRACT_TYPES, which is DERIVED from the enum — so a new ContractType
+# member widens the matcher's gate to admit it while this hand-written table stays put,
+# and its alerts would render through the "a contract" fallback below. Pinned by
+# test_every_item_bearing_type_has_a_label_of_its_own so that drift fails at the moment
+# the member is added rather than in somebody's notification feed.
 _SHIP_TYPE_LABELS = {
     ContractType.item_exchange.value: "an item exchange",
     ContractType.auction.value: "an auction",
@@ -53,6 +59,11 @@ class ConcurrencyLockError(Exception):
 
 def _render_message(type_name: str, contract_type: str, price, location: Optional[str]) -> str:
     # Price-honest: name the CONTRACT as the priced thing (bundle price), not the ship (design §4.4).
+    # The fallback is defense in depth, not a live branch: the query gates on
+    # ITEM_BEARING_CONTRACT_TYPES and the label table is asserted equal to it, so a type
+    # reaching here unlabelled is already a caught test failure. It renders a vague noun
+    # rather than raising, because a KeyError here would abort the whole matching run
+    # over one alert's wording.
     label = _SHIP_TYPE_LABELS.get(contract_type, "a contract")
     where = location or "an unknown location"
     # ESI marks price optional and the column is nullable; the dash is the same

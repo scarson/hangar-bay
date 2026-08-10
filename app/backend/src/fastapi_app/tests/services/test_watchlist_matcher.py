@@ -653,3 +653,26 @@ async def test_the_unknown_location_fallback_covers_every_falsy_name(
         assert wm._render_message("Caracal", "auction", 10_500_000, absent) == (
             "Caracal available in an auction priced 10,500,000 ISK in an unknown location"
         ), f"location={absent!r}"
+
+
+async def test_every_item_bearing_type_has_a_label_of_its_own():
+    """The label table and the matcher's type gate must name the same set of types.
+
+    These two update ASYMMETRICALLY, which is the whole reason this test exists.
+    `ITEM_BEARING_CONTRACT_TYPES` is DERIVED — every `ContractType` member minus the
+    item-less ones — so adding a member to the enum (which is forced, since an unknown
+    value 422s) silently widens the matcher's gate to admit it. `_SHIP_TYPE_LABELS` is a
+    hand-written dict and does not widen with it. Nobody has to forget anything: one
+    side maintains itself and the other does not.
+
+    Without this test the consequence is a notification reading "Caracal available in a
+    contract priced ..." — the `.get` fallback, which reads as a rendering bug to the
+    person receiving the alert and is invisible to every other test, because the gate,
+    the match count and the notification row are all still correct.
+
+    Comparing the two constants is NOT the self-referential trap: they are independently
+    authored in different modules, one derived from the enum and one written by hand, so
+    the comparison is a genuine cross-check rather than an expectation computed from the
+    thing under test.
+    """
+    assert set(wm._SHIP_TYPE_LABELS) == ITEM_BEARING_CONTRACT_TYPES
