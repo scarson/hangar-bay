@@ -392,7 +392,7 @@ four per-file registers as work orders.
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
 | 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
 | 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ✅ DONE — logic **28/28**, components **10/10**, e2e pins **3/3**. PR #170 (C1–C4, plus a typecheck lane for `e2e/` that had never existed) and PR #171 (C5–C10). vitest 322 → 416, e2e 140 → 146 |
-| 5 | Nice-to-have (60) | 🔄 **in progress** — swept first (§Wave 5 sweep): 60 register rows reduce to **58 distinct open items**. **Backend-read 10/10 closed** (PR #173). **Backend-write 18/18 closed** — PR #174 (N-1..N-5, N-11, N-15, N-16, N-19) and PR #181 (N-6, N-7, N-8, N-9, N-12, N-13, N-14, N-17, N-18). Backend 733 → **818**. Remaining: frontend-logic **13**, frontend-components **17** |
+| 5 | Nice-to-have (60) | 🔄 **in progress** — swept first (§Wave 5 sweep): 60 register rows reduce to **58 distinct open items**. **Backend-read 10/10 closed** (PR #173). **Backend-write 18/18 closed** — PR #174 (N-1..N-5, N-11, N-15, N-16, N-19) and PR #182 (N-6, N-7, N-8, N-9, N-12, N-13, N-14, N-17, N-18). Backend 733 → **819**. Remaining: frontend-logic **13**, frontend-components **17** |
 
 Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
 (TEST-12), footprint-free discipline on shared fixtures (TEST-23), five frontend lanes for any
@@ -417,7 +417,7 @@ e2e **146** (7 skipped: the live-smoke project) · eslint and `tsc -b` clean.
 
 | Row | Register | Closed half | Remaining |
 |---|---|---|---|
-| **N-11** | backend-write | `_SHIP_TYPE_LABELS`' `"an item exchange"` now renders — `test_an_item_exchange_contract_matches_and_renders_its_own_label` asserts the whole message string (`services/test_watchlist_matcher.py:119`) | ✅ **now closed.** The unknown-location half landed in PR #174 (`test_a_match_at_an_unresolved_location_says_so_rather_than_naming_nothing` and the falsy-name parametrization beside it); the `"a contract"` fallback was resolved in PR #181 as defense-in-depth and is pinned by a direct `_render_message` call — see the decision entry below |
+| **N-11** | backend-write | `_SHIP_TYPE_LABELS`' `"an item exchange"` now renders — `test_an_item_exchange_contract_matches_and_renders_its_own_label` asserts the whole message string (`services/test_watchlist_matcher.py:119`) | ✅ **now closed.** The unknown-location half landed in PR #174 (`test_a_match_at_an_unresolved_location_says_so_rather_than_naming_nothing` and the falsy-name parametrization beside it); the `"a contract"` fallback was resolved in PR #182 as defense-in-depth and is pinned by a direct `_render_message` call — see the decision entry below |
 | **N-9** | frontend-logic | The mutant the row names is dead, and `columns.test.ts`'s responsive `HIDDEN_AT` map states the whole column policy exhaustively | `columns.test.ts:25` is still the **self-referential** assertion the row objected to — it derives the expected set from `columnsFor` and compares it to `sortableFieldsFor`, so both sides move together. The per-segment membership SNAPSHOT is still open |
 | **N-13** | frontend-logic | **Not previously known-closed.** Both `useDebouncedValue` halves are done — `'re-arms against the new delay when ONLY delayMs changes'` and `'drops its pending timer on unmount'` (`lib/useDebouncedValue.test.ts:67,97`), added by Wave 4 alongside its C25 work | `raiseApiError` non-401 leaving `['auth','me']` untouched — `lib/api/client.test.ts` throws a 400 but never asserts the cache was left alone. This is the row's whole remaining content |
 
@@ -458,7 +458,7 @@ dropped:
   TEST-11 boundary test possible. Routine, but it is a code edit and takes TDD.
 - **backend-write N-11's `"a contract"` fallback** — unreachable behind the matcher's type gate, so
   either it is defense-in-depth worth a direct unit call, or it is dead and should be noted as
-  such. Recorded as a decision, not a gap. **Resolved in PR #181 as defense-in-depth**, on the
+  such. Recorded as a decision, not a gap. **Resolved in PR #182 as defense-in-depth**, on the
   grounds that the production comment beside it already says so: the branch defends the window
   where a new `ContractType` has widened the gate but not yet the label table, where a `KeyError`
   would abort the whole matching run over one alert's wording. `_render_message` is called as a
