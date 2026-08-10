@@ -476,8 +476,9 @@ describe('formatComposition with no categories', () => {
     // The volume is still a real measurement and is still reported.
     const rendered = formatComposition({
       categories: [],
+      total_item_rows: 0,
       total_volume: 12.5,
-    } as Parameters<typeof formatComposition>[0])
+    })
     expect(rendered).toBe('12.5 m³')
   })
 
@@ -486,8 +487,9 @@ describe('formatComposition with no categories', () => {
     // than a stray separator, which is what a cell would show as a bare "·".
     const rendered = formatComposition({
       categories: [],
+      total_item_rows: 0,
       total_volume: null,
-    } as Parameters<typeof formatComposition>[0])
+    })
     expect(rendered).toBe('')
   })
 })

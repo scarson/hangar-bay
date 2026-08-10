@@ -16,7 +16,6 @@ import {
   parseContractSearch,
   requiresOfferedItem,
   toApiQuery,
-  type ContractSearch,
 } from './filters'
 
 describe('parseContractSearch', () => {
@@ -567,8 +566,11 @@ describe('isItemLessSelection', () => {
     // item-level controls down. The reachable shape is `undefined` (no selection),
     // which returns false — the guard above `.every()` is what separates them, and
     // removing it would make "no selection at all" hide the item filters site-wide.
-    expect(isItemLessSelection({ contract_type: [] } as ContractSearch)).toBe(true)
-    expect(isItemLessSelection({ contract_type: undefined } as ContractSearch)).toBe(false)
+    // The empty array is built by overriding a real parse, because the parser itself
+    // never produces one — which is exactly why this arm needs stating rather than
+    // discovering.
+    expect(isItemLessSelection({ ...parseContractSearch({}), contract_type: [] })).toBe(true)
+    expect(isItemLessSelection(parseContractSearch({}))).toBe(false)
   })
 
   it('is false as soon as one selected type carries items', () => {
