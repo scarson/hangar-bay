@@ -540,6 +540,21 @@ describe('hasOfferedItemFilters', () => {
     expect(hasOfferedItemFilters(parseContractSearch(raw))).toBe(true)
   })
 
+  it.each([
+    ['min_runs', { min_runs: 0 }],
+    ['max_runs', { max_runs: 0 }],
+    ['min_me', { min_me: 0 }],
+    ['max_me', { max_me: 0 }],
+    ['min_te', { min_te: 0 }],
+    ['max_te', { max_te: 0 }],
+  ])('counts %s=0 as set, because zero is a real bound here', (_key, raw) => {
+    // ME 0 and TE 0 are real blueprints and 0 runs is a real bound, so the predicate
+    // has to test PRESENCE, not truthiness. A `.some((key) => Boolean(search[key]))`
+    // refactor passes every positive-valued case above while reporting these six as
+    // inactive — the rail would stop showing a filter the reader had set.
+    expect(hasOfferedItemFilters(parseContractSearch(raw))).toBe(true)
+  })
+
   it('is false for a search carrying none of them', () => {
     // The negative arm, and the reason the positives are not vacuous: a predicate
     // hardcoded to `true` would pass all nine cases above.
@@ -573,11 +588,19 @@ describe('isItemLessSelection', () => {
     expect(isItemLessSelection(parseContractSearch({}))).toBe(false)
   })
 
-  it('is false as soon as one selected type carries items', () => {
-    expect(isItemLessSelection(parseContractSearch({ contract_type: 'courier' }))).toBe(true)
+  it.each(ITEM_BEARING_TYPES)('is false as soon as %s is selected', (bearing) => {
+    // Parametrized over the whole item-bearing set rather than naming one: a predicate
+    // written as `!selected.includes('item_exchange')` satisfies the courier and
+    // courier+item_exchange cases and still misclassifies an auction-only selection as
+    // item-less, standing down the item filters on a segment that carries items.
+    expect(isItemLessSelection(parseContractSearch({ contract_type: bearing }))).toBe(false)
     expect(
-      isItemLessSelection(parseContractSearch({ contract_type: ['courier', 'item_exchange'] })),
+      isItemLessSelection(parseContractSearch({ contract_type: ['courier', bearing] })),
     ).toBe(false)
+  })
+
+  it('is true for a selection of only item-less types', () => {
+    expect(isItemLessSelection(parseContractSearch({ contract_type: 'courier' }))).toBe(true)
   })
 })
 
@@ -588,6 +611,8 @@ describe('price bounds reject junk of every shape', () => {
     ['whitespace', '   '],
     ['Infinity', Infinity],
     ['a NaN', NaN],
+    ['a partially numeric string', '12abc'],
+    ['a lone sign', '-'],
   ])('drops %s rather than binding it', (_label, value) => {
     // The negative-value case is pinned already; these are the OTHER ways a hand-edited
     // URL reaches the parser. Each shape fails toNumber by a different route — Number()
@@ -610,7 +635,10 @@ describe('toApiQuery passes is_bpc through unchanged', () => {
     expect(toApiQuery(parseContractSearch({ is_bpc: value })).is_bpc).toBe(value)
   })
 
-  it('omits is_bpc entirely when the user set no such filter', () => {
+  it('leaves is_bpc undefined when the user set no such filter', () => {
+    // Named precisely: toApiQuery returns an OWN `is_bpc` property holding undefined.
+    // Omission from the wire happens one layer down, in openapi-fetch's serialization,
+    // and is covered there — claiming omission here would describe the wrong layer.
     expect(toApiQuery(parseContractSearch({})).is_bpc).toBeUndefined()
   })
 })

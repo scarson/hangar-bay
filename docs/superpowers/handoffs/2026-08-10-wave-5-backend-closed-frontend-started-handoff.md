@@ -181,10 +181,18 @@ New this session:
 - **Create the PR before writing its number into any document.** Predicting from the last merged
   number is wrong whenever anything landed in between; `#181` cost a correction commit when the PR
   came back `#182`.
-- **A monitor that greps a whole log for a verdict matches the PROMPT's echo of the word.** A
-  `NOT CONVERGED` was reported for a run that had actually stopped at `NEEDS_CONTEXT` and reviewed
-  nothing. Grep the tail, and treat the run's own end marker (`tokens used`) as the completion
-  signal.
+- **A monitor watching a codex log cannot use a bare substring for anything.** This bit three times
+  in one session, each differently. (a) Grepping the WHOLE log for the verdict matched the prompt's
+  own echo of the word, reporting `NOT CONVERGED` for a run that had stopped at `NEEDS_CONTEXT`
+  and reviewed nothing. (b) Grepping for the end marker `tokens used` matched **the diff under
+  review** — the log contains every file codex reads, so a handoff doc describing the end marker
+  matched it, and the monitor fired while the review was still running. (c) The verdict then came
+  back empty, because the tail held no verdict at all. **Use process liveness as the completion
+  signal and a line-anchored pattern for the verdict** (`grep -nx`, `grep -oE '^\*\*...'`), never a
+  substring — and never trust a monitor result you have not confirmed by reading the file.
+- **Do not commit to a branch while an adversarial review of that branch is running.** The review
+  reads `git diff origin/dev...HEAD`, so a commit lands inside the thing being reviewed. It is also
+  what put this handoff's own text into the log that (b) above then matched.
 - **`subprocess.run` over `npx vitest` needs `encoding="utf-8", errors="replace"`** — vitest's
   output is not cp1252-decodable and the harness dies mid-run. Its `finally` restore held, which is
   exactly the TEST-12 hardening working.

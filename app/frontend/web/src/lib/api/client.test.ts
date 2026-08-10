@@ -121,6 +121,13 @@ describe('raiseApiError leaves the identity cache alone on a non-401', () => {
     expect(() => raiseApiError(qc, 403, 'forbidden')).toThrow(ApiError)
     expect(isStale()).toBe(false)
 
+    // 404 specifically, because the /me/* saved-search, watchlist and notification
+    // endpoints genuinely return it for a resource that is gone. Widening the guard to
+    // `401 || 404` is the plausible edit, and it would sign the reader out of the header
+    // every time they acted on an already-deleted row.
+    expect(() => raiseApiError(qc, 404, 'not found')).toThrow(ApiError)
+    expect(isStale()).toBe(false)
+
     // And the positive arm, so the check above is not passing because the instrument
     // cannot see an invalidation at all (TEST-15).
     expect(() => raiseApiError(qc, 401)).toThrow(ApiError)
