@@ -3368,3 +3368,50 @@ async def test_a_contract_with_both_dates_malformed_counts_once(
         "920290" in line and ("date_issued" in line or "date_expired" in line)
         for line in warnings
     ), warnings
+
+
+@pytest.mark.parametrize(
+    "bad_value, label",
+    [
+        ("not-a-date", "unreadable_string"),
+        (12345, "wrong_type_int"),
+    ],
+)
+async def test_a_malformed_optional_date_clears_a_previously_stored_one(
+    db_session: AsyncSession, bad_value, label: str
+):
+    """The degrade has to hold on RE-SIGHTING, which is the only path production uses.
+
+    Every contract is re-fetched each run, so the upsert's ON CONFLICT arm is where a
+    stored date_completed actually meets a malformed one — and that arm is different SQL
+    from the fresh insert the other optional-date tests exercise. Adding date_completed
+    to preserve_on_null would keep the old value there, which is a defensible-sounding
+    change (the column is exactly the shape preserve_on_null exists for: nullable, and
+    NULL can mean "unknown this run"). It is wrong here: the policy says an unreadable
+    optional date is stored as the NULL ESI would have sent, not that the last readable
+    value is retained forever.
+
+    Seeded through the same writer rather than by hand, so the "before" state is one
+    ingestion can really produce (TEST-18).
+    """
+    service = _make_service()
+    first = _ship_contract_dict(920300)
+    first["date_completed"] = "2026-07-05T12:30:00Z"
+    await service._process_contracts(db_session, [first])
+
+    stored = (
+        await db_session.execute(
+            select(Contract.date_completed).where(Contract.contract_id == 920300)
+        )
+    ).scalar_one()
+    assert stored is not None, "the fixture never stored a value to be cleared"
+
+    resighted = _ship_contract_dict(920300)
+    resighted["date_completed"] = bad_value
+    await service._process_contracts(db_session, [resighted])
+
+    assert (
+        await db_session.execute(
+            select(Contract.date_completed).where(Contract.contract_id == 920300)
+        )
+    ).scalar_one() is None, f"{label}: a stale completion date survived the degrade"
