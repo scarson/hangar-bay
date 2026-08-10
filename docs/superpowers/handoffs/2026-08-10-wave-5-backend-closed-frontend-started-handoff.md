@@ -11,7 +11,7 @@ backend-write queue is **DONE** and MUST NOT be re-run.
 
 | | |
 |---|---|
-| `origin/dev` tip | `91cea97` (PR #183 merge) |
+| `origin/dev` tip | `793b16f` (PR #185 merge) |
 | Open PRs | **none** |
 | Baselines | backend **822** · vitest **455 ×2 lanes** · e2e **146** (7 skipped: live-smoke) · eslint + `tsc -b` clean |
 | Worktree | `.claude/worktrees/coverage-wave-5-da9c1c`, on `docs/handoff-sync` (branch a merged PR left behind; reset it to origin/dev) |
@@ -70,10 +70,16 @@ semantics — and a survey done *after* the spike established that `secure` is a
 (45 jumps where a fully high-sec 34-jump route exists). The two findings sit adjacent and
 unreconciled in F008 §15.2. Once matching ESI stops being the goal, the metric is a filtered BFS.
 
-**Two caveats are Sam's:** licensing (the spike found no Fuzzwork license page; vendoring is a
-distribution decision) and that nobody has actually fetched the edge list. Phase 0 front-loads both
-plus a ranking-inversion measurement whose threshold is fixed in advance so it can overturn the
-recommendation rather than ratify it.
+**Phase 0 Task 0.1 is DONE** (PR #185, findings in the spec's appendix): the edge list was
+fetched and checked, nothing vendored. Every spike figure reproduced exactly — 13,978 edge rows,
+8,490 systems, four components at 5,228/27/7/6 — the security source covers the graph with zero
+gaps, our shortest Jita→Amarr matches ESI's 11 exactly, and the all-high-sec route is **34 where
+ESI's `secure` returns 45**. Decision 1's premise is therefore measured, not quoted.
+
+**That leaves licensing as the ONLY open input to Decision 1**, and it is Sam's: no licence page
+exists for the dump, and the site carries CCP's standard third-party notice, which speaks to
+Fuzzwork's own use rather than to onward redistribution by us. Task 0.2 (the ranking-inversion
+measurement, threshold fixed in advance) is still unrun.
 
 **Read this before touching the spec:** an independent review found five factual errors in its
 reasoning, all now fixed and marked in place. The load-bearing one — **we send
@@ -222,7 +228,7 @@ comment beside the branch already says so and testing it changes no behaviour. H
 
 ```
 Hangar Bay: read docs/superpowers/handoffs/2026-08-10-wave-5-backend-closed-frontend-started-handoff.md
-first — its §4 process rules are binding. State: origin/dev at 91cea97, backend 822, vitest 455×2,
+first — its §4 process rules are binding. State: origin/dev at 793b16f, backend 822, vitest 455×2,
 e2e 146, eslint/tsc clean, ZERO open PRs. PR #183 merged frontend-logic 10/13 plus one production
 fix, its adversarial review converged on the second pass. The backend-write register is CLOSED
 18/18 and frontend-logic is 10/13 — neither closed part may be re-run.
@@ -235,8 +241,10 @@ test, and stays flagged for Sam. §2.2 records what recon already settled agains
 that isItemLessSelection([]) is TRUE and hasOfferedItemFilters is live code.
 
 Reward-per-jump spec + plan are committed and awaiting Sam's Decision 1 — do NOT implement any of
-Phases 1-4 until it is answered; Phase 0 is executable now and is written to be able to overturn
-the recommendation.
+Phases 1-4 until it is answered. Phase 0 Task 0.1 is DONE (PR #185): the graph checks out on every
+technical axis and Jita→Amarr measures 34 all-high-sec against ESI's 45, so LICENSING is now the
+only open input to Decision 1 and it is Sam's. Task 0.2, the ranking-inversion measurement, is
+still unrun and is executable without any decision.
 
 Process rules that are binding: Routine PRs merge ONLY through the mechanical gate (gh pr checks
 <n> | grep -vE "pass|skipping" && echo BLOCKED || gh pr merge <n> --merge --delete-branch);
