@@ -3199,3 +3199,63 @@ async def test_every_skipped_contract_is_counted_and_named_including_the_null_br
     assert any(
         "920261" in line and "date_expired" in line for line in warnings
     ), warnings
+
+
+async def test_zero_persistence_records_failure_even_when_a_region_also_failed(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """"Fetched contracts and stored none" is a failure regardless of the fetch counters.
+
+    A partial fetch is normally the better outcome than a failed one — some regions
+    answered, so `partial` keeps last_success_at moving. That makes `and regions_failed
+    == 0` a natural-looking guard to add here, preserving `partial` whenever any region
+    was already down. It is wrong: the counters describe what was FETCHED, and this run
+    wrote nothing at all, so treating it as a partial success freshens the staleness
+    clock over an empty write — the silent outage the guard exists to prevent, reached
+    through the one path that looks like a courtesy.
+
+    The all-regions-succeed case cannot see this, and neither can the existing partial
+    test, whose surviving region returns no contracts at all.
+    """
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    monkeypatch.setattr(
+        bg_agg,
+        "AsyncSessionLocal",
+        async_sessionmaker(create_async_engine(TEST_DATABASE_URL), expire_on_commit=False),
+        raising=False,
+    )
+
+    prior = "2026-07-18T00:00:00+00:00"
+    malformed = _ship_contract_dict(920270)
+    malformed["date_issued"] = "not-a-date"
+
+    async def _fetch(region_id, *args, **kwargs):
+        if region_id == 10000002:
+            return [malformed]          # answered, but nothing in it is storable
+        raise RuntimeError("region down")
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=_fetch)
+
+    store: dict = {
+        INGEST_KEY: json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 2,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = json.loads(store[INGEST_KEY])
+    # Guard against a vacuous pass: the run really did see a failed region, so the
+    # counters would have produced `partial` on their own (TEST-12).
+    assert record["regions_failed"] == 1 and record["regions_ok"] == 1
+    assert record["outcome"] == "failure"
+    assert record["last_success_at"] == prior
