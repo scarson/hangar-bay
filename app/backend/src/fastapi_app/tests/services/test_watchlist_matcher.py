@@ -891,3 +891,22 @@ async def test_run_matching_drives_a_real_match_through_to_a_committed_notificat
     assert run_events[0]["pruned"] == 0
     # The lock is handed back so the next scheduler tick can run.
     assert wm.WATCHLIST_MATCH_LOCK_KEY not in store
+
+
+async def test_an_unlabelled_contract_type_renders_a_vague_noun_rather_than_raising():
+    """The label fallback is defense in depth, and this is the only way to reach it.
+
+    The match query gates on ITEM_BEARING_CONTRACT_TYPES and the label table is asserted
+    equal to that set, so no fixture can drive an unlabelled type through
+    _match_and_notify — the branch is unreachable by construction and stays that way
+    only for as long as the drift guard holds. What it defends against is the window
+    where a new ContractType has widened the gate but not yet the table: a KeyError
+    there aborts the whole matching run over one alert's wording, silencing every
+    user's alerts, so degrading to a vague noun is the deliberate behaviour and worth
+    pinning directly rather than recording as dead code.
+
+    Called as a unit because there is no other route; the type is a string the enum
+    does not contain, which is exactly the shape a not-yet-labelled member arrives in.
+    """
+    rendered = wm._render_message("Caracal", "a_type_nobody_labelled", 10_500_000, "Jita IV")
+    assert rendered == "Caracal available in a contract priced 10,500,000 ISK in Jita IV"
