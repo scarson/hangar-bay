@@ -2768,10 +2768,32 @@ async def test_freshness_recorder_treats_an_unparseable_prior_as_no_prior(
 #     malformed value degrades to NULL and costs the contract nothing.
 
 
-def _skipped_total() -> float:
+def _skip_samples() -> list:
+    """Every sample of the skip counter, across ALL reason labels.
+
+    Reading one label series cannot see a second one appearing beside it: an increment
+    under a NEW reason — say a separate label for the optional-date degrade — raises the
+    "contracts dropped" total that alerts and dashboards read, while a delta measured on
+    `malformed_date` alone stays flat and every assertion passes.
+    """
     from fastapi_app.core.metrics import contracts_skipped_total
 
-    return contracts_skipped_total.labels(reason="malformed_date")._value.get()
+    return [
+        sample
+        for metric in contracts_skipped_total.collect()
+        for sample in metric.samples
+        if sample.name.endswith("_total")
+    ]
+
+
+def _skipped_total() -> float:
+    """The counter's grand total, summed over every reason label."""
+    return sum(sample.value for sample in _skip_samples())
+
+
+def _skip_reasons() -> set:
+    """Which reason labels the counter has actually been incremented under."""
+    return {sample.labels["reason"] for sample in _skip_samples()}
 
 
 @pytest.mark.parametrize("date_field", ["date_issued", "date_expired"])
@@ -2850,6 +2872,9 @@ async def test_a_malformed_optional_date_costs_the_contract_nothing(
     ).scalar_one()
     assert row.date_completed is None, label
     assert _skipped_total() == before, f"{label}: a persisted contract was counted as dropped"
+    assert _skip_reasons() <= {"malformed_date"}, (
+        f"{label}: a degraded optional date invented a new skip reason"
+    )
 
 
 async def test_a_skipped_contract_names_itself_and_the_field_in_the_log(
@@ -3259,3 +3284,49 @@ async def test_zero_persistence_records_failure_even_when_a_region_also_failed(
     assert record["regions_failed"] == 1 and record["regions_ok"] == 1
     assert record["outcome"] == "failure"
     assert record["last_success_at"] == prior
+
+
+_ABSENT = object()
+
+@pytest.mark.parametrize("field", ["date_issued", "date_expired"])
+@pytest.mark.parametrize(
+    "bad_value, shape",
+    [
+        ("not-a-date", "unreadable_string"),
+        (None, "explicit_null"),
+        (12345, "wrong_type_int"),
+        (_ABSENT, "absent_key"),
+    ],
+)
+async def test_every_shape_of_bad_required_date_is_counted_and_named(
+    db_session: AsyncSession, caplog, field: str, bad_value, shape: str
+):
+    """Counted and named for EVERY shape and BOTH required fields, not just one of each.
+
+    The persistence tests already cover these shapes, but persistence alone cannot see
+    where the skip happened. A prefilter that dropped unstorable contracts before
+    `_build_contract_rows` — a natural place to put a guard, and cheaper than building a
+    row to throw it away — still skips the contract while bypassing the shared counter
+    and warning entirely. The site loses a listing and nothing says so.
+
+    The four shapes reach the skip through three different mechanisms: a raise out of
+    the parse, a KeyError on the lookup, and the post-parse `parsed is None` guard. Any
+    instrumentation attached to fewer than all three leaks one of them silently.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    before = _skipped_total()
+
+    payload = _ship_contract_dict(920280)
+    if bad_value is _ABSENT:
+        del payload[field]
+    else:
+        payload[field] = bad_value
+
+    await service._process_contracts(db_session, [payload])
+
+    assert _skipped_total() - before == 1, f"{field}/{shape} was skipped uncounted"
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any(
+        "920280" in line and field in line for line in warnings
+    ), f"{field}/{shape} was skipped unnamed: {warnings}"
