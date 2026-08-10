@@ -2890,3 +2890,146 @@ async def test_a_healthy_batch_never_touches_the_skip_counter(
     )
 
     assert _skipped_total() == before
+
+
+async def test_a_skipped_contract_is_dropped_from_ITEM_enrichment_too(
+    db_session: AsyncSession,
+):
+    """A skip has to remove the contract from the WHOLE run, not just the parent upsert.
+
+    `contract_items.contract_id` is a foreign key onto `contracts`. Skipping only the
+    parent row while the original payload list travels on to item enrichment inserts
+    children for a parent that was never written — PostgreSQL aborts the transaction and
+    every healthy sibling rolls back with it. That is the original whole-run blast radius
+    restored through a different layer, and with a worse error: an IntegrityError naming
+    a constraint instead of a ValueError naming a date.
+
+    The other skip tests cannot see this, because the shared service fixture leaves
+    `get_contract_items` returning an empty list — so no child row is ever built and the
+    foreign key is never exercised. This test arms it deliberately.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 9202101, "type_id": 587, "quantity": 1, "is_included": True},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    healthy, malformed = _ship_contract_dict(920210), _ship_contract_dict(920211)
+    malformed["date_expired"] = "not-a-date"
+
+    await service._process_contracts(db_session, [healthy, malformed])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920210, 920211])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920210}, "the healthy sibling was rolled back with the skip"
+    # And no orphan child was attempted for the contract that was never written.
+    orphans = (
+        await db_session.execute(
+            select(ContractItem.record_id).where(ContractItem.contract_id == 920211)
+        )
+    ).scalars().all()
+    assert orphans == []
+
+
+@pytest.mark.parametrize(
+    "bad_value, label",
+    [
+        (None, "explicit_null"),
+        (12345, "wrong_type_int"),
+        (["2026-07-01T00:00:00Z"], "wrong_type_list"),
+    ],
+)
+async def test_a_required_date_of_the_wrong_SHAPE_is_skipped_like_a_bad_string(
+    db_session: AsyncSession, bad_value, label: str
+):
+    """"Malformed" is a claim about JSON shapes, not only about unparseable strings.
+
+    Each of these reaches a different failure: an explicit null parses to None and then
+    violates NOT NULL at insert time, while a number or a list raises AttributeError
+    inside the parser. All three abort the batch if only ValueError is isolated, which
+    is the same outage under a different traceback — and all three are ordinary upstream
+    drift rather than exotic corruption.
+    """
+    service = _make_service()
+    healthy, malformed = _ship_contract_dict(920220), _ship_contract_dict(920221)
+    malformed["date_issued"] = bad_value
+
+    await service._process_contracts(db_session, [healthy, malformed])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920220, 920221])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920220}, label
+
+
+async def test_a_required_date_that_is_absent_entirely_is_skipped(
+    db_session: AsyncSession,
+):
+    """ESI marks these required, so absence is a spec violation — and TEST-22 is the
+    record of what a spec violation costs when the writer assumes presence: a
+    price-less contract aborted every ingestion run for as long as it stayed listed.
+    Indexing the payload directly would raise KeyError past the ValueError guard."""
+    service = _make_service()
+    healthy, malformed = _ship_contract_dict(920230), _ship_contract_dict(920231)
+    del malformed["date_expired"]
+
+    await service._process_contracts(db_session, [healthy, malformed])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920230, 920231])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920230}
+
+
+async def test_the_skip_counter_counts_contracts_rather_than_batches_or_listings(
+    db_session: AsyncSession,
+):
+    """The counter's unit is one dropped contract, and two natural instrumentation
+    choices would quietly break that.
+
+    Incrementing once per batch that contained ANY malformed date undercounts a batch
+    holding several; deduplicating by contract id — a reasonable-looking way to stop a
+    single bad listing spamming an alert — undercounts the same listing on every later
+    run, which is precisely the case that matters, since a malformed contract stays
+    listed for up to two weeks and is re-processed every hour.
+
+    Both are checked here: two skips in one batch count two, and re-processing the same
+    contract counts again.
+    """
+    service = _make_service()
+    before = _skipped_total()
+    first, second = _ship_contract_dict(920240), _ship_contract_dict(920241)
+    first["date_issued"] = "not-a-date"
+    second["date_expired"] = "also-not-a-date"
+
+    await service._process_contracts(db_session, [first, second])
+    assert _skipped_total() - before == 2, "a batch of two skips counted as one"
+
+    await service._process_contracts(db_session, [first])
+    assert _skipped_total() - before == 3, "the same listing stopped counting on re-sight"

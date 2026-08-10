@@ -112,20 +112,37 @@ def _parse_esi_datetime(date_string: str | None) -> datetime | None:
     return datetime.fromisoformat(date_string.replace("Z", "+00:00"))
 
 
+# Every way a JSON value can fail to be a readable date. Narrower than this and the
+# isolation is only about unparseable STRINGS: an absent key raises KeyError, and a
+# number or a list raises AttributeError on `.replace()` — each of which aborts the run
+# exactly as the string case used to, under a different traceback.
+_UNREADABLE_DATE_ERRORS = (AttributeError, KeyError, TypeError, ValueError)
+
+
 def _parse_required_esi_datetime(contract: dict, field: str) -> datetime:
     """Parse a date the contract cannot be stored without, naming it if it fails.
 
     Both required dates back NOT NULL columns and `date_expired` is the liveness
     predicate and the default sort, so there is no honest value to substitute for an
     unparseable one — the caller drops the contract instead.
+
+    An explicit `null` is treated as malformed rather than passed along: it parses
+    cleanly to None and would then fail the NOT NULL insert, which aborts the whole
+    transaction — the outage this policy exists to prevent, reached from inside the
+    parser that is supposed to prevent it.
     """
     try:
-        return _parse_esi_datetime(contract[field])
-    except ValueError as exc:
+        parsed = _parse_esi_datetime(contract[field])
+    except _UNREADABLE_DATE_ERRORS as exc:
         raise MalformedContractDate(contract.get("contract_id"), field, str(exc)) from exc
+    if parsed is None:
+        raise MalformedContractDate(
+            contract.get("contract_id"), field, "required date is null or absent"
+        )
+    return parsed
 
 
-def _parse_optional_esi_datetime(date_string: str | None) -> datetime | None:
+def _parse_optional_esi_datetime(date_string) -> datetime | None:
     """Parse a date whose column is nullable, serving NULL when it cannot be read.
 
     Only `date_completed` qualifies: ESI marks it optional, the public route never
@@ -134,8 +151,8 @@ def _parse_optional_esi_datetime(date_string: str | None) -> datetime | None:
     """
     try:
         return _parse_esi_datetime(date_string)
-    except ValueError:
-        logger.warning("Unparseable optional date %r; storing NULL.", date_string)
+    except _UNREADABLE_DATE_ERRORS:
+        logger.warning("Unreadable optional date %r; storing NULL.", date_string)
         return None
 
 
@@ -618,6 +635,18 @@ class ContractAggregationService:
         # into the format for the database model, enriching with names and systems.
         station_to_system = await self._resolve_station_systems(db_session, contracts)
         contract_values = _build_contract_rows(contracts, id_to_name_map, station_to_system)
+
+        # A dropped contract must leave the RUN, not just this upsert.
+        # `contract_items.contract_id` is a foreign key onto `contracts`, so carrying a
+        # skipped payload on into item enrichment inserts children for a parent that was
+        # never written — PostgreSQL aborts the transaction and every healthy sibling
+        # rolls back with it. That is the whole-run blast radius this policy removes,
+        # restored one layer further down and wearing an IntegrityError instead.
+        #
+        # Derived from what actually persisted rather than from a second list of skips,
+        # so any future reason a row is dropped excludes it downstream automatically.
+        persisted_ids = {row["contract_id"] for row in contract_values}
+        contracts = [c for c in contracts if c.get("contract_id") in persisted_ids]
 
         batch_size = 500  # Number of contracts to process in each batch
         total_contracts = len(contract_values)
