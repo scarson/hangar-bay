@@ -16,8 +16,8 @@ coverage changes merged through PR 187). The root checkout and its pre-existing 
 - [x] Resolve only supported patch versions and inspect the complete lockfile diff.
 - [x] Verify installed trees, audit results, frontend lanes, build, and generated-client stability.
 - [x] Obtain an independent review of the final patch.
-- [ ] Complete the handoff-prescribed Codex CLI adversarial review on the committed patch.
-- [ ] Commit and open a PR to `dev`; hand integration to the coordinating agent.
+- [x] Complete the handoff-prescribed Codex CLI adversarial review on the committed patch.
+- [x] Commit and open a PR to `dev`; hand integration to the coordinating agent.
 - [ ] Confirm repository alerts close after the fix reaches the default branch.
 
 ## Alert metadata and boundary assessment
@@ -66,8 +66,8 @@ A fresh read-only investigator independently verified the existing ranges and pa
 lockfile, direct imports, flat ESLint configuration, committed OpenAPI input, and static deployment.
 It agreed that a child-only js-yaml update would be invalid and that the compatible Redocly patch
 is necessary. The investigator did not execute applications, tests, or exploit checks; the registry
-observation for Redocly `1.34.19` was supplied by the implementing agent and will also be checked
-against the actual resolved package during installation.
+observation for Redocly `1.34.19` was supplied by the implementing agent. The installed package's
+version and exact js-yaml `4.3.1` dependency were subsequently verified against that observation.
 
 ## Verification and integration
 
@@ -118,6 +118,30 @@ ESLint's YAML callers, and Redocly's parsing/code-generation integration. No tes
 installations, or exploit payloads were run by that reviewer. Its registry verification used
 cached metadata and archives; a separate coordinating review also checked live registry metadata.
 Neither review found a concrete surviving affected copy, range violation, or regression.
+
+### Committed-patch Codex review and PR
+
+The handoff-prescribed Codex CLI review used `gpt-5.6-sol` with high reasoning effort in read-only,
+ephemeral mode, with its prompt supplied on standard input and output redirected to task-local
+files. It completed with exit 0 and **CONVERGED — no blocking findings**, reviewing base
+`d43da7c9313de7ce19aa9de21242b07949da4364` through implementation commit
+`4dafe78a2cb533ce8093ff038adfe62bfea6f05e`.
+
+The reviewer checked the complete four-file diff, all tracked manifests/lockfiles, every matching
+package copy and incoming range, installed tooling callers, registry URLs and integrity metadata,
+cached tarball SHA-512 values, and the documented lockfile SHA-256. It confirmed the manifest,
+OpenAPI input, generated schema, and generated router remained unchanged and `git diff --check`
+passed with a clean tracked worktree. It accepted the documented Browserslist residual and the
+limits on application exploitability and GitHub closure. It did not execute tests, builds,
+applications, installs, audits, code generation, or exploit payloads.
+
+[PR 188 — patch Nano ID and js-yaml dependency alerts](https://github.com/scarson/hangar-bay/pull/188)
+contains the implementation and final documentation evidence. Its classification is **Routine**:
+supported transitive patch updates to frontend build/lint/code-generation tooling, with no project
+security-boundary code, public interface, schema, or data-integrity behavior change. The
+coordinating agent owns final-head CI verification, merge, and default-branch alert-closure checks.
+The PR is the authoritative source for current integration state; only documentation changed
+after the reviewed implementation commit.
 
 ### Separate residual: Browserslist
 
