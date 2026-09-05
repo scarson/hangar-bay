@@ -15,7 +15,8 @@ authored separately on `codex/browserslist-evidence`.
 - [x] Run build, code generation, lint, unit, future-clock, and existing browser checks at the PR head.
 - [x] Complete independent risk assessment and the prescribed Codex CLI review.
 - [x] Hand the immutable implementation and evidence to the coordinating agent for the merge decision.
-- [ ] Verify default-branch alert state after merge and publish the separate documentation record.
+- [x] Verify default-branch alert state after merge.
+- [x] Capture post-merge integration CI and prepare the separate documentation record for publication.
 
 ## Original immutable review subject
 
@@ -201,6 +202,28 @@ The archived reviews bind to the original immutable head. Their CodeQL limitatio
 that original review state; the byte-identical rebase and its hosted results are recorded
 separately in the authorized-base-refresh section.
 
-The coordinating agent alone owns merge, root-dev synchronization, and the final
-default-branch alert-state check. The separate evidence branch will publish documentation
-after implementation integration so that its closure claims describe observed results.
+The coordinating agent alone owns merge and root-dev synchronization. The separate evidence
+branch publishes documentation after implementation integration so that its closure claims
+describe observed results.
+
+## Observed integration and alert closure
+
+PR 189 merged on 2026-09-05 at `12:17:03Z`, with merge commit
+`0172ae18d18da0c7fbedcb05fe45b9287ec6eb53`. The coordinator recorded **Routine** classification
+before merging: supported updates to existing frontend tooling dependencies, with no
+application security-boundary code, public interface, schema, or data-integrity change.
+
+The default branch is `dev`. A post-merge API read reports both
+[Browserslist custom-stats alert 10](https://github.com/scarson/hangar-bay/security/dependabot/10)
+and [Browserslist query-cache alert 11](https://github.com/scarson/hangar-bay/security/dependabot/11)
+as `fixed`, each with `fixed_at: 2026-09-05T12:17:06Z`. Alert 11's earlier auto-dismissal is
+historical; the observed integrated state is fixed. Prior js-yaml alert 8 and Nano ID alert 9
+also report fixed, both at `2026-09-05T11:20:37Z` after PR 188.
+
+[Post-merge CodeQL run 33965603445](https://github.com/scarson/hangar-bay/actions/runs/33965603445)
+passes at the integration commit. The complete
+[post-merge CI run 33965603726](https://github.com/scarson/hangar-bay/actions/runs/33965603726)
+also passes: frontend in 3 minutes 16 seconds, backend in 4 minutes 9 seconds, OpenAPI drift
+in 2 minutes 45 seconds, and changed-path classification in 3 seconds. The dedicated
+`gh run watch --exit-status` exited 0. Its push-to-dev event exercises all application lanes,
+including backend tests. This documentation branch contains no dependency or application patch.

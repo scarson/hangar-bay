@@ -10,9 +10,12 @@ resolves Nano ID to `3.3.18`, js-yaml to `4.3.1`, and its exact-pinning Redocly 
 `1.34.19`, entirely within existing dependency ranges. The
 [dependency remediation record](../dependencies/2026-09-05-frontend-alert-remediation.md)
 contains the lockfile scope, passing build/code-generation/frontend checks, fresh independent
-review, converged committed-patch Codex review, and integration gates. GitHub alert closure remains a post-merge check owned by the
-coordinating agent. The full npm audit also surfaced an unchanged `browserslist@4.28.6` residual,
-recorded there for separate maintenance; it is outside these two alerts.
+review, converged committed-patch Codex review, and observed integration. PR 188 merged at
+`f457acb2877ff0e33da8ff3419cd3b0d6a4554e9`; GitHub marks alerts 8 and 9 fixed at
+`2026-09-05T11:20:37Z`. The separate Browserslist residual was addressed in
+[PR 189 — update Browserslist to 4.28.9](https://github.com/scarson/hangar-bay/pull/189); its
+[verification record](../dependencies/2026-09-05-browserslist-verification.md) contains the
+patched graph, passing checks, reviews, and observed closure of alerts 10 and 11.
 
 ## Initial inspection
 
@@ -54,9 +57,9 @@ not independently validate exploitability or reproduce either advisory behavior.
 The version resolution, dependency-tree checks, frontend validation, production build, and
 generated-client check requested by this baseline inspection have been completed in PR 188.
 The [dependency remediation record](../dependencies/2026-09-05-frontend-alert-remediation.md)
-is authoritative for commands, results, review, and remaining integration work. Do not repeat
+is authoritative for commands, results, review, and completed integration. Do not repeat
 the baseline plan as unstarted implementation work.
 
-The coordinating agent still must verify GitHub closes alerts 9 and 8 after merge to the default
-branch; local package remediation alone does not establish repository alert closure. The initial
-inspection recorded here made no dependency, lockfile, source, or configuration change.
+GitHub's post-merge API state establishes closure on default branch `dev`; this is separate
+evidence from local package remediation. The initial inspection recorded here made no
+dependency, lockfile, source, or configuration change.

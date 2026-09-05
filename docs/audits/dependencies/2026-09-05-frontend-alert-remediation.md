@@ -18,7 +18,7 @@ coverage changes merged through PR 187). The root checkout and its pre-existing 
 - [x] Obtain an independent review of the final patch.
 - [x] Complete the handoff-prescribed Codex CLI adversarial review on the committed patch.
 - [x] Commit and open a PR to `dev`; hand integration to the coordinating agent.
-- [ ] Confirm repository alerts close after the fix reaches the default branch.
+- [x] Confirm repository alerts close after the fix reaches the default branch.
 
 ## Alert metadata and boundary assessment
 
@@ -143,9 +143,13 @@ coordinating agent owns final-head CI verification, merge, and default-branch al
 The PR is the authoritative source for current integration state; only documentation changed
 after the reviewed implementation commit.
 
-### Separate residual: Browserslist
+PR 188 merged on 2026-09-05 at `11:20:34Z`, producing
+`f457acb2877ff0e33da8ff3419cd3b0d6a4554e9`. A subsequent GitHub API read reports both alerts
+8 and 9 as `fixed`, each with `fixed_at: 2026-09-05T11:20:37Z`, on default branch `dev`.
 
-The full npm audit reports one high-severity vulnerable package, `browserslist@4.28.6`, with
+### Separate Browserslist residual recorded during this review
+
+The full npm audit at this patch's head reported one high-severity vulnerable package, `browserslist@4.28.6`, with
 [unbounded-query-cache advisory GHSA-c83g-rgw3-j3cx](https://github.com/advisories/GHSA-c83g-rgw3-j3cx)
 and [custom-stats advisory GHSA-73wf-gq98-2v4g](https://github.com/advisories/GHSA-73wf-gq98-2v4g).
 Both reported affected ranges include `<=4.28.6`. The version, registry URL, integrity, and
@@ -157,8 +161,11 @@ advisory behavior was reproduced.
 
 Per the repository's out-of-scope journal rule, the coordinating agent retained this as a separate
 maintenance follow-up rather than expanding Sam's two-alert request. It does not invalidate
-the two-package remediation, but it prevents claiming the entire npm audit is clean. A separate
-follow-up should inspect supported patched versions and repeat the affected tooling checks.
+the two-package remediation; the audit at this patch's head was not entirely clean.
 
-Repository alert closure can only be claimed after GitHub processes the merged default-branch
-dependency graph; a clean result for the targeted packages does not establish GitHub closure.
+That separate follow-up is complete through
+[PR 189 — update Browserslist to 4.28.9](https://github.com/scarson/hangar-bay/pull/189). The
+[Browserslist verification record](2026-09-05-browserslist-verification.md) preserves the complete
+six-package review, zero-vulnerability audit, legitimate-workflow validation, restored CodeQL
+analysis, and observed alert closure. No advisory reproduction or application-exploitability
+claim was added.
