@@ -32,6 +32,27 @@ The [round-six independent review](../bug-hunts/2026-09-05-contract-search-plan-
 
 Notes: all dispatched agents are GPT-6 Astra/high under Sam's explicit model constraint. Cross-provider review is omitted to honor that constraint; independent cold contexts still review actual source. Repository output-persistence policy takes precedence over the skill's temporary-review-file convention. Review findings are retained in the audit directory; any rejection-concurrence scratch file remains temporary.
 
+## Construction editorial pass
+
+The first editorial pass certified all 29 changed hunks as preserving meaning, with no drift or baseline notes. It used separate GPT-6 Astra/high editor and verifier contexts and committed only the plan at `debc63f237468cc7edcce02c73be87fc944f2590`, directly atop the construction certification at `26a76bd7d0bdad07c31cabf62db219cd6eff6a9e`. See the [complete first editorial verification](../bug-hunts/2026-09-05-contract-search-editorial-1-verification.md).
+
+## Final bug-hunt plan review
+
+| Round | Reviewer | Findings raised | Fixed | Rejected |
+| --- | --- | --- | --- | --- |
+| 1 | Author self-review | 0 | 0 | 0 |
+| 2 | Independent cold GPT-6 Astra/high | 1 | 1 | 0 |
+| 3 | Author self-review | 0 | 0 | 0 |
+| 4 | Independent cold GPT-6 Astra/high | 0 | 0 | 0 |
+
+The author reviewed the polished plan across ambiguity, context gaps, interpretation latitude, dependencies and both pitfall dimensions. The source-grounded construction checks and complete polished text were checked together; no substantive gap was found in round 1.
+
+The [round-two independent findings](../bug-hunts/2026-09-05-contract-search-plan-review-2-round-2.md) identified one coverage-preservation gap: the empty joined-ID pagination test selects its path through Name sorting alone. Task 5.1 now includes `type_ids=587`, matching both fixture rows while retaining the join after the Name-sort change, and preserves the response assertions. Source checks verified `_needs_item_join`, `_apply_item_filters`, the fixture's type IDs and the existing test. Round 3 checked the repair and all six review dimensions without another substantive finding.
+
+The [round-four independent review](../bug-hunts/2026-09-05-contract-search-plan-review-2-round-4.md) raised zero substantive findings, completing the final review after four rounds. The single finding was fixed and independently re-reviewed; no rejection or unverified repair remains. The most recent plan-review line records this four-round cycle separately from construction review.
+
+Notes: all reviewers remain GPT-6 Astra/high under Sam's explicit constraint. Cross-provider review is omitted under that constraint. No rejection awaits concurrence.
+
 ## Reusable observations
 
 - Query `enabled` does not constrain manual `refetch`. Validation needs both dispatch gating and an explicit UI state that accounts for live versus debounced input.
@@ -39,6 +60,7 @@ Notes: all dispatched agents are GPT-6 Astra/high under Sam's explicit model con
 - A helper that does not exist yet cannot furnish useful red-test evidence through an import error. First pin the externally observable failure with existing interfaces, then add helper-level parity checks.
 - Full-suite database isolation must follow derived fixture targets, not only the configured test database. The migration equivalence fixture uses a fixed database name on the same server.
 - Request ownership follows canonical cache identity. A raw URL comparator can reject a response that the cache correctly treats as belonging to the requested wire query.
+- Changing a query-path trigger can leave existing tests green while removing the path coverage their names claim. Preserve the trigger through another supported input and keep the response assertions.
 
 ## Operational record
 

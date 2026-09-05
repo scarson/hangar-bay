@@ -10,7 +10,7 @@
 - [x] Enumerate and cross-validate every raw finding; reconcile dispositions.
 - [x] Inspect test gaps and update generalizable testing guidance where warranted.
 - [x] Resolve any material product or architecture decisions with Sam.
-- [ ] Write and independently review a remediation plan.
+- [x] Write and independently review a remediation plan.
 - [x] Independently check the consolidated report and verify reconciliation.
 - [x] Commit the available audit artifacts.
 
@@ -47,7 +47,7 @@ All four hunters completed. Exploratory, holistic and multipass overlapped; diff
 
 ## Approved decisions
 
-Sam explicitly approved both recommendations on September 5, 2026: preserve existing overlong saved text/readability while rejecting new overlong saves and showing local validation on Apply; sort Name by the displayed contract headline. The established saved-price ceiling remains unchanged with clearer feedback. The remediation plan and its independent reviews are in progress. The root checkout's unrelated config remains untouched in the separate checkout.
+Sam explicitly approved both recommendations on September 5, 2026: preserve existing overlong saved text/readability while rejecting new overlong saves and showing local validation on Apply; sort Name by the displayed contract headline. The established saved-price ceiling remains unchanged with clearer feedback. The [remediation plan](../plans/2026-09-05-contract-search-bug-hunt-remediation-plan.md) passed construction review in six rounds and final bug-hunt review in four rounds, each ending with an independent zero-finding round. The final editorial pass and artifact verification remain. The root checkout's unrelated config remains untouched in the separate checkout.
 
 ## Operational learning
 
