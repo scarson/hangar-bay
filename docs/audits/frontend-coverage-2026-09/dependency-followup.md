@@ -3,10 +3,23 @@
 
 # Frontend dependency alert follow-up
 
+## Remediation status
+
+Sam authorized the two-alert fix on 2026-09-05. [PR 188 — patch Nano ID and js-yaml dependency alerts](https://github.com/scarson/hangar-bay/pull/188)
+resolves Nano ID to `3.3.18`, js-yaml to `4.3.1`, and its exact-pinning Redocly parent to
+`1.34.19`, entirely within existing dependency ranges. The
+[dependency remediation record](../dependencies/2026-09-05-frontend-alert-remediation.md)
+contains the lockfile scope, passing build/code-generation/frontend checks, fresh independent
+review, converged committed-patch Codex review, and integration gates. GitHub alert closure remains a post-merge check owned by the
+coordinating agent. The full npm audit also surfaced an unchanged `browserslist@4.28.6` residual,
+recorded there for separate maintenance; it is outside these two alerts.
+
+## Initial inspection
+
 GitHub reported both alerts as high severity. That severity is GitHub alert metadata; this note did
 not independently validate exploitability or reproduce either advisory behavior.
 
-## Installed versions and paths
+## Baseline installed versions and paths
 
 ### `nanoid`
 
@@ -36,19 +49,14 @@ not independently validate exploitability or reproduce either advisory behavior.
   work. No project source imports `js-yaml`. This inspection did not establish that Hangar Bay
   supplies attacker-controlled YAML containing `!!omap` to either tool.
 
-## Recommended follow-up verification
+## Completed baseline verification plan
 
-Handle both in a separate dependency-maintenance branch after the frontend coverage work:
+The version resolution, dependency-tree checks, frontend validation, production build, and
+generated-client check requested by this baseline inspection have been completed in PR 188.
+The [dependency remediation record](../dependencies/2026-09-05-frontend-alert-remediation.md)
+is authoritative for commands, results, review, and remaining integration work. Do not repeat
+the baseline plan as unstarted implementation work.
 
-1. Resolve the existing transitive package coordinates to at least `nanoid@3.3.18` and
-   `js-yaml@4.3.1` with the smallest lockfile change available; inspect whether parent-package
-   changes are necessary before considering an override.
-2. Review the lockfile diff and rerun `npm ls nanoid js-yaml --all` plus
-   `npm ls nanoid js-yaml --all --omit=dev` to confirm the installed versions and paths.
-3. Run the complete frontend verification lanes and a production build. Run API-client generation
-   and confirm it produces no unexpected schema diff because one `js-yaml` path belongs to
-   `openapi-typescript`.
-4. After the dependency change is pushed, confirm GitHub closes alerts 9 and 8 rather than treating
-   a locally clean audit as evidence that the repository alerts are resolved.
-
-No dependency, lockfile, source, or configuration change was made during this inspection.
+The coordinating agent still must verify GitHub closes alerts 9 and 8 after merge to the default
+branch; local package remediation alone does not establish repository alert closure. The initial
+inspection recorded here made no dependency, lockfile, source, or configuration change.
