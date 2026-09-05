@@ -7,18 +7,18 @@
 **Audited source:** `d43da7c9313de7ce19aa9de21242b07949da4364`, freshly fetched `origin/dev` at scope selection.
 **Mode:** Full cycle. The surface joins SQL predicates/counts/pagination, URL normalization and history, delayed and cached requests, readiness, and saved-search persistence/replay. These interactions justify independent methods beyond a small-file snapshot.
 **Agents:** Four hunters, two independent verifiers and one report reviewer, all `gpt-6-astra`, reasoning effort `high`. The harness permits three active children, so the differential hunter started after the exploratory hunter finished; the other methods overlapped. Cross-validation accounted for all four completed reports.
-**Status:** Findings and test-gap analysis complete; remediation decisions below await Sam. No production fix is claimed. The implementation plan and its review have not run.
+**Status:** Findings and test-gap analysis complete; Sam approved both remediation recommendations on September 5, 2026. The implementation plan and its review are in progress. No production fix is claimed.
 
 Scope is defined in the [audit progress and scope record](2026-09-05-contract-search-progress.md). Primary paths are the backend contract/read and saved-search services, routes and schemas, and frontend contracts/saved-searches features. Ingestion writers, authentication internals, dependency maintenance and reward-per-jump work were adjacent context or excluded work.
 
 ## Results
 
-Six confirmed bugs: four P2 behavior failures and two P3 feedback/presentation failures. Two decisions affect the remediation, including how to address a confirmed text-boundary bug without making stored searches unreadable. One additional baseline test-fixture issue is recorded separately. No critical or high-severity production outage was established.
+Six confirmed bugs: four P2 behavior failures and two P3 feedback/presentation failures. Two approved decisions govern remediation, including how to address a confirmed text-boundary bug without making stored searches unreadable. One additional baseline test-fixture issue is recorded separately. No critical or high-severity production outage was established.
 
 | Finding | Severity | Location | Fix scope |
 | --- | --- | --- | --- |
 | B1 — Back navigation loses a valid page | P2 | `ContractsPage.tsx:159` | Page correction and transition tests |
-| B2 — Overlong text is saved but cannot be queried | P2 | `schemas/account.py:25`, `filters.ts:327` | Input/write/read contract; decision required |
+| B2 — Overlong text is saved but cannot be queried | P2 | `schemas/account.py:25`, `filters.ts:327` | Input/write/read contract; preservation approved |
 | B3 — Failed readiness refresh keeps the surface ready | P2 | `useTaxonomy.ts:80`, `useContracts.ts:100` | Shared readiness rule and state-sequence tests |
 | B4 — Rename/delete failures are invisible | P2 | `SavedSearchesPage.tsx:131` | Row feedback and recovery tests |
 | B5 — Saved criteria summaries omit active restrictions | P3 | `SavedSearchesPage.tsx:18` | Pure summary and focused tests |
@@ -40,7 +40,7 @@ Six confirmed bugs: four P2 behavior failures and two P3 feedback/presentation f
 
 **Evidence:** The API caps search text at 100 characters. The search input, parser, API serializer and saved serializer admit longer text; the saved model only has a minimum. The executed frontend observation retained 101 characters in both payloads and verified the generated API maximum of 100. Backend `test_contracts.py:243-251` already asserts the intended maximum. The saved service dumps validated parameters into JSON without another text bound, so an otherwise valid creation can persist an unreplayable query. This backend acceptance follows directly from the write path; no live save/database operation was performed.
 
-**Impact:** A normal paste or shared URL produces a generic list failure; Retry repeats it. Saving can make the failure persistent on Apply. **Blast radius:** Frontend input/serialization/replay and backend saved-write validation; generated API artifacts if request schema changes. **Fix approach:** Keep the approved API limit, reject invalid new saves, and give accurate local validation without silently truncating or dropping the search. First resolve Q1: adding the maximum to the shared stored/response model can make existing overlong rows break the entire saved-search list and rename response. No production prevalence is claimed.
+**Impact:** A normal paste or shared URL produces a generic list failure; Retry repeats it. Saving can make the failure persistent on Apply. **Blast radius:** Frontend input/serialization/replay and backend saved-write validation; generated API artifacts if request schema changes. **Fix approach:** Keep the approved API limit, reject invalid new saves, and give accurate local validation without silently truncating or dropping the search. Follow the approved stored-text preservation decision: adding the maximum to the shared stored/response model can make existing overlong rows break the entire saved-search list and rename response. No production prevalence is claimed.
 
 ### B3. Failed readiness refresh keeps later results marked ready
 
@@ -74,7 +74,7 @@ Six confirmed bugs: four P2 behavior failures and two P3 feedback/presentation f
 
 **Impact:** Retry cannot succeed until the user removes a saved search or corrects the unsupported price. **Blast radius:** Saved-create hook/form and focused tests. **Fix approach:** Preserve useful server detail, announce the required recovery, and clearly identify unsupported saved-price bounds. Keep duplicate-name and generic/network cases distinct. The count cap, its best-effort concurrency semantics, and the saved-price ceiling remain unchanged. Existing validation-feedback requirements authorize this correction without a product decision.
 
-## Design decisions requiring Sam
+## Approved design decisions
 
 ### Q1. Preserve readability of already-saved overlong text
 
@@ -82,7 +82,7 @@ The model used for saved-write validation also validates GET and rename response
 
 **Recommendation:** Keep existing stored text and permissive reads, impose the 100-character maximum on new creation, and retain invalid text visibly with a local validation message when applied. Users can shorten the term in the contract search and save a replacement. This preserves data and avoids a migration, but keeping stored values readable while narrowing writes is compatibility behavior requiring Sam's explicit approval under AGENTS.md.
 
-**Alternative:** Inventory stored rows first, then choose and review a migration/rollout before narrowing the shared model. No current evidence establishes whether such rows exist. Truncation, deletion and criteria-editing APIs are not authorized defaults. **Decision status:** Asked; no answer received at report writing.
+**Alternative considered:** Inventory stored rows first, then choose and review a migration/rollout before narrowing the shared model. No current evidence establishes whether such rows exist. Truncation, deletion and criteria-editing APIs are not authorized defaults. **Decision status:** Sam explicitly approved preserving stored text/readability, rejecting new overlong saves and visible local validation on September 5, 2026.
 
 ### Saved-price domain — established policy retained
 
@@ -94,7 +94,7 @@ Differential D2 establishes that a finite price just above 1e15 passes browse pa
 
 Differential C1 establishes that `contract_service.py:50,600` orders the lowest/highest joined item name by direction, while the shown `primary_label` prefers the first offered ship (`:667-703`). A fitted Rokh can sort before a Rifter because its module name wins; requested items can supply the sort key. Text/type predicates also restrict the joined rows participating in that aggregate (`:273-281,346-347`), so active criteria can change the representative. Existing tests explicitly pin the representative behavior. No inspected specification makes displayed-label sorting an established requirement, so this is not counted as a confirmed bug.
 
-**Recommendation:** Sort by the displayed contract name with one direction-independent key and the existing deterministic contract-ID tie breaker. This aligns the visual column with its ordering, but changes SQL ordering semantics and needs performance and regression checks. **Alternative:** Retain joined-item ordering and describe its meaning clearly in the UI. **Decision status:** Asked; no answer received.
+**Approved approach:** Sort by the displayed contract name with one direction-independent key and the existing deterministic contract-ID tie breaker. This aligns the visual column with its ordering, but changes SQL ordering semantics and needs performance and regression checks. **Alternative considered:** Retain joined-item ordering and describe its meaning clearly in the UI. **Decision status:** Sam explicitly approved displayed-name ordering on September 5, 2026.
 
 ## False positives and already-recorded decisions
 
@@ -201,4 +201,4 @@ Before final consolidation, every labelled raw entry was enumerated: exploratory
 
 The principal pattern is agreement within tested functions but disagreement between them over time or across validation boundaries. All four methods found the page-rewrite interaction; three found the warm-cache readiness failure and invisible row errors. Independent verification promoted narrow summary/cap-feedback concerns rather than treating every presentation choice as subjective. Most rejected candidates were already documented intentional behavior, which made reading decision records valuable.
 
-The first three hunter reports and observation source are committed in `74667ca`. The [independent report review](2026-09-05-contract-search-report-review.md) confirmed the evidence and reconciliation; its corrections are incorporated here. Continue with the bug-hunt skill's decision phase, then write the remediation plan and run its required independent review. No implementation plan is represented as reviewed or executable. The unresolved decisions are stored-text compatibility and Name-sort semantics; silence is not approval.
+The first three hunter reports and observation source are committed in `74667ca`; consolidation and report review landed in `2d19d06`. The [independent report review](2026-09-05-contract-search-report-review.md) confirmed the evidence and reconciliation; its corrections are incorporated here. Sam's explicit approval resolves stored-text compatibility and Name-sort semantics. Continue with the remediation plan and required independent reviews; no production implementation is represented as complete.

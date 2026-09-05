@@ -112,6 +112,8 @@ Keep `test_pagination_sorted_by_ship_name_no_duplicates` at line 302, parameteri
 
 ## Verification commands and performance gate
 
+The [remediation plan's database preflight](../plans/2026-09-05-contract-search-bug-hunt-remediation-plan.md#runtime-and-database-preflight) governs execution, including the full suite's separate migration-equivalence database and shared-server exclusion.
+
 Run from `app/backend` after the coordinator verifies/reuses project dependencies and confirms the disposable database. `pdm` is not on this sandbox's PATH, but its module is discoverable, so `python -m pdm` is the available invocation form. No dependency acquisition is part of this investigation.
 
 ```powershell

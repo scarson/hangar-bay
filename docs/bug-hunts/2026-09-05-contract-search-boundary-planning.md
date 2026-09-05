@@ -114,6 +114,8 @@ Frontend tests belong in existing `filters.test.ts`, `hooks/hooks.test.tsx`, `co
 
 ## Implementation commands and verification requirements
 
+The [remediation plan's database preflight](../plans/2026-09-05-contract-search-bug-hunt-remediation-plan.md#runtime-and-database-preflight) governs execution, including the full suite's separate migration-equivalence database and shared-server exclusion.
+
 After the failing tests exist, run targeted backend cases from `app/backend` with the established Python/PDM environment and a verified isolated `DATABASE_URL_TESTS`. The shared fixture drops and recreates tables; do not improvise a database target or start `pdm run dev`, whose lifespan is destructive. This investigation did not establish that dependencies or the test database are available.
 
 ```text

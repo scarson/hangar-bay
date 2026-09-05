@@ -9,7 +9,7 @@
 - [x] Run exploratory, holistic, multipass, and differential hunters.
 - [x] Enumerate and cross-validate every raw finding; reconcile dispositions.
 - [x] Inspect test gaps and update generalizable testing guidance where warranted.
-- [ ] Resolve any material product or architecture decisions with Sam.
+- [x] Resolve any material product or architecture decisions with Sam.
 - [ ] Write and independently review a remediation plan.
 - [x] Independently check the consolidated report and verify reconciliation.
 - [x] Commit the available audit artifacts.
@@ -45,9 +45,9 @@ All four hunters completed. Exploratory, holistic and multipass overlapped; diff
 - Exact probe source is archived as a `.tsx.txt` evidence file outside the regression suite. No application changes remain; a generated route file's line-ending rewrite from the test runner was restored from git.
 - First-wave evidence is committed in `74667ca`; final audit reports and testing guidance are committed alongside this record. A mechanical check verified all 35 labelled entries have exactly one reconciliation row, every local report link resolves, and every audit file has its required header. Independent review also checked unlabelled dispositions and verified both requested report corrections. No review correction remains open.
 
-## Pending decisions
+## Approved decisions
 
-Sam was asked how to treat stored overlong text, whether to retain the save-only price ceiling with clearer validation, and what the Name sort should represent. Independent review established that preserving the existing price policy and correcting its feedback is already authorized; it is included in the feedback finding. Stored-text compatibility and Name-sort semantics remain pending, with recommendations and alternatives in the consolidated report. No answer or compatibility permission is inferred from elapsed time. The skill's implementation-plan and plan-review phases remain pending those two decisions.
+Sam explicitly approved both recommendations on September 5, 2026: preserve existing overlong saved text/readability while rejecting new overlong saves and showing local validation on Apply; sort Name by the displayed contract headline. The established saved-price ceiling remains unchanged with clearer feedback. The remediation plan and its independent reviews are in progress. The root checkout's unrelated config remains untouched in the separate checkout.
 
 ## Operational learning
 
