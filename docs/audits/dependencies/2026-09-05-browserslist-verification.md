@@ -5,8 +5,8 @@
 
 Sam authorized this bounded maintenance follow-up on 2026-09-05. The existing
 [PR 189 — update Browserslist to 4.28.9](https://github.com/scarson/hangar-bay/pull/189)
-is the implementation under review. No duplicate dependency patch or modification of the bot
-branch is planned. Evidence is authored separately on `codex/browserslist-evidence`.
+is the implementation under review. All dependency changes remain in that PR. Evidence is
+authored separately on `codex/browserslist-evidence`.
 
 ## Checklist
 
@@ -17,7 +17,7 @@ branch is planned. Evidence is authored separately on `codex/browserslist-eviden
 - [x] Hand the immutable implementation and evidence to the coordinating agent for the merge decision.
 - [ ] Verify default-branch alert state after merge and publish the separate documentation record.
 
-## Immutable subject
+## Original immutable review subject
 
 - Repository: `scarson/hangar-bay`; observed author: `app/dependabot`.
 - Base: `f457acb2877ff0e33da8ff3419cd3b0d6a4554e9`.
@@ -146,9 +146,36 @@ were attempted without changing settings or branches:
   [check-suite rerequest endpoint](https://docs.github.com/en/rest/checks/suites#rerequest-a-check-suite)
   for suite `92037847041` returned HTTP 404.
 
-No default-setup configuration, permissions, branch contents, or PR state was changed to
-route around the unavailable analysis. The cause remains unresolved and is reported to the
-coordinating agent for the merge decision.
+These two attempts changed no default-setup configuration, permissions, branch contents, or
+PR state. The cause remained unresolved and was reported to the coordinating agent.
+
+### Authorized base refresh
+
+The coordinator authorized rebasing the single bot commit onto updated `dev` and publishing
+it to the existing branch with an exact lease. The remote head was verified as the original
+reviewed commit before fetching. The only intervening base change, from
+[PR 190 — retain production smoke artifacts](https://github.com/scarson/hangar-bay/pull/190),
+was `.github/workflows/deploy.yml`; application sources and dependency inputs were unchanged.
+
+- Refreshed base: `b37c18a3e81ac2b9bcb59dd113e77b6db147d9b8`.
+- Refreshed PR head: `8f96adcbc0c2cbaec638b5f134c80f6303df7fea`.
+- The canonical dependency patch and lockfile hashes both match the original reviewed bytes.
+- The push used an exact `--force-with-lease` expectation of
+  `3f38a4c72b46dd40e395eefda95643fc19f6d57b` for the observed bot branch; it succeeded.
+
+The resulting synchronization started actual
+[CodeQL run 33965230081](https://github.com/scarson/hangar-bay/actions/runs/33965230081), with
+all four Analyze jobs, and fresh
+[application CI run 33965231938](https://github.com/scarson/hangar-bay/actions/runs/33965231938).
+Both pass at the refreshed head. Frontend completed in 3 minutes 51 seconds and OpenAPI drift
+in 2 minutes 13 seconds; changed-path classification passed and backend was intentionally
+filtered. CodeQL's actions, JavaScript/TypeScript, Python, and Rust analyses passed in
+30, 49, 50, and 43 seconds respectively, and the summary check changed to success.
+`gh pr checks --watch` exited 0. The missing-analysis gate is resolved.
+
+No security setting, empty commit, or dependency adjustment was introduced. Local suites were
+not repeated because their application sources and reviewed dependency artifact are identical;
+the refreshed head has its own passing hosted results.
 
 ## Independent reviews and integration
 
@@ -169,6 +196,10 @@ Its CI-only production-build limitation is distinguished from the author's passi
 production build in the archived record. Scratch review/audit files reside outside the
 subject checkout; the canonical patch can be reconstructed from the exact base/head and hash
 recorded in this document.
+
+The archived reviews bind to the original immutable head. Their CodeQL limitations describe
+that original review state; the byte-identical rebase and its hosted results are recorded
+separately in the authorized-base-refresh section.
 
 The coordinating agent alone owns merge, root-dev synchronization, and the final
 default-branch alert-state check. The separate evidence branch will publish documentation
