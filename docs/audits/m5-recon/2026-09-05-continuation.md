@@ -6,7 +6,7 @@ ABOUTME: Preserves verified prerequisites, queued work, and operational constrai
 - [x] Reconcile latest handoffs and shipped work against `origin/dev` at `f457acb`.
 - [x] Check whether the courier ranking study can acquire its required live snapshot.
 - [x] Identify an independently verifiable ingestion prerequisite.
-- [ ] Write and independently review the item-fetch integrity implementation plan.
+- [x] Write and independently review the item-fetch integrity implementation plan.
 - [ ] Implement and verify its tasks, subject to the plan's execution gates.
 - [ ] Publish the reviewed result and record its integration state.
 
@@ -34,3 +34,27 @@ The separate contract-search bug-hunt task owns saved-search validation and SQL 
 
 - [Production-smoke failure diagnostics, PR 190](https://github.com/scarson/hangar-bay/pull/190), merged at `b37c18a3e81ac2b9bcb59dd113e77b6db147d9b8`: `.github/workflows/deploy.yml` preserves existing Playwright failure traces for seven days. Full CI, all four CodeQL analyses, and independent review passed before merge. No deployment was triggered by this task.
 - [Browserslist dependency remediation, PR 189](https://github.com/scarson/hangar-bay/pull/189), merged at `0172ae18d18da0c7fbedcb05fe45b9287ec6eb53`: clean install, build, lint, generation, 509 unit tests, 509 future-clock tests, and 146 browser checks passed (7 expected skips). Both independent reviews found no actionable defects. GitHub alerts 10 and 11 became fixed at `2026-09-05T12:17:06Z`; the installed frontend audit reported zero vulnerabilities. The PR links the final hosted checks and the dependency verification record carries the detailed evidence.
+- [Dependency verification record, PR 191](https://github.com/scarson/hangar-bay/pull/191), merged at `4f1226134d61b254301bb93bcd1c5452fe6a57eb`: preserves the dependency checks and alert closure, and reconciles the frontend coverage handoff. All applicable checks passed.
+- [Reward-per-jump status correction, PR 192](https://github.com/scarson/hangar-bay/pull/192), merged at `a2ac558f1fbb0689ff1a91ccfcbc7249816eeb24`: records the already-completed edge-list findings and the remaining snapshot-access prerequisite. Independent review and all applicable checks passed.
+
+## Item-fetch plan review and preparation
+
+The [item-fetch integrity implementation plan](../../plans/2026-09-05-ingestion-item-fetch-integrity-plan.md) contains two sequential tasks. Its review record is the execution gate; this continuation does not authorize skipping it.
+
+| Round | Reviewer | Raised | Fixed | Rejected |
+|---|---|---:|---:|---:|
+| 1 | Author self-review, with coordinator verification | 4 | 4 | 0 |
+| 2 | GPT-6 Astra high, cold independent | 1 | 1 | 0 |
+| 3 | Claude Opus 5 high, cold independent | 5 | 5 | 0 |
+| 4 | Coordinator self-review of the complete repair wave | 0 | 0 | 0 |
+| 5 | GPT-6 Astra high, cold independent | 0 | 0 | 0 |
+
+Notes: the transport-exception finding appears in both independent rounds and shares one fix. The opening round comprises three author findings and one distinct coordinator finding. The required cross-provider review ran successfully; both pitfalls documents were available. The [final independent review](2026-09-05-item-fetch-plan-final-review.md) raised zero findings. It checked actual sources but could not independently retrieve the upstream OpenAPI document; the coordinator's dated observations remain the stated evidence for that document. No rejection awaits concurrence.
+
+The opening review corrected a nonexistent test name, supplied the concrete response decoder, required SQL read-back after bulk writes, and separated no-cache instrumentation from late-failure fixtures. The [GPT review](2026-09-05-item-fetch-plan-gpt-review.md) and [Claude review](2026-09-05-item-fetch-plan-claude-review.md) preserve their exact findings. Their accepted repair wave replaces the impossible transport-cause assertion with the logged exception's actual class/status/message, binds committed aggregation tests to the dedicated test database, supplies real names/station HTTP fixtures with courier contracts, seeds region stamps with a sentinel, and verifies application headers on every item request. The coordinator read the complete repair diff and checked it against the response and persistence contracts. Production code is unchanged at this preparation stage.
+
+Pattern: `plan-review-item-fetch-integrity`. Tests must reach the failing page before claiming to detect an incomplete result. Fixture defaults can satisfy region-stamp assertions without exercising the writer. A real client in an integration test also requires every adjacent HTTP boundary and an explicit test-database session factory; otherwise swallowed setup failures can hide the mechanism being tested.
+
+The isolated baseline passed 184 focused tests and 822 full backend tests with pristine output. The initial full run had six temporary-directory setup errors; a worktree-local pytest `--basetemp` resolved the host permission issue without source changes. The full passing run is recorded in the ignored verification directory and execution ledger. Git for Windows skill scripts require `/usr/bin` in their shell PATH on this host. A denied external review attempt was replaced, after verifying public repository ownership, with a fixed text bundle and a tool-disabled reviewer; the approved run completed without permission denials.
+
+The unchanged backend also passed flake8 . after moving the temporary PDM environment and uv dependency cache under the existing .venv exclusion. The first lint attempt still encountered uv's extracted third-party packages; inspection identified that second cache tree before relocation. The project lint configuration and production source were unchanged. The ignored runbook records the relocated PDM module invocation and UV_CACHE_DIR.
