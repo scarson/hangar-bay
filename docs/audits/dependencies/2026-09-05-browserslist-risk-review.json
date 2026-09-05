@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "patch": {
+    "repository": "https://github.com/scarson/hangar-bay",
+    "sourceType": "patch_file",
+    "base": "f457acb2877ff0e33da8ff3419cd3b0d6a4554e9",
+    "head": "3f38a4c72b46dd40e395eefda95643fc19f6d57b",
+    "changedFiles": [
+      "app/frontend/web/package-lock.json"
+    ],
+    "sha256": "6adf826723ca09a11ceb1be3ac437b20434372addd7d769af77443318f62975c"
+  },
+  "recommendation": "merge",
+  "workflowLabel": "human_review_required",
+  "impact": {
+    "rating": "moderate",
+    "rationale": "A dependency regression could interrupt frontend build/lint tooling or affect generated frontend assets. Impact is bounded to the static frontend/tooling component; the patch changes no backend route, application security boundary, public schema, or persisted state."
+  },
+  "regressionLikelihood": {
+    "rating": "moderate",
+    "rationale": "All six supported dependency resolutions and relevant application checks pass with no source-visible regression. Browser data and parser behavior change together, while upstream query/statistics regression suites and a full emitted-asset browser matrix were not run."
+  },
+  "regressionProtection": {
+    "rating": "partial",
+    "rationale": "Exact-head dependency validity, zero-vulnerability audit, lint, production build, generated-client stability, unit/future-clock suites, and existing Chromium browser tests pass. Browser fixtures exercise the development server; they do not establish upstream advisory behavior or production compatibility across all browser engines. CodeQL was neutral and unavailable.",
+    "exactHeadChecksPassed": true
+  },
+  "recoverability": {
+    "rating": "easy",
+    "rationale": "Revert the isolated lockfile commit and rebuild/redeploy the prior static assets. There is no migration or incompatible persisted data. Such a rollback restores the affected dependency version and requires a subsequent patched resolution."
+  },
+  "confidence": {
+    "rating": "moderate",
+    "rationale": "Patch bytes, provider identity, complete lock closure, installed caller source, package provenance, and exact-head application validation are established. Non-decision-critical upstream/browser-matrix and CodeQL evidence gaps remain explicit."
+  },
+  "applicability": {
+    "status": "confirmed",
+    "rationale": "The owned frontend installs the single affected Browserslist copy through Babel used by TanStack router tooling and React Hooks linting. PR 189 replaces 4.28.6 with 4.28.9, beyond both advisories' first patched version 4.28.7."
+  },
+  "statusQuoRisk": {
+    "rating": "moderate",
+    "rationale": "The base graph retains a version affected by GHSA-c83g-rgw3-j3cx and GHSA-73wf-gq98-2v4g. Tooling use is confirmed; application exploitability is unproven because query/statistics processing depends on configuration and no attacker-controlled application input path was established. Reported alert 11 auto-dismissal does not patch the graph; alert 10 was open."
+  },
+  "autoMergeExclusions": [
+    "other"
+  ],
+  "affectedRuntimeRoots": [
+    "app/frontend/web/package.json: npm run build -> tsc -b and Vite -> Render static dist assets",
+    "app/frontend/web/vite.config.ts: TanStack router plugin with autoCodeSplitting enabled, including development-server browser tests",
+    "app/frontend/web/eslint.config.js: React Hooks recommended rules -> Babel compilation"
+  ],
+  "importantCallers": [
+    "@tanstack/router-plugin/src/core/code-splitter/compilers.ts: generated split-node babel.parse and Babel traversal",
+    "eslint-plugin-react-hooks/cjs/eslint-plugin-react-hooks.production.js: transformFromAstSync",
+    "@babel/core/lib/config/partial.js -> resolve-targets.js -> @babel/helper-compilation-targets/lib/index.js -> browserslist",
+    "browserslist/index.js and node.js: ordinary query evaluation, cache insertion, custom-stat normalization"
+  ],
+  "riskDrivers": [
+    "Six existing development dependencies change, including browser data and query parsing, rather than only an advisory version string.",
+    "The selected tooling runs in frontend build/CI workflows, so a regression can block asset delivery.",
+    "Partial browser/upstream protection and unavailable CodeQL prevent the strict automatic-merge designation."
+  ],
+  "protectiveFactors": [
+    "481 package records in each lockfile, no added/removed paths, exactly one patched copy of every changed package, and every incoming range is satisfied.",
+    "All six registry tarball URLs and SHA-512 integrity values match npm registry metadata, as independently checked by the coordinating agent.",
+    "No direct manifest, application source, generated API contract, install-script marker, engine requirement, or persistence change.",
+    "No committed Browserslist configuration or stats; Babel skips query evaluation when no nonempty target query is found, while Vite's fixed default targets are unchanged.",
+    "Relevant exact-head checks pass; rollback requires no data conversion."
+  ],
+  "materialBoundaries": [
+    {
+      "id": "locked_dependency_graph",
+      "invariant": "Every installed Browserslist copy is patched, supported by incoming ranges, and bound to the established registry and integrity metadata.",
+      "runtimeRoot": "npm ci for frontend CI and Render asset builds",
+      "counterexample": "A nested 4.28.6 copy survives, a refreshed child violates its incoming range, or a tarball silently changes registry/identity.",
+      "legitimateControl": "Complete base/head lock enumeration finds one 4.28.9 copy and five supported child versions with identical path sets. Babel accepts ^4.24.0 and update-db accepts >=4.21.0. Exact-head npm ls passes; all six dist records match the trusted npm registry; npm ci succeeds.",
+      "result": "supported"
+    },
+    {
+      "id": "frontend_tooling_compatibility",
+      "invariant": "Supported frontend build and lint callers continue to work without silently changing the project's configured compilation target.",
+      "runtimeRoot": "Vite/TanStack router code splitting and React Hooks lint compilation",
+      "counterexample": "The parser/data refresh rejects an ordinary discovered browser query or breaks Babel processing of a generated split route despite a valid lock graph.",
+      "legitimateControl": "The unchanged Babel helper accepts configured queries and uses no query when none is found; no project Browserslist config/stats are committed. Unchanged Vite uses fixed chrome111/edge111/firefox114/safari16.4/ios16.4 defaults. Exact-head lint, production build, frontend tests and existing browser checks pass; arbitrary external configuration and a full production-browser matrix are outside this evidence.",
+      "result": "supported"
+    },
+    {
+      "id": "query_cache_correctness",
+      "invariant": "Bounding cached query results preserves ordinary result computation and separation between query/context identities.",
+      "runtimeRoot": "browserslist/index.js reached from nonempty Babel target queries or legitimate developer tooling",
+      "counterexample": "Eviction causes a later ordinary query to receive another query's result or makes previously accepted input fail.",
+      "legitimateControl": "Installed index.js keys result entries by serialized queries/context and parse entries by queries. Cache hits return their own entries; misses execute the normal resolver/parser and bounded insertion removes an entry before adding one at capacity. Source review supports preserved computation; no advisory reproduction or upstream cache suite was run.",
+      "result": "supported"
+    },
+    {
+      "id": "custom_stats_compatibility",
+      "invariant": "Legitimate custom browser/version usage remains consumable after the normalization guard changes.",
+      "runtimeRoot": "browserslist/node.js getStat/loadStat -> normalizeStats -> index.js fillUsage",
+      "counterexample": "A valid browser/version usage mapping stops working because downstream code requires inherited object methods on normalized statistics.",
+      "legitimateControl": "Installed normalizeStats retains own usage mappings and known-browser normalization in null-prototype output. The downstream fillUsage consumer enumerates version entries and reads their values without requiring inherited object methods. Project configuration commits no custom stats; upstream custom-stat suites were not executed.",
+      "result": "supported"
+    }
+  ],
+  "validation": [
+    {
+      "name": "Immutable patch identity and complete lock comparison",
+      "status": "passed",
+      "protects": "Reviewer recomputed canonical SHA-256 and exact head; one file changes, with six existing package records, 481 records before/after, and no extra copies or paths."
+    },
+    {
+      "name": "Registry identity and clean exact-head installation",
+      "status": "passed",
+      "protects": "Coordinator independently compared version/dist.tarball/dist.integrity for all six changed packages, then reported successful npm ci --ignore-scripts --no-audit --no-fund with 480 packages and valid full npm ls."
+    },
+    {
+      "name": "Exact-head npm audit",
+      "status": "passed",
+      "protects": "Coordinator command exits zero; reviewer independently read .cache/browserslist/audit.json with vulnerabilities:{} and total:0. This checks known advisories, not absence of all security defects."
+    },
+    {
+      "name": "Exact-head production build, lint, and API generation",
+      "status": "passed",
+      "protects": "Coordinator reports tsc -b plus Vite build (202 modules), lint, and generate:api pass; schema/OpenAPI unchanged and only generated line-ending status restored after empty semantic diffs."
+    },
+    {
+      "name": "Exact-head unit and future-clock suites",
+      "status": "passed",
+      "protects": "Coordinator reports 509 passing tests in 33 files in each suite; future clock 2027-10-10T11:49:48.813Z."
+    },
+    {
+      "name": "Exact-head existing Chromium browser suite",
+      "status": "passed",
+      "protects": "Coordinator reports 146 passing, 7 expected skips, exit zero in 37.7 seconds. Existing fixture tests observe frontend requests/rendering through Vite dev, not real backend or full production-browser compatibility."
+    },
+    {
+      "name": "Exact-head application CI run 33963128487",
+      "status": "passed",
+      "protects": "Coordinator verified frontend and OpenAPI drift jobs pass on the assessed head; sole lockfile change correctly selected frontend=true/backend=false."
+    },
+    {
+      "name": "CodeQL check 101298392582",
+      "status": "unavailable",
+      "protects": "Neutral/skipping result reported missing default-setup configurations for actions, JavaScript/TypeScript, Python, and Rust. No completed CodeQL analysis or security-clean conclusion is claimed."
+    },
+    {
+      "name": "Upstream advisory regression suites and production-browser matrix",
+      "status": "skipped",
+      "protects": "These checks were not run. No exploit payloads were executed, and existing Chromium dev-server fixtures cannot substitute for them."
+    },
+    {
+      "name": "Final subject preservation",
+      "status": "passed",
+      "protects": "Coordinator reports clean tracked checkout, unchanged exact head, and lockfile SHA-256 bc1787aa07a7aca0cb5c34c467c2920c93a4d70003e356b777dcc2fcfaa40f8d after validation."
+    }
+  ],
+  "unknowns": [
+    {
+      "summary": "CodeQL did not complete because four configurations were missing. This is a security-analysis gap, but dependency closure and registry/advisory evidence directly assess this lockfile-only remediation.",
+      "decisionCritical": false
+    },
+    {
+      "summary": "Upstream query/cache/statistics suites, all browser engines against emitted production assets, and an actual Render rollout were not executed. Current source/configuration and applicable application checks support merge with partial protection.",
+      "decisionCritical": false
+    },
+    {
+      "summary": "Actual attacker-controlled application query/statistics reachability and repository alert closure after default-branch integration are unproven. Neither is asserted by affected-version remediation.",
+      "decisionCritical": false
+    }
+  ],
+  "evidencePlan": []
+}
