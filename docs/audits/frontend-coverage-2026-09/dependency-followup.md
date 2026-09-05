@@ -3,6 +3,19 @@
 
 # Frontend dependency alert follow-up
 
+## Remediation status
+
+Sam authorized the two-alert fix on 2026-09-05. The isolated `codex/dependency-alerts` patch
+resolves Nano ID to `3.3.18`, js-yaml to `4.3.1`, and its exact-pinning Redocly parent to
+`1.34.19`, entirely within existing dependency ranges. The
+[dependency remediation record](../dependencies/2026-09-05-frontend-alert-remediation.md)
+contains the lockfile scope, passing build/code-generation/frontend checks, fresh independent
+review, and integration gates. GitHub alert closure remains a post-merge check owned by the
+coordinating agent. The full npm audit also surfaced an unchanged `browserslist@4.28.6` residual,
+recorded there for separate maintenance; it is outside these two alerts.
+
+## Initial inspection
+
 GitHub reported both alerts as high severity. That severity is GitHub alert metadata; this note did
 not independently validate exploitability or reproduce either advisory behavior.
 

@@ -12,10 +12,11 @@ coverage changes merged through PR 187). The root checkout and its pre-existing 
 
 - [x] Inspect current alert metadata, locked paths, declared ranges, and project usage.
 - [x] Obtain an independent read-only dependency and compatibility investigation.
-- [ ] Establish a clean installed baseline.
-- [ ] Resolve only supported patch versions and inspect the complete lockfile diff.
-- [ ] Verify installed trees, audit results, frontend lanes, build, and generated-client stability.
-- [ ] Obtain an independent review of the final patch.
+- [x] Establish a clean installed baseline.
+- [x] Resolve only supported patch versions and inspect the complete lockfile diff.
+- [x] Verify installed trees, audit results, frontend lanes, build, and generated-client stability.
+- [x] Obtain an independent review of the final patch.
+- [ ] Complete the handoff-prescribed Codex CLI adversarial review on the committed patch.
 - [ ] Commit and open a PR to `dev`; hand integration to the coordinating agent.
 - [ ] Confirm repository alerts close after the fix reaches the default branch.
 
@@ -70,6 +71,70 @@ against the actual resolved package during installation.
 
 ## Verification and integration
 
-Results are recorded here by the implementing agent as each gate completes. Repository alert
-closure can only be claimed after GitHub processes the merged default-branch dependency graph;
-a clean local audit alone does not establish closure.
+The npm-generated diff changes only three dependency records, with 10 insertions and 10
+deletions. The direct dependency manifest is unchanged. The lockfile SHA-256 is
+`349aa3ade679fb7263b2d0f8af6481a9ed13cf8d2c6c007a9f4d0839acb2f78a`.
+
+Commands run from `app/frontend/web`:
+
+| Gate | Command or check | Result |
+| --- | --- | --- |
+| Baseline | `npm ci --no-audit --no-fund`; `npm test` | 480 installed packages; 33 files, 509 passing tests |
+| Resolution | `npm update nanoid js-yaml @redocly/openapi-core --package-lock-only --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org` | Only the three supported patch updates |
+| Clean installation | `npm ci --no-fund` | Exit 0; 480 installed packages |
+| Dependency validity | `npm ls nanoid js-yaml @redocly/openapi-core postcss --all` | Exit 0; patched versions, no invalid ranges |
+| Production installation scope | `npm ls nanoid js-yaml --all --omit=dev` | Exit 0; only Nano ID remains, at `3.3.18`, through Tailwind/Vite/PostCSS |
+| Complete lock inspection | Enumerate every matching package path and assert the version, registry, and SHA-512 field; inspect the installed Redocly manifest | Exactly one copy each of Nano ID `3.3.18`, js-yaml `4.3.1`, and Redocly `1.34.19`; installed Redocly requires js-yaml `4.3.1` |
+| Advisory scan | `npm audit --json` | Neither requested package appears; exit 1 for the separate Browserslist residual described below |
+| Generated client | `npm run generate:api`; `git diff --exit-code -- src/lib/api/schema.d.ts openapi.json` | Exit 0; generated API client and input schema unchanged |
+| TypeScript and production assets | `npm run build` | Exit 0; `tsc -b` and Vite production build succeeded |
+| Lint | `npm run lint` | Exit 0; no warnings or errors |
+| Unit/component tests | `npm test` | 33 files, 509 passed |
+| Future-clock tests | `npm run test:future-clock` | 33 files, 509 passed; clock `2027-10-10T10:52:03.271Z` |
+| Existing browser tests | `npm run e2e -- --workers=4` | Exit 0; 146 passed, 7 expected skips; 46.6 seconds |
+| Scope and whitespace | `git diff --check`; inspect manifest/generated-file diffs | No substantive source or manifest changes; no whitespace errors |
+
+Browser skips are the existing three opt-in live-smoke cases and four viewport-inapplicable
+cases. No browser fixtures or mocks were added or changed. The browser command ran with normal
+Windows child-process permissions after verifying port 5173 was free; it released that port at
+completion. Inherited `NO_COLOR` was removed because Playwright sets `FORCE_COLOR`. Generated
+client/router files acquired only line-ending status from normal tools, and those artifacts were
+restored after confirming their substantive diffs were empty.
+
+The strongest focused evidence for remediation is removal of all affected installed/locked
+versions plus absence of the two requested packages from the npm audit result. No exploit
+reproduction was performed. Legitimate asset processing, linting, code generation, and existing
+frontend behavior passed their applicable checks. Backend tests and live production smoke were
+not rerun for this dependency-only patch; the PR's OpenAPI drift job remains the complete
+backend-export/client-generation gate.
+
+### Fresh patch review
+
+A fresh read-only reviewer returned **CONVERGED — no findings** against the lockfile diff from
+`74cb0f6e26c882c31fea033ce25e72cb2e1677dc`. It independently verified single patched copies,
+incoming dependency ranges, unchanged manifest, registry tarball URLs and integrity fields,
+and recomputed the cached tarballs' SHA-512 values. It inspected PostCSS's Nano ID caller,
+ESLint's YAML callers, and Redocly's parsing/code-generation integration. No tests, applications,
+installations, or exploit payloads were run by that reviewer. Its registry verification used
+cached metadata and archives; a separate coordinating review also checked live registry metadata.
+Neither review found a concrete surviving affected copy, range violation, or regression.
+
+### Separate residual: Browserslist
+
+The full npm audit reports one high-severity vulnerable package, `browserslist@4.28.6`, with
+[unbounded-query-cache advisory GHSA-c83g-rgw3-j3cx](https://github.com/advisories/GHSA-c83g-rgw3-j3cx)
+and [custom-stats advisory GHSA-73wf-gq98-2v4g](https://github.com/advisories/GHSA-73wf-gq98-2v4g).
+Both reported affected ranges include `<=4.28.6`. The version, registry URL, integrity, and
+development-only marker are identical in the pre-patch `d43da7c` lockfile; this patch did not
+introduce the exposure. The installed path is `@tanstack/router-plugin` -> `@babel/core` ->
+`@babel/helper-compilation-targets` -> `browserslist`, with a deduplicated reference from
+`update-browserslist-db`. An attacker-controlled project input path was not established and no
+advisory behavior was reproduced.
+
+Per the repository's out-of-scope journal rule, the coordinating agent retained this as a separate
+maintenance follow-up rather than expanding Sam's two-alert request. It does not invalidate
+the two-package remediation, but it prevents claiming the entire npm audit is clean. A separate
+follow-up should inspect supported patched versions and repeat the affected tooling checks.
+
+Repository alert closure can only be claimed after GitHub processes the merged default-branch
+dependency graph; a clean result for the targeted packages does not establish GitHub closure.
