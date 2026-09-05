@@ -13,6 +13,7 @@
 - [x] Write and independently review a remediation plan.
 - [x] Independently check the consolidated report and verify reconciliation.
 - [x] Commit the available audit artifacts.
+- [x] Complete both editorial passes with independent meaning-preservation checks.
 
 ## Scope and method
 
@@ -47,7 +48,11 @@ All four hunters completed. Exploratory, holistic and multipass overlapped; diff
 
 ## Approved decisions
 
-Sam explicitly approved both recommendations on September 5, 2026: preserve existing overlong saved text/readability while rejecting new overlong saves and showing local validation on Apply; sort Name by the displayed contract headline. The established saved-price ceiling remains unchanged with clearer feedback. The [remediation plan](../plans/2026-09-05-contract-search-bug-hunt-remediation-plan.md) passed construction review in six rounds and final bug-hunt review in four rounds, each ending with an independent zero-finding round. The final editorial pass and artifact verification remain. The root checkout's unrelated config remains untouched in the separate checkout.
+Sam explicitly approved both recommendations on September 5, 2026: preserve existing overlong saved text/readability while rejecting new overlong saves and showing local validation on Apply; sort Name by the displayed contract headline. The established saved-price ceiling remains unchanged with clearer feedback. The [remediation plan](../plans/2026-09-05-contract-search-bug-hunt-remediation-plan.md) passed construction review in six rounds and final bug-hunt review in four rounds, each ending with an independent zero-finding round. The editorial passes accepted 29 and 25 changed hunks respectively, with no drift or baseline notes. The root checkout's unrelated config remains untouched in the separate checkout.
+
+**Completion:** DONE for the bug-hunt cycle and reviewed fix plan. Production implementation has not started; all six phase banners remain NOT STARTED. Continue through the plan with sequential fresh GPT-6 Astra agents. The [complete review record](../learnings/2026-09-05-contract-search-review.md) preserves the verification limits, phase-boundary rebase and certification history.
+
+Final mechanical verification checked 21 audit/planning artifacts: every local link resolves, every required header exists and all 35 labelled raw findings have exactly one reconciliation row. The Living Document Contract remains verbatim, all six phases remain NOT STARTED, seven tasks are present and the latest review record names the four-round final cycle. The polished plan matches its committed blob and its commit directly follows certification. The branch diff against fetched `origin/dev` contains only documentation. Git whitespace checks found no errors. No merge or root-checkout reset was performed.
 
 ## Operational learning
 

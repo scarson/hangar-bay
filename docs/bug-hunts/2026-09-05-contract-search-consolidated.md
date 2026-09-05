@@ -1,5 +1,5 @@
 <!-- ABOUTME: Consolidates the contract-search bug hunt with source and runtime evidence. -->
-<!-- ABOUTME: Reconciles every hunter candidate, testing gap, and unresolved remediation decision. -->
+<!-- ABOUTME: Reconciles every hunter candidate, testing gap, and approved remediation decision. -->
 
 # Contract search bug hunt — consolidated findings
 
@@ -7,7 +7,7 @@
 **Audited source:** `d43da7c9313de7ce19aa9de21242b07949da4364`, freshly fetched `origin/dev` at scope selection.
 **Mode:** Full cycle. The surface joins SQL predicates/counts/pagination, URL normalization and history, delayed and cached requests, readiness, and saved-search persistence/replay. These interactions justify independent methods beyond a small-file snapshot.
 **Agents:** Four hunters, two independent verifiers and one report reviewer, all `gpt-6-astra`, reasoning effort `high`. The harness permits three active children, so the differential hunter started after the exploratory hunter finished; the other methods overlapped. Cross-validation accounted for all four completed reports.
-**Status:** Findings and test-gap analysis complete; Sam approved both remediation recommendations on September 5, 2026. The implementation plan and its review are in progress. No production fix is claimed.
+**Status:** DONE — findings, test-gap analysis and the [remediation plan](../plans/2026-09-05-contract-search-bug-hunt-remediation-plan.md) are complete. Sam approved both remediation recommendations on September 5, 2026. Construction and final plan reviews each ended with an independent zero-finding round; both editorial passes preserved certified meaning. All implementation phases remain NOT STARTED. No production fix is claimed.
 
 Scope is defined in the [audit progress and scope record](2026-09-05-contract-search-progress.md). Primary paths are the backend contract/read and saved-search services, routes and schemas, and frontend contracts/saved-searches features. Ingestion writers, authentication internals, dependency maintenance and reward-per-jump work were adjacent context or excluded work.
 
@@ -201,4 +201,6 @@ Before final consolidation, every labelled raw entry was enumerated: exploratory
 
 The principal pattern is agreement within tested functions but disagreement between them over time or across validation boundaries. All four methods found the page-rewrite interaction; three found the warm-cache readiness failure and invisible row errors. Independent verification promoted narrow summary/cap-feedback concerns rather than treating every presentation choice as subjective. Most rejected candidates were already documented intentional behavior, which made reading decision records valuable.
 
-The first three hunter reports and observation source are committed in `74667ca`; consolidation and report review landed in `2d19d06`. The [independent report review](2026-09-05-contract-search-report-review.md) confirmed the evidence and reconciliation; its corrections are incorporated here. Sam's explicit approval resolves stored-text compatibility and Name-sort semantics. Continue with the remediation plan and required independent reviews; no production implementation is represented as complete.
+The first three hunter reports and observation source were committed in `74667ca`; consolidation and report review landed in `2d19d06`. Those historical commits remain reachable through the local audit tag `audit/contract-search-2026-09-05-review-history` after the campaign rebase. The [independent report review](2026-09-05-contract-search-report-review.md) confirmed the evidence and reconciliation; its corrections are incorporated here. Sam's explicit approval resolves stored-text compatibility and Name-sort semantics.
+
+The [six-phase, seven-task remediation plan](../plans/2026-09-05-contract-search-bug-hunt-remediation-plan.md) covers all six bugs, the fixture warning issue and approved Name ordering. Its [review and editorial record](../learnings/2026-09-05-contract-search-review.md) records six construction-review rounds, four final-review rounds and meaning-preservation verification. All agents were GPT-6 Astra/high; cross-provider review was omitted under Sam's explicit constraint. Execute the tasks sequentially with fresh Astra agents because frontend files overlap and generated API types depend on backend validation. PostgreSQL checks and bounded sort measurements remain required implementation gates.

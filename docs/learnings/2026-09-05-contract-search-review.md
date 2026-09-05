@@ -53,6 +53,14 @@ The [round-four independent review](../bug-hunts/2026-09-05-contract-search-plan
 
 Notes: all reviewers remain GPT-6 Astra/high under Sam's explicit constraint. Cross-provider review is omitted under that constraint. No rejection awaits concurrence.
 
+## Final editorial pass
+
+The [complete final editorial verification](../bug-hunts/2026-09-05-contract-search-editorial-2-verification.md) marks all 25 zero-context Git diff hunks PRESERVED, with no drift or baseline notes. Separate fresh GPT-6 Astra/high editor and verifier contexts were used; cross-provider review was omitted under Sam's constraint. The complete candidate was accepted without manual patching.
+
+editorial-pass: attempts 1 · hunks rewritten 25, reverted 0 · certified `18f2a3a5c7f56c12a392fd00d069de1858af0546` → `838b6bda4ab36df61749eed0f8615ce1046b946f` · prompts v1.
+
+The polish commit contains only the plan and is directly atop certification. The initial hunk-count cross-check used Python's diff segmentation and counted 24; repeating it with the verifier's zero-context Git diff confirmed all 25 report entries before acceptance. No plan bytes were changed by the failed cross-check.
+
 ## Reusable observations
 
 - Query `enabled` does not constrain manual `refetch`. Validation needs both dispatch gating and an explicit UI state that accounts for live versus debounced input.
@@ -65,3 +73,7 @@ Notes: all reviewers remain GPT-6 Astra/high under Sam's explicit constraint. Cr
 ## Operational record
 
 The worktree remains isolated from concurrent root-checkout work. Initial file guesses for a notification hook and router helper were corrected using file discovery; the plan names the verified files. Installed frontend query-core source and Python Unicode enumeration informed planning, but neither substitutes for the required HTTP/PostgreSQL tests.
+
+At the completed-review phase boundary, the clean campaign branch was rebased onto freshly fetched `origin/dev` at `4f12261`. The audited production source, regression tests and selected plan/design bytes did not change across the rebase. Upstream changes covered dependency maintenance, deployment diagnostics and handoff evidence. The local tag `audit/contract-search-2026-09-05-review-history` retains the complete pre-rebase history at `c4fae6494c87665e74d77cc6b1e31e97dc6cd8cf`, preserving the historical certification and editorial commit references in this record. The rebased final-review certification is `18f2a3a5c7f56c12a392fd00d069de1858af0546`.
+
+The second editorial pass's initial byte check aborted because Git checkout converted LF to CRLF. A raw-byte comparison proved checkout conversion was the only difference. A command-scoped `core.autocrlf=false` checkout restored the exact certified blob; the repeated check passed before dispatch. No global Git setting or plan substance changed. The pitfall-ID census after rebase found no duplicates, and the shared-pitfall diff contains only the two intended additions.
