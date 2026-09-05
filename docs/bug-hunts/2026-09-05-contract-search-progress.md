@@ -6,12 +6,13 @@
 ## Checklist
 
 - [x] Research and freeze the audit scope.
-- [ ] Run exploratory, holistic, multipass, and differential hunters.
-- [ ] Enumerate and cross-validate every raw finding; reconcile dispositions.
-- [ ] Inspect test gaps and update generalizable testing guidance where warranted.
+- [x] Run exploratory, holistic, multipass, and differential hunters.
+- [x] Enumerate and cross-validate every raw finding; reconcile dispositions.
+- [x] Inspect test gaps and update generalizable testing guidance where warranted.
 - [ ] Resolve any material product or architecture decisions with Sam.
 - [ ] Write and independently review a remediation plan.
-- [ ] Verify and commit the completed audit artifacts.
+- [x] Independently check the consolidated report and verify reconciliation.
+- [x] Commit the available audit artifacts.
 
 ## Scope and method
 
@@ -29,9 +30,25 @@ All dispatched agents use `gpt-6-astra` with `high` reasoning effort, as Sam req
 
 - Root checkout began on `dev` with only untracked `.codex/config.toml`. Sam was asked about handling it under AGENTS.md; that decision remains pending. Audit work is isolated in `.claude/worktrees/bug-hunt-contract-search-2026-09-05`, leaving the file untouched. No answer is inferred from elapsed time.
 - Git's ownership guard is handled with command-scoped `safe.directory`, without global configuration changes. Fetch and worktree metadata required normal host permissions because `.git` is read-only in the sandbox.
-- The fresh worktree has no installed frontend/backend dependencies. No application server or database lifecycle is started by this audit.
+- The worktree began without installed dependencies; frontend dependencies were subsequently restored for the observations below. No application server or database lifecycle was started by this audit.
 - Existing known decisions and residuals must be rechecked against current source before being treated as fresh bugs.
 
 ## Hunter status
 
-Exploratory, holistic, and multipass hunters started against the frozen source revision before worktree creation. Their assigned report paths now point into this isolated checkout. Differential dispatch is pending an available slot.
+All four hunters completed. Exploratory, holistic and multipass overlapped; differential started when exploratory completed. Two additional Astra/high verifiers assessed saved-search UI behavior and boundary/storage policy. A further Astra/high reviewer confirmed consolidation and reconciliation; the review's two corrections and optional ordering clarification are incorporated.
+
+## Findings and verification
+
+- Six confirmed bugs are recorded in the [consolidated findings and reconciliation](2026-09-05-contract-search-consolidated.md). All labelled raw hunter entries and descriptive cleared concerns have dispositions.
+- Frontend dependencies were restored from the unchanged committed lockfile. Baseline: 509 tests passed across 33 files, but six notification-query warnings make the output non-pristine. The report records the fixture root cause separately.
+- Four runtime observation probes confirmed history/page overwrite, invisible rename error, readiness retained after failed refresh on a later list response, and overlong payload/API-bound disagreement. The final observation run passed all four with clean output. The first run's one failure was an observation-helper assumption about unfetched cache entries; correcting that assumption and rerunning settled it.
+- Exact probe source is archived as a `.tsx.txt` evidence file outside the regression suite. No application changes remain; a generated route file's line-ending rewrite from the test runner was restored from git.
+- First-wave evidence is committed in `74667ca`; final audit reports and testing guidance are committed alongside this record. A mechanical check verified all 35 labelled entries have exactly one reconciliation row, every local report link resolves, and every audit file has its required header. Independent review also checked unlabelled dispositions and verified both requested report corrections. No review correction remains open.
+
+## Pending decisions
+
+Sam was asked how to treat stored overlong text, whether to retain the save-only price ceiling with clearer validation, and what the Name sort should represent. Independent review established that preserving the existing price policy and correcting its feedback is already authorized; it is included in the feedback finding. Stored-text compatibility and Name-sort semantics remain pending, with recommendations and alternatives in the consolidated report. No answer or compatibility permission is inferred from elapsed time. The skill's implementation-plan and plan-review phases remain pending those two decisions.
+
+## Operational learning
+
+Use the existing Vitest environment for router/component checks; a standalone JSDOM loader also has to reproduce browser globals and conditional exports. The differential hunter stopped its standalone setup after three unsuccessful attempts; the coordinator's existing-environment observation succeeded. Reuse actual application hooks/components and intercept only fetch; cache status and rendered state give stronger evidence than request counters.
