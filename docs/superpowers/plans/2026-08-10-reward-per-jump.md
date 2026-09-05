@@ -25,7 +25,8 @@ Router/Query · pytest · vitest + Playwright
 
 ## ⛔ Blocking status
 
-**Phase 0 is executable now. Phases 1–4 are NOT.**
+**Phase 0 is partially complete: Task 0.1 is done; Task 0.2 awaits access to its required live
+snapshot. Phases 1–4 remain blocked on Sam's data-source and licensing decision.**
 
 The spec [`2026-08-10-reward-per-jump-spec.md`](../specs/2026-08-10-reward-per-jump-spec.md) asks
 Sam four questions. Decision 1 — **do jump counts come from ESI's `/route/` endpoint, or from an
@@ -104,21 +105,23 @@ notes and commit messages.
 <!-- The status table stays directly below this heading. New content goes in the
      Deviations / Discoveries subsections below it — never above the table. -->
 
-**Overall:** Not started. 0/5 phases shipped; Phases 1–4 blocked on the spec's Decision 1.
-
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Falsify or confirm the data source | ⬜ Not started | — | executable now; no decision needed |
+| 0 — Falsify or confirm the data source | ⏸ Partially complete | — (phase incomplete) | Task 0.1 complete in [edge-list findings PR #185](https://github.com/scarson/hangar-bay/pull/185), source `733e7b1`, merge `793b16f`; [Task 0.2 ranking measurement](#task-02-measure-whether-the-denominator-choice-actually-reorders-anything) awaits the required live snapshot |
 | 1 — Route graph and jump counts | ⬜ Not started | — | blocked on Decision 1 |
 | 2 — Ingestion wiring and denormalization | ⬜ Not started | — | blocked on Phase 1 |
 | 3 — API surface | ⬜ Not started | — | blocked on Phase 2 |
 | 4 — Courier tab | ⬜ Not started | — | blocked on Phase 3 |
 
+**Overall:** 0/5 phases shipped. Phase 0 has 1/2 tasks complete; Task 0.2 is deferred pending
+access to its required live snapshot. Phases 1–4 remain blocked on the spec's Decision 1.
+
 ### Deviations
 - _None yet._
 
 ### Discoveries
-- _None yet._
+- 2026-09-05: [Task 0.1's edge-list findings](#task-01-obtain-and-check-the-adjacency-edge-list) were already merged; the plan's unstarted status did not reflect that evidence.
+- 2026-09-05: [Task 0.2's live-population access prerequisite](#task-02-measure-whether-the-denominator-choice-actually-reorders-anything) remains unmet; the public list response does not establish the required frozen courier population.
 
 ---
 
@@ -147,7 +150,8 @@ Every task below assumes these have been read once, at the start of the session:
 
 ## Phase 0 — Falsify or confirm the data source
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ⏸ DEFERRED — Task 0.1 completed 2026-08-10; Task 0.2 is deferred
+pending [access to the required live snapshot](#task-02-measure-whether-the-denominator-choice-actually-reorders-anything).
 
 Phase 0 answers two questions that decide whether the spec's recommendation survives. It writes no
 production code and ships no feature. **Its output is evidence for Sam, not an implementation.**
@@ -156,6 +160,12 @@ Run it before asking Sam to decide, or alongside; either way its findings go int
 Decision 1 section before that decision is taken.
 
 ### Task 0.1: Obtain and check the adjacency edge list
+
+**Execution Status:** ✅ DONE — 2026-08-10, [edge-list findings PR #185](https://github.com/scarson/hangar-bay/pull/185).
+Source commit `733e7b1eb6e20f834b2bd6c8dc72cdb1beb92b0b`; merge commit
+`793b16f9815882e7844968e7f18a6bb8033723e5`, both reachable from `origin/dev` at the 2026-09-05
+status check. The [spec appendix's fetched edge-list findings](../specs/2026-08-10-reward-per-jump-spec.md#phase-0-task-01--the-edge-list-actually-fetched-2026-08-10)
+record the measurements, security coverage, and unresolved licensing position. No data was vendored.
 
 **Files:**
 - Create: `app/backend/tools/route_graph/` (scratch — nothing here ships in this task)
@@ -189,6 +199,20 @@ repository in this task.** Vendoring is a distribution decision and it is Sam's.
 **Do NOT:** write the BFS yet, add a dependency, or commit the data file.
 
 ### Task 0.2: Measure whether the denominator choice actually reorders anything
+
+**Execution Status:** ⏸ DEFERRED — access to the required live snapshot is unavailable.
+
+The 2026-09-05 access check found no available Render API key or production database connection
+in the process or expected root/backend environment files. A public contract-list request returned
+HTTP 200 but lacked coverage metadata and `end_location_system_id`; it did not establish support
+for the requested courier filter, the courier population, or runtime `AGGREGATION_REGION_IDS`.
+Paginating that changing listing does not satisfy the single-instant snapshot requirement.
+
+**Unblock condition:** obtain a read-only, consistent export of the live courier population across
+every runtime-configured `AGGREGATION_REGION_IDS` region, with contract IDs, rewards, both endpoint
+system IDs, eligibility fields, extraction time, and the deployed configured region list. Freeze
+that population once for both rankings and apply the exclusions in Step 1. The held production
+database allow rule `198.37.143.189/32` remains unchanged. No ranking measurements are recorded.
 
 **Files:**
 - Create: `app/backend/tools/route_graph/inversion_count.py` (scratch)
