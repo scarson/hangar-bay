@@ -12,8 +12,9 @@ Work order: [latest coverage handoff](../../superpowers/handoffs/2026-08-10-wave
 - [x] Cover filter-control rows N13–N15.
 - [x] Mutation-check load-bearing assertions and restore production files: 67/67 caught.
 - [x] Run eslint, TypeScript, Vitest, future-clock, and existing Playwright lanes.
-- [ ] Independent adversarial review and any scoped re-review.
-- [ ] Update living report and handoff, commit, open Routine PR, gate merge on green CI.
+- [x] Independent adversarial review and any scoped re-review: CONVERGED, no findings.
+- [x] Update living report and handoff, commit, open Routine PR, and establish the CI gate.
+- Integration status and final commit checks: [PR #187 — frontend coverage](https://github.com/scarson/hangar-bay/pull/187). Merge requires every check to finish successfully on the current PR head; final documentation changes require a fresh CI run.
 
 ## Scope and preflight decisions
 
@@ -37,6 +38,7 @@ Work order: [latest coverage handoff](../../superpowers/handoffs/2026-08-10-wave
 - Existing Playwright baseline: 146 passed, 7 skipped. The three opt-in live-smoke cases and four viewport-inapplicable cases account for all skips. Initial output contained a Node color-variable warning; final verification will remove the conflicting `NO_COLOR` variable from the command environment.
 - Browser verification with the conflicting environment variable removed and normal process permissions: 146 passed, 7 expected skips, exit 0 in 29.9 seconds, no warnings or errors.
 - Full final lanes: eslint and `tsc -b` exit 0 with no output; Vitest 509/509; future-clock 509/509 at `2027-10-10T10:19:27.096Z`; existing Playwright 146 passed and 7 expected skips. Production source and dependency manifests are unchanged.
+- [CI run 33960663027](https://github.com/scarson/hangar-bay/actions/runs/33960663027) passed frontend, OpenAPI drift, and change detection on reviewed head `bca9e19317726e683d36ad4355ad3dc127085842`; all CodeQL checks passed. The completed change-detection log explicitly reports `backend=false` and `frontend=true`, which accounts for the backend skip. The PR check list is authoritative for subsequent heads.
 
 ## Environment findings
 
@@ -48,4 +50,8 @@ Vitest renders substituted string labels with quotes in parameterized test title
 
 - Preliminary column review: CONVERGED, no claim-level findings; [focused review](columns-review.md).
 - Parent review expanded history coverage from Search alone to all nine text/numeric inputs, added sole-filter category and both blueprint-flag cases, and required awaiting final request values rather than a first-keystroke request count. These findings were fixed before the mutation round.
-- Final independent Codex review pending complete mutation and suite evidence.
+- [Final independent Codex review](independent-review.md): CONVERGED on `bca9e19317726e683d36ad4355ad3dc127085842`, no claim-level findings or material documentation inaccuracies. Review was read-only and did not rerun tests; the five parent verification lanes and PR CI supply execution evidence.
+
+## Maintenance follow-up
+
+GitHub reported two existing high-severity dependency alerts during publication, for `nanoid` and `js-yaml`. The [dependency follow-up](dependency-followup.md) records installed versions, toolchain paths, uncertainty about runtime reachability, and the separate maintenance verification needed. These are outside this test-only change and do not block its integration; dependency maintenance remains open. No advisory behavior was reproduced and no dependencies were changed.
