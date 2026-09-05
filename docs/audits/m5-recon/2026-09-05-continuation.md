@@ -8,7 +8,8 @@ ABOUTME: Preserves verified prerequisites, queued work, and operational constrai
 - [x] Identify an independently verifiable ingestion prerequisite.
 - [x] Write and independently review the item-fetch integrity implementation plan.
 - [ ] Implement and verify its tasks, subject to the plan's execution gates.
-- [ ] Publish the reviewed result and record its integration state.
+- [ ] Publish the production implementation and record its integration state.
+- [ ] Publish the reviewed plan and session handoff at Sam's requested stopping point.
 
 ## Current scope
 
@@ -58,3 +59,9 @@ Pattern: `plan-review-item-fetch-integrity`. Tests must reach the failing page b
 The isolated baseline passed 184 focused tests and 822 full backend tests with pristine output. The initial full run had six temporary-directory setup errors; a worktree-local pytest `--basetemp` resolved the host permission issue without source changes. The full passing run is recorded in the ignored verification directory and execution ledger. Git for Windows skill scripts require `/usr/bin` in their shell PATH on this host. A denied external review attempt was replaced, after verifying public repository ownership, with a fixed text bundle and a tool-disabled reviewer; the approved run completed without permission denials.
 
 The unchanged backend also passed flake8 . after moving the temporary PDM environment and uv dependency cache under the existing .venv exclusion. The first lint attempt still encountered uv's extracted third-party packages; inspection identified that second cache tree before relocation. The project lint configuration and production source were unchanged. The ignored runbook records the relocated PDM module invocation and UV_CACHE_DIR.
+
+## Requested checkpoint
+
+After resetting usage, Sam requested the next natural stopping point, followed by a handoff and PR. The selected boundary is the reviewed implementation plan; both production tasks remain unstarted. Certification is 6b420dad0192e05a57ea26f9bca8a9d8f10ce99e; editorial commit fd29e6d2dfc4e573d5d2d3bc2bbc1b8b9fc7dbf9 accepted 11 verified hunks and restored one baseline hunk. The [editorial verifier report](2026-09-05-item-fetch-editorial-review.md) preserves the comparison. The first verifier response lacked verdicts and was rejected; a fresh tool-disabled Claude Opus 5 high comparison returned the required 12 hunk verdicts. An exit code of zero alone does not certify a model's review output.
+
+The [bounded maintenance follow-up assessment](2026-09-05-next-maintenance-action.md) found ingestion metrics and queued logging unimplemented but without dedicated reviewed plans. It was saved before its agent hit a usage limit; the coordinator read the complete report and verified the instrument declarations, logging setup and implementation absence. Ingestion metrics is the smaller later planning task; its source overlap makes it follow the item-fetch production change, not this documentation PR.
