@@ -9,7 +9,7 @@ ABOUTME: Preserves verified prerequisites, queued work, and operational constrai
 - [x] Write and independently review the item-fetch integrity implementation plan.
 - [ ] Implement and verify its tasks, subject to the plan's execution gates.
 - [ ] Publish the production implementation and record its integration state.
-- [ ] Publish the reviewed plan and session handoff at Sam's requested stopping point.
+- [x] Publish the reviewed plan and session handoff at Sam's requested stopping point.
 
 ## Current scope
 
@@ -65,3 +65,11 @@ The unchanged backend also passed flake8 . after moving the temporary PDM enviro
 After resetting usage, Sam requested the next natural stopping point, followed by a handoff and PR. The selected boundary is the reviewed implementation plan; both production tasks remain unstarted. Certification is 6b420dad0192e05a57ea26f9bca8a9d8f10ce99e; editorial commit fd29e6d2dfc4e573d5d2d3bc2bbc1b8b9fc7dbf9 accepted 11 verified hunks and restored one baseline hunk. The [editorial verifier report](2026-09-05-item-fetch-editorial-review.md) preserves the comparison. The first verifier response lacked verdicts and was rejected; a fresh tool-disabled Claude Opus 5 high comparison returned the required 12 hunk verdicts. An exit code of zero alone does not certify a model's review output.
 
 The [bounded maintenance follow-up assessment](2026-09-05-next-maintenance-action.md) found ingestion metrics and queued logging unimplemented but without dedicated reviewed plans. It was saved before its agent hit a usage limit; the coordinator read the complete report and verified the instrument declarations, logging setup and implementation absence. Ingestion metrics is the smaller later planning task; its source overlap makes it follow the item-fetch production change, not this documentation PR.
+
+## Preparation publication
+
+At `2026-09-05T19:59:21Z`, [PR 194 — item-fetch implementation preparation](https://github.com/scarson/hangar-bay/pull/194) was open against `dev`, with head `d31892bd8fd045541ab3929b2dccb5d708132309`. It published the reviewed plan, frozen handoff, maintenance assessment and review evidence. Both production tasks remained unstarted. The documentation PR is Routine; the future production PR remains Review — data-integrity paths.
+
+The [independent handoff review](2026-09-05-item-fetch-handoff-review.md) found zero material issues across all six perspectives after the author's repairs. Its exact reviewed handoff digest remains the artifact boundary; the handoff's pre-publication readings are intentionally frozen. A subsequent documentation validation covered all nine changed Markdown files: nine valid ABOUTME headers, 46 resolving local links, six resolving section anchors, 11 resolving full commit references, and no production delta. The coordinator independently reproduced the link, anchor, header and documentation-only checks and passed `git diff --check`.
+
+The [adversarial preparation PR review](2026-09-05-item-fetch-pr-review.md) accepted one later clarification to the certified plan: the page-3 transport-failure fetch must assert five scoped item requests in page order `[1, 2, 3, 3, 3]`, not an ambiguous count of three HTTP attempts. This is a documentation correction; the production retry policy and both phase statuses are unchanged. Its report links the fresh final-artifact verification, written before merge.
