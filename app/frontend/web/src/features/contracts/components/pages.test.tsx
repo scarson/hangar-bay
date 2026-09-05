@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   anonymousMe,
@@ -10,6 +10,7 @@ import {
 } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
 import { daysFromNow, minutesFromNow } from '../../../test/dates'
+import { Pagination } from './Pagination'
 
 /**
  * A list row: the summaries the server derives (primary_label, the blueprint
@@ -298,6 +299,104 @@ describe('ContractsPage', () => {
     await waitFor(() => expect(router.state.location.search).toMatchObject({ page: 1 }))
     expect(screen.queryByText(/no contracts match/i)).not.toBeInTheDocument()
   })
+
+  it('keeps the out-of-range redirect transient state visibly loading', async () => {
+    // Hold the corrective REPLACE at the real history boundary so the transient
+    // render stays observable. Without this branch, the stale page-9 envelope
+    // would render as an empty 30-result table while the redirect is pending.
+    stubFetch(
+      anonymousMe((url) =>
+        url.includes('page=9')
+          ? jsonResponse(listPage([], { total: 30, page: 9 }))
+          : jsonResponse(listPage([ROW], { total: 30 })),
+      ),
+    )
+
+    const { router } = renderApp('/contracts')
+    await screen.findByText('Tristan')
+    const unblock = router.history.block({
+      blockerFn: ({ action }) => action === 'REPLACE',
+    })
+    try {
+      await router.navigate({ to: '/contracts', search: (previous) => ({ ...previous, page: 9 }) })
+
+      expect(await screen.findByText('30 matching')).toBeInTheDocument()
+      expect(router.state.location.search).toMatchObject({ page: 9 })
+      expect(screen.getByRole('status', { name: 'Loading contracts' })).toBeInTheDocument()
+      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    } finally {
+      unblock()
+    }
+  })
+
+  it('uses the default page size when a defensive response omits size', async () => {
+    // Defensive impossible-wire fixture: ContractPageSchema requires size, but
+    // the component deliberately retains a fallback for a malformed/partial
+    // envelope. With 51 results, the default 50 makes page 2 the last page.
+    stubFetch(
+      anonymousMe((url) =>
+        url.includes('page=3')
+          ? jsonResponse(listPage([], { total: 51, page: 3, size: undefined }))
+          : jsonResponse(listPage([ROW], { total: 51, page: 2, size: undefined })),
+      ),
+    )
+
+    const { router } = renderApp('/contracts?page=3')
+
+    expect(await screen.findByText('Tristan')).toBeInTheDocument()
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ page: 2 }))
+    expect(await screen.findByText('Page 2 of 2 · 51 contracts')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Previous/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Next/ })).toBeDisabled()
+  })
+
+  it('shows the disclosure glyph that matches the filter rail state', async () => {
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+
+    renderApp('/contracts')
+    await screen.findByText('Tristan')
+
+    const filters = screen.getByRole('button', { name: 'Filters' })
+    expect(filters.querySelector('[aria-hidden="true"]')).toHaveTextContent('+')
+
+    await userEvent.click(filters)
+    expect(filters).toHaveAttribute('aria-expanded', 'true')
+    expect(filters.querySelector('[aria-hidden="true"]')).toHaveTextContent('−')
+
+    await userEvent.click(filters)
+    expect(filters).toHaveAttribute('aria-expanded', 'false')
+    expect(filters.querySelector('[aria-hidden="true"]')).toHaveTextContent('+')
+  })
+
+  it.each([
+    { label: 'Search', value: 'raven', parameter: 'search', expected: 'raven' },
+    { label: 'Minimum price', value: '11', parameter: 'min_price', expected: 11 },
+    { label: 'Maximum price', value: '22', parameter: 'max_price', expected: 22 },
+    { label: 'Minimum runs', value: '3', parameter: 'min_runs', expected: 3 },
+    { label: 'Maximum runs', value: '4', parameter: 'max_runs', expected: 4 },
+    { label: 'Minimum material efficiency', value: '5', parameter: 'min_me', expected: 5 },
+    { label: 'Maximum material efficiency', value: '6', parameter: 'max_me', expected: 6 },
+    { label: 'Minimum time efficiency', value: '7', parameter: 'min_te', expected: 7 },
+    { label: 'Maximum time efficiency', value: '8', parameter: 'max_te', expected: 8 },
+  ])(
+    '$label text changes replace history entries',
+    async ({ label, value, parameter, expected }) => {
+      stubFetch(withTaxonomy(anonymousMe(segmentedPage), READY_TAXONOMY))
+
+      const { router } = renderApp('/contracts')
+      await screen.findByText('Tristan')
+      expect(router.history.canGoBack()).toBe(false)
+
+      await userEvent.type(screen.getByLabelText(label, { exact: true }), value)
+
+      await waitFor(() =>
+        expect(router.state.location.search).toMatchObject({ [parameter]: expected }),
+      )
+      // Every keystroke replaced the sole entry. A push at any point makes this
+      // true and forces Back to replay the input one character at a time.
+      expect(router.history.canGoBack()).toBe(false)
+    },
+  )
 
   it('resets to page 1 when a filter changes', async () => {
     const calls = stubFetch(
@@ -646,6 +745,42 @@ describe('contract-type segments', () => {
     expect(await screen.findByRole('button', { name: /^All 1,418$/ })).toBeInTheDocument()
   })
 
+  it('names an unknown-segment deep link and sends its type without ships-only', async () => {
+    const unknown = {
+      ...LOAN_ROW,
+      contract_id: 405,
+      type: 'unknown',
+      title: 'Unclassified public contract',
+      primary_label: 'Unclassified public contract',
+    }
+    const calls = stubFetch(
+      anonymousMe(() => jsonResponse(listPage([unknown], { segment_counts: SEGMENT_COUNTS }))),
+    )
+
+    renderApp('/contracts?contract_type=unknown&ships_only=false')
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Unknown Contracts' }),
+    ).toBeInTheDocument()
+    expect(document.title).toBe('Unknown Contracts — Hangar Bay')
+    expect(await screen.findByText('Unclassified public contract')).toBeInTheDocument()
+    expect(listCall(calls)).toContain('contract_type=unknown')
+    expect(listCall(calls)).not.toContain('is_ship_contract')
+  })
+
+  it('renders zero for a defensively missing segment-count key', async () => {
+    // Defensive impossible-wire fixture: the backend zero-fills all five enum
+    // keys. The component still promises a zero fallback if an older or partial
+    // envelope omits one, so the button must remain numeric rather than blank.
+    const missingAuction = { item_exchange: 1240, courier: 115, loan: 2, unknown: 1 }
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW], { segment_counts: missingAuction }))))
+
+    renderApp('/contracts')
+
+    expect(await screen.findByRole('button', { name: /^Auction 0$/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^All 1,240$/ })).toBeInTheDocument()
+  })
+
   it('selecting Courier clears ships-only visibly and asks the API for couriers', async () => {
     const calls = stubFetch(anonymousMe(segmentedPage))
 
@@ -969,6 +1104,43 @@ describe('contract-type segments', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /^Courier 115$/ })).toBeInTheDocument(),
     )
+  })
+
+  it('suppresses ships-only counts while an item-less segment request is in flight', async () => {
+    // This direction starts from the default ships-only population. Once
+    // Courier is live in the URL, All and the item-bearing
+    // controls restore ships-only on click, so held figures cannot label them.
+    let releaseCourier!: (page: Response) => void
+    const courierInFlight = new Promise<Response>((resolve) => {
+      releaseCourier = resolve
+    })
+    const calls = stubFetch(
+      anonymousMe((url) =>
+        url.includes('contract_type=courier') ? courierInFlight : segmentedPage(url),
+      ),
+    )
+
+    renderApp('/contracts')
+    await screen.findByText('Tristan')
+    expect(screen.getByRole('button', { name: /^All 1,300$/ })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Courier 115$/ }))
+    await waitFor(() =>
+      expect(calls.some((url) => url.includes('contract_type=courier'))).toBe(true),
+    )
+
+    expect(screen.getByRole('button', { name: /^All$/ }).textContent).toBe('All')
+    expect(screen.getByRole('button', { name: /^Item exchange$/ }).textContent).toBe(
+      'Item exchange',
+    )
+    expect(screen.getByRole('button', { name: /^Auction$/ }).textContent).toBe('Auction')
+    expect(screen.getByRole('button', { name: /^Courier 115$/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    releaseCourier(jsonResponse(listPage([COURIER_ROW], { segment_counts: SEGMENT_COUNTS })))
+    await screen.findByText('Jita to Amarr rush')
   })
 
   it('keeps a sort both segments can express', async () => {
@@ -1356,6 +1528,19 @@ describe('freshness and coverage', () => {
 
     await screen.findByText(/no contracts match/i)
     expect(screen.getByText('Couriers originating in The Forge only.')).toBeInTheDocument()
+  })
+
+  it('makes no courier-origin claim when the coverage list is empty', async () => {
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse(listPage([], { coverage: { ingested_region_ids: [], as_of: null } })),
+      ),
+    )
+
+    renderApp('/contracts?contract_type=courier&ships_only=false')
+
+    expect(await screen.findByRole('heading', { name: 'No data ingested yet' })).toBeInTheDocument()
+    expect(screen.queryByText(/Couriers originating in/)).not.toBeInTheDocument()
   })
 
   it('says nothing is ingested yet when the corpus is empty, instead of blaming filters', async () => {
@@ -2007,6 +2192,20 @@ describe('blueprint and composition cells', () => {
     expect(blueprintCells(/Draugur Blueprint/)).toEqual(['10', '4', '8'])
   })
 
+  it('leaves one missing figure blank on a single-copy blueprint row', async () => {
+    const missingMaterialEfficiency = {
+      ...ONE_COPY,
+      contract_id: 812,
+      blueprint_summary: { ...ONE_COPY.blueprint_summary, material_efficiency: null },
+    }
+    stubFetch(readyList([missingMaterialEfficiency]))
+
+    renderApp('/contracts')
+
+    await screen.findByText('Draugur Blueprint')
+    expect(blueprintCells(/Draugur Blueprint/)).toEqual(['10', '', '8'])
+  })
+
   it('counts several copies instead of reporting one of them, and links to the detail', async () => {
     // There is no single ME/TE to report, and picking one copy's numbers would
     // misdescribe the others — so the cell says how many and where to look.
@@ -2371,8 +2570,10 @@ describe('responsive column classes reach the DOM', () => {
   it.each([
     { column: 'Location', hiddenClass: 'max-lg:hidden' },
     { column: 'Issued', hiddenClass: 'max-sm:hidden' },
-  ])('applies $hiddenClass to the $column header AND its cells', async ({ column, hiddenClass }) => {
-    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+  ])(
+    'applies $hiddenClass to the $column header AND its cells',
+    async ({ column, hiddenClass }) => {
+      stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
 
     renderApp('/contracts')
     await screen.findByRole('columnheader', { name: new RegExp(column) })
@@ -2380,12 +2581,13 @@ describe('responsive column classes reach the DOM', () => {
     const header = screen.getByRole('columnheader', { name: new RegExp(column) })
     expect(header).toHaveClass(hiddenClass)
 
-    // The body cell too: hiding only the header leaves an orphaned column of data
-    // under a missing heading, which is worse than either alone.
-    const index = screen.getAllByRole('columnheader').indexOf(header)
-    const bodyRow = screen.getAllByRole('row')[1]
-    expect(within(bodyRow).getAllByRole('cell')[index]).toHaveClass(hiddenClass)
-  })
+      // The body cell too: hiding only the header leaves an orphaned column of data
+      // under a missing heading, which is worse than either alone.
+      const index = screen.getAllByRole('columnheader').indexOf(header)
+      const bodyRow = screen.getAllByRole('row')[1]
+      expect(within(bodyRow).getAllByRole('cell')[index]).toHaveClass(hiddenClass)
+    },
+  )
 
   it('leaves an always-visible column unhidden in its header AND its cells', async () => {
     // Anti-vacuity, and it has to cover the CELL as well as the header: `hiddenClass`
@@ -2407,5 +2609,179 @@ describe('responsive column classes reach the DOM', () => {
     // padded <td> box visible while the number itself disappears, which a class check
     // on the cell alone cannot see.
     expect(cell.querySelector('[class*="hidden"]')).toBeNull()
+  })
+})
+
+describe('table rendering states', () => {
+  it('keeps nonsortable headers inert and renders the active sort-direction glyph', async () => {
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
+    renderApp('/contracts')
+    await screen.findByText('Tristan')
+
+    const typeHeader = screen.getByRole('columnheader', { name: 'Type' })
+    expect(within(typeHeader).queryByRole('button')).not.toBeInTheDocument()
+
+    const issuedHeader = screen.getByRole('columnheader', { name: /Issued/ })
+    expect(issuedHeader).toHaveAttribute('aria-sort', 'descending')
+    expect(issuedHeader.querySelector('[aria-hidden="true"]')).toHaveTextContent('▼')
+
+    await userEvent.click(within(issuedHeader).getByRole('button'))
+
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: /Issued/ })).toHaveAttribute(
+        'aria-sort',
+        'ascending',
+      ),
+    )
+    expect(
+      screen.getByRole('columnheader', { name: /Issued/ }).querySelector('[aria-hidden="true"]'),
+    ).toHaveTextContent('▲')
+  })
+
+  it('dims held rows only while their replacement request is in flight', async () => {
+    let releaseSorted!: (page: Response) => void
+    const sortedInFlight = new Promise<Response>((resolve) => {
+      releaseSorted = resolve
+    })
+    const calls = stubFetch(
+      anonymousMe((url) =>
+        url.includes('sort_by=price') ? sortedInFlight : jsonResponse(listPage([ROW])),
+      ),
+    )
+    renderApp('/contracts')
+
+    const row = await screen.findByRole('row', { name: /Tristan/ })
+    const table = row.closest('table')!
+    expect(table).not.toHaveClass('opacity-60')
+
+    await userEvent.click(
+      within(screen.getByRole('columnheader', { name: /Price/ })).getByRole('button'),
+    )
+    await waitFor(() => expect(calls.some((url) => url.includes('sort_by=price'))).toBe(true))
+    expect(screen.getByRole('row', { name: /Tristan/ })).toBeInTheDocument()
+    expect(table).toHaveClass('opacity-60')
+
+    releaseSorted(jsonResponse(listPage([ROW])))
+    await waitFor(() => expect(table).not.toHaveClass('opacity-60'))
+  })
+
+  it('warns only on an expired list cell', async () => {
+    // A response can cross its expiry boundary between fetch and paint; the
+    // client must carry the warning styling alongside the Expired text.
+    const justExpired = { ...ROW, contract_id: 102, date_expired: daysFromNow(-1) }
+    stubFetch(anonymousMe(() => jsonResponse(listPage([justExpired, ROW]))))
+    renderApp('/contracts')
+
+    const expired = await screen.findByText('Expired')
+    expect(expired.closest('td')).toHaveClass('text-warn')
+    expect(expired.closest('td')).not.toHaveClass('text-ink-dim')
+    const live = screen.getByText(/^\d+d \d+h$/)
+    expect(live.closest('td')).toHaveClass('text-ink-dim')
+    expect(live.closest('td')).not.toHaveClass('text-warn')
+  })
+})
+
+describe('ContractDetailPage optional fields and recovery', () => {
+  it.each([0, -1])(
+    'rejects the non-positive contract id %s before fetching it',
+    async (contractId) => {
+      const calls = stubFetch(anonymousMe(() => jsonResponse(CONTRACT)))
+
+      renderApp(`/contracts/${contractId}`)
+
+      expect(await screen.findByText(/Contract not found/i)).toBeInTheDocument()
+      expect(calls.filter((url) => !url.includes('/api/v1/me'))).toHaveLength(0)
+    },
+  )
+
+  it('suppresses zero collateral instead of presenting it as hauler risk', async () => {
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, collateral: 0 })))
+    renderApp('/contracts/101')
+
+    const economics = within(await screen.findByRole('region', { name: 'Economics' }))
+    expect(economics.getByText('Price')).toBeInTheDocument()
+    expect(economics.queryByText('Collateral')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    { label: 'recorded', volume: 12_345, expected: '12,345 m³' },
+    { label: 'missing', volume: null, expected: '—' },
+  ])('renders the $label detail volume explicitly', async ({ volume, expected }) => {
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, volume })))
+    renderApp('/contracts/101')
+
+    const economics = within(await screen.findByRole('region', { name: 'Economics' }))
+    const volumeRow = economics.getByText('Volume').closest('div')!
+    expect(within(volumeRow).getByText(expected)).toBeInTheDocument()
+  })
+
+  it.each([
+    { forCorporation: true, expected: 'Yes' },
+    { forCorporation: false, expected: 'No' },
+  ])('renders For corporation = $expected', async ({ forCorporation, expected }) => {
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, for_corporation: forCorporation })))
+    renderApp('/contracts/101')
+
+    const economics = within(await screen.findByRole('region', { name: 'Economics' }))
+    const corporationRow = economics.getByText('For corporation').closest('div')!
+    expect(within(corporationRow).getByText(expected)).toBeInTheDocument()
+  })
+
+  it('falls back to issuer and corporation ids when names are absent', async () => {
+    stubFetch(
+      anonymousMe(() =>
+        jsonResponse({
+          ...CONTRACT,
+          issuer_name: null,
+          issuer_corporation_name: null,
+        }),
+      ),
+    )
+    renderApp('/contracts/101')
+
+    const identification = within(await screen.findByRole('region', { name: 'Identification' }))
+    expect(identification.getByText('Character 1')).toBeInTheDocument()
+    expect(identification.getByText('Corporation 101')).toBeInTheDocument()
+  })
+
+  it('does not repeat a seller title that equals the primary label', async () => {
+    stubFetch(anonymousMe(() => jsonResponse({ ...CONTRACT, title: 'Tristan' })))
+    renderApp('/contracts/101')
+
+    expect(await screen.findByRole('heading', { name: 'Tristan' })).toBeInTheDocument()
+    expect(screen.queryByText('“Tristan”')).not.toBeInTheDocument()
+  })
+
+  it('retries a failed detail request and renders the recovered contract', async () => {
+    let detailAttempts = 0
+    stubFetch(
+      anonymousMe((url) => {
+        if (/\/api\/v1\/contracts\/101$/.test(url)) {
+          detailAttempts += 1
+          return detailAttempts <= 2
+            ? jsonResponse({ detail: 'unavailable' }, 500)
+            : jsonResponse(CONTRACT)
+        }
+        return jsonResponse({ detail: 'unexpected request' }, 500)
+      }),
+    )
+    renderApp('/contracts/101')
+
+    const alert = await screen.findByRole('alert', undefined, { timeout: 3_000 })
+    expect(alert).toHaveTextContent('Failed to load this contract.')
+    await userEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: 'Tristan' })).toBeInTheDocument()
+    expect(detailAttempts).toBe(3)
+  })
+})
+
+describe('Pagination', () => {
+  it('clamps an empty result to one page and uses the supplied unit label', () => {
+    render(<Pagination page={1} size={50} total={0} unitLabel="results" onPage={() => {}} />)
+
+    expect(screen.getByText('Page 1 of 1 · 0 results')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Previous/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Next/ })).toBeDisabled()
   })
 })
