@@ -150,7 +150,7 @@ Every task below assumes these have been read once, at the start of the session:
 
 ## Phase 0 — Falsify or confirm the data source
 
-**Execution Status:** ⏸ PARTIALLY COMPLETE — Task 0.1 completed 2026-08-10; Task 0.2 is deferred
+**Execution Status:** ⏸ DEFERRED — Task 0.1 completed 2026-08-10; Task 0.2 is deferred
 pending [access to the required live snapshot](#task-02-measure-whether-the-denominator-choice-actually-reorders-anything).
 
 Phase 0 answers two questions that decide whether the spec's recommendation survives. It writes no
