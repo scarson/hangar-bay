@@ -392,11 +392,33 @@ four per-file registers as work orders.
 | 2 | Backend read correctness (13) | ✅ implemented — PR #166 (`Review — public API contract`, held for Sam: detail-id bounds ride along); three mutation kills verified |
 | 3 | Backend write correctness (11) + O2's backend partition pin | ⚠️ **10 of 11 closed** — PR #169 (`Routine`); backend 705 → 733, 24 regressions mutation-verified, all killed. C-11 is PARTIALLY closed: two of its three mocked-behavior hazards now run against real dependencies, the third needs a decision from Sam (see Wave 3 residual below). O2 closed at all three sites |
 | 4 | Frontend logic (28) + components (10) + e2e pins (O1a, O1b, null-price) | ✅ DONE — logic **28/28**, components **10/10**, e2e pins **3/3**. PR #170 (C1–C4, plus a typecheck lane for `e2e/` that had never existed) and PR #171 (C5–C10). vitest 322 → 416, e2e 140 → 146 |
-| 5 | Nice-to-have (60) | 🔄 **in progress** — swept first (§Wave 5 sweep): 60 register rows reduce to **58 distinct open items**. **Backend-read 10/10 closed** (PR #173). **Backend-write 18/18 closed** — PR #174 (N-1..N-5, N-11, N-15, N-16, N-19) and PR #182 (N-6, N-7, N-8, N-9, N-12, N-13, N-14, N-17, N-18). Backend 733 → **822** (PR #182 merged at `b4a67b9`). **Frontend-logic 10/13 closed** — PR #183, merged `91cea97` (N-1..N-8, N-12, N-13; vitest 416 → 455). Remaining: frontend-logic **3** (N-9 the sortableFieldsFor per-segment snapshot, N-10 the blueprint cell, N-11 the EXPIRES_COLUMN text-warn fork — which is ONE gap shared with frontend-components N-11 and should close with that register), frontend-components **17** |
+| 5 | Nice-to-have (60) | 🔄 **in progress** — swept first (§Wave 5 sweep): 60 register rows reduce to **58 distinct open items**. **Backend-read 10/10 closed** (PR #173). **Backend-write 18/18 closed** — PR #174 (N-1..N-5, N-11, N-15, N-16, N-19) and PR #182 (N-6, N-7, N-8, N-9, N-12, N-13, N-14, N-17, N-18). Backend 733 → **822** (PR #182 merged at `b4a67b9`). **Frontend-logic 13/13 implemented** — PR #183 closed the first 10; the September 5 continuation closes N-9, N-10, and the shared expired-cell N-11. **Frontend-components 15/17 fully implemented** (N1–N7, N9–N16); N8 has its component assertion but retains browser duplication, and N17 remains open. Vitest **509**. See the [September frontend continuation evidence](../audits/frontend-coverage-2026-09/progress.md) and the residual scope below |
 
 Each wave: TDD where a fix changes code, mutation-verification for load-bearing new tests
 (TEST-12), footprint-free discipline on shared fixtures (TEST-23), five frontend lanes for any
 frontend commit, Routine classification unless a wave touches schema or the public contract.
+
+### Wave 5 frontend continuation — 2026-09-05
+
+The continuation adds **54 frontend tests** (455 → 509), without production or dependency changes.
+Frontend-logic N-9 has independent per-segment sort-field literals; N-10 renders a missing single-copy
+blueprint figure as a blank cell; N-11 shares the component test for expired/live warning styling.
+Component coverage includes pagination/loading states, all nine inputs’ history replacement, unknown
+segments, count fallbacks, refresh styling, detail recovery and optional fields, filter clearing,
+selected-count labels, and empty/nullable taxonomy states. Row-by-row evidence is in the
+[page/detail report](../audits/frontend-coverage-2026-09/page-coverage.md) and
+[filter-control report](../audits/frontend-coverage-2026-09/filter-coverage.md).
+
+**Mutation verification: 67/67 caught, each followed by a green restored run.** Exact source edits,
+selectors, assertion failure excerpts, and restored counts are preserved in the
+[mutation verification record](../audits/frontend-coverage-2026-09/mutations.md).
+
+**Residual scope:** component N8’s browser duplication and N17’s browser scenarios remain open.
+The register proposes fixture-lane additions, but `AGENTS.md` §Testing forbids implementing E2E
+mocks. This continuation exercises the real router/query/components at the fetch boundary and adds
+no browser mocks. Finishing those browser scenarios requires real-data test setup or Sam’s explicit
+fixture-lane exception. Component N18’s mobile live-smoke project remains held as recorded in the
+August 10 handoff. These residuals do not block the test-only continuation’s integration.
 
 ### Wave 5 sweep — what waves 3–4 already closed (2026-08-09)
 

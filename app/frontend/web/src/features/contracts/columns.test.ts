@@ -14,17 +14,26 @@ const carriesItems = (segment: ContractTypeValue | undefined) =>
   segment === undefined || !ITEM_LESS_TYPES.includes(segment)
 
 describe('columnsFor', () => {
-  it('adds no sortable field with the item-level columns', () => {
-    // `sortableFieldsFor` is what `parseContractSearch` reconciles a sort
-    // against, and it reads the widest set on purpose — so a readiness flip can
-    // never silently reset a sort the reader chose. That is only safe while the
-    // gated columns disclose no sort of their own; the moment one does, the
-    // parser has to take readiness as an argument and this test says so.
-    for (const segment of SEGMENTS) {
+  it.each([
+    { segment: undefined, fields: ['ship_name', 'price', 'date_expired', 'date_issued'] },
+    { segment: 'item_exchange', fields: ['ship_name', 'price', 'date_expired', 'date_issued'] },
+    { segment: 'auction', fields: ['ship_name', 'price', 'buyout', 'date_expired', 'date_issued'] },
+    { segment: 'courier', fields: ['reward_per_volume', 'days_to_complete', 'date_expired'] },
+    { segment: 'loan', fields: ['ship_name', 'price', 'date_expired', 'date_issued'] },
+    { segment: 'unknown', fields: ['ship_name', 'price', 'date_expired', 'date_issued'] },
+  ] satisfies { segment: ContractTypeValue | undefined; fields: string[] }[])(
+    'exposes exactly the declared sort fields for $segment at either readiness',
+    ({ segment, fields }) => {
+      // `sortableFieldsFor` is what `parseContractSearch` reconciles a sort
+      // against, and it reads the widest set on purpose — so a readiness flip can
+      // never silently reset a sort the reader chose. That is only safe while the
+      // gated columns disclose no sort of their own; the moment one does, the
+      // parser has to take readiness as an argument and this test says so.
       const closed = columnsFor(segment, false).flatMap((c) => (c.sortField ? [c.sortField] : []))
-      expect([...sortableFieldsFor(segment)].sort()).toEqual([...new Set(closed)].sort())
-    }
-  })
+      expect([...new Set(closed)].sort()).toEqual([...fields].sort())
+      expect([...sortableFieldsFor(segment)].sort()).toEqual([...fields].sort())
+    },
+  )
 
   it('adds the three blueprint columns only where the segment can hold items', () => {
     // Criterion 1.2 puts loan and unknown on the item-less side beside courier:
