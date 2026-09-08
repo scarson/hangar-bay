@@ -1,0 +1,99 @@
+// ABOUTME: Captures runtime observations for the September 5 contract-search correctness audit.
+// ABOUTME: Assertions document observed defects at d43da7c and are not post-fix regression expectations.
+import { afterEach, expect, it, vi } from 'vitest'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { renderApp } from './renderApp'
+import { jsonResponse, taxonomyResponse } from './http'
+import { daysFromNow } from './dates'
+import { parseContractSearch, toApiQuery } from '../features/contracts/filters'
+import { toSavedSearchParameters } from '../features/saved-searches/components/SaveSearchControl'
+import schema from '../../openapi.json'
+
+afterEach(() => vi.unstubAllGlobals())
+
+function page(search: string, number: number, total: number) {
+  return {
+    total, page: number, size: 50,
+    items: [{ contract_id: 101, issuer_id: 1, issuer_corporation_id: 1,
+      start_location_id: null, collateral: 0, type: 'item_exchange',
+      title: search, for_corporation: false, date_issued: daysFromNow(-1),
+      date_expired: daysFromNow(7), price: 1000000, is_ship_contract: true,
+      is_blueprint_copy_contract: false, primary_label: `${search} page ${number}`,
+      composition: null }],
+    segment_counts: { item_exchange: total, auction: 0, courier: 0, loan: 0, unknown: 0 },
+    coverage: { ingested_region_ids: [10000002], as_of: null },
+    unknown_system_excluded: 0,
+  }
+}
+
+it('observes Back replacing Tristan page 3 with page 1 after a narrower text search', async () => {
+  vi.stubGlobal('fetch', async (input: Request) => {
+    const url = new URL(input.url)
+    if (url.pathname.endsWith('/me')) return jsonResponse({}, 401)
+    if (url.pathname.endsWith('/taxonomy')) return jsonResponse(taxonomyResponse())
+    const search = url.searchParams.get('search') ?? 'Tristan'
+    return jsonResponse(page(search, Number(url.searchParams.get('page')), search === 'Rifter' ? 10 : 200))
+  })
+  const { router } = renderApp('/contracts?search=Tristan&page=3')
+  await screen.findByText('Tristan page 3')
+  await userEvent.click(screen.getByRole('button', { name: /Next/ }))
+  await screen.findByText('Tristan page 4')
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search' }), { target: { value: 'Rifter' } })
+  await screen.findByText('Rifter page 1')
+  act(() => router.history.back())
+  await screen.findByText('Tristan page 1')
+  expect(router.state.location.search).toMatchObject({ search: 'Tristan', page: 1 })
+})
+
+it('observes a duplicate-name mutation error with no rendered row alert', async () => {
+  const saved = { id: 1, name: 'Cheap frigates', search_parameters: { ships_only: true },
+    created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' }
+  vi.stubGlobal('fetch', async (input: Request) => {
+    const url = new URL(input.url)
+    if (url.pathname.endsWith('/me')) return jsonResponse({ character_id: 42, character_name: 'Audit character' })
+    if (url.pathname.includes('/notifications/')) return jsonResponse({ total: 0, page: 1, size: 1, items: [] })
+    if (input.method === 'PUT') return jsonResponse({ detail: 'A saved search with this name already exists.' }, 409)
+    return jsonResponse([saved])
+  })
+  const { queryClient } = renderApp('/saved-searches')
+  await screen.findByText('Cheap frigates')
+  await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
+  fireEvent.change(screen.getByLabelText('New name'), { target: { value: 'Existing name' } })
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(queryClient.getMutationCache().getAll().some(m => m.state.status === 'error')).toBe(true))
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(screen.getByLabelText('New name')).toHaveValue('Existing name')
+})
+
+it('observes failed taxonomy refresh retaining complete readiness on a later list response', async () => {
+  let failTaxonomy = false
+  vi.stubGlobal('fetch', async (input: Request) => {
+    const url = new URL(input.url)
+    if (url.pathname.endsWith('/me')) return jsonResponse({}, 401)
+    if (url.pathname.endsWith('/taxonomy')) return failTaxonomy
+      ? jsonResponse({ detail: 'Unavailable' }, 500)
+      : jsonResponse(taxonomyResponse({ coverage: 'complete' }))
+    return jsonResponse(page(`ME ${url.searchParams.get('min_me')}`, 1, 10))
+  })
+  const { queryClient, router } = renderApp('/contracts?min_me=5')
+  await screen.findByText('ME 5 page 1')
+  failTaxonomy = true
+  await act(async () => { await queryClient.invalidateQueries({ queryKey: ['contracts', 'taxonomy'] }) })
+  expect(queryClient.getQueryState(['contracts', 'taxonomy'])?.status).toBe('error')
+  expect(queryClient.getQueryData(['contracts', 'taxonomy'])).toMatchObject({ coverage: 'complete' })
+  await act(async () => { await router.navigate({ to: '/contracts', search: { min_me: 6 } }) })
+  await screen.findByText('ME 6 page 1')
+  const matching = queryClient.getQueryCache().findAll({ queryKey: ['contracts', 'list'] })
+    .map(q => q.state.data as { countsSearch: { min_me?: number }; itemSurfaceReady: boolean } | undefined)
+    .find(data => data?.countsSearch.min_me === 6)
+  expect(matching?.itemSurfaceReady).toBe(true)
+})
+
+it('observes 101-character search text reaching both payloads despite the API limit', () => {
+  const search = parseContractSearch({ search: 'a'.repeat(101) })
+  expect(toApiQuery(search).search).toHaveLength(101)
+  expect(toSavedSearchParameters(search).search).toHaveLength(101)
+  const parameter = schema.paths['/contracts/'].get.parameters.find(p => p.name === 'search')
+  expect(parameter?.schema.anyOf?.find(p => p.type === 'string')?.maxLength).toBe(100)
+})
