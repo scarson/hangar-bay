@@ -1,9 +1,16 @@
 import { Link, useRouter } from '@tanstack/react-router'
 import { Badge } from '../../../components/Badge'
 import { Button } from '../../../components/Button'
-import { ApiError } from '../../../lib/api/client'
+import { ApiError, type ContractItem } from '../../../lib/api/client'
+import { timeAgo } from '../../../lib/timeAgo'
 import { useDocumentTitle } from '../../../lib/useDocumentTitle'
-import { contractTypeLabel, formatIsk, locationLabel, primaryLabel, timeRemaining } from '../format'
+import {
+  contractTypeLabel,
+  formatBlueprintTerms,
+  formatIsk,
+  locationLabel,
+  timeRemaining,
+} from '../format'
 import { useContract } from '../hooks/useContract'
 import { WatchButton } from '../../watchlists/components/WatchButton'
 
@@ -57,6 +64,58 @@ function Field({
   )
 }
 
+/**
+ * One side of the trade. Renders nothing when that side is empty, so an
+ * ordinary sale shows no vacant "Requested" heading and a want-to-buy contract
+ * shows no vacant "Offered" one.
+ *
+ * A copy's terms ride the row itself, ungated: they are per-item values that
+ * are simply absent until enrichment fills them, and an absent figure renders
+ * as nothing — there is no blank column here to read as breakage, and this page
+ * is where the list's "3 BPCs" link sends a reader asking exactly this question.
+ */
+function ItemSide({ title, items }: { title: string; items: ContractItem[] }) {
+  if (items.length === 0) return null
+  const headingId = `${title.toLowerCase()}-heading`
+  return (
+    <section aria-labelledby={headingId} className="mt-8">
+      <h2 id={headingId} className="text-label mb-2">
+        {title} · {items.length.toLocaleString('en-US')}
+      </h2>
+      <ul className="rounded-md border border-line">
+        {items.map((item) => {
+          const terms = item.is_blueprint_copy
+            ? formatBlueprintTerms({
+                copy_count: 1,
+                runs: item.runs,
+                material_efficiency: item.material_efficiency,
+                time_efficiency: item.time_efficiency,
+              })
+            : ''
+          return (
+            <li
+              key={item.record_id}
+              className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-4 py-2 last:border-b-0"
+            >
+              <span className="text-data text-ink">
+                {item.quantity.toLocaleString('en-US')}× {item.type_name ?? `Type ${item.type_id}`}
+              </span>
+              {item.category === 'ship' ? <Badge tone="neutral">Ship</Badge> : null}
+              {item.is_blueprint_copy ? <Badge tone="copper">BPC</Badge> : null}
+              {terms ? <span className="text-data text-xs text-ink-dim">{terms}</span> : null}
+              {item.is_included && item.category === 'ship' ? (
+                <span className="ml-auto">
+                  <WatchButton typeId={item.type_id} />
+                </span>
+              ) : null}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
 export function ContractDetailPage({ contractId }: { contractId: number }) {
   const { data, isPending, isError, error, refetch } = useContract(contractId)
 
@@ -66,7 +125,7 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
     !Number.isInteger(contractId) ||
     contractId <= 0 ||
     (isError && error instanceof ApiError && error.status === 404)
-  useDocumentTitle(notFound ? 'Contract not found' : data ? primaryLabel(data) : 'Contract')
+  useDocumentTitle(notFound ? 'Contract not found' : data ? data.primary_label : 'Contract')
 
   if (!Number.isInteger(contractId) || contractId <= 0) {
     return <NotFound />
@@ -97,7 +156,6 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
     )
   }
 
-  const isBpc = data.items.some((item) => item.is_included && item.is_blueprint_copy)
   const expiry = timeRemaining(data.date_expired)
 
   return (
@@ -105,18 +163,19 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
       <BackLink />
       <header className="mt-3 mb-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          {/* Hull-first, matching the list (primaryLabel prefers the included
-              ship, then first item, then the seller's title, then the id). */}
-          <h1 className="text-h1 font-semibold">{primaryLabel(data)}</h1>
+          {/* Hull-first, matching the list: the server names a contract once
+              (offered ship, then first offered item, then the seller's title,
+              then a courier's destination, then the id) so every view agrees. */}
+          <h1 className="text-h1 font-semibold">{data.primary_label}</h1>
           <span className="inline-flex gap-1.5">
             <Badge tone="neutral">{contractTypeLabel(data.type)}</Badge>
-            {isBpc ? <Badge tone="copper">BPC</Badge> : null}
+            {data.is_blueprint_copy_contract ? <Badge tone="copper">BPC</Badge> : null}
             {expiry === 'Expired' ? <Badge tone="neutral">Expired</Badge> : null}
           </span>
         </div>
         {/* The seller's own words, when they wrote any and they aren't already
             the heading. */}
-        {data.title?.trim() && data.title.trim() !== primaryLabel(data) ? (
+        {data.title?.trim() && data.title.trim() !== data.primary_label ? (
           <p className="mt-1 text-sm text-ink-dim">“{data.title.trim()}”</p>
         ) : null}
       </header>
@@ -128,7 +187,8 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
           </h2>
           <dl>
             <Field label="Price" valueClassName="text-base font-medium text-(--color-copper)">
-              {formatIsk(data.price)} ISK
+              {/* ESI marks price optional; a dash is not an amount, so no unit. */}
+              {data.price == null ? '—' : <>{formatIsk(data.price)} ISK</>}
             </Field>
             {data.reward != null && data.reward > 0 ? (
               <Field label="Reward">{formatIsk(data.reward)} ISK</Field>
@@ -169,44 +229,40 @@ export function ContractDetailPage({ contractId }: { contractId: number }) {
                 <span className="ml-2 text-ink-dim">({expiry})</span>
               ) : null}
             </Field>
+            {/* Criterion 7.1: when ingestion last saw this contract still
+                listed. A price nobody can date is a price nobody can act on.
+                An unstamped row gets no row at all rather than a dash, which
+                would read as "we looked and found nothing" instead of "we
+                never recorded when we looked". */}
+            {data.last_seen_at ? (
+              <Field label="Last seen">{timeAgo(data.last_seen_at)}</Field>
+            ) : null}
           </dl>
         </section>
       </div>
 
-      <section aria-labelledby="contents-heading" className="mt-8">
-        <h2 id="contents-heading" className="text-label mb-2">
-          Contents · {data.items.length.toLocaleString('en-US')}
-        </h2>
-        {data.items.length === 0 ? (
+      {data.items.length === 0 ? (
+        <section aria-labelledby="contents-heading" className="mt-8">
+          <h2 id="contents-heading" className="text-label mb-2">
+            Contents
+          </h2>
           <p className="rounded-md border border-line bg-surface px-4 py-3 text-sm text-ink-dim">
             No item data recorded for this contract.
           </p>
-        ) : (
-          <ul className="rounded-md border border-line">
-            {data.items.map((item) => (
-              <li
-                key={item.record_id}
-                className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-4 py-2 last:border-b-0"
-              >
-                <span className="text-data text-ink">
-                  {item.quantity.toLocaleString('en-US')}×{' '}
-                  {item.type_name ?? `Type ${item.type_id}`}
-                </span>
-                {item.category === 'ship' ? <Badge tone="neutral">Ship</Badge> : null}
-                {item.is_blueprint_copy ? <Badge tone="copper">BPC</Badge> : null}
-                {!item.is_included ? (
-                  <span className="text-xs text-warn">asked for, not included</span>
-                ) : null}
-                {item.is_included && item.category === 'ship' ? (
-                  <span className="ml-auto">
-                    <WatchButton typeId={item.type_id} />
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+        </section>
+      ) : (
+        <>
+          {/* Criterion 8.1: the two sides of the trade are separately headed and
+              never merged. Merged, a want-to-buy contract reads as a sale of the
+              very thing it wants to buy — which is what the "asked for, not
+              included" marker on a single list was left to carry alone. Each
+              side renders only when it has rows: an empty "Requested" heading on
+              an ordinary sale is furniture, and a want-to-buy contract offering
+              nothing is a real shape the corpus holds. */}
+          <ItemSide title="Offered" items={data.items.filter((item) => item.is_included)} />
+          <ItemSide title="Requested" items={data.items.filter((item) => !item.is_included)} />
+        </>
+      )}
     </div>
   )
 }

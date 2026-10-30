@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { BPC_CONTRACTS, SEVEN_SHIPS, bigDataset, pageOf, paginate } from './fixtures/contracts'
-import { interceptContractList, interceptCurrentUser } from './helpers/api'
+import { BPC_CONTRACTS, SEVEN_SHIPS, bigDataset, pageOf, paginate, taxonomy } from './fixtures/contracts'
+import { interceptContractList, interceptCurrentUser, interceptTaxonomy } from './helpers/api'
 import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
 
 /**
@@ -13,6 +13,15 @@ import { openFiltersIfCollapsed, rowLinks } from './helpers/ui'
  * visible rows so the render can't drift from the request. All fixtures return
  * non-empty pages so the only "Clear filters" button in the tree is the rail's.
  */
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
+
 test.describe('contract filters', () => {
   test('search gate: sub-3-char stays in the URL but is never sent; the 3rd char fires it', async ({
     page,
@@ -127,12 +136,35 @@ test.describe('contract filters', () => {
 
     await expect(page).toHaveURL(/[?&]is_bpc=true(&|$)/)
     await expect(rowLinks(page)).toHaveCount(BPC_CONTRACTS.length)
-    // The copper BPC badge renders once per row (ContractTable.contractIsBpc).
+    // The copper BPC badge renders once per row, off the row's own
+    // is_blueprint_copy_contract flag.
     const results = page.getByRole('region', { name: 'Contract results' })
     await expect(results.getByText('BPC', { exact: true })).toHaveCount(BPC_CONTRACTS.length)
 
     const last = calls.at(-1)!
     expect(last.params.get('is_bpc')).toBe('true')
+  })
+
+  test('blueprint stat windows: an ME bound reaches the URL and the wire', async ({ page }) => {
+    // Criterion 2.5. Live production on 2026-08-01 answered min_me=10 with the
+    // identical count to no ME filter at all — the control was not merely
+    // inert, it returned a large plausible wrong answer. The wire assertion is
+    // what would catch that class of regression here.
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptTaxonomy(page, taxonomy({ coverage: 'complete' }))
+    const calls = await interceptContractList(page, (params) =>
+      pageOf(params.get('min_me') === '5' ? BPC_CONTRACTS.slice(0, 1) : SEVEN_SHIPS),
+    )
+
+    await page.goto('/contracts')
+    await expect(rowLinks(page)).toHaveCount(7)
+    await openFiltersIfCollapsed(page)
+
+    await page.getByLabel('Minimum material efficiency').fill('5')
+
+    await expect(page).toHaveURL(/[?&]min_me=5(&|$)/)
+    await expect(rowLinks(page)).toHaveCount(1)
+    await expect.poll(() => calls.some((c) => c.params.get('min_me') === '5')).toBe(true)
   })
 
   test('clear filters resets the URL + controls and the button removes itself', async ({ page }) => {
@@ -157,6 +189,13 @@ test.describe('contract filters', () => {
     // The active filters reached the wire before we clear them.
     expect(calls.some((c) => c.params.get('search') === 'drake')).toBe(true)
 
+    // A segment too — it lives above the table rather than in the rail, but
+    // Clear filters owns it like every other param, and selecting an item-less
+    // one also clears Ships only, so the reset has both to put back.
+    await page.getByRole('button', { name: 'Courier' }).click()
+    await expect(page).toHaveURL(/contract_type=/)
+    await expect(page).toHaveURL(/[?&]ships_only=false(&|$)/)
+
     const clear = page.getByRole('button', { name: 'Clear filters' })
     await expect(clear).toBeVisible()
     await clear.click()
@@ -176,13 +215,29 @@ test.describe('contract filters', () => {
     await expect(page).toHaveURL(/[?&]ships_only=true(&|$)/)
     await expect(page).toHaveURL(/[?&]page=1(&|$)/)
     await expect(page).toHaveURL(/[?&]size=50(&|$)/)
-    await expect(page).toHaveURL(/[?&]sort_by=date_issued(&|$)/)
-    await expect(page).toHaveURL(/[?&]sort_direction=desc(&|$)/)
+    // Time left, not Issued: the courier detour above reconciled the sort to a
+    // field the courier set can disclose (its header showed it, aria-sort and
+    // all), and Clear preserves the current sort — sort is not a filter. Had
+    // the flow never entered a segment, the default Issued sort would survive
+    // untouched instead. The direction is Time-left's own default, soonest
+    // first, not a flat desc.
+    await expect(page).toHaveURL(/[?&]sort_by=date_expired(&|$)/)
+    await expect(page).toHaveURL(/[?&]sort_direction=asc(&|$)/)
     await expect(page).not.toHaveURL(/search=/)
     await expect(page).not.toHaveURL(/min_price=/)
     await expect(page).not.toHaveURL(/max_price=/)
     await expect(page).not.toHaveURL(/region_ids=/)
     await expect(page).not.toHaveURL(/is_bpc=/)
+    // Every filter param the URL layer parses, whether or not this test set it:
+    // Clear filters rebuilds the search from scratch, so a param that survives
+    // it is one resetFilters forgot to drop.
+    await expect(page).not.toHaveURL(/contract_type=/)
+    await expect(page).not.toHaveURL(/category_id=/)
+    await expect(page).not.toHaveURL(/group_id=/)
+    for (const bound of ['runs', 'me', 'te']) {
+      await expect(page).not.toHaveURL(new RegExp(`min_${bound}=`))
+      await expect(page).not.toHaveURL(new RegExp(`max_${bound}=`))
+    }
   })
 
   test('applying a filter resets pagination to page 1', async ({ page }) => {

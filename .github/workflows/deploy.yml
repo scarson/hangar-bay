@@ -164,3 +164,13 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Live smoke against production
         run: E2E_LIVE=1 E2E_PROD_BASE_URL="${{ vars.PROD_ORIGIN }}" npx playwright test --project=live-smoke-prod
+      # playwright.config.ts retains traces only for failures; preserve them after
+      # this runner exits so a production-only smoke failure can be diagnosed.
+      - name: Upload production smoke traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-smoke-playwright-traces
+          path: app/frontend/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import type { WireContract, WirePage } from '../fixtures/contracts'
+import { taxonomy, type WireContractDetail, type WirePage, type WireTaxonomy } from '../fixtures/contracts'
 import type { WireCurrentUser } from '../fixtures/auth'
 import { makeSavedSearch, type WireSavedSearch } from '../fixtures/account'
 import type { WireWatchlistItem } from '../fixtures/account'
@@ -16,6 +16,7 @@ import type { WireWatchlistItem } from '../fixtures/account'
 
 const LIST_URL = /\/api\/v1\/contracts\/(\?|$)/
 const DETAIL_URL = /\/api\/v1\/contracts\/\d+$/
+const TAXONOMY_URL = /\/api\/v1\/contracts\/taxonomy$/
 
 export interface CapturedCall {
   /** Full request URL. */
@@ -69,7 +70,34 @@ export async function interceptContractList(page: Page, responder: ListResponder
   return calls
 }
 
-export type DetailResponder = WireContract | ErrorResponse | ((contractId: number) => WireContract | ErrorResponse)
+/**
+ * Intercept the taxonomy endpoint. Every contracts view queries it for the
+ * item-level readiness signal, so a spec that renders the list and leaves this
+ * unrouted fires a request at whatever is (or is not) listening on :8000 —
+ * which the fixture lane exists to avoid. Defaults to the cold-cache `partial`
+ * answer, the state that keeps the item-level surface closed.
+ */
+export async function interceptTaxonomy(
+  page: Page,
+  responder: WireTaxonomy = taxonomy(),
+): Promise<CapturedCall[]> {
+  const calls: CapturedCall[] = []
+  await page.route(TAXONOMY_URL, async (route) => {
+    const url = new URL(route.request().url())
+    calls.push({ url, params: url.searchParams })
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(responder),
+    })
+  })
+  return calls
+}
+
+export type DetailResponder =
+  | WireContractDetail
+  | ErrorResponse
+  | ((contractId: number) => WireContractDetail | ErrorResponse)
 
 /** Intercept the contract-detail endpoint. */
 export async function interceptContractDetail(page: Page, responder: DetailResponder): Promise<CapturedCall[]> {

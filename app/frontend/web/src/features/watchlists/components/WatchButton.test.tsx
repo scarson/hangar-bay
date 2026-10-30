@@ -13,6 +13,7 @@ const CONTRACT = {
   date_issued: '2026-07-01T00:00:00Z', date_expired: daysFromNow(7),
   price: 1000000, reward: 0, volume: 27, start_location_name: 'Jita IV - Moon 4', issuer_name: 'Sesta Hound',
   issuer_corporation_name: 'COB', is_ship_contract: true,
+  is_blueprint_copy_contract: false, primary_label: 'Rifter', collateral: 0,
   items: [{ record_id: 1011, type_id: 587, quantity: 1, is_included: true, is_blueprint_copy: false, type_name: 'Rifter', category: 'ship', market_group_id: 61 }],
 }
 

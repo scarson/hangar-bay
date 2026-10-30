@@ -1,0 +1,273 @@
+<!-- ABOUTME: Decision log for the 2026-08-08 overnight session working the F008 post-completion -->
+<!-- ABOUTME: follow-ups (handoff §2). Every consequential autonomous decision is recorded here for Sam's morning review. -->
+
+# Overnight follow-ups decision log — 2026-08-08/09
+
+Session context: Sam asked for autonomous overnight work continuing from
+[`2026-08-08-f008-complete-release-pending-handoff.md`](../handoffs/2026-08-08-f008-complete-release-pending-handoff.md).
+Scope taken: handoff §2 follow-up items 1 (nullable sorts), 2 (Criterion 1.8 count-lifting), and 5
+(jsdom test-output noise). Explicitly NOT taken: the `dev` → `main` release (§1 — Sam's call), item 3
+(accepted-not-fixed by design), item 4 (blocked on production credentials only Sam can provision, ENV-8).
+
+Format per entry: **Background / Alternatives / Decision / Reversibility**, matching the F008 decision log.
+
+---
+
+## OD1 — This session runs on a different machine than every prior F008 session; provision from scratch
+
+**Background.** The handoff directs work to the provisioned worktree
+`.claude/worktrees/secret-scanning-validity-2eb72d` (backend `.venv`, `src/.env`, `node_modules`,
+scratch DB). That worktree no longer exists (`git worktree list` shows only the main checkout and this
+session's `pr-147-handoff-beaace`). Every prior-session path is macOS (`/Users/sam/Code/hangar-bay`);
+this session is Windows (`C:\Users\Sam\Code\hangar-bay`). On this machine: `pdm` is not installed,
+no Docker containers are running, and no `.env` exists in the main checkout or any worktree.
+
+**Alternatives.** (a) Stop and escalate as BLOCKED — rejected: everything needed to provision is
+derivable from `app/backend/.env.example`, `compose.dependencies.yml`, and the plan's environment
+notes; blocking would waste the night on a mechanical setup task. (b) Provision this worktree from
+scratch — chosen.
+
+**Decision.** Provision `pr-147-handoff-beaace` in place: containers started from the MAIN checkout
+(ENV-10 — containers created from a worktree die when the worktree is reclaimed), `pdm` installed
+user-level, backend `.venv` via `pdm install`, frontend `node_modules` via `npm install`,
+`app/backend/src/.env` reconstructed from `.env.example` with the compose-matching dev values,
+`DB_RECREATE_ON_STARTUP` left unset (defaults False — non-destructive), SSO fields left empty.
+Baseline both test suites green before touching any code, so pre-existing breakage on this machine
+is distinguishable from breakage I introduce.
+
+**Reversibility.** Fully — all state is dev-local (venv, node_modules, containers, .env); nothing
+touches production or git history.
+
+---
+
+## OD2 — Stale PG16 Docker volume set aside in place rather than deleted
+
+**Background.** This machine's `docker_postgres_data` volume held a Postgres **16** cluster; the
+compose file pulls `postgres:18-alpine`, whose entrypoint refuses pre-18 data at the volume root
+(the ENV-9 trap — the compose mount was already fixed for it, but this volume predates the fix).
+The container could never become healthy. The volume's content is dev data that the project treats
+as disposable by design (ENV-2: every dev boot drops/recreates/re-ingests; the authoritative dev DB
+with real contracts is on the macOS machine).
+
+**Alternatives.** (a) `pg_upgrade` 16→18 — rejected: needs both binaries, high ceremony for data
+that is disposable by design. (b) Delete the volume — blocked by the session's permission
+classifier, and unnecessarily destructive. (c) Move the PG16 cluster files into a `pg16-legacy/`
+subdirectory inside the same volume so the PG18 entrypoint initializes fresh alongside — chosen.
+
+**Decision.** Cloned the whole volume to `docker_postgres_data_pg16_backup` first (72 MB), then
+moved the PG16 files to `pg16-legacy/` within `docker_postgres_data`. Postgres 18 initialized a
+fresh cluster and reports healthy. Scratch DBs `hangar_bay_test_f008` and `hangar_bay_test` created.
+
+**Reversibility.** Fully — the PG16 data exists twice (in-volume `pg16-legacy/` and the backup
+volume). Sam can delete both copies whenever convenient:
+`docker volume rm docker_postgres_data_pg16_backup` and, inside the live volume, `pg16-legacy/`.
+
+---
+
+## OD3 — Fix the volume/ship_name NULL placement (rather than deliberately keeping it), classify Routine
+
+**Background.** Plan Discoveries: `volume` and `ship_name` are the only two nullable sorts outside
+`NULLABLE_SORTS`, so a descending volume sort led with every volume-less contract and a descending
+ship-name sort with every item-less one — inconsistent beside the three Task B8 sorts that place
+NULL last. The deferral target ("decide in PR-C/D") shipped without deciding, making this the
+handoff's "smallest real item".
+
+**Alternatives.** (a) Deliberately keep NULL-first for these two — rejected: no reading of the
+domain supports it (a missing volume is not a small cargo; an item-less contract has no ship name
+to alphabetize), and the UI now offers all five sorts side by side, where the inconsistency reads
+as a bug. (b) Extend `NULLABLE_SORTS` to cover both — chosen; it is the exact `nulls_last()`
+treatment one rule over, and B8's tests already define the contract.
+
+**Decision.** TDD: two new acceptance tests in `test_contract_filters.py` (region 99999972 claimed
+per the plan's fixture-region protocol), watched RED against the pre-fix code (only the descending
+assertions failed — PostgreSQL defaults to NULLS LAST ascending / NULLS FIRST descending, which is
+why the bug only shows descending), then the two-line `NULLABLE_SORTS` extension, GREEN. The RED
+run against unmodified production code is the TEST-12 mutation evidence.
+
+**Merge classification: Routine.** The Discoveries entry itself called this
+"`Review — data-integrity`-adjacent **only** in that it changes a live sort's plan". It changes no
+schema, no API shape, no data path — only result ordering, to match the rule the feature already
+established and tested. Per `docs/git-strategy.md` §Merge authority, agents merge Routine on green
+CI; adversarial review still applied before merge.
+
+**Reversibility.** Trivial — remove two enum members from the frozenset.
+
+Shipped as PR #148 (merge `94ca572`). Codex round 1: no P1s, one P2 (the ship-name fixture could
+not distinguish the direction-appropriate aggregate from its reverse — both of the multi-item
+contract's names sorted after every other contract's). Reworked to a straddling fixture
+(Bantam + Zealot around Merlin), mutation-verified by swapping the aggregate in production code
+(red) and restoring (green). Codex round 2 on the rework: zero findings, expected orders
+independently re-derived.
+
+---
+
+## OD4 — Criterion 1.8 count-lifting for offered-item filters: NO code change; needs Sam's ratification
+
+**Background.** Handoff §2 item 2 frames the open question as: `_segment_counts_and_total` lifts
+`ships_only` for item-less segments (Criterion 1.8) but not `category_id`/`group_id`, the three
+blueprint ranges, or `is_bpc` — so an item-less segment's count reads 0 whenever one of those is
+active — and "needs a decision on whether 'lifted' means lifting all offered-item filters together
+or per-family."
+
+**Analysis (what the handoff framing missed).** The 1.8 lift is honest for `ships_only` **only
+because Criterion 1.7 clears `ships_only` on segment entry** — the lifted count advertises exactly
+what clicking reveals. The offered-item filters have no such clearing rule: `segmentPatch`
+(`SegmentTabs.tsx`) touches only `contract_type`, `ships_only`, and the sort keys, so a taxonomy or
+blueprint filter SURVIVES the switch and the clicked segment really does serve the empty page.
+Lifting those filters in the count — together or per-family, either variant — would therefore make
+the label advertise contracts the click cannot deliver, which is precisely the
+"silent-filter-no-op defect wearing a numeral" that Criterion 1.8 exists to prevent, and the exact
+case `_segment_counts_and_total`'s docstring warns about ("Every OTHER filter still applies (§6.2),
+or the labels advertise results the list cannot show"). Read literally, Criterion 1.8 is scoped to
+`ships_only` and is already fully implemented. The shipped Phase-D code even records this position:
+SegmentTabs' count comment says "That stays true of an item-less segment under an item-level
+filter — the served zero is honest, and the empty state it leads to explains itself."
+
+**Alternatives.**
+- (a) Lift offered-item filters in the count only (the handoff's framing, either granularity) —
+  rejected: creates the advertised-vs-delivered mismatch above; strictly worse than the status quo.
+- (b) Lift in the count AND extend the 1.7-style clearing rule so entering an item-less segment
+  also clears offered-item filters — coherent, but it is a spec amendment (new interaction rule,
+  URL semantics, frontend + backend + e2e work) and it discards the user's filter work on a
+  segment click; only Sam can ratify that trade.
+- (c) No code change; record why, close the Discovery pending ratification — chosen.
+
+**Decision.** No code change. The served zero is the honest number under the shipped interaction
+semantics. The Discoveries entry is updated to point here; if Sam prefers the option (b) behavior,
+that is a new spec decision (a D8-style ratification) and a small feature, not a follow-up fix.
+
+**Reversibility.** Total — nothing was changed; the analysis is the artifact.
+
+**Ratified 2026-08-08:** Sam delegated the decision ("You decide on OD4"); decided as (c) — no code
+change, Discovery closed as working-as-designed. The deciding weight beyond the honesty argument:
+clearing a user's accumulated taxonomy/blueprint selection as a side effect of a segment click
+destroys more user intent than the `ships_only` parallel saves — `ships_only` is one restorable
+toggle (Criterion 1.9 restores it), while a taxonomy selection is built-up work with no restore
+rule. If item-less segment counts under offered-item filters ever matter enough to revisit, the
+clear-on-entry spec amendment in alternative (b) is the only coherent shape for it.
+
+---
+
+## OD5 — jsdom noise fix (PR #149): TDD-exempt, codex review skipped as below the meaningful-PR bar
+
+**Background.** Handoff §2 item 5: the vitest lanes emitted jsdom "Not implemented" stderr lines
+(measured 14 per lane here — two sources, not one: TanStack Router's scroll restoration calling
+`window.scrollTo` on every test navigation, and axe-core's color-contrast rule probing
+`HTMLCanvasElement.getContext`). Violates the pristine-output rule.
+
+**Decision.** Two stubs in `src/test/setup.ts`, each reproducing jsdom's existing return value
+(undefined / null) minus the stderr line, so no test's semantics change. TDD does not apply
+(test-infrastructure, CLAUDE.md §TDD scope); verification is the measured noise count: 0 after,
+across both vitest lanes, with all five lanes green (310+310 vitest, 138 e2e). Codex adversarial
+review deliberately skipped: the repo policy reserves it for "meaningful PRs", and a two-stub
+test-environment change with measured-zero verification is below that bar. Classified Routine.
+
+**Reversibility.** Trivial — delete the stubs.
+
+---
+
+## OD6 — Machine-migration notes (Windows): what future sessions on this machine inherit
+
+Not a decision so much as the operational record of OD1's fallout:
+
+- **`pdm` 2.28.0 installed user-level** (`python -m pip install --user pdm`); invoke as
+  `python -m pdm`. Python 3.14.3, Node 24.14.0 already present.
+- **Playwright needed its chromium build**: 1.61.1 wants `chromium_headless_shell-1228`, which was
+  missing (1208/1217/1234 present). `npx playwright install chromium` fixed it; before that the
+  e2e lane failed with `browserType.launch: Executable doesn't exist`.
+- **This machine's npm rewrites `package-lock.json`** (strips `libc` fields) and touches
+  `routeTree.gen.ts` line endings on every install/test run. Neither is a real change — do NOT
+  commit lockfile churn from this machine; `git checkout --` them before staging.
+- **The e2e lane was not part of the pre-change baseline** (only eslint/tsc/vitest×2 were run
+  before PR #148's work started). Its first-ever run on this machine failed for the missing-browser
+  reason above, initially indistinguishable from a real regression. Future provisioning should
+  baseline all five lanes.
+
+---
+
+---
+
+## OD7 — Pre-release bug hunt: scope, applied decisions, and what awaits Sam
+
+**Background.** Sam delegated multi-day planning and execution ("figure out the next few days of
+useful work … plan and execute"). With the dev→main release as the next milestone, the first move
+was a four-methodology bug-hunt cycle over the F008 surface plus a disposition audit of the
+2026-06-05 perf remediation plan.
+
+**Decision.** Findings and their classifications live in
+[`docs/bug-hunts/2026-08-08-f008-prerelease-consolidated.md`](../../bug-hunts/2026-08-08-f008-prerelease-consolidated.md)
+(7 confirmed bugs, 11 design decisions left for Sam, 2 out-of-scope); the fix plan (4 PRs) in
+[`docs/plans/2026-08-08-f008-prerelease-bug-hunt-remediation-plan.md`](../../plans/2026-08-08-f008-prerelease-bug-hunt-remediation-plan.md)
+went through a 5-round review cycle (two codex rounds: 15 findings, then 4, then converged). Two
+remediation decisions were made on repo precedent rather than waiting for Sam: B1 follows D11's
+"no numeral beats a wrong one" (extended to response-captured interpretation per WEB-1), and B2
+goes nullable rather than defaulting `0.0` per the absence-≠-zero principle (ESI-3) — B2's PR is
+held OPEN under `Review — database schema` so the migration cannot land without Sam.
+
+**Perf disposition headline** ([`docs/perf-audits/2026-08-08-remediation-status.md`](../../perf-audits/2026-08-08-remediation-status.md)):
+~half the June findings were fixed incidentally by later work; the top open item is not perf at
+all — **the production DB IP allow rule `198.37.143.189/32` flagged "REMOVE" on 2026-08-02 is
+still open** and needs Sam's Render access (ENV-8).
+
+**Reversibility.** Everything lands as ordinary PRs; the one schema change waits for Sam.
+
+**Process slip, recorded honestly:** PR #153 (remediation Phase 1) was merged while its final
+commit's CI was still pending — the verify step and the merge were chained with `;`, so the merge
+ran regardless of the verify's output. The final commit was a test-only assertion strengthening
+that had passed locally, and the post-merge run was watched to completion, but the
+verify-green-THEN-merge rule was violated as written. Lesson: never chain the green-check and the
+merge in one command; the check's output must gate the merge, mechanically (`&&` at minimum, or
+separate commands).
+
+---
+
+## OD8 — Bug-hunt remediation executed: three phases merged autonomously, the schema phase held
+
+**Background.** OD7 recorded the hunt and plan; this records the execution. Phases ran strictly
+sequentially per the plan: PR #153 (parser gaps), #154 (format fixes), #155 (segment numerals),
+each TDD, all five frontend lanes green, codex-reviewed where the plan required it (#154's skip
+recorded per the OD5 precedent). Phase 4 (`price` nullable) is PR #156, `Review — database
+schema`, deliberately NOT merged.
+
+**Review-cycle statistics worth keeping.** Codex rounds on the execution found real defects at
+every depth: #153 round 1 — one P3 (wire-params assertion, taken); #155 round 1 — one P2 (the
+reverse widened→item-less transition, fixed with symmetric suppression) and round 2's state
+enumeration produced two accepted-and-documented residuals; #156 round 1 — three P2s (offline
+`--sql` breakage, guard/writer race, missing clean-downgrade test), and round 2 on the REWORK
+found a genuine pre-existing P1 (env.py's offline path never wrapped migrations in a
+transaction — every `--sql` render was missing BEGIN/COMMIT). The "re-run the reviewer on the
+rework" guardrail has now paid out in every campaign that honored it.
+
+**The expensive lesson (TEST-23).** The clean-downgrade test failed only after its sibling ran;
+three hypotheses (alembic global state, connection leakage, transaction abort) died before
+instrumentation showed the migration fixture is `scope="session"` — one shared database, and the
+sibling's committed row poisoned it. Recorded as pitfall TEST-23; both tests are now
+footprint-free under `finally`.
+
+**Reversibility.** Three merged PRs are ordinary reverts; #156 awaits Sam by construction.
+
+---
+
+## OD9 — Perf quick-win wave: three shipped, one deliberately rejected, the rest sequenced
+
+**Background.** Continuing Sam's autonomy grant after the bug-hunt remediation, the local items
+from the perf disposition's ranked list.
+
+**Shipped.** PR #158 (item upsert batch 50→500 — disposition item 3), PR #159 (search debounced at
+the data layer, 300 ms, URL untouched — item 6; two codex rounds: round 1 caught the page-reset
+riding the effective search from page 2+, fixed by freezing the whole query while the text is
+mid-edit; the repo's react-hooks lint rejected both the ref form and setState-in-effect, forcing
+the documented render-adjust pattern with value comparison), PR #160 (redis `aclose()` + plain
+`select` import — item 14's live half).
+
+**Rejected, recorded so nobody reopens it bare:** SP14's "dead" `sorted()` in
+`resolve_ids_to_names` stays — chunk-order determinism feeds reproducible request bodies, and the
+sort is noise at real id counts.
+
+**Sequenced, not started:** the location indexes wait for PR #156 (a second migration PR now would
+fork the alembic head); the bundle-budget needs a warn-vs-fail choice and a baseline number;
+cache-aside, the ESI fan-out semaphore, QueueHandler logging, ingestion metrics, and streaming
+each carry enough design surface to deserve fresh-context sessions against the disposition's
+write-ups.
+
+**Reversibility.** All ordinary PR reverts.

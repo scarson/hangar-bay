@@ -16,16 +16,63 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import Select, Update, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import fastapi_app.services.background_aggregation as bg_agg
-from fastapi_app.models.contracts import Contract, ContractItem
+from fastapi_app.models.contracts import Contract, ContractItem, EsiTaxonomyCache
+from fastapi_app.schemas.contracts import ITEM_BEARING_CONTRACT_TYPES, ContractType
 from fastapi_app.services.background_aggregation import ContractAggregationService
 from fastapi_app.tests.core.test_esi_client import _etag_client, _etag_response
 from fastapi_app.tests.lock_double import FakeLockRedis as _FakeLockRedis
 
 pytestmark = pytest.mark.asyncio
+
+
+def _recording_statements(session):
+    """Capture the SQL constructs executed on `session` so a test can assert HOW MANY
+    statements a chunked loop issued, not merely that every row eventually landed.
+
+    Two different regressions live in every chunked loop here and they are invisible to
+    each other. A loop that stops after its first chunk DROPS rows, which row assertions
+    catch. A loop that was never chunked at all lands every row in one oversized
+    statement — correct in a three-row fixture, and fatal at corpus scale where it blows
+    asyncpg's 32767 bind-parameter ceiling and rolls back the run (TEST-11). Only a
+    statement count catches the second, and it is the one these loops exist to prevent.
+    """
+    executed: list = []
+    original = session.execute
+
+    async def recording(statement, *args, **kwargs):
+        executed.append(statement)
+        return await original(statement, *args, **kwargs)
+
+    session.execute = recording
+    return executed, original
+
+
+def _updates_setting(statements, column: str) -> list:
+    """The recorded UPDATEs whose SET clause assigns `column`.
+
+    Filtering by the assigned column rather than by SQL text keeps each loop's count
+    separate: three UPDATE loops run over the same table in one pass, and a test that
+    counted all of them would fail when a DIFFERENT loop changed its chunking.
+    """
+    return [
+        s for s in statements
+        if isinstance(s, Update) and column in s.compile().params
+    ]
+
+
+def _selects_reading(statements, column: str) -> list:
+    """The recorded SELECTs that read `column` — how the station read-back is told
+    apart from the enrichment-skip SELECT, which reads contract_id and chunks its own
+    id list over the same table in the same pass."""
+    return [
+        s for s in statements
+        if isinstance(s, Select)
+        and column in {c.name for c in s.selected_columns}
+    ]
 
 
 def _make_service() -> ContractAggregationService:
@@ -35,6 +82,9 @@ def _make_service() -> ContractAggregationService:
     )
     # get_contract_items is exercised by other flows; keep it inert here.
     esi_client.get_contract_items = AsyncMock(return_value=[])
+    # A resolvable default keeps captured logs free of "can't be awaited" warnings
+    # from the taxonomy-name fan-out; tests that exercise failure paths override it.
+    esi_client.get_universe_category = AsyncMock(return_value={"name": "Ship"})
     settings = MagicMock()
     return ContractAggregationService(esi_client=esi_client, settings=settings)
 
@@ -355,6 +405,66 @@ async def test_lock_release_does_not_delete_a_reacquired_lock(caplog):
 
     assert store.get(bg_agg.AGGREGATION_LOCK_KEY) == "second-runner-token"
     assert "token mismatch" in caplog.text
+
+
+async def test_the_lock_is_released_when_the_locked_body_raises(caplog):
+    """A run that dies inside the lock must still hand the lock back.
+
+    Release-on-success is pinned; release after a FAILING body is not the same claim,
+    and it is the one that matters — a lock left held by a crashed run blocks every
+    later tick for a full TTL, so ingestion stops until the key expires. The
+    freshness tests reach this path but assert on the freshness record, never on the
+    key. Moving the release out of `finally` into the success path passes them all.
+    """
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        service = _make_service()
+        with pytest.raises(RuntimeError, match="body blew up"):
+            async with service._concurrency_lock():
+                assert bg_agg.AGGREGATION_LOCK_KEY in store  # held while the body runs
+                raise RuntimeError("body blew up")
+
+    assert bg_agg.AGGREGATION_LOCK_KEY not in store
+    assert "Releasing concurrency lock" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "path", ["acquired_then_returned", "acquired_then_raised", "never_acquired"]
+)
+async def test_the_redis_client_is_closed_on_every_lock_path(path: str):
+    """The lock creates its own Redis client per run, so it owns closing it.
+
+    Three routes leave the context manager and each has to close: a clean body, a
+    raising body, and the acquisition that never got the lock at all. The last is the
+    easiest to lose, because it exits through a raise before the release branch and
+    nothing else about that path is observable — the key belongs to another runner
+    and is meant to be left alone. Leaking one connection per skipped tick is a slow
+    exhaustion of Valkey's connection budget, which is a production symptom with no
+    local reproduction.
+    """
+    already_held = {bg_agg.AGGREGATION_LOCK_KEY: "another-runners-token"}
+    store: dict = already_held if path == "never_acquired" else {}
+    fake = _FakeLockRedis(store)
+    with patch.object(bg_agg.aioredis, "from_url", return_value=fake):
+        service = _make_service()
+        if path == "never_acquired":
+            with pytest.raises(bg_agg.ConcurrencyLockError):
+                async with service._concurrency_lock():
+                    pass
+        elif path == "acquired_then_raised":
+            with pytest.raises(RuntimeError):
+                async with service._concurrency_lock():
+                    raise RuntimeError("body blew up")
+        else:
+            async with service._concurrency_lock():
+                pass
+
+    assert fake.aclose_calls == 1
+    # And it must be the LAST thing the client is asked to do. A close followed by any
+    # further command reopens the connection underneath it, so the client reads as
+    # closed while the connection it owns is still leaked — which is the harm this test
+    # is named for, and the count alone cannot see it.
+    assert fake.ops[-1] == "aclose"
 
 
 async def test_process_contracts_persists_bpc_flag_and_is_bpc_filter_matches(
@@ -818,6 +928,77 @@ async def test_degraded_category_resolution_does_not_clear_a_ship_flag(
     assert row.is_ship_contract is True, "a degraded category read must not clear a flag"
 
 
+async def test_a_requested_items_failed_category_leaves_the_contract_retryable(
+    db_session: AsyncSession,
+):
+    """Want-to-buy side: an EXCLUDED item with no resolvable group must block
+    COMPLETED, or the contract is withheld from every future re-fetch with a
+    permanently blank requested side. The requested half is rendered and
+    summarized by category, so its taxonomy is load-bearing, not cosmetic."""
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 8411, "type_id": 587, "quantity": 1, "is_included": True},
+            {"record_id": 8412, "type_id": 99999, "quantity": 1, "is_included": False},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda tid: {
+            587: {"name": "Tristan", "group_id": 25},
+            99999: {"name": "Mystery Meat"},  # no group_id: the chain stops here
+        }[tid]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(841)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 841))
+    ).scalar_one()
+    assert row.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    assert row.enrichment_version == 0
+
+
+async def test_a_category_less_group_payload_leaves_the_contract_retryable(
+    db_session: AsyncSession,
+):
+    """A non-empty group payload that omits category_id is a resolution failure too.
+
+    Testing the group dict for emptiness passes on this shape, category_id lands NULL,
+    and the contract is stamped COMPLETED forever — the silent unenrichment the
+    predicate exists to prevent. The test that decides is the resolved category itself.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 8421, "type_id": 587, "quantity": 1, "is_included": True},
+            {"record_id": 8422, "type_id": 99999, "quantity": 1, "is_included": False},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda tid: {
+            587: {"name": "Tristan", "group_id": 25},
+            99999: {"name": "Mystery Meat", "group_id": 26},
+        }[tid]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda gid: {
+            25: {"name": "Frigate", "category_id": 6},
+            26: {"name": "Salvaged Materials"},  # no category_id
+        }[gid]
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(842)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 842))
+    ).scalar_one()
+    assert row.item_processing_status == "ENRICHMENT_INCOMPLETE"
+    assert row.enrichment_version == 0
+
+
 async def test_skip_select_reads_across_the_chunk_boundary(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, caplog
 ):
@@ -933,6 +1114,526 @@ async def test_resolved_location_names_land_on_persisted_contract_rows(db_sessio
     assert row.issuer_corporation_name == "Test Issuer Corp"
 
 
+async def test_type_specific_contract_fields_land_on_persisted_rows(db_session: AsyncSession):
+    """buyout / days_to_complete / end_location_name persist from the ESI payload.
+
+    _build_contract_rows is only exercised end-to-end (nothing unit-tests its dict
+    literal), so each new key needs a persisted-row assertion or its wiring can
+    silently drop (same rationale as the location-names test above).
+    """
+    service = _make_service()
+    contract = _ship_contract_dict(801)
+    contract["type"] = "auction"
+    contract["buyout"] = 950_000_000.0
+    contract["days_to_complete"] = 3          # ESI sends it on couriers; mapping is type-agnostic
+    contract["end_location_id"] = 60008494
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            60008494: "Amarr VIII (Oris) - Emperor Family Academy",
+        }
+    )
+    # A real item keeps the auction off the zero-items warning path, so the run's
+    # captured logs stay pristine (an item_exchange/auction cannot be empty).
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8011, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    await service._process_contracts(db_session, [contract])
+
+    row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 801)
+    )).scalar_one()
+    assert row.buyout == 950_000_000
+    assert row.days_to_complete == 3
+    assert row.end_location_name == "Amarr VIII (Oris) - Emperor Family Academy"
+
+    # Absence stays NULL (ESI-3): a payload without the fields must not write zeros.
+    # Fresh record_id so the upsert cannot move contract 801's item row here.
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8021, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    bare = _ship_contract_dict(802)
+    await service._process_contracts(db_session, [bare])
+    bare_row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 802)
+    )).scalar_one()
+    assert bare_row.buyout is None
+    assert bare_row.days_to_complete is None
+    assert bare_row.end_location_name is None
+
+
+async def test_item_level_columns_persist_from_payload_and_enrichment(db_session: AsyncSession):
+    """runs/ME/TE/item_id come off the item payload; category_id/group_id off the
+    type→group chain the ship flag already walks. A blueprint ORIGINAL omits runs
+    entirely (ESI-3) and must persist NULL, not zero."""
+    service = _make_service()
+    contract = _ship_contract_dict(821)
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8211, "type_id": 621, "quantity": 1, "is_included": True,
+         "is_blueprint_copy": True, "runs": 10, "material_efficiency": 8,
+         "time_efficiency": 14, "item_id": 1_000_000_001},
+        {"record_id": 8212, "type_id": 621, "quantity": 1, "is_included": True},  # original: runs absent
+        # A type whose payload carries no group_id: taxonomy ids must persist as
+        # NULL, never a fabricated default (ESI-3 — absence is not zero).
+        {"record_id": 8213, "type_id": 999, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            621: {"name": "Caracal Blueprint", "group_id": 105, "market_group_id": 4},
+            999: {"name": "Mystery Meat"},
+        }[type_id]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Cruiser Blueprint", "category_id": 9}
+    )
+    await service._process_contracts(db_session, [contract])
+
+    rows = {r.record_id: r for r in (await db_session.execute(
+        select(ContractItem).where(ContractItem.contract_id == 821)
+    )).scalars()}
+    copy, original = rows[8211], rows[8212]
+    assert (copy.runs, copy.material_efficiency, copy.time_efficiency) == (10, 8, 14)
+    assert copy.item_id == 1_000_000_001
+    assert copy.category_id == 9 and copy.group_id == 105
+    assert original.runs is None
+    assert original.material_efficiency is None
+    assert original.time_efficiency is None
+    assert original.item_id is None
+    assert original.category_id == 9          # taxonomy resolves regardless of blueprint fields
+    groupless = rows[8213]
+    assert groupless.group_id is None
+    assert groupless.category_id is None
+
+
+async def test_enrichment_fills_the_taxonomy_name_cache(db_session: AsyncSession):
+    """Group names ride the payloads enrichment already fetches; category names come
+    from the one new ESI call (spec §5.2), cache-first so the tiny immutable set is
+    fetched once, ever."""
+    service = _make_service()
+    contract = _ship_contract_dict(831)
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8311, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    service.esi_client.get_universe_category = AsyncMock(return_value={"name": "Ship"})
+    await service._process_contracts(db_session, [contract])
+
+    rows = {(r.kind, r.esi_id): r for r in (await db_session.execute(
+        select(EsiTaxonomyCache)
+    )).scalars()}
+    assert rows[("group", 25)].name == "Frigate"
+    assert rows[("group", 25)].parent_category_id == 6
+    assert rows[("category", 6)].name == "Ship"
+
+    # Second run: category already cached — the ESI call must not repeat.
+    service.esi_client.get_universe_category.reset_mock()
+    again = _ship_contract_dict(832)
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8321, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    await service._process_contracts(db_session, [again])
+    service.esi_client.get_universe_category.assert_not_awaited()
+
+
+async def test_a_failed_category_name_fetch_is_repaired_from_observed_items(
+    db_session: AsyncSession,
+):
+    """A category whose name fetch failed must be retried without re-enrichment.
+
+    The contract that carried it is stamped COMPLETED (a missing NAME is not a
+    missing category), so the item-fetch skip withholds it from every later run
+    and its group payload never reaches the cache writer again. The categories to
+    fetch therefore include the ones observed on stored items but absent from the
+    cache — which is what makes the repair happen on a run whose own batch carries
+    no items at all.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8411, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    service.esi_client.get_universe_category = AsyncMock(
+        side_effect=RuntimeError("ESI down")
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(841)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "category")
+    )).scalars().all() == []
+    contract = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 841)
+    )).scalar_one()
+    assert contract.item_processing_status == "COMPLETED"
+
+    # Next run: ESI recovers, the batch is courier-only — no items are fetched, so
+    # nothing in this run's enrichment mentions category 6. The stored item does.
+    # A FRESH service proves the retry is DB-observed, not in-memory state that a
+    # process restart would lose.
+    service = _make_service()
+    courier = _ship_contract_dict(842)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    row = (await db_session.execute(
+        select(EsiTaxonomyCache).where(
+            EsiTaxonomyCache.kind == "category", EsiTaxonomyCache.esi_id == 6
+        )
+    )).scalar_one()
+    assert row.name == "Ship"
+
+
+async def test_a_nameless_group_payload_is_repaired_from_observed_items(
+    db_session: AsyncSession,
+):
+    """A group payload carrying category_id but no name must not be lost forever.
+
+    The item resolves (category_id present), the contract is stamped COMPLETED, and
+    the enrichment skip withholds it from every later run — so without a DB-observed
+    retry the group would stay absent from the taxonomy option list permanently.
+    Same self-healing shape as categories, one level down.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8511, "type_id": 587, "quantity": 1, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 5}
+    )
+    # The codex-flagged shape: category resolves, the group name is absent.
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(851)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "group")
+    )).scalars().all() == []
+    contract = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 851)
+    )).scalar_one()
+    assert contract.item_processing_status == "COMPLETED"
+
+    # Next run, fresh service, healed ESI, courier-only batch: the stored item's
+    # group_id is the only mention of group 25, and it must be enough.
+    service = _make_service()
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+    courier = _ship_contract_dict(852)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    row = (await db_session.execute(
+        select(EsiTaxonomyCache).where(
+            EsiTaxonomyCache.kind == "group", EsiTaxonomyCache.esi_id == 25
+        )
+    )).scalar_one()
+    assert row.name == "Frigate"
+    assert row.parent_category_id == 6
+
+async def test_a_non_dict_esi_payload_degrades_one_id_and_the_run_continues(
+    db_session: AsyncSession, caplog
+):
+    """A surprise payload SHAPE degrades that one id; it must never kill the run.
+
+    The guard exists because of a live incident: the list-shaped ETag helper flattened
+    object payloads into keys, so a lookup handed back a list and the `.get()` calls
+    downstream took the whole run down. Every other resolution-failure test raises FROM
+    the fetch, which exercises the try/except one branch above and leaves this guard
+    unproven — remove the isinstance check and those tests all still pass.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8611, "type_id": 587, "quantity": 1, "is_included": True},
+        {"record_id": 8612, "type_id": 34, "quantity": 5000, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            # The incident shape: a list where an object belongs.
+            34: [{"name": "Tritanium", "group_id": 18}],
+        }[type_id]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    with caplog.at_level("WARNING"):
+        await service._process_contracts(db_session, [_ship_contract_dict(861)])
+
+    assert "Unexpected type payload shape for 34: list" in caplog.text
+
+    items = {
+        item.record_id: item
+        for item in (await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 861)
+        )).scalars()
+    }
+    # The healthy id resolves as normal — the degradation is scoped to one lookup...
+    assert items[8611].type_name == "Tristan"
+    assert items[8611].category_id == 6
+    # ...and the malformed one lands as absent enrichment rather than an exception.
+    assert items[8612].type_name is None
+    assert items[8612].category_id is None
+
+    contract = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 861)
+    )).scalar_one()
+    assert contract.is_ship_contract is True
+    # Unresolved category => not COMPLETED, so the contract stays in the re-fetch set
+    # and recovers once ESI returns object-shaped payloads again.
+    assert contract.item_processing_status == "ENRICHMENT_INCOMPLETE"
+
+
+async def test_two_distinct_missing_categories_are_both_repaired(
+    db_session: AsyncSession,
+):
+    """The observed-category walk must yield EVERY distinct category, not just the first.
+
+    _OBSERVED_CATEGORY_IDS_SQL is a hand-written loose index scan: the base case reads
+    `min(category_id)` and the recursive step walks to the next-greater one. With items
+    of a single category the base case alone is a correct answer, so a regression that
+    dropped the whole `UNION ALL` step would pass every other repair test while the
+    self-healing cache silently repaired only the lowest-numbered category forever.
+    Two categories is the smallest fixture that can tell the two apart.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8711, "type_id": 587, "quantity": 1, "is_included": True},
+        {"record_id": 8712, "type_id": 34, "quantity": 5000, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            34: {"name": "Tritanium", "group_id": 18, "market_group_id": 1857},
+        }[type_id]
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {
+            25: {"name": "Frigate", "category_id": 6},
+            18: {"name": "Mineral", "category_id": 4},
+        }[group_id]
+    )
+    service.esi_client.get_universe_category = AsyncMock(
+        side_effect=RuntimeError("ESI down")
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(871)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "category")
+    )).scalars().all() == []
+    # Both categories reached the items table — that is the only record of them.
+    assert {
+        row.category_id for row in (await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 871)
+        )).scalars()
+    } == {4, 6}
+
+    # Next run: fresh service (the retry must be DB-observed, not in-memory), ESI
+    # healed, courier-only batch so nothing in this run's enrichment mentions either
+    # category. Both must still be repaired.
+    service = _make_service()
+    service.esi_client.get_universe_category = AsyncMock(
+        side_effect=lambda category_id: {6: {"name": "Ship"}, 4: {"name": "Material"}}[
+            category_id
+        ]
+    )
+    courier = _ship_contract_dict(872)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    rows = (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "category")
+    )).scalars().all()
+    assert {row.esi_id: row.name for row in rows} == {4: "Material", 6: "Ship"}
+
+
+async def test_two_distinct_missing_groups_are_both_repaired(db_session: AsyncSession):
+    """The observed-group walk must yield EVERY distinct group (categories' sibling).
+
+    _OBSERVED_GROUP_IDS_SQL is the same loose index scan one taxonomy level down and
+    carries the same single-value blind spot: with one group in the corpus the base
+    case is indistinguishable from the full recursion.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[
+        {"record_id": 8811, "type_id": 587, "quantity": 1, "is_included": True},
+        {"record_id": 8812, "type_id": 34, "quantity": 5000, "is_included": True},
+    ])
+    service.esi_client.get_universe_type = AsyncMock(
+        side_effect=lambda type_id: {
+            587: {"name": "Tristan", "group_id": 25, "market_group_id": 1367},
+            34: {"name": "Tritanium", "group_id": 18, "market_group_id": 1857},
+        }[type_id]
+    )
+    # Both payloads carry a category but no name, so neither writes a cache row.
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {25: {"category_id": 6}, 18: {"category_id": 4}}[
+            group_id
+        ]
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(881)])
+
+    assert (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "group")
+    )).scalars().all() == []
+    assert {
+        row.group_id for row in (await db_session.execute(
+            select(ContractItem).where(ContractItem.contract_id == 881)
+        )).scalars()
+    } == {18, 25}
+
+    service = _make_service()
+    service.esi_client.get_universe_group = AsyncMock(
+        side_effect=lambda group_id: {
+            25: {"name": "Frigate", "category_id": 6},
+            18: {"name": "Mineral", "category_id": 4},
+        }[group_id]
+    )
+    courier = _ship_contract_dict(882)
+    courier["type"] = "courier"
+    await service._process_contracts(db_session, [courier])
+
+    rows = (await db_session.execute(
+        select(EsiTaxonomyCache).where(EsiTaxonomyCache.kind == "group")
+    )).scalars().all()
+    assert {row.esi_id: row.name for row in rows} == {18: "Mineral", 25: "Frigate"}
+    assert {row.esi_id: row.parent_category_id for row in rows} == {18: 4, 25: 6}
+
+async def test_one_run_stamps_every_contract_with_one_shared_fresh_last_seen_at(
+    db_session: AsyncSession,
+):
+    """One run writes ONE last_seen_at value, and it is the current time.
+
+    A contract is judged still-listed by matching the newest stamp in its region, so
+    per-row stamp drift within a batch would make the late half of a run read as
+    delisted against its own early half. The matcher and read-path suites hand-write
+    last_seen_at on fixtures — legitimate for the reader side, but it means the WRITER
+    is the untested half of the seam (TEST-18).
+    """
+    service = _make_service()
+    cids = [890001, 890002, 890003]
+
+    before = datetime.now(timezone.utc)
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    after = datetime.now(timezone.utc)
+
+    rows = (await db_session.execute(
+        select(Contract).where(Contract.contract_id.in_(cids))
+    )).scalars().all()
+    assert len(rows) == 3
+
+    stamps = {row.last_seen_at for row in rows}
+    assert len(stamps) == 1, "one run must write one last_seen_at across the whole batch"
+    stamp = stamps.pop()
+    # Bounded on both sides, so a column default or a frozen constant cannot pass.
+    assert before <= stamp <= after
+
+
+async def test_re_sighting_a_contract_advances_its_last_seen_at(
+    db_session: AsyncSession,
+):
+    """The upsert must RESTAMP an already-stored contract on conflict.
+
+    If last_seen_at stopped being written — dropped from the row dict, or added to
+    the preserve-on-null set — every re-sighted contract would fall behind its
+    region's watermark one run later and read as delisted site-wide, and no existing
+    test would go red.
+    """
+    service = _make_service()
+    await service._process_contracts(db_session, [_ship_contract_dict(890101)])
+
+    row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 890101)
+    )).scalar_one()
+
+    # Back-date to a value no run could produce, so "advanced" is decided by the
+    # writer rather than by clock resolution between two near-instant runs.
+    stale = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    await db_session.execute(
+        update(Contract).where(Contract.contract_id == 890101).values(last_seen_at=stale)
+    )
+    await db_session.refresh(row)
+    assert row.last_seen_at == stale  # the back-date really took
+
+    before = datetime.now(timezone.utc)
+    await service._process_contracts(db_session, [_ship_contract_dict(890101)])
+    await db_session.refresh(row)
+
+    assert row.last_seen_at >= before
+
+async def test_an_issuer_id_above_int32_survives_the_writer(db_session: AsyncSession):
+    """A CCP id beyond 2^31 must ingest, end to end.
+
+    Migration a7c44d19e582 widened issuer_id/issuer_corporation_id to BIGINT precisely
+    so an out-of-range id could not poison ingestion the way a price-less contract did
+    before f2a91c3b7e04 — but only the price half got the write-path test its own
+    docstring invokes (TEST-22). The issuer half had schema tests alone: model/migration
+    equivalence pins the column TYPE, and nothing ever pushed a spec-extreme VALUE
+    through _process_contracts, which is where the poisoning actually happened.
+    """
+    service = _make_service()
+    contract = _ship_contract_dict(890201)
+    contract["issuer_id"] = 3_000_000_000
+    contract["issuer_corporation_id"] = 3_000_000_001
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (await db_session.execute(
+        select(Contract).where(Contract.contract_id == 890201)
+    )).scalar_one()
+    assert row.issuer_id == 3_000_000_000
+    assert row.issuer_corporation_id == 3_000_000_001
+
+@pytest.mark.parametrize("contract_type", sorted(t.value for t in ContractType))
+async def test_items_are_fetched_for_exactly_the_item_bearing_contract_types(
+    db_session: AsyncSession, contract_type: str
+):
+    """The writer's item-fetch partition must be the enum-derived one, for every type.
+
+    _fetch_item_rows decides which contracts to ask ESI for items. The read path
+    already derives that partition from the enum "so a contract type can only ever be
+    classified in one place", but the writer restated it as a literal, so the two could
+    drift: add a type to ContractType and the reader classifies it item-bearing while
+    the writer silently never fetches its items — contracts that permanently look empty.
+
+    Parametrized over the whole enum rather than a hand-listed pair, so a new member is
+    covered the moment it is added instead of the next time somebody remembers to.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(return_value=[])
+    contract = _ship_contract_dict(890301)
+    contract["type"] = contract_type
+
+    await service._process_contracts(db_session, [contract])
+
+    if contract_type in ITEM_BEARING_CONTRACT_TYPES:
+        service.esi_client.get_contract_items.assert_awaited_once_with(890301)
+    else:
+        # No ESI round-trip at all for a type that cannot carry items.
+        service.esi_client.get_contract_items.assert_not_awaited()
+
+
 async def test_failed_item_fetch_recovers_on_the_next_run(db_session: AsyncSession):
     """A contract whose item fetch failed is retried by the NEXT run, with no sweep.
 
@@ -1015,7 +1716,13 @@ async def test_run_aggregation_reuses_app_session_factory_and_never_logs_databas
     for rec in caplog.records:
         msg = rec.getMessage()
         assert "Creating database engine" not in msg
-        assert service.settings.DATABASE_URL[:16] not in msg
+        # The SENSITIVE parts, each on its own: the old [:16] slice only covered
+        # "postgresql+async" — the dialect prefix every URL shares — so a line
+        # leaking just the credentials or host sailed past the guard. The
+        # fixture plants distinctive values precisely so these can be asserted.
+        assert "secret_user" not in msg
+        assert "secret_pw" not in msg
+        assert "db.internal" not in msg
 
 
 # --- ingestion-freshness recording (M4 Task 3.3) ---
@@ -1193,6 +1900,123 @@ async def test_freshness_recorder_overwrites_a_non_object_prior_record(
     assert isinstance(record, dict)
     assert record["outcome"] == "success"
     assert record["last_success_at"] == record["finished_at"]
+
+async def test_run_aggregation_skips_cleanly_when_the_lock_is_already_held(
+    caplog, monkeypatch: pytest.MonkeyPatch
+):
+    """A run that cannot take the lock must do nothing at all and return quietly.
+
+    This is the scenario the whole lock exists for, and the aggregation side had no
+    test for it: the suite pins release, TTL derivation and token mismatch, but never
+    a PRE-HELD lock. A regression that let the run proceed anyway (concurrent
+    ingestion) or let ConcurrencyLockError escape to the scheduler (a crash-looping
+    job) was invisible here — the matcher suite pins both arms, aggregation neither.
+    """
+    entered = {"count": 0}
+    monkeypatch.setattr(
+        bg_agg, "AsyncSessionLocal", lambda: entered.__setitem__("count", entered["count"] + 1),
+        raising=False,
+    )
+
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[])
+
+    held_by_someone_else = "another-runners-token"
+    store: dict = {bg_agg.AGGREGATION_LOCK_KEY: held_by_someone_else}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        with caplog.at_level("INFO"):
+            await service.run_aggregation()  # must not raise
+
+    service.esi_client.get_public_contracts.assert_not_awaited()  # no ESI traffic
+    assert entered["count"] == 0  # no session opened
+    assert INGEST_KEY not in store  # no freshness record from a run that never ran
+    # The other runner's lock is neither stolen nor released by the skipping run.
+    assert store[bg_agg.AGGREGATION_LOCK_KEY] == held_by_someone_else
+    assert "existing concurrency lock" in caplog.text
+
+
+async def test_freshness_failure_when_every_region_fetch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Total ESI outage: no exception propagates, so the outcome must derive from the
+    counters (ok == 0) rather than from the forced-failure path.
+
+    Success, all-304, partial and forced (commit raise) are pinned; this natural
+    all-failed path is the readiness signal for an ESI outage and had no test that
+    last_success_at survives it and the gauge stays put.
+    """
+    import json as _json
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=RuntimeError("ESI 500"))
+
+    prior = "2026-07-18T00:00:00+00:00"
+    store: dict = {
+        INGEST_KEY: _json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 2,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure"
+    assert record["regions_ok"] == 0
+    assert record["regions_failed"] == 2
+    # Staleness is always measured against the last REAL refresh.
+    assert record["last_success_at"] == prior
+    assert record["finished_at"] != prior  # the record was rewritten, not left alone
+    assert _gauge_value() == before
+
+
+@pytest.mark.parametrize("failing_op", ["get", "set"])
+async def test_a_freshness_cache_failure_never_fails_the_run(caplog, failing_op: str):
+    """A cache blip while RECORDING the outcome must not turn a healthy ingest into a
+    failed job — the recorder's own try/except is what guarantees that.
+
+    Narrow or delete that except and a Valkey hiccup after a clean commit propagates
+    out of _record_run_outcome into run_aggregation's forced-failure handler, which
+    records failure and re-raises: a successful run reported as broken.
+
+    Both cache calls the recorder makes are covered: the prior-record GET and the
+    record SET. They sit inside the same try today, but parametrizing means a refactor
+    that lifts either one out of the guard fails here instead of in production.
+    """
+    from fastapi_app.core.exceptions import ESINotModifiedError as _NotModified
+
+    class _RecorderCacheFails(_FakeLockRedis):
+        """Lock traffic works; only the freshness call under test blows up."""
+
+        async def get(self, key):
+            if failing_op == "get" and key == INGEST_KEY:
+                raise RuntimeError("valkey blip")
+            return await super().get(key)
+
+        async def set(self, key, value, nx=False, ex=None):
+            if failing_op == "set" and key == INGEST_KEY:
+                raise RuntimeError("valkey blip")
+            return await super().set(key, value, nx=nx, ex=ex)
+
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=_NotModified("304"))
+
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_RecorderCacheFails(store)):
+        with caplog.at_level("WARNING"):
+            await service.run_aggregation()  # must not raise
+
+    service.esi_client.get_public_contracts.assert_awaited()  # the run really ran
+    assert "failed to record ingest outcome" in caplog.text
+    assert INGEST_KEY not in store
+    # And the swallow does not strand the lock: release still happened in the finally.
+    assert bg_agg.AGGREGATION_LOCK_KEY not in store
 
 
 async def test_run_aggregation_rejects_non_list_region_config(caplog):
@@ -1558,3 +2382,1579 @@ async def test_station_id_range_boundaries_decide_what_is_requested(
         call.args[0] for call in service.esi_client.get_universe_station.await_args_list
     }
     assert requested == {60_000_000, 63_999_999}
+
+
+# --- End-location system resolution -----------------------------------------
+#
+# A courier contract's destination is a location id exactly like its origin, and
+# /universe/stations/ answers for it on the same terms. Both halves of the
+# station path — the fetch set and the contracts-table read-back — carry the end
+# role alongside the start role, because the upsert copies every supplied column
+# on conflict: a read-back that covered only starts would let one ESI outage
+# write NULL over every known destination corpus-wide.
+
+
+async def test_courier_end_station_resolves_to_its_solar_system(db_session: AsyncSession):
+    """end_location_system_id persists via the same station path as starts."""
+    service = _make_service()
+    contract = _ship_contract_dict(811)
+    contract["type"] = "courier"  # skips item fetching entirely
+    contract["end_location_id"] = 60008494
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: {
+            60003760: {"system_id": 30000142},
+            60008494: {"system_id": 30002187},
+        }[sid]
+    )
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 811))
+    ).scalar_one()
+    assert row.start_location_system_id == 30000142
+    assert row.end_location_system_id == 30002187
+
+
+async def test_structure_end_location_keeps_null_system_and_is_never_requested(
+    db_session: AsyncSession,
+):
+    """Player-structure destinations stay NULL and never spend ESI error budget."""
+    service = _make_service()
+    contract = _ship_contract_dict(812)
+    contract["type"] = "courier"
+    contract["end_location_id"] = 1_040_000_000_000  # Upwell structure id range
+    calls = []
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: calls.append(sid) or {"system_id": 30000142}
+    )
+
+    await service._process_contracts(db_session, [contract])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 812))
+    ).scalar_one()
+    assert row.end_location_system_id is None
+    assert 1_040_000_000_000 not in calls
+
+
+async def test_a_known_end_station_survives_an_esi_outage(db_session: AsyncSession):
+    """The DB read-back covers END pairs too — without it, an outage run would
+    re-resolve from scratch, get nothing, and bulk_upsert would write NULL over
+    every known destination (the start-side hazard, end-column edition)."""
+    service = _make_service()
+    first = _ship_contract_dict(813)
+    first["type"] = "courier"
+    first["end_location_id"] = 60008494
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: {
+            60003760: {"system_id": 30000142},
+            60008494: {"system_id": 30002187},
+        }[sid]
+    )
+    await service._process_contracts(db_session, [first])
+
+    # Second sighting: ESI down for stations. The pair must come from the table.
+    service.esi_client.get_universe_station = AsyncMock(side_effect=Exception("ESI down"))
+    again = _ship_contract_dict(813)
+    again["type"] = "courier"
+    again["end_location_id"] = 60008494
+    await service._process_contracts(db_session, [again])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 813))
+    ).scalar_one()
+    assert row.end_location_system_id == 30002187
+
+
+async def test_resolved_names_survive_a_degraded_name_resolution_run(
+    db_session: AsyncSession,
+):
+    """A transient /universe/names failure makes resolve_ids_to_names return a
+    partial map (per-chunk errors are swallowed in the ESI client). Re-sighted
+    contracts must keep their previously-resolved display names rather than
+    having them blanked until the next successful run (F008 decision log D10)."""
+    service = _make_service()
+    first = _ship_contract_dict(814)
+    first["type"] = "courier"  # skips item fetching; carries both location columns
+    first["end_location_id"] = 60008494
+    first["issuer_id"] = 91000001
+    first["issuer_corporation_id"] = 98000001
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            60008494: "Amarr VIII (Oris) - Emperor Family Academy",
+            91000001: "Resolved Pilot",
+            98000001: "Resolved Corp",
+        }
+    )
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=lambda sid: {
+            60003760: {"system_id": 30000142},
+            60008494: {"system_id": 30002187},
+        }[sid]
+    )
+    await service._process_contracts(db_session, [first])
+
+    # Second sighting: the names outage yields an empty map for every ID.
+    service.esi_client.resolve_ids_to_names = AsyncMock(return_value={})
+    again = dict(first)
+    await service._process_contracts(db_session, [again])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 814))
+    ).scalar_one()
+    assert row.start_location_name == "Jita IV - Moon 4 - Caldari Navy Assembly Plant"
+    assert row.end_location_name == "Amarr VIII (Oris) - Emperor Family Academy"
+    assert row.issuer_name == "Resolved Pilot"
+    assert row.issuer_corporation_name == "Resolved Corp"
+
+
+async def test_a_renamed_entity_updates_on_the_next_successful_run(
+    db_session: AsyncSession,
+):
+    """Preserving names on NULL must not freeze them: a successful resolution
+    carrying a genuinely changed name still overwrites the stored one."""
+    service = _make_service()
+    contract = _ship_contract_dict(815)
+    contract["issuer_corporation_id"] = 98000001
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            1: "Resolved Pilot",
+            98000001: "Old Corp Name",
+        }
+    )
+    await service._process_contracts(db_session, [contract])
+
+    service.esi_client.resolve_ids_to_names = AsyncMock(
+        return_value={
+            60003760: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+            1: "Resolved Pilot",
+            98000001: "New Corp Name",
+        }
+    )
+    await service._process_contracts(db_session, [dict(contract)])
+
+    row = (
+        await db_session.execute(select(Contract).where(Contract.contract_id == 815))
+    ).scalar_one()
+    assert row.issuer_corporation_name == "New Corp Name"
+
+
+async def test_a_spec_minimal_contract_persists_with_absent_optionals_null_or_defended(
+    db_session: AsyncSession,
+):
+    """TEST-22: a payload carrying ONLY the fields the committed ESI snapshot marks
+    required — contract_id, date_issued, date_expired, issuer_corporation_id,
+    issuer_id, type — must persist. The snapshot's optional fields (buyout,
+    collateral, days_to_complete, end_location_id, for_corporation, price, reward,
+    start_location_id, title, volume) are each either defended with a default the
+    corpus really has (collateral 0.0, for_corporation False) or land as NULL —
+    price included, which aborted the whole batch while its column was NOT NULL."""
+    from datetime import datetime, timedelta, timezone
+
+    service = _make_service()
+    # Armed with a WORKING return precisely so the not-awaited assertion below is
+    # meaningful: an unarmed MagicMock could never be awaited, which would satisfy
+    # the assertion for a reason that has nothing to do with the guard (TEST-15).
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 60003760, "system_id": 30000142}
+    )
+    live_expiry = datetime.now(timezone.utc) + timedelta(days=7)
+    spec_minimal = {
+        "contract_id": 910099,
+        "issuer_id": 1,
+        "issuer_corporation_id": 1,
+        "type": "courier",  # item-less by construction; no item fetch to stub
+        "date_issued": "2026-07-01T00:00:00Z",
+        "date_expired": live_expiry.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # The fetch layer annotates every contract with its working region;
+        # not an ESI field.
+        "_hb_region_id": 10000002,
+    }
+
+    await service._process_contracts(db_session, [spec_minimal])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 910099)
+        )
+    ).scalar_one()
+    assert row.price is None
+    assert row.collateral == 0.0
+    assert row.for_corporation is False
+    assert row.title is None
+    assert row.reward is None
+    assert row.volume is None
+    assert row.buyout is None
+    assert row.days_to_complete is None
+    assert row.start_location_id is None
+    assert row.end_location_id is None
+    # And the absence COSTS nothing upstream: `_npc_station_ids` guards on
+    # `is not None`, so a contract naming no location must produce no station
+    # lookup at all. Without the guard every location-less contract in a page
+    # would send ESI a request for station `None` — a per-row round trip whose
+    # only possible answer is an error, on the most common shape in the corpus.
+    service.esi_client.get_universe_station.assert_not_awaited()
+
+
+# --- Field mapping, optional-date parsing, and the two guards nothing reads ---
+
+
+async def test_every_mapped_contract_field_lands_on_its_own_column(
+    db_session: AsyncSession,
+):
+    """One payload, DISTINCT values in every mapped field, asserted per column.
+
+    The mapping is a flat dict literal, which is exactly the shape where a
+    copy-paste swaps two keys and nothing notices: `reward` and `volume` are both
+    plain floats read straight off the payload, so exchanging them produces a row
+    that is internally consistent, passes every schema check, and quietly reverses
+    the reward-per-m3 sort the whole courier surface is built on.
+
+    Every value here is distinct from every other, including across TYPES, because a
+    swap is only observable when the two fields disagree. The `status` default and a
+    supplied `status` are separate tests below for the same reason — one payload
+    cannot exercise both arms of the same `.get`.
+    """
+    service = _make_service()
+    payload = _ship_contract_dict(920101)
+    payload.update({
+        # The identifiers, each a different number, so a key swapped for its
+        # neighbour is visible. `type` belongs here as much as any of them: it is
+        # read straight off the payload beside `status`, and the two are adjacent
+        # string keys — the plainest copy/paste there is.
+        "type": "auction",
+        "issuer_id": 771,
+        "issuer_corporation_id": 772,
+        "start_location_id": 60003760,
+        "end_location_id": 60003761,
+        "status": "outstanding",
+        "title": "Distinctly Titled Lot",
+        "for_corporation": True,
+        "collateral": 4_400_000.0,
+        "reward": 1_100_000.0,
+        "volume": 2_200.0,
+        "buyout": 3_300_000.0,
+        "days_to_complete": 6,
+        "price": 5_500_000.0,
+        # Pinned rather than clock-relative, because this assertion is about the
+        # MAPPING and needs an exact expected value. The row is never read back
+        # through the list endpoint here, so the TEST-17 liveness concern that makes
+        # other fixtures relative does not apply.
+        "date_expired": "2027-02-03T04:05:06Z",
+    })
+
+    await service._process_contracts(db_session, [payload])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 920101)
+        )
+    ).scalar_one()
+    # `type` first, because it is the field with the widest blast radius: it drives
+    # the segment counts, the ingestion item-fetch partition and watchlist
+    # eligibility, and a wrong value is invisible to all of them at write time
+    # because each of those reads the SOURCE payload rather than the stored row.
+    assert row.type == "auction"
+    assert row.issuer_id == 771
+    assert row.issuer_corporation_id == 772
+    assert row.start_location_id == 60003760
+    assert row.end_location_id == 60003761
+    assert row.start_location_region_id == 10000002  # stamped by the fetch loop
+    assert row.status == "outstanding"
+    assert row.title == "Distinctly Titled Lot"
+    assert row.for_corporation is True
+    assert float(row.collateral) == 4_400_000.0
+    assert float(row.reward) == 1_100_000.0
+    assert float(row.volume) == 2_200.0
+    assert float(row.buyout) == 3_300_000.0
+    assert row.days_to_complete == 6
+    assert float(row.price) == 5_500_000.0
+    # Both dates asserted as EXACT values, not as a relation between them. "expiry is
+    # after issue" is a digest: it holds for any constant far enough in the future, so
+    # a mapping that replaced every expiry with a fixed date would satisfy it while
+    # storing the same instant for the whole corpus (TEST-25).
+    assert row.date_issued == datetime(2026, 7, 1, tzinfo=timezone.utc)
+    assert row.date_expired == datetime(2027, 2, 3, 4, 5, 6, tzinfo=timezone.utc)
+
+
+async def test_an_absent_status_persists_as_unknown(db_session: AsyncSession):
+    """ESI marks `status` optional on the public route and the column is NOT NULL.
+
+    The default is what stands between a status-less contract and an IntegrityError
+    that aborts the whole batch — the TEST-22 shape, which `price` already paid for.
+    """
+    service = _make_service()
+    payload = _ship_contract_dict(920102)
+    payload.pop("status", None)
+
+    await service._process_contracts(db_session, [payload])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 920102)
+        )
+    ).scalar_one()
+    assert row.status == "unknown"
+
+
+async def test_a_populated_date_completed_is_parsed_and_an_absent_one_is_null(
+    db_session: AsyncSession,
+):
+    """`_parse_esi_datetime`'s None arm runs on every public contract and is unasserted.
+
+    `date_completed` is the only optional DATE in the mapping, so it is the only field
+    that exercises the None arm at all — every other date is required. The populated
+    arm never runs against public data (ESI does not send it there) but does for the
+    character/corp contracts the column is kept for, so both are pinned here rather
+    than one being left to a future reader to guess at.
+
+    Both arms in one test because they are two arms of ONE `.get`, and asserting them
+    separately would let a mapping that always returns None pass the absent case while
+    the populated case was written for a different contract id.
+    """
+    service = _make_service()
+    absent = _ship_contract_dict(920103)
+    populated = _ship_contract_dict(920104)
+    populated["date_completed"] = "2026-07-05T12:30:00Z"
+
+    await service._process_contracts(db_session, [absent, populated])
+
+    rows = {
+        row.contract_id: row
+        for row in (
+            await db_session.execute(
+                select(Contract).where(Contract.contract_id.in_([920103, 920104]))
+            )
+        ).scalars()
+    }
+    assert rows[920103].date_completed is None
+    assert rows[920104].date_completed == datetime(
+        2026, 7, 5, 12, 30, tzinfo=timezone.utc
+    )
+
+
+
+async def test_absent_item_flags_persist_as_null_and_false(db_session: AsyncSession):
+    """ESI sends `is_blueprint_copy` true-or-ABSENT, never false (TEST-18).
+
+    So the absent arm is the ordinary case for every non-blueprint item in the corpus,
+    and it must persist as NULL rather than False: `is_bpc=false` compiles to "contains
+    no offered blueprint copy", and a mapping that defaulted the flag to False would
+    make that filter agree with itself while saying nothing about the data.
+    `is_singleton` is the opposite convention — a real `.get(..., False)` default — so
+    the two are asserted together to keep the distinction visible.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            # Neither flag supplied: the shape ESI sends for an ordinary packaged item.
+            {"record_id": 9201071, "type_id": 587, "quantity": 1, "is_included": True},
+            # The two flags DISAGREE in both directions, across two rows. Supplying
+            # them together and both true makes them indistinguishable: reading
+            # is_singleton out of `is_blueprint_copy` — an ordinary copy/paste between
+            # adjacent boolean keys — then satisfies every assertion. Each row pins one
+            # flag as set while the other is absent.
+            {
+                "record_id": 9201072, "type_id": 588, "quantity": 1,
+                "is_included": True, "is_singleton": True,
+            },
+            {
+                "record_id": 9201073, "type_id": 589, "quantity": 1,
+                "is_included": True, "is_blueprint_copy": True,
+            },
+        ]
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(920107)])
+
+    items = {
+        item.record_id: item
+        for item in (
+            await db_session.execute(
+                select(ContractItem).where(
+                    ContractItem.record_id.in_([9201071, 9201072, 9201073])
+                )
+            )
+        ).scalars()
+    }
+    # Neither supplied.
+    assert items[9201071].is_blueprint_copy is None, "absent must not become False"
+    assert items[9201071].is_singleton is False, "the documented default did not apply"
+    # Only is_singleton supplied — so a mapping reading it from the blueprint key fails.
+    assert items[9201072].is_singleton is True, "a supplied singleton flag was overridden"
+    assert items[9201072].is_blueprint_copy is None, "the blueprint flag leaked from singleton"
+    # Only is_blueprint_copy supplied — the mirror.
+    assert items[9201073].is_blueprint_copy is True, "a supplied blueprint flag was dropped"
+    assert items[9201073].is_singleton is False, "the singleton flag leaked from blueprint"
+
+
+@pytest.mark.parametrize("limit", [5, 3], ids=["limit_above_batch", "limit_equals_batch"])
+async def test_apply_dev_limit_passes_through_a_batch_at_or_under_the_limit(
+    caplog, limit: int
+):
+    """A configured limit the batch does not EXCEED truncates nothing and warns nothing.
+
+    The three tested paths are limit<len, 0 and None; this is the fourth corner, and
+    the only one where the limit is ACTIVE but does not fire. It is also the one a
+    developer actually runs into — a limit set generously enough to keep working — so
+    a spurious DEV_MODE warning here would be permanent noise in every dev log.
+
+    Both sides of the comparison are parametrized because the guard is `>` and the row
+    it closes says `<=`: with only the strictly-under case, flipping `>` to `>=` warns
+    and truncates at exactly the limit while every test still passes. An off-by-one on
+    a real boundary is the plainest kind of surviving edit there is.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    service.settings.AGGREGATION_DEV_CONTRACT_LIMIT = limit
+    batch = [_ship_contract_dict(cid) for cid in (920108, 920109, 920110)]
+
+    limited = service._apply_dev_limit(batch)
+
+    assert [c["contract_id"] for c in limited] == [920108, 920109, 920110]
+    # No WARNING at all, rather than "no line containing DEV_MODE". The claim is that a
+    # limit which does not fire is silent; excluding one marker string leaves every
+    # other warning text free to appear in dev logs on every run forever.
+    assert [r.getMessage() for r in caplog.records if r.levelname == "WARNING"] == []
+
+
+async def test_freshness_recorder_treats_an_unparseable_prior_as_no_prior(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A prior record that is not JSON at all is a distinct branch from one that is
+    valid JSON but not an object, and only the latter has a test.
+
+    `json.loads` raises for the unparseable case and returns cleanly for `"[]"`, so the
+    two arrive at `prior_success = None` by different routes — one through the
+    `except (ValueError, TypeError)`, one through the `isinstance` check. Narrowing that
+    except clause (dropping `ValueError` is the natural half, since `TypeError` is what
+    a non-str would raise) lets the exception escape to the OUTER swallow, which logs
+    "failed to record ingest outcome" and skips the SET entirely — so the corrupt key is
+    never repaired and every future run re-reads the same garbage.
+
+    Observed on a FAILING run on purpose: `last_success_at` only reports the prior value
+    when the current outcome is not itself a success, so a passing run would overwrite
+    it with `now` and hide which branch produced it (TEST-25).
+    """
+    service = _freshness_service([10000002])
+    service.esi_client.get_public_contracts = AsyncMock(
+        side_effect=RuntimeError("region fetch down")
+    )
+
+    store: dict = {INGEST_KEY: "not json at all"}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    # The key was REPAIRED, not left holding the garbage it started with.
+    record = json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure"
+    # No prior success could be recovered from an unparseable record, and inventing
+    # one would report the site as fresher than it is.
+    assert record["last_success_at"] is None
+
+
+# --- Malformed ESI dates: per-field policy (Sam's decision, 2026-08-09) ---
+#
+# One unparseable date used to abort the WHOLE aggregation run. `_fetch_regions`
+# concatenates every page of every configured region before a single
+# `_process_contracts` call, and the ETag layer stores its validator at FETCH time and
+# serves the cached body back on a 304 — so the same bad contract was re-processed and
+# re-failed every hour for as long as it stayed listed, which for a public contract is
+# up to two weeks. Nothing surfaced it: /ready reports the failure but never fails
+# readiness, and the frontend has no staleness signal at all.
+#
+# The policy now follows the COLUMN, because the three dates are not interchangeable:
+#   - date_issued / date_expired are required by ESI and NOT NULL here, and
+#     date_expired is the liveness filter and the default sort — there is no honest
+#     value to substitute, so the contract is skipped and counted.
+#   - date_completed is optional, nullable, and never sent on the public route, so a
+#     malformed value degrades to NULL and costs the contract nothing.
+
+
+def _skip_samples() -> list:
+    """Every sample of the skip counter, across ALL reason labels.
+
+    Reading one label series cannot see a second one appearing beside it: an increment
+    under a NEW reason — say a separate label for the optional-date degrade — raises the
+    "contracts dropped" total that alerts and dashboards read, while a delta measured on
+    `malformed_date` alone stays flat and every assertion passes.
+    """
+    from fastapi_app.core.metrics import contracts_skipped_total
+
+    return [
+        sample
+        for metric in contracts_skipped_total.collect()
+        for sample in metric.samples
+        if sample.name.endswith("_total")
+    ]
+
+
+def _skipped_total() -> float:
+    """The counter's grand total, summed over every reason label."""
+    return sum(sample.value for sample in _skip_samples())
+
+
+def _skip_reasons() -> set:
+    """Which reason labels the counter has actually been incremented under."""
+    return {sample.labels["reason"] for sample in _skip_samples()}
+
+
+@pytest.mark.parametrize("date_field", ["date_issued", "date_expired"])
+async def test_a_malformed_required_date_skips_only_its_own_contract(
+    db_session: AsyncSession, date_field: str
+):
+    """The blast radius is now one row, not the run.
+
+    Both healthy siblings must land — one BEFORE the malformed contract in the batch
+    and one AFTER it, because a loop that aborted on the first bad row would still
+    persist everything ahead of it and pass a test that only looked backwards.
+    """
+    service = _make_service()
+    first, bad, last = (
+        _ship_contract_dict(920201),
+        _ship_contract_dict(920202),
+        _ship_contract_dict(920203),
+    )
+    bad[date_field] = "not-a-date"
+
+    await service._process_contracts(db_session, [first, bad, last])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920201, 920202, 920203])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920201, 920203}
+
+
+@pytest.mark.parametrize(
+    "bad_value, label",
+    [
+        ("not-a-date", "unreadable_string"),
+        (12345, "wrong_type_int"),
+        (["2026-07-05T12:30:00Z"], "wrong_type_list"),
+    ],
+)
+async def test_a_malformed_optional_date_costs_the_contract_nothing(
+    db_session: AsyncSession, bad_value, label: str
+):
+    """date_completed is optional, nullable, and absent from every public payload.
+
+    A contract is not worth withholding from the site over a field the public route
+    never sends and no read path consults — so the malformed value becomes the NULL it
+    would have been had ESI simply omitted it, and the contract lands.
+
+    Parametrized over JSON SHAPES, not just unreadable strings, and deliberately over
+    the same shapes as the required-date test: the two parsers are separate functions,
+    so narrowing this one to `except ValueError` — the conventional exception for
+    `fromisoformat`, reachable without ever seeing a test — passes every string case
+    while an integer or a list raises AttributeError and aborts the run. That is the
+    outage this policy exists to prevent, surviving in the half of it that is supposed
+    to be the forgiving one.
+
+    The counter is asserted unchanged in the same test rather than in a sibling: the
+    claim is that a degraded optional date costs the contract NOTHING, and a metric
+    reading "contracts dropped" while the contract persists is part of that cost. An
+    alert hung on a number that rises during healthy operation is an alert nobody keeps.
+    """
+    service = _make_service()
+    before = _skipped_total()
+    payload = _ship_contract_dict(920204)
+    payload["date_completed"] = bad_value
+
+    await service._process_contracts(db_session, [payload])
+
+    row = (
+        await db_session.execute(
+            select(Contract).where(Contract.contract_id == 920204)
+        )
+    ).scalar_one()
+    assert row.date_completed is None, label
+    assert _skipped_total() == before, f"{label}: a persisted contract was counted as dropped"
+    assert _skip_reasons() <= {"malformed_date"}, (
+        f"{label}: a degraded optional date invented a new skip reason"
+    )
+
+
+async def test_a_skipped_contract_names_itself_and_the_field_in_the_log(
+    db_session: AsyncSession, caplog
+):
+    """The old failure was not self-diagnosing, and that was half its cost.
+
+    A bare ValueError renders the offending STRING but never the contract or the
+    region, so the only operational workaround — dropping the region from
+    AGGREGATION_REGION_IDS — could not be aimed. The warning now carries the contract
+    id and the field name, which is what makes a skip actionable rather than merely
+    counted.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    bad = _ship_contract_dict(920205)
+    bad["date_expired"] = "not-a-date"
+
+    await service._process_contracts(db_session, [bad])
+
+    warnings = [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+    assert any("920205" in line and "date_expired" in line for line in warnings), warnings
+
+
+async def test_a_skipped_contract_increments_the_skip_counter(
+    db_session: AsyncSession,
+):
+    """A skip that only logs is a silent data loss with extra steps.
+
+    The counter is what makes "we are quietly dropping listings" answerable without
+    reading logs, and it is the signal an alert can be hung on — the gap this whole
+    decision surfaced. Measured as a DELTA because Prometheus instruments are
+    process-global and other tests in the same run also skip contracts.
+    """
+    service = _make_service()
+    before = _skipped_total()
+    bad = _ship_contract_dict(920206)
+    bad["date_issued"] = "not-a-date"
+
+    await service._process_contracts(db_session, [bad])
+
+    assert _skipped_total() - before == 1
+
+
+async def test_a_healthy_batch_never_touches_the_skip_counter(
+    db_session: AsyncSession,
+):
+    """The counter must mean what an alert would read it to mean.
+
+    Without this, a counter incremented unconditionally — or once per contract rather
+    than once per skip — reads as a permanent trickle of data loss and trains whoever
+    is watching to ignore it.
+    """
+    service = _make_service()
+    before = _skipped_total()
+
+    await service._process_contracts(
+        db_session, [_ship_contract_dict(920207), _ship_contract_dict(920208)]
+    )
+
+    assert _skipped_total() == before
+
+
+async def test_a_skipped_contract_is_dropped_from_ITEM_enrichment_too(
+    db_session: AsyncSession,
+):
+    """A skip has to remove the contract from the WHOLE run, not just the parent upsert.
+
+    `contract_items.contract_id` is a foreign key onto `contracts`. Skipping only the
+    parent row while the original payload list travels on to item enrichment inserts
+    children for a parent that was never written — PostgreSQL aborts the transaction and
+    every healthy sibling rolls back with it. That is the original whole-run blast radius
+    restored through a different layer, and with a worse error: an IntegrityError naming
+    a constraint instead of a ValueError naming a date.
+
+    The other skip tests cannot see this, because the shared service fixture leaves
+    `get_contract_items` returning an empty list — so no child row is ever built and the
+    foreign key is never exercised. This test arms it deliberately.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 9202101, "type_id": 587, "quantity": 1, "is_included": True},
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Tristan", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    healthy, malformed = _ship_contract_dict(920210), _ship_contract_dict(920211)
+    malformed["date_expired"] = "not-a-date"
+
+    await service._process_contracts(db_session, [healthy, malformed])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920210, 920211])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920210}, "the healthy sibling was rolled back with the skip"
+    # Excluded from the RUN, not filtered out just before persistence: a late
+    # filter would still spend an ESI item fetch, plus type and group resolution,
+    # on a contract already known to be unstorable.
+    service.esi_client.get_contract_items.assert_awaited_once_with(920210)
+    # And no orphan child was attempted for the contract that was never written.
+    orphans = (
+        await db_session.execute(
+            select(ContractItem.record_id).where(ContractItem.contract_id == 920211)
+        )
+    ).scalars().all()
+    assert orphans == []
+
+
+@pytest.mark.parametrize(
+    "bad_value, label",
+    [
+        (None, "explicit_null"),
+        (12345, "wrong_type_int"),
+        (["2026-07-01T00:00:00Z"], "wrong_type_list"),
+    ],
+)
+async def test_a_required_date_of_the_wrong_SHAPE_is_skipped_like_a_bad_string(
+    db_session: AsyncSession, bad_value, label: str
+):
+    """"Malformed" is a claim about JSON shapes, not only about unparseable strings.
+
+    Each of these reaches a different failure: an explicit null parses to None and then
+    violates NOT NULL at insert time, while a number or a list raises AttributeError
+    inside the parser. All three abort the batch if only ValueError is isolated, which
+    is the same outage under a different traceback — and all three are ordinary upstream
+    drift rather than exotic corruption.
+    """
+    service = _make_service()
+    healthy, malformed = _ship_contract_dict(920220), _ship_contract_dict(920221)
+    malformed["date_issued"] = bad_value
+
+    await service._process_contracts(db_session, [healthy, malformed])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920220, 920221])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920220}, label
+
+
+async def test_a_required_date_that_is_absent_entirely_is_skipped(
+    db_session: AsyncSession,
+):
+    """ESI marks these required, so absence is a spec violation — and TEST-22 is the
+    record of what a spec violation costs when the writer assumes presence: a
+    price-less contract aborted every ingestion run for as long as it stayed listed.
+    Indexing the payload directly would raise KeyError past the ValueError guard."""
+    service = _make_service()
+    healthy, malformed = _ship_contract_dict(920230), _ship_contract_dict(920231)
+    del malformed["date_expired"]
+
+    await service._process_contracts(db_session, [healthy, malformed])
+
+    landed = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(
+                    Contract.contract_id.in_([920230, 920231])
+                )
+            )
+        ).scalars()
+    )
+    assert landed == {920230}
+
+
+async def test_the_skip_counter_counts_contracts_rather_than_batches_or_listings(
+    db_session: AsyncSession,
+):
+    """The counter's unit is one dropped contract, and two natural instrumentation
+    choices would quietly break that.
+
+    Incrementing once per batch that contained ANY malformed date undercounts a batch
+    holding several; deduplicating by contract id — a reasonable-looking way to stop a
+    single bad listing spamming an alert — undercounts the same listing on every later
+    run, which is precisely the case that matters, since a malformed contract stays
+    listed for up to two weeks and is re-processed every hour.
+
+    Both are checked here: two skips in one batch count two, and re-processing the same
+    contract counts again.
+    """
+    service = _make_service()
+    before = _skipped_total()
+    first, second = _ship_contract_dict(920240), _ship_contract_dict(920241)
+    first["date_issued"] = "not-a-date"
+    second["date_expired"] = "also-not-a-date"
+
+    await service._process_contracts(db_session, [first, second])
+    assert _skipped_total() - before == 2, "a batch of two skips counted as one"
+
+    await service._process_contracts(db_session, [first])
+    assert _skipped_total() - before == 3, "the same listing stopped counting on re-sight"
+
+
+async def test_a_run_that_persists_nothing_records_failure_though_the_fetch_worked(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+):
+    """Skipping EVERY contract is an outage, and must not be recorded as a success.
+
+    This is the case the whole per-field policy is most likely to meet. The realistic
+    triggers for an unreadable date — an ESI serialization change, a compatibility-date
+    bump — are GLOBAL, so they do not corrupt one contract, they corrupt all of them.
+    Under the old whole-batch abort that produced a loud failure: outcome `failure`,
+    last_success_at frozen, `data_stale` true within two hours.
+
+    Skipping per contract removes the abort, and with it the signal — the fetch
+    succeeded, no exception escaped, and the run would report success while having
+    written nothing at all. That trades a loud total outage for a silent one, in
+    exactly the scenario most likely to occur, which is the opposite of what bounding
+    the blast radius was for.
+
+    A run that fetched contracts and persisted none has not ingested anything,
+    whatever the reason.
+    """
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    # run_aggregation builds its OWN session from AsyncSessionLocal, which points at the
+    # real DATABASE_URL. Without this bind the run dies on "relation contracts does not
+    # exist" and records a failure — so the outcome assertion below would pass for a
+    # reason that has nothing to do with what was persisted (TEST-12).
+    monkeypatch.setattr(
+        bg_agg,
+        "AsyncSessionLocal",
+        async_sessionmaker(create_async_engine(TEST_DATABASE_URL), expire_on_commit=False),
+        raising=False,
+    )
+
+    service = _freshness_service([10000002])
+    prior = "2026-07-18T00:00:00+00:00"
+
+    malformed = _ship_contract_dict(920250)
+    malformed["date_issued"] = "not-a-date"
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[malformed])
+
+    store: dict = {
+        INGEST_KEY: json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 1,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure", "an ingest that wrote nothing reported success"
+    # And the staleness clock keeps measuring against the last REAL refresh, so
+    # /ready reports data_stale rather than resetting on an empty run.
+    assert record["last_success_at"] == prior
+
+
+async def test_a_run_that_persists_something_still_records_success(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+):
+    """The guard must fire on "nothing landed", not on "anything was skipped".
+
+    Without this, the natural over-correction — failing any run that skipped a contract
+    — turns one bad listing into a permanently red freshness signal, which is the same
+    alarm fatigue by another route.
+    """
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    # run_aggregation builds its OWN session from AsyncSessionLocal, which points at the
+    # real DATABASE_URL. Without this bind the run dies on "relation contracts does not
+    # exist" and records a failure — so the outcome assertion below would pass for a
+    # reason that has nothing to do with what was persisted (TEST-12).
+    monkeypatch.setattr(
+        bg_agg,
+        "AsyncSessionLocal",
+        async_sessionmaker(create_async_engine(TEST_DATABASE_URL), expire_on_commit=False),
+        raising=False,
+    )
+
+    service = _freshness_service([10000002])
+    healthy = _ship_contract_dict(920251)
+    malformed = _ship_contract_dict(920252)
+    malformed["date_expired"] = "not-a-date"
+    service.esi_client.get_public_contracts = AsyncMock(
+        return_value=[healthy, malformed]
+    )
+
+    store: dict = {}
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "success"
+    assert record["last_success_at"] == record["finished_at"]
+
+
+async def test_every_skipped_contract_is_counted_and_named_including_the_null_branch(
+    db_session: AsyncSession, caplog
+):
+    """One record per skipped contract, however that contract reached the skip.
+
+    Two skips in one batch, reaching MalformedContractDate by DIFFERENT routes: an
+    unreadable string raises out of the parse, while an explicit null parses cleanly
+    and is rejected afterwards by the `parsed is None` guard. Instrumentation hung on
+    the parser's `except` arm alone — the obvious place to put it — counts and logs the
+    first and silently drops the second.
+
+    The batch also makes rate-limiting visible: a warning budget of one per batch, a
+    reasonable-looking response to systemic corruption, would leave the second contract
+    unnamed while the counter still read two. Both signals are asserted per contract,
+    since each is the sole evidence for a listing the site will not show.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    before = _skipped_total()
+
+    unreadable, explicit_null = _ship_contract_dict(920260), _ship_contract_dict(920261)
+    unreadable["date_issued"] = "not-a-date"
+    explicit_null["date_expired"] = None
+
+    await service._process_contracts(db_session, [unreadable, explicit_null])
+
+    assert _skipped_total() - before == 2, "a skip via the null branch went uncounted"
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any(
+        "920260" in line and "date_issued" in line for line in warnings
+    ), warnings
+    assert any(
+        "920261" in line and "date_expired" in line for line in warnings
+    ), warnings
+
+
+async def test_zero_persistence_records_failure_even_when_a_region_also_failed(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """"Fetched contracts and stored none" is a failure regardless of the fetch counters.
+
+    A partial fetch is normally the better outcome than a failed one — some regions
+    answered, so `partial` keeps last_success_at moving. That makes `and regions_failed
+    == 0` a natural-looking guard to add here, preserving `partial` whenever any region
+    was already down. It is wrong: the counters describe what was FETCHED, and this run
+    wrote nothing at all, so treating it as a partial success freshens the staleness
+    clock over an empty write — the silent outage the guard exists to prevent, reached
+    through the one path that looks like a courtesy.
+
+    The all-regions-succeed case cannot see this, and neither can the existing partial
+    test, whose surviving region returns no contracts at all.
+    """
+    from fastapi_app.tests.conftest import TEST_DATABASE_URL
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    monkeypatch.setattr(
+        bg_agg,
+        "AsyncSessionLocal",
+        async_sessionmaker(create_async_engine(TEST_DATABASE_URL), expire_on_commit=False),
+        raising=False,
+    )
+
+    prior = "2026-07-18T00:00:00+00:00"
+    malformed = _ship_contract_dict(920270)
+    malformed["date_issued"] = "not-a-date"
+
+    async def _fetch(region_id, *args, **kwargs):
+        if region_id == 10000002:
+            return [malformed]          # answered, but nothing in it is storable
+        raise RuntimeError("region down")
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(side_effect=_fetch)
+
+    store: dict = {
+        INGEST_KEY: json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 2,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()
+
+    record = json.loads(store[INGEST_KEY])
+    # Guard against a vacuous pass: the run really did see a failed region, so the
+    # counters would have produced `partial` on their own (TEST-12).
+    assert record["regions_failed"] == 1 and record["regions_ok"] == 1
+    assert record["outcome"] == "failure"
+    assert record["last_success_at"] == prior
+
+
+_ABSENT = object()
+
+@pytest.mark.parametrize("field", ["date_issued", "date_expired"])
+@pytest.mark.parametrize(
+    "bad_value, shape",
+    [
+        ("not-a-date", "unreadable_string"),
+        (None, "explicit_null"),
+        (12345, "wrong_type_int"),
+        (_ABSENT, "absent_key"),
+    ],
+)
+async def test_every_shape_of_bad_required_date_is_counted_and_named(
+    db_session: AsyncSession, caplog, field: str, bad_value, shape: str
+):
+    """Counted and named for EVERY shape and BOTH required fields, not just one of each.
+
+    The persistence tests already cover these shapes, but persistence alone cannot see
+    where the skip happened. A prefilter that dropped unstorable contracts before
+    `_build_contract_rows` — a natural place to put a guard, and cheaper than building a
+    row to throw it away — still skips the contract while bypassing the shared counter
+    and warning entirely. The site loses a listing and nothing says so.
+
+    The four shapes reach the skip through three different mechanisms: a raise out of
+    the parse, a KeyError on the lookup, and the post-parse `parsed is None` guard. Any
+    instrumentation attached to fewer than all three leaks one of them silently.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    before = _skipped_total()
+
+    payload = _ship_contract_dict(920280)
+    if bad_value is _ABSENT:
+        del payload[field]
+    else:
+        payload[field] = bad_value
+
+    await service._process_contracts(db_session, [payload])
+
+    assert _skipped_total() - before == 1, f"{field}/{shape} was skipped uncounted"
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any(
+        "920280" in line and field in line for line in warnings
+    ), f"{field}/{shape} was skipped unnamed: {warnings}"
+
+
+async def test_a_contract_with_both_dates_malformed_counts_once(
+    db_session: AsyncSession, caplog
+):
+    """The counter's unit is one dropped CONTRACT, not one validation error.
+
+    Every other fixture corrupts a single field, so a refactor that validated both
+    required dates — collecting errors rather than raising at the first, which is the
+    ordinary way to give better diagnostics — could increment once per error and pass
+    all of them. One contract would then read as two dropped listings, and a metric
+    that overstates data loss is as unusable as one that understates it: the number is
+    only worth alerting on if it means what its name says.
+    """
+    caplog.set_level("WARNING")
+    service = _make_service()
+    before = _skipped_total()
+    payload = _ship_contract_dict(920290)
+    payload["date_issued"] = "not-a-date"
+    payload["date_expired"] = None
+
+    await service._process_contracts(db_session, [payload])
+
+    assert _skipped_total() - before == 1, "one contract counted as more than one drop"
+    assert (
+        await db_session.execute(
+            select(Contract.contract_id).where(Contract.contract_id == 920290)
+        )
+    ).scalar_one_or_none() is None
+
+    # Collapsing to one count must not also collapse to an unnamed warning: an
+    # aggregate "unreadable required dates" line satisfies the count while naming
+    # neither field, which is the diagnosis gap this policy was partly written to close.
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any(
+        "920290" in line and ("date_issued" in line or "date_expired" in line)
+        for line in warnings
+    ), warnings
+
+
+@pytest.mark.parametrize(
+    "bad_value, label",
+    [
+        ("not-a-date", "unreadable_string"),
+        (12345, "wrong_type_int"),
+    ],
+)
+async def test_a_malformed_optional_date_clears_a_previously_stored_one(
+    db_session: AsyncSession, bad_value, label: str
+):
+    """The degrade has to hold on RE-SIGHTING, which is the only path production uses.
+
+    Every contract is re-fetched each run, so the upsert's ON CONFLICT arm is where a
+    stored date_completed actually meets a malformed one — and that arm is different SQL
+    from the fresh insert the other optional-date tests exercise. Adding date_completed
+    to preserve_on_null would keep the old value there, which is a defensible-sounding
+    change (the column is exactly the shape preserve_on_null exists for: nullable, and
+    NULL can mean "unknown this run"). It is wrong here: the policy says an unreadable
+    optional date is stored as the NULL ESI would have sent, not that the last readable
+    value is retained forever.
+
+    Seeded through the same writer rather than by hand, so the "before" state is one
+    ingestion can really produce (TEST-18).
+    """
+    service = _make_service()
+    first = _ship_contract_dict(920300)
+    first["date_completed"] = "2026-07-05T12:30:00Z"
+    await service._process_contracts(db_session, [first])
+
+    stored = (
+        await db_session.execute(
+            select(Contract.date_completed).where(Contract.contract_id == 920300)
+        )
+    ).scalar_one()
+    assert stored is not None, "the fixture never stored a value to be cleared"
+
+    resighted = _ship_contract_dict(920300)
+    resighted["date_completed"] = bad_value
+    await service._process_contracts(db_session, [resighted])
+
+    assert (
+        await db_session.execute(
+            select(Contract.date_completed).where(Contract.contract_id == 920300)
+        )
+    ).scalar_one() is None, f"{label}: a stale completion date survived the degrade"
+
+
+# --- Upsert batch boundaries (register N-8) ----------------------------------
+#
+# Both upsert loops in _process_contracts slice their row list at a module-level
+# size so no single statement approaches asyncpg's 32767 bind-parameter ceiling.
+# The sizes were function-local literals until this row: unmonkeypatchable, so
+# crossing either boundary meant a 500-row fixture and neither loop had a test.
+# TEST-11 is the rule they are here for — a chunked writer whose fixture fits in
+# one chunk passes identically with the loop replaced by a single first-slice
+# write.
+
+
+async def test_the_contract_upsert_crosses_its_batch_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """With the contract batch size forced to 2 and THREE contracts, the loop must
+    issue TWO bounded writes of 2 and 1 — and every contract must persist.
+
+    The sizes are asserted, not just the rows, because "every row landed" is equally
+    true of a loop that was never chunked at all: one `bulk_upsert(..., contract_values)`
+    passes a row assertion while removing the bound this constant exists to enforce, and
+    only shows up at corpus scale as an asyncpg bind-parameter overflow that rolls back
+    the run (TEST-11). Dropping the last slice and never slicing at all are opposite
+    regressions, and the recorded sizes are what separates them.
+    """
+    monkeypatch.setattr(bg_agg, "CONTRACT_UPSERT_BATCH_SIZE", 2)
+
+    batches: list[int] = []
+    real_bulk_upsert = bg_agg.bulk_upsert
+
+    async def recording_bulk_upsert(session, model, rows, **kwargs):
+        if model is Contract:
+            batches.append(len(rows))
+        return await real_bulk_upsert(session, model, rows, **kwargs)
+
+    monkeypatch.setattr(bg_agg, "bulk_upsert", recording_bulk_upsert)
+
+    service = _make_service()
+    cids = [920400, 920401, 920402]
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+
+    assert batches == [2, 1]
+    stored = set(
+        (
+            await db_session.execute(
+                select(Contract.contract_id).where(Contract.contract_id.in_(cids))
+            )
+        ).scalars()
+    )
+    assert stored == set(cids)
+
+
+async def test_the_item_upsert_crosses_its_batch_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """Same boundary one level down: with the item batch size forced to 2 and THREE
+    items on one contract, the loop must issue TWO bounded writes of 2 and 1, and
+    every item row must land.
+
+    Sized independently of the contract loop — item rows carry fewer columns, so the
+    two loops have different headroom under the same bind cap and one must be
+    testable without moving the other. The sizes are asserted for the same reason as
+    the contract loop's: a single unbounded `bulk_upsert(..., all_items)` satisfies
+    every row assertion here while removing the bound entirely.
+    """
+    monkeypatch.setattr(bg_agg, "ITEM_UPSERT_BATCH_SIZE", 2)
+
+    batches: list[int] = []
+    real_bulk_upsert = bg_agg.bulk_upsert
+
+    async def recording_bulk_upsert(session, model, rows, **kwargs):
+        if model is ContractItem:
+            batches.append(len(rows))
+        return await real_bulk_upsert(session, model, rows, **kwargs)
+
+    monkeypatch.setattr(bg_agg, "bulk_upsert", recording_bulk_upsert)
+
+    service = _make_service()
+    record_ids = [9204100, 9204101, 9204102]
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": rid, "type_id": 587, "quantity": 1, "is_included": True}
+            for rid in record_ids
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(920410)])
+
+    assert batches == [2, 1]
+    stored = set(
+        (
+            await db_session.execute(
+                select(ContractItem.record_id).where(
+                    ContractItem.contract_id == 920410
+                )
+            )
+        ).scalars()
+    )
+    assert stored == set(record_ids)
+
+
+# --- Station read-back chunking and mixed batches (register N-7) -------------
+
+
+async def test_the_known_station_read_back_crosses_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """The contracts-table read-back chunks its id list too, and its loop had no
+    boundary test — the two existing ones cover the status UPDATEs and the skip SELECT.
+
+    Three DISTINCT stations, not one: a read-back that stops after its first chunk
+    still answers correctly for a single station, so a one-station fixture cannot tell
+    the loop from its first step (TEST-24). The stations are seeded through the writer
+    so the already-known state is one ingestion really produces (TEST-26), and the
+    second run's lookup is armed to RAISE — an unresolved station then writes NULL,
+    which is what makes a dropped chunk visible in the stored rows rather than only in
+    the call count.
+    """
+    service = _make_service()
+    stations = {60003760: 30000142, 60008494: 30002187, 60011866: 30002510}
+
+    async def system_for(station_id: int) -> dict:
+        return {"station_id": station_id, "system_id": stations[station_id]}
+
+    service.esi_client.get_universe_station = AsyncMock(side_effect=system_for)
+
+    def _at(cid: int, station_id: int) -> dict:
+        contract = dict(_ship_contract_dict(cid))
+        contract["start_location_id"] = station_id
+        contract["type"] = "courier"
+        return contract
+
+    seeded = [_at(920500 + i, s) for i, s in enumerate(stations)]
+    await service._process_contracts(db_session, seeded)
+
+    # Every station is now stored. Force one chunk per station and re-ingest with the
+    # lookup broken: anything the read-back misses cannot be recovered from ESI.
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 1)
+    service.esi_client.get_universe_station = AsyncMock(
+        side_effect=RuntimeError("ESI is down")
+    )
+    statements, original_execute = _recording_statements(db_session)
+    try:
+        await service._process_contracts(db_session, seeded)
+    finally:
+        db_session.execute = original_execute
+
+    # One SELECT per chunk in the start role. Three chunks of one station each, so a
+    # loop that ran to completion issued three; a de-chunked read-back issues ONE and
+    # still returns every pair, which is why the rows below cannot see it.
+    assert len(_selects_reading(statements, "start_location_system_id")) == 3
+    rows = (
+        await db_session.execute(
+            select(Contract.start_location_id, Contract.start_location_system_id)
+            .where(Contract.contract_id.in_([c["contract_id"] for c in seeded]))
+        )
+    ).all()
+    assert dict(rows) == stations
+    service.esi_client.get_universe_station.assert_not_awaited()
+
+
+async def test_a_batch_mixing_a_known_station_with_an_unknown_one_fetches_only_the_unknown(
+    db_session: AsyncSession,
+):
+    """The read-back returns a PARTIAL answer, and the code has to fall through to ESI
+    for the remainder rather than treating any hit as a complete one.
+
+    The all-known test pins the skip and the all-unknown tests pin the fetch; neither
+    can see an early return taken whenever the read-back found *something*, which would
+    leave every station first seen in a batch alongside a known one permanently NULL.
+    """
+    service = _make_service()
+
+    known = dict(_ship_contract_dict(920510))
+    known["start_location_id"] = 60003760
+    known["type"] = "courier"
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 60003760, "system_id": 30000142}
+    )
+    await service._process_contracts(db_session, [known])
+
+    fresh = dict(_ship_contract_dict(920511))
+    fresh["start_location_id"] = 60008494
+    fresh["type"] = "courier"
+    service.esi_client.get_universe_station = AsyncMock(
+        return_value={"station_id": 60008494, "system_id": 30002187}
+    )
+    await service._process_contracts(db_session, [known, fresh])
+
+    rows = (
+        await db_session.execute(
+            select(Contract.contract_id, Contract.start_location_system_id)
+            .where(Contract.contract_id.in_([920510, 920511]))
+        )
+    ).all()
+    assert dict(rows) == {920510: 30000142, 920511: 30002187}
+    # Only the station the read-back could not answer for costs a request.
+    service.esi_client.get_universe_station.assert_awaited_once_with(60008494)
+
+
+# --- The two unchunk-tested status UPDATE loops (register N-9) ---------------
+#
+# test_id_list_updates_batch_across_the_chunk_boundary crosses the boundary for the
+# COMPLETED-set and ship-flag loops. The ENRICHMENT_INCOMPLETE loop and the
+# non-ship clear are separate loops over separate id sets, each able to stop after
+# its first chunk independently of the two that are pinned.
+
+
+async def test_the_incomplete_status_update_crosses_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """Every contract whose enrichment degraded must be marked retryable, not just the
+    first chunk's worth — a contract left at its previous status is silently withheld
+    from the recovery the status exists to trigger."""
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 1)
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: [
+            {"record_id": cid, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    # Type resolution fails, so every item lands with no type_name and no category:
+    # all three contracts belong to the incomplete set and none to the completed one.
+    service.esi_client.get_universe_type = AsyncMock(side_effect=RuntimeError("ESI 500"))
+
+    cids = [920520, 920521, 920522]
+    statements, original_execute = _recording_statements(db_session)
+    try:
+        await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    finally:
+        db_session.execute = original_execute
+
+    # Three chunks of one id each. A single UPDATE over the whole set marks all three
+    # contracts correctly too, so the statuses below cannot tell chunked from
+    # unchunked — only the count can, and unchunked is the regression that breaks at
+    # corpus scale rather than in this fixture.
+    assert len(_updates_setting(statements, "item_processing_status")) == 3
+
+    statuses = (
+        await db_session.execute(
+            select(Contract.item_processing_status)
+            .where(Contract.contract_id.in_(cids))
+            .order_by(Contract.contract_id)
+        )
+    ).scalars().all()
+    assert statuses == ["ENRICHMENT_INCOMPLETE"] * 3
+
+
+async def test_the_non_ship_clear_crosses_the_chunk_boundary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """The clear arm of the ship flag chunks its own id list, and a first-chunk-only
+    clear leaves stale positives in the ships-only default view — which is precisely
+    what an ENRICHMENT_VERSION bump exists to repair.
+
+    Both states come from the writer: run one flags all three as ships, the bump
+    re-enriches them as non-ships (a corrected answer, not a degraded one), and the
+    clear must reach every one of them across three chunks.
+    """
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        side_effect=lambda cid: [
+            {"record_id": cid, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 4}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    cids = [920530, 920531, 920532]
+    await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    flags = (
+        await db_session.execute(
+            select(Contract.is_ship_contract)
+            .where(Contract.contract_id.in_(cids))
+            .order_by(Contract.contract_id)
+        )
+    ).scalars().all()
+    assert flags == [True] * 3, "precondition: all three stale flags must be set first"
+
+    monkeypatch.setattr(bg_agg, "ENRICHMENT_VERSION", bg_agg.ENRICHMENT_VERSION + 1)
+    monkeypatch.setattr(bg_agg, "UPDATE_ID_CHUNK_SIZE", 1)
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Mining Barge", "category_id": 25}
+    )
+    db_session.expire_all()
+    statements, original_execute = _recording_statements(db_session)
+    try:
+        await service._process_contracts(db_session, [_ship_contract_dict(c) for c in cids])
+    finally:
+        db_session.execute = original_execute
+
+    # Only the CLEAR arm assigns is_ship_contract here: the set arm runs over an empty
+    # id set because the corrected enrichment resolves these as a non-ship category, so
+    # this count belongs to the clear loop alone and does not move when a neighbouring
+    # loop changes. Three chunks of one id; one unbounded UPDATE clears all three flags
+    # just as correctly and is invisible to the rows below.
+    assert len(_updates_setting(statements, "is_ship_contract")) == 3
+
+    db_session.expire_all()
+    rows = (
+        await db_session.execute(
+            select(Contract.contract_id, Contract.is_ship_contract)
+            .where(Contract.contract_id.in_(cids))
+        )
+    ).all()
+    assert dict(rows) == {cid: False for cid in cids}
+
+
+# --- Failure BEFORE the region fetch (register N-18) -------------------------
+
+
+@pytest.mark.parametrize("failing_site", ["esi_client_enter", "session_factory"])
+async def test_a_failure_before_the_region_fetch_records_failure_with_zero_counters(
+    monkeypatch: pytest.MonkeyPatch, failing_site: str
+):
+    """A run that dies before it ever asks ESI for a region still has to leave a
+    freshness record, and the counters it carries are their initial 0/0.
+
+    Every other forced-failure test fails at or after the fetch, so the counters it
+    asserts were populated by _fetch_regions; none of them can see the pre-fetch
+    window, where regions_ok and regions_failed are still the initial values declared
+    beside the lock. That window is the one an operator most needs recorded — a
+    ContractAggregationService that cannot open its ESI client or its session is
+    broken in a way no region-level counter will ever describe — and a
+    "record only when we have counters worth recording" edit is invisible without it.
+
+    Two failing sites, not one: the same outcome is reached through the ESI client's
+    __aenter__ and through the session factory, on different sides of the `async with`
+    nesting (TEST-28 — one behavior, two routes, and instrumentation naturally attaches
+    to whichever route the author was looking at).
+    """
+    import json as _json
+
+    service = _freshness_service([10000002, 10000043])
+    service.esi_client.get_public_contracts = AsyncMock(return_value=[])
+
+    if failing_site == "esi_client_enter":
+        service.esi_client.__aenter__.side_effect = RuntimeError("ESI client unusable")
+    else:
+        def boom_factory():
+            raise RuntimeError("session factory unusable")
+
+        monkeypatch.setattr(bg_agg, "AsyncSessionLocal", boom_factory, raising=False)
+
+    prior = "2026-07-18T00:00:00+00:00"
+    store: dict = {
+        INGEST_KEY: _json.dumps(
+            {
+                "finished_at": prior,
+                "outcome": "success",
+                "regions_ok": 2,
+                "regions_failed": 0,
+                "last_success_at": prior,
+            }
+        )
+    }
+    before = _gauge_value()
+    with patch.object(bg_agg.aioredis, "from_url", return_value=_FakeLockRedis(store)):
+        await service.run_aggregation()  # must not raise: the scheduler owns this job
+
+    record = _json.loads(store[INGEST_KEY])
+    assert record["outcome"] == "failure"
+    assert record["regions_ok"] == 0
+    assert record["regions_failed"] == 0
+    # The record was rewritten rather than left alone — a run that stops this early
+    # must still move finished_at, or staleness cannot tell "no run" from "run failed".
+    assert record["finished_at"] != prior
+    assert record["last_success_at"] == prior
+    assert _gauge_value() == before
+    # The claim is that this happened BEFORE the fetch. Without this the test passes
+    # identically for a failure anywhere in the run, since 0/0 is also what a
+    # zero-region config would record.
+    service.esi_client.get_public_contracts.assert_not_awaited()
+
+
+async def test_the_upsert_batch_sizes_stay_under_asyncpgs_bind_parameter_ceiling(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """The two boundary tests constrain each loop against ITS configured size. This
+    constrains the size itself, which they cannot.
+
+    Both of them replace the constants with 2, so a throughput tune raising either one
+    past the ceiling is invisible to them — and the overflow never appears in a fixture.
+    It appears at corpus scale, as asyncpg refusing a statement and the whole run
+    rolling back, which is the outage the chunking exists to prevent.
+
+    The row WIDTH is read from the rows the writer actually hands to bulk_upsert, not
+    from the model (TEST-18: the model declares what may exist, the writer decides what
+    does) and not from a hand-copied count that would drift. Adding a mapped column
+    therefore moves this guard on its own, which is the other way the product can cross
+    the ceiling without either constant changing.
+    """
+    ASYNCPG_MAX_BIND_PARAMS = 32_767
+
+    widths: dict = {}
+    real_bulk_upsert = bg_agg.bulk_upsert
+
+    async def recording_bulk_upsert(session, model, rows, **kwargs):
+        if rows:
+            widths[model] = max(widths.get(model, 0), max(len(row) for row in rows))
+        return await real_bulk_upsert(session, model, rows, **kwargs)
+
+    monkeypatch.setattr(bg_agg, "bulk_upsert", recording_bulk_upsert)
+
+    service = _make_service()
+    service.esi_client.get_contract_items = AsyncMock(
+        return_value=[
+            {"record_id": 9206000, "type_id": 587, "quantity": 1, "is_included": True}
+        ]
+    )
+    service.esi_client.get_universe_type = AsyncMock(
+        return_value={"name": "Rifter", "group_id": 25, "market_group_id": 1367}
+    )
+    service.esi_client.get_universe_group = AsyncMock(
+        return_value={"name": "Frigate", "category_id": 6}
+    )
+
+    await service._process_contracts(db_session, [_ship_contract_dict(920600)])
+
+    # Neither product is a measurement until the instrument has seen both row shapes
+    # (TEST-15): an absent model would otherwise make its half of this test vacuous.
+    assert Contract in widths and ContractItem in widths
+
+    assert bg_agg.CONTRACT_UPSERT_BATCH_SIZE * widths[Contract] <= ASYNCPG_MAX_BIND_PARAMS
+    assert bg_agg.ITEM_UPSERT_BATCH_SIZE * widths[ContractItem] <= ASYNCPG_MAX_BIND_PARAMS

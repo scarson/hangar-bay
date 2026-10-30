@@ -1,0 +1,1375 @@
+{
+  "_generated": "Mutation verification evidence; emitted from executed cases and results.",
+  "cases": [
+    {
+      "name": "sort-membership",
+      "source": "src/features/contracts/columns.tsx",
+      "test_file": "src/features/contracts/columns.test.ts",
+      "test_pattern": "exposes exactly the declared sort fields",
+      "edits": [
+        {
+          "old": "sortField: 'ship_name',",
+          "new": "sortField: 'date_expired',"
+        }
+      ],
+      "expected_test_names": [
+        "columnsFor exposes exactly the declared sort fields for undefined at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'item_exchange' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'auction' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'courier' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'loan' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'unknown' at either readiness"
+      ],
+      "failed_tests": [
+        "columnsFor exposes exactly the declared sort fields for undefined at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'item_exchange' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'auction' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'loan' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'unknown' at either readiness"
+      ],
+      "restored_passed": 6
+    },
+    {
+      "name": "blueprint-sort-membership",
+      "source": "src/features/contracts/columns.tsx",
+      "test_file": "src/features/contracts/columns.test.ts",
+      "test_pattern": "exposes exactly the declared sort fields",
+      "edits": [
+        {
+          "old": "    label,\n    align: 'right',",
+          "new": "    label,\n    sortField: 'days_to_complete',\n    align: 'right',"
+        }
+      ],
+      "expected_test_names": [
+        "columnsFor exposes exactly the declared sort fields for undefined at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'item_exchange' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'auction' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'courier' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'loan' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'unknown' at either readiness"
+      ],
+      "failed_tests": [
+        "columnsFor exposes exactly the declared sort fields for undefined at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'item_exchange' at either readiness",
+        "columnsFor exposes exactly the declared sort fields for 'auction' at either readiness"
+      ],
+      "restored_passed": 6
+    },
+    {
+      "name": "page-out-of-range-skeleton",
+      "source": "src/features/contracts/components/ContractsPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "keeps the out-of-range redirect transient state visibly loading",
+      "edits": [
+        {
+          "old": "        ) : pageOutOfRange ? (\n          // Transient: the effect above is navigating to the last valid page.\n          <ContractTableSkeleton />\n        ) : (",
+          "new": "        ) : pageOutOfRange ? (\n          // Transient: the effect above is navigating to the last valid page.\n          null\n        ) : (",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractsPage keeps the out-of-range redirect transient state visibly loading"
+      ],
+      "failed_tests": [
+        "ContractsPage keeps the out-of-range redirect transient state visibly loading"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "default-size-page-count",
+      "source": "src/features/contracts/components/ContractsPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "uses the default page size when a defensive response omits size",
+      "edits": [
+        {
+          "old": "  const pageCount = data ? Math.max(1, Math.ceil(data.total / (data.size ?? DEFAULT_SIZE))) : 1",
+          "new": "  const pageCount = data ? Math.max(1, Math.ceil(data.total / (data.size ?? 1))) : 1",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractsPage uses the default page size when a defensive response omits size"
+      ],
+      "failed_tests": [
+        "ContractsPage uses the default page size when a defensive response omits size"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "default-size-pagination",
+      "source": "src/features/contracts/components/ContractsPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "uses the default page size when a defensive response omits size",
+      "edits": [
+        {
+          "old": "                  size={data.size ?? DEFAULT_SIZE}",
+          "new": "                  size={data.size ?? 1}",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractsPage uses the default page size when a defensive response omits size"
+      ],
+      "failed_tests": [
+        "ContractsPage uses the default page size when a defensive response omits size"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "courier-origin-empty-coverage",
+      "source": "src/features/contracts/components/ContractsPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "makes no courier-origin claim when the coverage list is empty",
+      "edits": [
+        {
+          "old": "            {data.segment === 'courier' && data.coverage.ingested_region_ids.length > 0 ? (",
+          "new": "            {data.segment === 'courier' ? (",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "freshness and coverage makes no courier-origin claim when the coverage list is empty"
+      ],
+      "failed_tests": [
+        "freshness and coverage makes no courier-origin claim when the coverage list is empty"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-disclosure-glyph",
+      "source": "src/features/contracts/components/ContractsPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "shows the disclosure glyph that matches the filter rail state",
+      "edits": [
+        {
+          "old": "          {filtersOpen ? '\u2212' : '+'}",
+          "new": "          {'+'}",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractsPage shows the disclosure glyph that matches the filter rail state"
+      ],
+      "failed_tests": [
+        "ContractsPage shows the disclosure glyph that matches the filter rail state"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "search-history-replace",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "ContractsPage\\ 'Search'\\ text\\ changes\\ replace\\ history\\ entries",
+      "edits": [
+        {
+          "old": "              onUpdate({ search: event.target.value || undefined }, { replace: true })",
+          "new": "              onUpdate({ search: event.target.value || undefined })",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractsPage 'Search' text changes replace history entries"
+      ],
+      "failed_tests": [
+        "ContractsPage 'Search' text changes replace history entries"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "minimum-price-history-replace",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "ContractsPage\\ 'Minimum\\ price'\\ text\\ changes\\ replace\\ history\\ entries",
+      "edits": [
+        {
+          "old": "                onUpdate(\n                  { min_price: event.target.value === '' ? undefined : Number(event.target.value) },\n                  { replace: true },\n                )",
+          "new": "                onUpdate(\n                  { min_price: event.target.value === '' ? undefined : Number(event.target.value) },\n                )",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractsPage 'Minimum price' text changes replace history entries"
+      ],
+      "failed_tests": [
+        "ContractsPage 'Minimum price' text changes replace history entries"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "maximum-price-history-replace",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "ContractsPage\\ 'Maximum\\ price'\\ text\\ changes\\ replace\\ history\\ entries",
+      "edits": [
+        {
+          "old": "                onUpdate(\n                  { max_price: event.target.value === '' ? undefined : Number(event.target.value) },\n                  { replace: true },\n                )",
+          "new": "                onUpdate(\n                  { max_price: event.target.value === '' ? undefined : Number(event.target.value) },\n                )",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractsPage 'Maximum price' text changes replace history entries"
+      ],
+      "failed_tests": [
+        "ContractsPage 'Maximum price' text changes replace history entries"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-history-replace",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "ContractsPage\\ 'Minimum\\ runs'\\ text\\ changes\\ replace\\ history\\ entries|ContractsPage\\ 'Maximum\\ runs'\\ text\\ changes\\ replace\\ history\\ entries|ContractsPage\\ 'Minimum\\ material\\ efficiency'\\ text\\ changes\\ replace\\ history\\ entries|ContractsPage\\ 'Maximum\\ material\\ efficiency'\\ text\\ changes\\ replace\\ history\\ entries|ContractsPage\\ 'Minimum\\ time\\ efficiency'\\ text\\ changes\\ replace\\ history\\ entries|ContractsPage\\ 'Maximum\\ time\\ efficiency'\\ text\\ changes\\ replace\\ history\\ entries",
+      "edits": [
+        {
+          "old": "    onUpdate({ [key]: raw === '' ? undefined : Number(raw) }, { replace: true })",
+          "new": "    onUpdate({ [key]: raw === '' ? undefined : Number(raw) })",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractsPage 'Minimum runs' text changes replace history entries",
+        "ContractsPage 'Maximum runs' text changes replace history entries",
+        "ContractsPage 'Minimum material efficiency' text changes replace history entries",
+        "ContractsPage 'Maximum material efficiency' text changes replace history entries",
+        "ContractsPage 'Minimum time efficiency' text changes replace history entries",
+        "ContractsPage 'Maximum time efficiency' text changes replace history entries"
+      ],
+      "failed_tests": [
+        "ContractsPage 'Minimum runs' text changes replace history entries",
+        "ContractsPage 'Maximum runs' text changes replace history entries",
+        "ContractsPage 'Minimum material efficiency' text changes replace history entries",
+        "ContractsPage 'Maximum material efficiency' text changes replace history entries",
+        "ContractsPage 'Minimum time efficiency' text changes replace history entries",
+        "ContractsPage 'Maximum time efficiency' text changes replace history entries"
+      ],
+      "restored_passed": 6
+    },
+    {
+      "name": "unknown-segment-title",
+      "source": "src/features/contracts/components/SegmentTabs.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "names an unknown-segment deep link and sends its type without ships-only",
+      "edits": [
+        {
+          "old": "  unknown: 'Unknown Contracts',",
+          "new": "  unknown: 'Loan Contracts',",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "contract-type segments names an unknown-segment deep link and sends its type without ships-only"
+      ],
+      "failed_tests": [
+        "contract-type segments names an unknown-segment deep link and sends its type without ships-only"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "missing-segment-count-fallback",
+      "source": "src/features/contracts/components/SegmentTabs.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "renders zero for a defensively missing segment-count key",
+      "edits": [
+        {
+          "old": "              : (counts[segment.type] ?? 0)",
+          "new": "              : (counts[segment.type] ?? 7)",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "contract-type segments renders zero for a defensively missing segment-count key"
+      ],
+      "failed_tests": [
+        "contract-type segments renders zero for a defensively missing segment-count key"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "ships-only-itemless-inflight-counts",
+      "source": "src/features/contracts/components/SegmentTabs.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "suppresses ships-only counts while an item-less segment request is in flight",
+      "edits": [
+        {
+          "old": "  const suppressLiftedNumerals = countsFromItemLess || leavingItemLess",
+          "new": "  const suppressLiftedNumerals = countsFromItemLess",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "contract-type segments suppresses ships-only counts while an item-less segment request is in flight"
+      ],
+      "failed_tests": [
+        "contract-type segments suppresses ships-only counts while an item-less segment request is in flight"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "nonsortable-header-control",
+      "source": "src/features/contracts/components/ContractTable.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "keeps nonsortable headers inert and renders the active sort-direction glyph",
+      "edits": [
+        {
+          "old": "                  {column.sortField ? (",
+          "new": "                  {true ? (",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "table rendering states keeps nonsortable headers inert and renders the active sort-direction glyph"
+      ],
+      "failed_tests": [
+        "table rendering states keeps nonsortable headers inert and renders the active sort-direction glyph"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "sort-direction-glyph",
+      "source": "src/features/contracts/components/ContractTable.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "keeps nonsortable headers inert and renders the active sort-direction glyph",
+      "edits": [
+        {
+          "old": "                        {sorted ? (search.sort_direction === 'asc' ? '\u25b2' : '\u25bc') : ''}",
+          "new": "                        {sorted ? (search.sort_direction === 'asc' ? '\u25bc' : '\u25b2') : ''}",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "table rendering states keeps nonsortable headers inert and renders the active sort-direction glyph"
+      ],
+      "failed_tests": [
+        "table rendering states keeps nonsortable headers inert and renders the active sort-direction glyph"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "refresh-opacity",
+      "source": "src/features/contracts/components/ContractTable.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "dims held rows only while their replacement request is in flight",
+      "edits": [
+        {
+          "old": "        className={`w-full border-collapse transition-opacity duration-200 ${isRefreshing ? 'opacity-60' : ''}`}",
+          "new": "        className=\"w-full border-collapse transition-opacity duration-200\"",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "table rendering states dims held rows only while their replacement request is in flight"
+      ],
+      "failed_tests": [
+        "table rendering states dims held rows only while their replacement request is in flight"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "expired-cell-warning",
+      "source": "src/features/contracts/columns.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "warns only on an expired list cell",
+      "edits": [
+        {
+          "old": "    `text-data ${ctx.expiry === 'Expired' ? 'text-warn' : 'text-ink-dim'}`",
+          "new": "    `text-data ${false ? 'text-warn' : 'text-ink-dim'}`",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "table rendering states warns only on an expired list cell"
+      ],
+      "failed_tests": [
+        "table rendering states warns only on an expired list cell"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "live-cell-not-warning",
+      "source": "src/features/contracts/columns.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "warns only on an expired list cell",
+      "edits": [
+        {
+          "old": "    `text-data ${ctx.expiry === 'Expired' ? 'text-warn' : 'text-ink-dim'}`",
+          "new": "    `text-data ${true ? 'text-warn' : 'text-ink-dim'}`",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "table rendering states warns only on an expired list cell"
+      ],
+      "failed_tests": [
+        "table rendering states warns only on an expired list cell"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "nonpositive-contract-render-guard",
+      "source": "src/features/contracts/components/ContractDetailPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "rejects the non-positive contract id",
+      "edits": [
+        {
+          "old": "  if (!Number.isInteger(contractId) || contractId <= 0) {",
+          "new": "  if (!Number.isInteger(contractId)) {",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractDetailPage optional fields and recovery rejects the non-positive contract id 0 before fetching it",
+        "ContractDetailPage optional fields and recovery rejects the non-positive contract id -1 before fetching it"
+      ],
+      "failed_tests": [
+        "ContractDetailPage optional fields and recovery rejects the non-positive contract id 0 before fetching it",
+        "ContractDetailPage optional fields and recovery rejects the non-positive contract id -1 before fetching it"
+      ],
+      "restored_passed": 2
+    },
+    {
+      "name": "zero-collateral-suppression",
+      "source": "src/features/contracts/components/ContractDetailPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "suppresses zero collateral instead of presenting it as hauler risk",
+      "edits": [
+        {
+          "old": "            {data.collateral > 0 ? (",
+          "new": "            {data.collateral >= 0 ? (",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractDetailPage optional fields and recovery suppresses zero collateral instead of presenting it as hauler risk"
+      ],
+      "failed_tests": [
+        "ContractDetailPage optional fields and recovery suppresses zero collateral instead of presenting it as hauler risk"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "recorded-detail-volume",
+      "source": "src/features/contracts/components/ContractDetailPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "ContractDetailPage\\ optional\\ fields\\ and\\ recovery\\ renders\\ the\\ 'recorded'\\ detail\\ volume\\ explicitly",
+      "edits": [
+        {
+          "old": "              {data.volume != null ? `${data.volume.toLocaleString('en-US')} m\u00b3` : '\u2014'}",
+          "new": "              {'\u2014'}",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractDetailPage optional fields and recovery renders the 'recorded' detail volume explicitly"
+      ],
+      "failed_tests": [
+        "ContractDetailPage optional fields and recovery renders the 'recorded' detail volume explicitly"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "missing-detail-volume",
+      "source": "src/features/contracts/components/ContractDetailPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "ContractDetailPage\\ optional\\ fields\\ and\\ recovery\\ renders\\ the\\ 'missing'\\ detail\\ volume\\ explicitly",
+      "edits": [
+        {
+          "old": "              {data.volume != null ? `${data.volume.toLocaleString('en-US')} m\u00b3` : '\u2014'}",
+          "new": "              {data.volume != null ? `${data.volume.toLocaleString('en-US')} m\u00b3` : '0 m\u00b3'}",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractDetailPage optional fields and recovery renders the 'missing' detail volume explicitly"
+      ],
+      "failed_tests": [
+        "ContractDetailPage optional fields and recovery renders the 'missing' detail volume explicitly"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "corporation-audience-label",
+      "source": "src/features/contracts/components/ContractDetailPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "renders For corporation =",
+      "edits": [
+        {
+          "old": "              {data.for_corporation ? 'Yes' : 'No'}",
+          "new": "              {data.for_corporation ? 'No' : 'Yes'}",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractDetailPage optional fields and recovery renders For corporation = 'Yes'",
+        "ContractDetailPage optional fields and recovery renders For corporation = 'No'"
+      ],
+      "failed_tests": [
+        "ContractDetailPage optional fields and recovery renders For corporation = 'Yes'",
+        "ContractDetailPage optional fields and recovery renders For corporation = 'No'"
+      ],
+      "restored_passed": 2
+    },
+    {
+      "name": "issuer-id-fallback",
+      "source": "src/features/contracts/components/ContractDetailPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "falls back to issuer and corporation ids when names are absent",
+      "edits": [
+        {
+          "old": "              {data.issuer_name ?? `Character ${data.issuer_id}`}",
+          "new": "              {data.issuer_name ?? ''}",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractDetailPage optional fields and recovery falls back to issuer and corporation ids when names are absent"
+      ],
+      "failed_tests": [
+        "ContractDetailPage optional fields and recovery falls back to issuer and corporation ids when names are absent"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "corporation-id-fallback",
+      "source": "src/features/contracts/components/ContractDetailPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "falls back to issuer and corporation ids when names are absent",
+      "edits": [
+        {
+          "old": "              {data.issuer_corporation_name ?? `Corporation ${data.issuer_corporation_id}`}",
+          "new": "              {data.issuer_corporation_name ?? ''}",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractDetailPage optional fields and recovery falls back to issuer and corporation ids when names are absent"
+      ],
+      "failed_tests": [
+        "ContractDetailPage optional fields and recovery falls back to issuer and corporation ids when names are absent"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "seller-title-deduplication",
+      "source": "src/features/contracts/components/ContractDetailPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "does not repeat a seller title that equals the primary label",
+      "edits": [
+        {
+          "old": "        {data.title?.trim() && data.title.trim() !== data.primary_label ? (",
+          "new": "        {data.title?.trim() ? (",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractDetailPage optional fields and recovery does not repeat a seller title that equals the primary label"
+      ],
+      "failed_tests": [
+        "ContractDetailPage optional fields and recovery does not repeat a seller title that equals the primary label"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "detail-retry-control",
+      "source": "src/features/contracts/components/ContractDetailPage.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "retries a failed detail request and renders the recovered contract",
+      "edits": [
+        {
+          "old": "          <Button onClick={() => refetch()}>Retry</Button>",
+          "new": "          <Button onClick={() => undefined}>Retry</Button>",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "ContractDetailPage optional fields and recovery retries a failed detail request and renders the recovered contract"
+      ],
+      "failed_tests": [
+        "ContractDetailPage optional fields and recovery retries a failed detail request and renders the recovered contract"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "pagination-empty-clamp",
+      "source": "src/features/contracts/components/Pagination.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "clamps an empty result to one page and uses the supplied unit label",
+      "edits": [
+        {
+          "old": "  const pageCount = Math.max(1, Math.ceil(total / size))",
+          "new": "  const pageCount = Math.ceil(total / size)",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "Pagination clamps an empty result to one page and uses the supplied unit label"
+      ],
+      "failed_tests": [
+        "Pagination clamps an empty result to one page and uses the supplied unit label"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "pagination-unit-label",
+      "source": "src/features/contracts/components/Pagination.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "clamps an empty result to one page and uses the supplied unit label",
+      "edits": [
+        {
+          "old": "        Page {page} of {pageCount} \u00b7 {total.toLocaleString('en-US')} {unitLabel}",
+          "new": "        Page {page} of {pageCount} \u00b7 {total.toLocaleString('en-US')} contracts",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "Pagination clamps an empty result to one page and uses the supplied unit label"
+      ],
+      "failed_tests": [
+        "Pagination clamps an empty result to one page and uses the supplied unit label"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "single-blueprint-missing-figure",
+      "source": "src/features/contracts/columns.tsx",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "leaves one missing figure blank on a single-copy blueprint row",
+      "edits": [
+        {
+          "old": "      return value == null ? null : value",
+          "new": "      return value ?? 0",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "blueprint and composition cells leaves one missing figure blank on a single-copy blueprint row"
+      ],
+      "failed_tests": [
+        "blueprint and composition cells leaves one missing figure blank on a single-copy blueprint row"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-region-no-matches",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "says when the region type-ahead has no matches",
+      "edits": [
+        {
+          "old": "          {visibleRegions.length === 0 ? (",
+          "new": "          {false ? (",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "FilterRail URL filters says when the region type-ahead has no matches"
+      ],
+      "failed_tests": [
+        "FilterRail URL filters says when the region type-ahead has no matches"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-last-region-uncheck",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "removes the region from the URL and request when the last selection is unchecked",
+      "edits": [
+        {
+          "old": "    if (checked) next.add(id)\n    else next.delete(id)\n    onUpdate({ region_ids: next.size > 0 ? [...next].sort((a, b) => a - b) : undefined })",
+          "new": "    if (checked) next.add(id)\n    onUpdate({ region_ids: next.size > 0 ? [...next].sort((a, b) => a - b) : undefined })",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "FilterRail URL filters removes the region from the URL and request when the last selection is unchecked"
+      ],
+      "failed_tests": [
+        "FilterRail URL filters removes the region from the URL and request when the last selection is unchecked"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-min-price-mapping",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_price'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "                  { min_price: event.target.value === '' ? undefined : Number(event.target.value) },",
+          "new": "                  { max_price: event.target.value === '' ? undefined : Number(event.target.value) },",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_price' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_price' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-max-price-mapping",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_price'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "                  { max_price: event.target.value === '' ? undefined : Number(event.target.value) },",
+          "new": "                  { min_price: event.target.value === '' ? undefined : Number(event.target.value) },",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_price' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_price' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-min-price-clear",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_price'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "                  { min_price: event.target.value === '' ? undefined : Number(event.target.value) },",
+          "new": "                  { min_price: Number(event.target.value) },",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_price' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_price' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-max-price-clear",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_price'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "                  { max_price: event.target.value === '' ? undefined : Number(event.target.value) },",
+          "new": "                  { max_price: Number(event.target.value) },",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_price' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_price' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-max-price-active",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_price'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  const hasActiveFilters =\n    search.search !== undefined ||\n    search.min_price !== undefined ||\n    search.max_price !== undefined ||\n    search.region_ids !== undefined ||\n    search.contract_type !== undefined ||\n    hasOfferedItemFilters(search) ||\n    !search.ships_only",
+          "new": "  const hasActiveFilters =\n    search.search !== undefined ||\n    search.min_price !== undefined ||\n    search.region_ids !== undefined ||\n    search.contract_type !== undefined ||\n    hasOfferedItemFilters(search) ||\n    !search.ships_only",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_price' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_price' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-region-active",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "removes the region from the URL and request when the last selection is unchecked",
+      "edits": [
+        {
+          "old": "  const hasActiveFilters =\n    search.search !== undefined ||\n    search.min_price !== undefined ||\n    search.max_price !== undefined ||\n    search.region_ids !== undefined ||\n    search.contract_type !== undefined ||\n    hasOfferedItemFilters(search) ||\n    !search.ships_only",
+          "new": "  const hasActiveFilters =\n    search.search !== undefined ||\n    search.min_price !== undefined ||\n    search.max_price !== undefined ||\n    search.contract_type !== undefined ||\n    hasOfferedItemFilters(search) ||\n    !search.ships_only",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "FilterRail URL filters removes the region from the URL and request when the last selection is unchecked"
+      ],
+      "failed_tests": [
+        "FilterRail URL filters removes the region from the URL and request when the last selection is unchecked"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-ships-only-active",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "offers Clear filters when ships-only is the sole changed setting",
+      "edits": [
+        {
+          "old": "  const hasActiveFilters =\n    search.search !== undefined ||\n    search.min_price !== undefined ||\n    search.max_price !== undefined ||\n    search.region_ids !== undefined ||\n    search.contract_type !== undefined ||\n    hasOfferedItemFilters(search) ||\n    !search.ships_only",
+          "new": "  const hasActiveFilters =\n    search.search !== undefined ||\n    search.min_price !== undefined ||\n    search.max_price !== undefined ||\n    search.region_ids !== undefined ||\n    search.contract_type !== undefined ||\n    hasOfferedItemFilters(search) ||\n    false",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "FilterRail URL filters offers Clear filters when ships-only is the sole changed setting"
+      ],
+      "failed_tests": [
+        "FilterRail URL filters offers Clear filters when ships-only is the sole changed setting"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "filter-region-count-chip",
+      "source": "src/features/contracts/components/FilterRail.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "shows the selected counts in the region, category, and group legends",
+      "edits": [
+        {
+          "old": "            <span className=\"ml-1.5 rounded-sm bg-brand-wash px-1 font-mono text-brand normal-case\">\n              {selectedRegions.size}\n            </span>",
+          "new": "            <span className=\"ml-1.5 rounded-sm bg-brand-wash px-1 font-mono text-brand normal-case\">\n              {1}\n            </span>",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "FilterRail URL filters shows the selected counts in the region, category, and group legends"
+      ],
+      "failed_tests": [
+        "FilterRail URL filters shows the selected counts in the region, category, and group legends"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "taxonomy-selected-count-chip",
+      "source": "src/features/contracts/components/TaxonomyFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "shows the selected counts in the region, category, and group legends",
+      "edits": [
+        {
+          "old": "          <span className=\"ml-1.5 rounded-sm bg-brand-wash px-1 font-mono text-brand normal-case\">\n            {selectedCount}\n          </span>",
+          "new": "          <span className=\"ml-1.5 rounded-sm bg-brand-wash px-1 font-mono text-brand normal-case\">\n            {1}\n          </span>",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "FilterRail URL filters shows the selected counts in the region, category, and group legends"
+      ],
+      "failed_tests": [
+        "FilterRail URL filters shows the selected counts in the region, category, and group legends"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "taxonomy-empty-category-corpus",
+      "source": "src/features/contracts/components/TaxonomyFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "states when a complete corpus has no categories",
+      "edits": [
+        {
+          "old": "          {categories.length === 0 ? (",
+          "new": "          {false ? (",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "TaxonomyFilter empty and nullable taxonomy states states when a complete corpus has no categories"
+      ],
+      "failed_tests": [
+        "TaxonomyFilter empty and nullable taxonomy states states when a complete corpus has no categories"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "taxonomy-queryless-empty-groups",
+      "source": "src/features/contracts/components/TaxonomyFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "states when the selected categories contain no groups without requiring a query",
+      "edits": [
+        {
+          "old": "              {query ? `No group matches \u201c${groupQuery}\u201d` : 'No group in the selected categories'}",
+          "new": "              {true ? `No group matches \u201c${groupQuery}\u201d` : 'No group in the selected categories'}",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "TaxonomyFilter empty and nullable taxonomy states states when the selected categories contain no groups without requiring a query"
+      ],
+      "failed_tests": [
+        "TaxonomyFilter empty and nullable taxonomy states states when the selected categories contain no groups without requiring a query"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "taxonomy-null-group-scoping",
+      "source": "src/features/contracts/components/TaxonomyFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "offers a category-less group only while unscoped and prunes it when the scope narrows",
+      "edits": [
+        {
+          "old": "  const inScope = (categoryId: number | null | undefined) =>\n    selectedCategories.size === 0 || (categoryId != null && selectedCategories.has(categoryId))",
+          "new": "  const inScope = (categoryId: number | null | undefined) =>\n    selectedCategories.size === 0 || categoryId == null || selectedCategories.has(categoryId)",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "TaxonomyFilter empty and nullable taxonomy states offers a category-less group only while unscoped and prunes it when the scope narrows"
+      ],
+      "failed_tests": [
+        "TaxonomyFilter empty and nullable taxonomy states offers a category-less group only while unscoped and prunes it when the scope narrows"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "taxonomy-null-group-pruning",
+      "source": "src/features/contracts/components/TaxonomyFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "offers a category-less group only while unscoped and prunes it when the scope narrows",
+      "edits": [
+        {
+          "old": "            .filter((group) => group.category_id != null && next.has(group.category_id))",
+          "new": "            .filter((group) => group.category_id == null || next.has(group.category_id))",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "TaxonomyFilter empty and nullable taxonomy states offers a category-less group only while unscoped and prunes it when the scope narrows"
+      ],
+      "failed_tests": [
+        "TaxonomyFilter empty and nullable taxonomy states offers a category-less group only while unscoped and prunes it when the scope narrows"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-min-runs-clear",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_runs'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: raw === '' ? undefined : Number(raw) }, { replace: true })",
+          "new": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: Number(raw) }, { replace: true })",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_runs' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_runs' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-max-runs-clear",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_runs'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: raw === '' ? undefined : Number(raw) }, { replace: true })",
+          "new": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: Number(raw) }, { replace: true })",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_runs' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_runs' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-min-me-clear",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_me'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: raw === '' ? undefined : Number(raw) }, { replace: true })",
+          "new": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: Number(raw) }, { replace: true })",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_me' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_me' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-max-me-clear",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_me'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: raw === '' ? undefined : Number(raw) }, { replace: true })",
+          "new": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: Number(raw) }, { replace: true })",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_me' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_me' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-min-te-clear",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_te'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: raw === '' ? undefined : Number(raw) }, { replace: true })",
+          "new": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: Number(raw) }, { replace: true })",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_te' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_te' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-max-te-clear",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_te'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: raw === '' ? undefined : Number(raw) }, { replace: true })",
+          "new": "  const bound = (key: keyof ContractSearch, raw: string) =>\n    onUpdate({ [key]: Number(raw) }, { replace: true })",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_te' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_te' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-min-runs-mapping",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_runs'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  { legend: 'Runs', min: 'min_runs', max: 'max_runs', noun: 'runs' },",
+          "new": "  { legend: 'Runs', min: 'max_runs', max: 'max_runs', noun: 'runs' },",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_runs' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_runs' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-max-runs-mapping",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_runs'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  { legend: 'Runs', min: 'min_runs', max: 'max_runs', noun: 'runs' },",
+          "new": "  { legend: 'Runs', min: 'min_runs', max: 'min_runs', noun: 'runs' },",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_runs' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_runs' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-min-me-mapping",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_me'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  { legend: 'Material efficiency', min: 'min_me', max: 'max_me', noun: 'material efficiency' },",
+          "new": "  { legend: 'Material efficiency', min: 'max_me', max: 'max_me', noun: 'material efficiency' },",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_me' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_me' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-max-me-mapping",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_me'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  { legend: 'Material efficiency', min: 'min_me', max: 'max_me', noun: 'material efficiency' },",
+          "new": "  { legend: 'Material efficiency', min: 'min_me', max: 'min_me', noun: 'material efficiency' },",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_me' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_me' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-min-te-mapping",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_te'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  { legend: 'Time efficiency', min: 'min_te', max: 'max_te', noun: 'time efficiency' },",
+          "new": "  { legend: 'Time efficiency', min: 'max_te', max: 'max_te', noun: 'time efficiency' },",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_te' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_te' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "blueprint-max-te-mapping",
+      "source": "src/features/contracts/components/BlueprintFilter.tsx",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_te'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "  { legend: 'Time efficiency', min: 'min_te', max: 'max_te', noun: 'time efficiency' },",
+          "new": "  { legend: 'Time efficiency', min: 'min_te', max: 'min_te', noun: 'time efficiency' },",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_te' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_te' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "enrichment-category-member",
+      "source": "src/features/contracts/filters.ts",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "offers Clear filters when category_id is the sole active filter",
+      "edits": [
+        {
+          "old": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "new": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "FilterRail URL filters offers Clear filters when category_id is the sole active filter"
+      ],
+      "failed_tests": [
+        "FilterRail URL filters offers Clear filters when category_id is the sole active filter"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "offered-item-is-bpc-member",
+      "source": "src/features/contracts/filters.ts",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "offers Clear filters when is_bpc=(true|false) is the sole active filter",
+      "edits": [
+        {
+          "old": "const OFFERED_ITEM_FILTERS = [...ENRICHMENT_DEPENDENT_FILTERS, 'is_bpc'] as const",
+          "new": "const OFFERED_ITEM_FILTERS = [...ENRICHMENT_DEPENDENT_FILTERS] as const",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "FilterRail URL filters offers Clear filters when is_bpc=true is the sole active filter",
+        "FilterRail URL filters offers Clear filters when is_bpc=false is the sole active filter"
+      ],
+      "failed_tests": [
+        "FilterRail URL filters offers Clear filters when is_bpc=true is the sole active filter",
+        "FilterRail URL filters offers Clear filters when is_bpc=false is the sole active filter"
+      ],
+      "restored_passed": 2
+    },
+    {
+      "name": "enrichment-group-member",
+      "source": "src/features/contracts/filters.ts",
+      "test_file": "src/features/contracts/components/pages.test.tsx",
+      "test_pattern": "offers Clear filters for a taxonomy selection that arrived by URL",
+      "edits": [
+        {
+          "old": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "new": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "taxonomy filters offers Clear filters for a taxonomy selection that arrived by URL"
+      ],
+      "failed_tests": [
+        "taxonomy filters offers Clear filters for a taxonomy selection that arrived by URL"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "enrichment-min-runs-member",
+      "source": "src/features/contracts/filters.ts",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_runs'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "new": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_runs' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_runs' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "enrichment-max-runs-member",
+      "source": "src/features/contracts/filters.ts",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_runs'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "new": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_runs' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_runs' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "enrichment-min-me-member",
+      "source": "src/features/contracts/filters.ts",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_me'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "new": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_me' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_me' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "enrichment-max-me-member",
+      "source": "src/features/contracts/filters.ts",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_me'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "new": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_me' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_me' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "enrichment-min-te-member",
+      "source": "src/features/contracts/filters.ts",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'min_te'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "new": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'min_te' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'min_te' through its labelled input"
+      ],
+      "restored_passed": 1
+    },
+    {
+      "name": "enrichment-max-te-member",
+      "source": "src/features/contracts/filters.ts",
+      "test_file": "src/features/contracts/components/filter-controls.test.tsx",
+      "test_pattern": "price\\ and\\ blueprint\\ bounds\\ sets\\ and\\ clears\\ 'max_te'\\ through\\ its\\ labelled\\ input",
+      "edits": [
+        {
+          "old": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n  'max_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "new": "const ENRICHMENT_DEPENDENT_FILTERS = [\n  'category_id',\n  'group_id',\n  'min_runs',\n  'max_runs',\n  'min_me',\n  'max_me',\n  'min_te',\n] as const satisfies readonly (keyof ContractSearch)[]",
+          "count": 1
+        }
+      ],
+      "expected_test_names": [
+        "price and blueprint bounds sets and clears 'max_te' through its labelled input"
+      ],
+      "failed_tests": [
+        "price and blueprint bounds sets and clears 'max_te' through its labelled input"
+      ],
+      "restored_passed": 1
+    }
+  ]
+}

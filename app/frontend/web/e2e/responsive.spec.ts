@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { BPC_CONTRACTS, SEVEN_SHIPS, makeContract, makeShipItem, pageOf } from './fixtures/contracts'
-import { interceptContractDetail, interceptContractList, interceptCurrentUser } from './helpers/api'
+import { BPC_CONTRACTS, SEVEN_SHIPS, makeContractDetail, makeShipItem, pageOf } from './fixtures/contracts'
+import { interceptContractDetail, interceptContractList, interceptCurrentUser, interceptTaxonomy } from './helpers/api'
 import { rowLinks } from './helpers/ui'
 
 /**
@@ -14,6 +14,15 @@ import { rowLinks } from './helpers/ui'
  * the disclosure mobile-only tests skip on desktop, and the desktop-column test
  * skips on mobile. Scenario 5 (table usability) runs on both.
  */
+
+// Every contracts view queries the taxonomy endpoint for the item-level
+// readiness signal. Routing it here keeps the fixture lane hermetic; a test
+// that needs the surface open registers its own interceptTaxonomy, which wins
+// because page.route handlers run last-registered-first.
+test.beforeEach(async ({ page }) => {
+  await interceptTaxonomy(page)
+})
+
 test.describe('responsive filter-rail disclosure', () => {
   const isMobile = () => test.info().project.name === 'mobile'
 
@@ -150,7 +159,7 @@ test.describe('responsive filter-rail disclosure', () => {
     await interceptCurrentUser(page, { status: 401 })
     await interceptContractList(page, pageOf(SEVEN_SHIPS))
     await interceptContractDetail(page, (contractId) =>
-      makeContract({ contract_id: contractId, items: [makeShipItem('Revelation')] }),
+      makeContractDetail({ contract_id: contractId, items: [makeShipItem('Revelation')] }),
     )
 
     await page.goto('/contracts')
@@ -179,5 +188,63 @@ test.describe('responsive filter-rail disclosure', () => {
       'Breacher',
       'Minmatar Shuttle',
     ])
+  })
+})
+
+/**
+ * Scenario 6 — responsive column visibility (register C5).
+ *
+ * The unit layer can assert that `hiddenClass` reaches the <th>/<td>, but jsdom
+ * evaluates no media queries, so only a real browser can say whether the class then
+ * does its job. Both projects run this: the SAME assertions with opposite
+ * expectations, which is what makes it a breakpoint test rather than two snapshots.
+ *
+ * Location is `max-lg:hidden` (gone on mobile at 412px, present on desktop) and
+ * Issued is `max-sm:hidden` (likewise). Deadline and Price are deliberately never
+ * hidden and are asserted visible on BOTH, so a rule that hid everything below `lg`
+ * would fail here rather than looking like a pass on mobile.
+ */
+test.describe('responsive column visibility', () => {
+  test.beforeEach(async ({ page }) => {
+    await interceptCurrentUser(page, { status: 401 })
+    await interceptContractList(page, pageOf(SEVEN_SHIPS))
+  })
+
+  test('hides the recoverable columns on narrow viewports and keeps the essential ones', async ({
+    page,
+  }, testInfo) => {
+    await page.goto('/contracts')
+    await expect(rowLinks(page).first()).toBeVisible()
+
+    const header = (name: string) => page.getByRole('columnheader', { name })
+    const mobile = testInfo.project.name === 'mobile'
+
+    // Never hidden at any width: Price carries the headline figure, and the days a
+    // hauler has to deliver in appear nowhere else in the app. The CELL is asserted
+    // as well as the header — `hiddenClass` is not the only route to invisibility, and
+    // a breakpoint class on the column's cellClass would empty the figures out from
+    // under a heading that stayed put.
+    const priceHeader = header('Price (ISK)')
+    await expect(priceHeader).toBeVisible()
+    const priceIndex = await page
+      .locator('thead th')
+      .evaluateAll((ths, label) => ths.findIndex((th) => th.textContent?.includes(label)), 'Price (ISK)')
+    expect(priceIndex).toBeGreaterThanOrEqual(0) // nth(-1) would silently inspect the LAST cell
+    const priceCell = page.locator('tbody tr').first().locator('td').nth(priceIndex)
+    await expect(priceCell).toBeVisible()
+    // The FIGURE, not just its container: a hidden wrapper inside the cell leaves the
+    // padded <td> box visible while the number itself vanishes. Locating the text makes
+    // the assertion about what the reader can actually read, whichever element carries
+    // the class.
+    await expect(priceCell.getByText(/\d/)).toBeVisible()
+
+    // Recoverable from the detail page, so they stand down when space is tight.
+    if (mobile) {
+      await expect(header('Location')).toBeHidden()
+      await expect(header('Issued')).toBeHidden()
+    } else {
+      await expect(header('Location')).toBeVisible()
+      await expect(header('Issued')).toBeVisible()
+    }
   })
 })

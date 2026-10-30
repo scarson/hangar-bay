@@ -2,14 +2,20 @@ import { describe, expect, it } from 'vitest'
 import type { Contract } from '../../lib/api/client'
 import {
   contractTypeLabel,
+  formatBlueprintTerms,
+  formatComposition,
   formatDate,
+  formatDeadline,
   formatIsk,
+  formatRewardPerVolume,
+  formatVolume,
   locationLabel,
-  primaryLabel,
+  regionNames,
+  routeLabel,
   timeRemaining,
 } from './format'
 
-function contract(items: Partial<Contract['items'][number]>[], title = ''): Contract {
+function contract(): Contract {
   return {
     contract_id: 900,
     issuer_id: 1,
@@ -17,49 +23,16 @@ function contract(items: Partial<Contract['items'][number]>[], title = ''): Cont
     start_location_id: 60003760,
     collateral: 0,
     type: 'item_exchange',
-    title,
+    title: '',
     for_corporation: false,
     date_issued: '2026-07-01T00:00:00Z',
     date_expired: '2026-07-08T00:00:00Z',
     price: 1,
     is_ship_contract: true,
-    items: items.map((item, index) => ({
-      record_id: index + 1,
-      type_id: 1,
-      quantity: 1,
-      is_included: true,
-      ...item,
-    })),
-  } as Contract
+    is_blueprint_copy_contract: false,
+    primary_label: 'Tristan',
+  }
 }
-
-describe('primaryLabel', () => {
-  it('prefers the included ship over modules listed first (fitted-hull contracts)', () => {
-    const fitted = contract([
-      { type_name: 'Medium Auxiliary Nano Pump I', category: null },
-      { type_name: 'Myrmidon', category: 'ship' },
-      { type_name: 'Medium Auxiliary Nano Pump II', category: null },
-    ])
-    expect(primaryLabel(fitted)).toBe('Myrmidon')
-  })
-
-  it('falls back to the first included item when nothing is categorized', () => {
-    expect(primaryLabel(contract([{ type_name: 'Tritanium', category: null }]))).toBe('Tritanium')
-  })
-
-  it('ignores excluded (asked-for) ships', () => {
-    const askedFor = contract([
-      { type_name: 'Module', category: null },
-      { type_name: 'Dominix', category: 'ship', is_included: false },
-    ])
-    expect(primaryLabel(askedFor)).toBe('Module')
-  })
-
-  it('uses title, then contract id, when items carry no names', () => {
-    expect(primaryLabel(contract([{ type_name: null }], 'My Deal'))).toBe('My Deal')
-    expect(primaryLabel(contract([{ type_name: null }], ''))).toBe('Contract 900')
-  })
-})
 
 describe('timeRemaining', () => {
   const now = Date.parse('2026-07-01T00:00:00Z')
@@ -142,6 +115,271 @@ describe('contractTypeLabel', () => {
     expect(contractTypeLabel('loan')).toBe('Loan')
     expect(contractTypeLabel('unknown')).toBe('Unknown')
   })
+
+  it('labels a type outside the map as Unknown, never as an exchange', () => {
+    // The server folds out-of-enum stored types into the unknown segment, so a
+    // future ESI type must read as what the segment says it is.
+    expect(contractTypeLabel('somenewtype')).toBe('Unknown')
+  })
+})
+
+describe('formatRewardPerVolume', () => {
+  it('keeps the fractional part a hauling rate turns on, and dashes an absent one', () => {
+    // Rates are compared between jobs, so the two decimals are the difference
+    // between "88.89 and 88.12" and two identical-looking rows. Whole rates
+    // still group like every other figure in the table.
+    expect(formatRewardPerVolume(2000)).toBe('2,000')
+    expect(formatRewardPerVolume(80_000_000 / 899_999)).toBe('88.89')
+    // The server serves NULL when volume is 0 or missing (nothing to divide
+    // by), so the cell has to say "no rate" rather than print 0 or Infinity.
+    expect(formatRewardPerVolume(null)).toBe('—')
+    expect(formatRewardPerVolume(undefined)).toBe('—')
+  })
+})
+
+describe('routeLabel', () => {
+  it('reads origin to destination, and names an endpoint nothing could resolve', () => {
+    // Player structures need an ACL-scoped token to resolve, so ~5% of courier
+    // destinations have no name. The cell must read as unknown rather than go
+    // blank or invent a station (spec §8).
+    expect(routeLabel(courierBetween('Jita IV - Moon 4', 'Amarr VIII'))).toBe(
+      'Jita IV - Moon 4 → Amarr VIII',
+    )
+    expect(routeLabel(courierBetween('Jita IV - Moon 4', null))).toBe(
+      'Jita IV - Moon 4 → Unknown structure',
+    )
+    // The origin is unresolvable about 3% of the time and gets the same reading.
+    expect(routeLabel(courierBetween(null, 'Amarr VIII'))).toBe('Unknown structure → Amarr VIII')
+  })
+
+  it('never falls back to the raw id the way the Location column does', () => {
+    // locationLabel prints "Location 60003760" for an unnamed start. A route
+    // must not: an id in a route reads as a place the reader could look up.
+    const anonymous = {
+      ...courierBetween(null, null),
+      start_location_id: 60003760,
+      end_location_id: 1038000000001,
+    }
+    expect(routeLabel(anonymous)).toBe('Unknown structure → Unknown structure')
+    expect(routeLabel(anonymous)).not.toContain('60003760')
+    expect(routeLabel(anonymous)).not.toContain('1038000000001')
+  })
+})
+
+describe('formatDeadline', () => {
+  it('renders whole days and distinguishes no deadline from a zero-day one', () => {
+    expect(formatDeadline(7)).toBe('7d')
+    // ESI absence is not zero (pitfall ESI-3): a contract carrying no
+    // days_to_complete has nothing to show, while a stored 0 is a real value.
+    expect(formatDeadline(0)).toBe('0d')
+    expect(formatDeadline(null)).toBe('—')
+    expect(formatDeadline(undefined)).toBe('—')
+  })
+})
+
+describe('regionNames', () => {
+  it('reads a region id list as an English list of names', () => {
+    // Coverage arrives as ids (Criterion 7.3 — the client must not embed a
+    // region literal), and both sentences it feeds are prose: "originating in
+    // The Forge only", "no data for Domain and Delve yet".
+    expect(regionNames([10000002])).toBe('The Forge')
+    expect(regionNames([10000002, 10000043])).toBe('The Forge and Domain')
+    expect(regionNames([10000002, 10000043, 10000060])).toBe('The Forge, Domain, and Delve')
+  })
+
+  it('names an id the static map does not carry rather than dropping it', () => {
+    // CCP adds regions; regions.ts is regenerated by hand. An id this build has
+    // no name for still has to appear, or a sentence about three uncovered
+    // regions would silently describe two.
+    expect(regionNames([10009999])).toBe('Region 10009999')
+    expect(regionNames([10000002, 10009999])).toBe('The Forge and Region 10009999')
+  })
+
+  it('says nothing at all for an empty list', () => {
+    // Nothing ingested yet is a real state (coverage.ingested_region_ids is
+    // empty before the first run), and the callers word that case themselves.
+    expect(regionNames([])).toBe('')
+  })
+})
+
+describe('formatComposition', () => {
+  const composition = (
+    categories: { category_id: number | null; name: string | null; item_row_count: number }[],
+    total_volume: number | null = null,
+  ) => ({
+    categories,
+    total_item_rows: categories.reduce((n, c) => n + c.item_row_count, 0),
+    total_volume,
+  })
+
+  it('names the two largest categories and buckets the rest as other', () => {
+    // Criterion 6.1: the breakdown is what lets a reader judge a mixed lot
+    // without opening it, and two names plus a remainder is what fits a cell.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 7, name: 'Module', item_row_count: 3 },
+          { category_id: 9, name: 'Blueprint', item_row_count: 1 },
+          { category_id: 8, name: 'Charge', item_row_count: 1 },
+          { category_id: 4, name: 'Material', item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('3 Modules · 1 Blueprint · 2 other')
+  })
+
+  it('pluralizes by name shape, so real dogma categories are not garbled', () => {
+    // The dogma namespace includes names that are already plural (Accessories,
+    // SKINs) and a consonant-y singular (Commodity); a blanket +s renders
+    // "Accessoriess", "SKINss", "Commoditys" in the row summary.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 43, name: 'Commodity', item_row_count: 3 },
+          { category_id: 39, name: 'Accessories', item_row_count: 2 },
+        ]),
+      ),
+    ).toBe('3 Commodities · 2 Accessories')
+    expect(
+      formatComposition(composition([{ category_id: 91, name: 'SKINs', item_row_count: 2 }])),
+    ).toBe('2 SKINs')
+    // Vowel-y names take a plain s — the -ies rule is consonant-y only.
+    expect(
+      formatComposition(composition([{ category_id: 99, name: 'Decoy', item_row_count: 2 }])),
+    ).toBe('2 Decoys')
+    // Count one never pluralizes, whatever the shape.
+    expect(
+      formatComposition(composition([{ category_id: 43, name: 'Commodity', item_row_count: 1 }])),
+    ).toBe('1 Commodity')
+  })
+
+  it('counts item rows, never summed quantities', () => {
+    // A contract of 100 identical drones in one row reads as "1 Drone", not
+    // "100 Drones" — the server sends rows and the client must not invent units.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 18, name: 'Drone', item_row_count: 1 },
+          { category_id: 6, name: 'Ship', item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('1 Drone · 1 Ship')
+  })
+
+  it('puts an unnamed category in the other bucket rather than inventing a label', () => {
+    // Two unnameable shapes: the rows whose category could not be determined
+    // (category_id null) and a category the name cache has not resolved yet
+    // (name null). Neither can be called anything, and "other" is what they are.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 7, name: 'Module', item_row_count: 2 },
+          { category_id: null, name: null, item_row_count: 2 },
+          { category_id: 42, name: null, item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('2 Modules · 3 other')
+  })
+
+  it('adds the total volume when the server measured one', () => {
+    expect(
+      formatComposition(
+        composition(
+          [
+            { category_id: 7, name: 'Module', item_row_count: 2 },
+            { category_id: 6, name: 'Ship', item_row_count: 1 },
+          ],
+          120_000,
+        ),
+      ),
+    ).toBe('2 Modules · 1 Ship · 120,000 m³')
+  })
+
+  it('keeps a blueprint lot’s sub-1 m³ volume rather than calling it zero', () => {
+    // The live dev corpus's own numbers (2026-08-08): two blueprint copies at
+    // 0.01 m³ each. Through the whole-ISK formatter this line read
+    // "2 Blueprints · 0 m³" — a lot claiming to have no volume — on six of the
+    // ten composition-bearing contracts in the sample.
+    expect(
+      formatComposition(
+        composition([{ category_id: 9, name: 'Blueprint', item_row_count: 2 }], 0.02),
+      ),
+    ).toBe('2 Blueprints · 0.02 m³')
+  })
+
+  it('says nothing about volume when there is no measurement', () => {
+    // A contract whose volume the corpus does not carry gets no "0 m³", which
+    // would be a reading rather than the absence of one.
+    expect(
+      formatComposition(
+        composition([
+          { category_id: 7, name: 'Module', item_row_count: 2 },
+          { category_id: 6, name: 'Ship', item_row_count: 1 },
+        ]),
+      ),
+    ).toBe('2 Modules · 1 Ship')
+  })
+})
+
+describe('formatVolume', () => {
+  it('keeps a small cargo distinguishable from no cargo at all', () => {
+    // Live dev corpus, 2026-08-08: 6 of the 10 composition-bearing contracts
+    // measured under 1 m³, because a blueprint copy is 0.01 m³ and blueprint
+    // lots are exactly what the composition line most often describes. The ISK
+    // formatter rendered every one of them as "0" — a lot that says it has no
+    // volume, which is a reading rather than the absence of one.
+    expect(formatVolume(0.02)).toBe('0.02')
+    expect(formatVolume(0.05)).toBe('0.05')
+  })
+
+  it('does not leak the float noise a summed volume arrives with', () => {
+    // The server sums per-item volumes, so 3 × 0.02 crosses the wire as
+    // 0.060000000000000005.
+    expect(formatVolume(0.060000000000000005)).toBe('0.06')
+    expect(formatVolume(0.20000000000000004)).toBe('0.2')
+  })
+
+  it('drops the decimals once they stop carrying information', () => {
+    expect(formatVolume(100)).toBe('100')
+    expect(formatVolume(470_000)).toBe('470,000')
+    expect(formatVolume(12_345.67)).toBe('12,346')
+  })
+
+  it('says a volume is below the shown precision rather than calling it zero', () => {
+    expect(formatVolume(0.001)).toBe('<0.01')
+    // A measured zero is a real reading and keeps its numeral.
+    expect(formatVolume(0)).toBe('0')
+  })
+
+  it('dashes an absent measurement, like every other figure', () => {
+    expect(formatVolume(null)).toBe('—')
+    expect(formatVolume(undefined)).toBe('—')
+  })
+})
+
+describe('formatBlueprintTerms', () => {
+  it('reads the terms of a single offered copy, each figure named', () => {
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: 10, material_efficiency: 4, time_efficiency: 8 }),
+    ).toBe('10 runs · ME 4 · TE 8')
+  })
+
+  it('omits a term the payload does not carry rather than printing a zero', () => {
+    // ESI omits `runs` for a blueprint ORIGINAL rather than sending -1 (ESI-3),
+    // and a half-enriched copy can be missing any of the three. "ME 0" is a
+    // real, meaningfully different blueprint from one whose ME is unknown.
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: null, material_efficiency: 0, time_efficiency: 8 }),
+    ).toBe('ME 0 · TE 8')
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: null, material_efficiency: null, time_efficiency: null }),
+    ).toBe('')
+  })
+
+  it('reads a single run in the singular', () => {
+    expect(
+      formatBlueprintTerms({ copy_count: 1, runs: 1, material_efficiency: null, time_efficiency: null }),
+    ).toBe('1 run')
+  })
 })
 
 describe('locationLabel', () => {
@@ -155,5 +393,103 @@ describe('locationLabel', () => {
 })
 
 function contractAt(name: string | null, id: number | null): Contract {
-  return { ...contract([]), start_location_name: name, start_location_id: id }
+  return { ...contract(), start_location_name: name, start_location_id: id }
 }
+
+function courierBetween(origin: string | null, destination: string | null): Contract {
+  return {
+    ...contract(),
+    type: 'courier',
+    price: 0,
+    start_location_name: origin,
+    start_location_id: null,
+    end_location_name: destination,
+    end_location_id: null,
+  }
+}
+
+describe('formatComposition volume boundary', () => {
+  it('renders a zero total volume as a measurement rather than dropping it', () => {
+    // 0 is falsy, so a `!= null` guard narrowed to a truthiness check would silently
+    // stop reporting the volume of every genuinely zero-volume contract while every
+    // other composition test kept passing.
+    const rendered = formatComposition({
+      categories: [{ name: 'ship', item_row_count: 1 }],
+      total_volume: 0,
+    } as Parameters<typeof formatComposition>[0])
+    expect(rendered).toContain('0 m³')
+  })
+
+  it('omits the figure entirely when the corpus carries no volume', () => {
+    // The other side of the same guard: absence is not a measurement of zero.
+    const rendered = formatComposition({
+      categories: [{ name: 'ship', item_row_count: 1 }],
+      total_volume: null,
+    } as Parameters<typeof formatComposition>[0])
+    expect(rendered).not.toContain('m³')
+    expect(rendered).toContain('1 ship')
+  })
+})
+
+describe('formatIsk absent and zero', () => {
+  it('dashes an undefined amount exactly as it dashes a null one', () => {
+    // The guard is `== null`, which is deliberately loose so it catches both. A
+    // tightened `=== null` would leave `undefined` reaching Intl.format and rendering
+    // "NaN" in a price cell, and every existing formatIsk assertion passes a number or
+    // an explicit null, so none of them can see it.
+    expect(formatIsk(undefined)).toBe('—')
+  })
+
+  it('renders a genuine zero as a numeral, never as the absent dash', () => {
+    // Not a hypothetical: live ESI sampling during the coverage review found 16 of 16
+    // courier contracts carrying price=0, because a courier is a job offer rather than
+    // a sale — its money is the reward and the collateral. A truthiness guard here
+    // would render every one of them "—", which reads as "we do not know this price"
+    // for the one contract type whose price is known and is zero.
+    expect(formatIsk(0)).toBe('0')
+  })
+})
+
+describe('formatVolume precision boundaries', () => {
+  it('shows the smallest volume two decimals can state rather than calling it too small', () => {
+    // SMALLEST_SHOWN_VOLUME is the boundary and the comparison is strictly `<`, so the
+    // boundary value itself is showable. Loosening to `<=` would send exactly-0.005 to
+    // "<0.01" — a claim that the number is below a precision it in fact reaches.
+    expect(formatVolume(0.005)).toBe('0.01')
+    // Just under it is the other side of the same comparison.
+    expect(formatVolume(0.004)).toBe('<0.01')
+  })
+
+  it('keeps the decimals right up to the threshold and drops them at it', () => {
+    // VOLUME_PRECISION_THRESHOLD is likewise strict: 100 is formatted without
+    // decimals (already pinned) and everything below it keeps them. Only a value
+    // immediately below the boundary can tell a `<` from a `<=` here.
+    expect(formatVolume(99.99)).toBe('99.99')
+    expect(formatVolume(99.5)).toBe('99.5')
+  })
+})
+
+describe('formatComposition with no categories', () => {
+  it('says only what it measured when the server sent no categories at all', () => {
+    // An empty category list is not the same as an unnamed one: there is nothing to
+    // name and nothing to bucket, so "other" must not appear with a count of zero.
+    // The volume is still a real measurement and is still reported.
+    const rendered = formatComposition({
+      categories: [],
+      total_item_rows: 0,
+      total_volume: 12.5,
+    })
+    expect(rendered).toBe('12.5 m³')
+  })
+
+  it('renders nothing at all when there are neither categories nor a volume', () => {
+    // Both sources of content absent. The join must produce an empty string rather
+    // than a stray separator, which is what a cell would show as a bare "·".
+    const rendered = formatComposition({
+      categories: [],
+      total_item_rows: 0,
+      total_volume: null,
+    })
+    expect(rendered).toBe('')
+  })
+})

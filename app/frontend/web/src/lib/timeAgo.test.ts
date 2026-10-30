@@ -1,6 +1,6 @@
 // ABOUTME: timeAgo formats a past ISO timestamp as a coarse relative span; now is injectable for determinism (TEST-3).
 import { describe, expect, it } from 'vitest'
-import { timeAgo } from './format'
+import { timeAgo } from './timeAgo'
 
 describe('timeAgo', () => {
   const now = Date.parse('2026-07-17T12:00:00Z')

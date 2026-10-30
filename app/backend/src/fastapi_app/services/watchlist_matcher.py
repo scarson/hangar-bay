@@ -18,6 +18,7 @@ from ..core.logging import get_logger, log_key_event
 from ..models.account import Notification, WatchlistItem
 from ..models.contracts import Contract, ContractItem
 from ..models.user import User
+from ..schemas.contracts import ITEM_BEARING_CONTRACT_TYPES, ContractType
 from .contract_service import still_listed_by_esi
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,16 @@ _RELEASE_LOCK_LUA = (
     "return redis.call('del', KEYS[1]) else return 0 end"
 )
 
-_SHIP_TYPE_LABELS = {"item_exchange": "an item exchange", "auction": "an auction"}
+# One label per item-bearing contract type. The set must equal
+# ITEM_BEARING_CONTRACT_TYPES, which is DERIVED from the enum — so a new ContractType
+# member widens the matcher's gate to admit it while this hand-written table stays put,
+# and its alerts would render through the "a contract" fallback below. Pinned by
+# test_every_item_bearing_type_has_a_label_of_its_own so that drift fails at the moment
+# the member is added rather than in somebody's notification feed.
+_SHIP_TYPE_LABELS = {
+    ContractType.item_exchange.value: "an item exchange",
+    ContractType.auction.value: "an auction",
+}
 
 
 class ConcurrencyLockError(Exception):
@@ -49,9 +59,18 @@ class ConcurrencyLockError(Exception):
 
 def _render_message(type_name: str, contract_type: str, price, location: Optional[str]) -> str:
     # Price-honest: name the CONTRACT as the priced thing (bundle price), not the ship (design §4.4).
+    # The fallback is defense in depth, not a live branch: the query gates on
+    # ITEM_BEARING_CONTRACT_TYPES and the label table is asserted equal to it, so a type
+    # reaching here unlabelled is already a caught test failure. It renders a vague noun
+    # rather than raising, because a KeyError here would abort the whole matching run
+    # over one alert's wording.
     label = _SHIP_TYPE_LABELS.get(contract_type, "a contract")
     where = location or "an unknown location"
-    return f"{type_name} available in {label} priced {price:,.0f} ISK in {where}"
+    # ESI marks price optional and the column is nullable; the dash is the same
+    # unknown-price rendering the list surface uses, with no ISK suffix — a
+    # dash is not an amount of ISK.
+    priced = f"{price:,.0f} ISK" if price is not None else "—"
+    return f"{type_name} available in {label} priced {priced} in {where}"
 
 
 class WatchlistMatcherService:
@@ -102,7 +121,7 @@ class WatchlistMatcherService:
                         "expired mid-run and was reacquired by another runner. Leaving it intact.",
                         lock_ttl,
                     )
-            await redis_client.close()
+            await redis_client.aclose()
 
     async def run_matching(self) -> None:
         started = time.monotonic()
@@ -148,7 +167,7 @@ class WatchlistMatcherService:
             .where(
                 User.watchlist_alerts_enabled.is_(True),
                 ContractItem.is_included.is_(True),
-                Contract.type.in_(("item_exchange", "auction")),
+                Contract.type.in_(sorted(ITEM_BEARING_CONTRACT_TYPES)),
                 Contract.date_expired > func.now(),
                 Contract.date_completed.is_(None),
                 # "Outstanding" is the same question the contracts list asks, so it gets

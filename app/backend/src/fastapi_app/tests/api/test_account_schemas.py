@@ -1,5 +1,5 @@
 # ABOUTME: Unit tests for the SavedSearchParameters validation model + saved-search request/response schemas.
-# ABOUTME: Pins extra="forbid" (ME/TE + junk rejection), constraint bounds, and name trimming.
+# ABOUTME: Pins extra="forbid" junk rejection, the filter bounds (runs/ME/TE, taxonomy, contract_type), and name trimming.
 import pytest
 from pydantic import ValidationError
 
@@ -47,6 +47,30 @@ def test_parameters_accepts_valid_payload():
     assert p.region_ids == [10000002]
 
 
+def test_parameters_accept_type_taxonomy_and_blueprint_filters():
+    """The type, taxonomy, and blueprint-attribute filters are functional query params,
+    so a saved search may hold them; ME/TE are no longer inert."""
+    p = SavedSearchParameters(
+        contract_type=["courier"],
+        category_id=[6],
+        group_id=[25],
+        min_runs=1,
+        min_me=10,
+        max_te=20,
+    )
+    assert [t.value for t in p.contract_type] == ["courier"]
+    assert p.category_id == [6] and p.group_id == [25]
+    assert p.min_runs == 1 and p.min_me == 10 and p.max_te == 20
+    assert p.max_runs is None and p.max_me is None and p.min_te is None
+
+
+def test_parameters_accept_absent_runs_sentinel():
+    """min_runs/max_runs share ContractFilters' ge=-1 floor: -1 is the documented
+    ESI absent-runs sentinel, not an out-of-range value."""
+    p = SavedSearchParameters(min_runs=-1, max_runs=-1)
+    assert p.min_runs == -1 and p.max_runs == -1
+
+
 @pytest.mark.parametrize("bad", [
     {"search": "ab"},          # min_length 3
     {"min_price": -1},         # ge 0
@@ -54,9 +78,18 @@ def test_parameters_accepts_valid_payload():
     {"region_ids": [0]},       # positive ints only
     {"size": 0},               # ge 1
     {"size": 101},             # le 100
-    {"min_me": 5},             # extra="forbid" — inert ME param rejected (FASTAPI-2)
+    {"min_me_typo": 5},        # extra="forbid" — a misspelled filter is junk, not a filter
     {"page": 2},               # extra="forbid" — page is per-view, not a saved property
     {"is_ship_contract": True},  # extra="forbid" — the blob uses ships_only, not the wire name
+    {"contract_type": ["bogus"]},  # closed enum — an unknown type is rejected, not ignored
+    {"category_id": [0]},      # positive ints only
+    {"group_id": [0]},         # positive ints only
+    {"min_runs": -2},          # ge -1 (the ESI absent-runs sentinel is the floor)
+    {"max_runs": -2},          # ge -1
+    {"min_me": -1},            # ge 0
+    {"max_me": -1},            # ge 0
+    {"min_te": -1},            # ge 0
+    {"max_te": -1},            # ge 0
 ])
 def test_parameters_reject_invalid(bad):
     with pytest.raises(ValidationError):

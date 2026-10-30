@@ -95,6 +95,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/contracts/taxonomy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Contract Taxonomy
+         * @description Retrieves the dogma category and group option lists for the item-level filters,
+         *     with a readiness signal saying whether those filters can be trusted yet.
+         */
+        get: operations["list_contract_taxonomy_contracts_taxonomy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/contracts/{contract_id}": {
         parameters: {
             query?: never;
@@ -312,6 +333,127 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * BlueprintSummary
+         * @description The blueprint terms of a contract offering copies.
+         *
+         *     With more than one copy on offer the three value fields are NULL: the terms belong
+         *     to individual copies, and picking one to report would misdescribe the others.
+         */
+        BlueprintSummary: {
+            /** Copy Count */
+            copy_count: number;
+            /** Material Efficiency */
+            material_efficiency?: number | null;
+            /** Runs */
+            runs?: number | null;
+            /** Time Efficiency */
+            time_efficiency?: number | null;
+        };
+        /**
+         * CompositionCategory
+         * @description One category's share of a contract's offered item rows.
+         *
+         *     `name` is NULL when the taxonomy name cache has not resolved that category yet,
+         *     and `category_id` is NULL for the bucket holding rows whose category could not be
+         *     determined at all — the client renders that bucket as "other".
+         */
+        CompositionCategory: {
+            /** Category Id */
+            category_id?: number | null;
+            /** Item Row Count */
+            item_row_count: number;
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * CompositionSummary
+         * @description What a multi-item contract is made of, structured rather than pre-rendered.
+         *
+         *     Counts are item ROWS, not summed quantities: "3 modules" describes a bundle far
+         *     better than "3,000 units of ammunition" does. Pluralization and truncation stay
+         *     with the client, which is the layer that knows how much room it has.
+         */
+        CompositionSummary: {
+            /** Categories */
+            categories: components["schemas"]["CompositionCategory"][];
+            /** Total Item Rows */
+            total_item_rows: number;
+            /** Total Volume */
+            total_volume?: number | null;
+        };
+        /**
+         * ContractDetailSchema
+         * @description A single contract with its full item array — REQUESTED items included, because
+         *     the detail page shows both sides of the trade.
+         */
+        ContractDetailSchema: {
+            blueprint_summary?: components["schemas"]["BlueprintSummary"] | null;
+            /** Buyout */
+            buyout?: number | null;
+            /** Collateral */
+            collateral: number;
+            composition?: components["schemas"]["CompositionSummary"] | null;
+            /** Contract Id */
+            contract_id: number;
+            /**
+             * Date Expired
+             * Format: date-time
+             */
+            date_expired: string;
+            /**
+             * Date Issued
+             * Format: date-time
+             */
+            date_issued: string;
+            /** Days To Complete */
+            days_to_complete?: number | null;
+            /** End Location Id */
+            end_location_id?: number | null;
+            /** End Location Name */
+            end_location_name?: string | null;
+            /** For Corporation */
+            for_corporation: boolean;
+            /** Is Blueprint Copy Contract */
+            is_blueprint_copy_contract: boolean;
+            /** Is Ship Contract */
+            is_ship_contract: boolean;
+            /** Issuer Corporation Id */
+            issuer_corporation_id: number;
+            /** Issuer Corporation Name */
+            issuer_corporation_name?: string | null;
+            /** Issuer Id */
+            issuer_id: number;
+            /** Issuer Name */
+            issuer_name?: string | null;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["ContractItemSchema"][];
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Price */
+            price?: number | null;
+            /** Primary Label */
+            primary_label: string;
+            /** Reward */
+            reward?: number | null;
+            /** Reward Per Volume */
+            reward_per_volume?: number | null;
+            /** Start Location Id */
+            start_location_id?: number | null;
+            /** Start Location Name */
+            start_location_name?: string | null;
+            /** Start Location System Id */
+            start_location_system_id?: number | null;
+            /** Title */
+            title?: string | null;
+            /** Type */
+            type: string;
+            /** Volume */
+            volume?: number | null;
+        };
+        /**
          * ContractItemSchema
          * @description Schema for an item within a contract.
          *
@@ -325,24 +467,112 @@ export interface components {
         ContractItemSchema: {
             /** Category */
             category?: string | null;
+            /** Category Id */
+            category_id?: number | null;
+            /** Group Id */
+            group_id?: number | null;
             /** Is Blueprint Copy */
             is_blueprint_copy?: boolean | null;
             /** Is Included */
             is_included: boolean;
             /** Market Group Id */
             market_group_id?: number | null;
+            /** Material Efficiency */
+            material_efficiency?: number | null;
             /** Quantity */
             quantity: number;
             /** Record Id */
             record_id: number;
+            /** Runs */
+            runs?: number | null;
+            /** Time Efficiency */
+            time_efficiency?: number | null;
             /** Type Id */
             type_id: number;
             /** Type Name */
             type_name?: string | null;
         };
         /**
+         * ContractListItemSchema
+         * @description A contract as it appears in a list row: a summary, carrying no item array.
+         *
+         *     Everything a client used to derive by walking the items — the blueprint flag, the
+         *     headline label, the composition breakdown — is computed here, so a row costs one
+         *     contract's worth of payload instead of all its items, and every client agrees on
+         *     what the row says.
+         *
+         *     `status` and `date_completed` are deliberately absent. Both are fields of ESI's
+         *     AUTHENTICATED character/corporation contract routes; the public route Hangar Bay
+         *     reads carries neither, so the columns behind them hold a placeholder and a NULL for
+         *     every contract in the corpus today. The columns stay — they fill in the moment a
+         *     user's own contracts are ingested — but a wire field that can only misinform is
+         *     worse than no wire field (ESI-3).
+         */
+        ContractListItemSchema: {
+            blueprint_summary?: components["schemas"]["BlueprintSummary"] | null;
+            /** Buyout */
+            buyout?: number | null;
+            /** Collateral */
+            collateral: number;
+            composition?: components["schemas"]["CompositionSummary"] | null;
+            /** Contract Id */
+            contract_id: number;
+            /**
+             * Date Expired
+             * Format: date-time
+             */
+            date_expired: string;
+            /**
+             * Date Issued
+             * Format: date-time
+             */
+            date_issued: string;
+            /** Days To Complete */
+            days_to_complete?: number | null;
+            /** End Location Id */
+            end_location_id?: number | null;
+            /** End Location Name */
+            end_location_name?: string | null;
+            /** For Corporation */
+            for_corporation: boolean;
+            /** Is Blueprint Copy Contract */
+            is_blueprint_copy_contract: boolean;
+            /** Is Ship Contract */
+            is_ship_contract: boolean;
+            /** Issuer Corporation Id */
+            issuer_corporation_id: number;
+            /** Issuer Corporation Name */
+            issuer_corporation_name?: string | null;
+            /** Issuer Id */
+            issuer_id: number;
+            /** Issuer Name */
+            issuer_name?: string | null;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Price */
+            price?: number | null;
+            /** Primary Label */
+            primary_label: string;
+            /** Reward */
+            reward?: number | null;
+            /** Reward Per Volume */
+            reward_per_volume?: number | null;
+            /** Start Location Id */
+            start_location_id?: number | null;
+            /** Start Location Name */
+            start_location_name?: string | null;
+            /** Start Location System Id */
+            start_location_system_id?: number | null;
+            /** Title */
+            title?: string | null;
+            /** Type */
+            type: string;
+            /** Volume */
+            volume?: number | null;
+        };
+        /**
          * ContractListResponse
-         * @description A page of contracts plus the coverage figure the system_ids filter needs.
+         * @description A page of contracts plus the figures that make the page readable in context.
          *
          *     A bare total hides that system_ids can only ever match the locations we resolved:
          *     a search returning 3 results reads as "there are 3" when it may mean "there are 3
@@ -352,16 +582,25 @@ export interface components {
          *     EVE Tycoon labels each row with the appraisal method behind it.
          */
         ContractListResponse: {
+            /** @description Which regions the corpus actually holds and how fresh they are. Independent of the filters on this request — it describes the dataset, not the page, so a client can tell an uncovered region apart from a covered one that matched nothing. */
+            coverage: components["schemas"]["CoverageInfo"];
             /**
              * Items
              * @description List of items for the current page
              */
-            items: components["schemas"]["ContractSchema"][];
+            items: components["schemas"]["ContractListItemSchema"][];
             /**
              * Page
              * @description Current page number
              */
             page: number;
+            /**
+             * Segment Counts
+             * @description Matching contracts per contract type, keyed by every ContractType value including the ones nothing matched, so a client renders a stable set of segments. Counts are of distinct contracts and are computed with the contract_type filter lifted and every other filter applied, so a segment the reader is not on still reports what selecting it would show. A stored type outside the enum is counted under 'unknown'.
+             */
+            segment_counts: {
+                [key: string]: number;
+            };
             /**
              * Size
              * @description Number of items per page
@@ -379,66 +618,35 @@ export interface components {
             unknown_system_excluded?: number | null;
         };
         /**
-         * ContractSchema
-         * @description Schema for a public contract.
-         *
-         *     `status` and `date_completed` are deliberately absent. Both are fields of ESI's
-         *     AUTHENTICATED character/corporation contract routes; the public route Hangar Bay
-         *     reads carries neither, so the columns behind them hold a placeholder and a NULL for
-         *     every contract in the corpus today. The columns stay — they fill in the moment a
-         *     user's own contracts are ingested — but a wire field that can only misinform is
-         *     worse than no wire field (ESI-3).
+         * ContractType
+         * @description Every contract type ESI can emit (confirmed against the committed spec
+         *     snapshot). Typed as an enum so an unknown value 422s instead of silently
+         *     matching nothing — the defect class this feature exists to remove (§17.8).
+         * @enum {string}
          */
-        ContractSchema: {
-            /** Collateral */
-            collateral: number;
-            /** Contract Id */
-            contract_id: number;
+        ContractType: "item_exchange" | "auction" | "courier" | "loan" | "unknown";
+        /**
+         * CoverageInfo
+         * @description Which regions the corpus actually holds, and how fresh the newest of them is.
+         *
+         *     Reported from observed rows rather than from the configured ingestion targets: the
+         *     two diverge for the whole ingestion window after a coverage change, and during that
+         *     window the configured value names a region holding nothing. A client that cannot
+         *     read this has to either embed a region literal — wrong the day coverage expands —
+         *     or infer coverage from an empty result, which reads a genuinely empty covered
+         *     region as uncovered.
+         */
+        CoverageInfo: {
             /**
-             * Date Expired
-             * Format: date-time
+             * As Of
+             * @description The newest ingestion stamp across all covered regions. Null when nothing is ingested, and also when nothing carries a stamp yet — absence of a freshness signal, not a claim of freshness at the epoch.
              */
-            date_expired: string;
+            as_of?: string | null;
             /**
-             * Date Issued
-             * Format: date-time
+             * Ingested Region Ids
+             * @description Every region id the contract corpus holds rows for, ascending. Empty before the first ingestion run completes.
              */
-            date_issued: string;
-            /** End Location Id */
-            end_location_id?: number | null;
-            /** For Corporation */
-            for_corporation: boolean;
-            /** Is Ship Contract */
-            is_ship_contract: boolean;
-            /** Issuer Corporation Id */
-            issuer_corporation_id: number;
-            /** Issuer Corporation Name */
-            issuer_corporation_name?: string | null;
-            /** Issuer Id */
-            issuer_id: number;
-            /** Issuer Name */
-            issuer_name?: string | null;
-            /**
-             * Items
-             * @default []
-             */
-            items: components["schemas"]["ContractItemSchema"][];
-            /** Price */
-            price?: number | null;
-            /** Reward */
-            reward?: number | null;
-            /** Start Location Id */
-            start_location_id?: number | null;
-            /** Start Location Name */
-            start_location_name?: string | null;
-            /** Start Location System Id */
-            start_location_system_id?: number | null;
-            /** Title */
-            title?: string | null;
-            /** Type */
-            type: string;
-            /** Volume */
-            volume?: number | null;
+            ingested_region_ids: number[];
         };
         /** CurrentUserSchema */
         CurrentUserSchema: {
@@ -521,16 +729,36 @@ export interface components {
         /**
          * SavedSearchParameters
          * @description Server-side validation model for a saved search's stored filter blob. Mirrors the
-         *     frontend ContractSearch shape minus `page`; extra="forbid" rejects the inert ME/TE params
-         *     (FASTAPI-2), the wire-only `is_ship_contract`, `page`, and arbitrary junk (design §4.5).
+         *     frontend ContractSearch shape minus `page`; extra="forbid" rejects the wire-only
+         *     `is_ship_contract`, `page`, and arbitrary junk (design §4.5). The type, taxonomy, and
+         *     blueprint-attribute filters are held here because the contracts query honours them; their
+         *     bounds match ContractFilters so a saved blob can never replay into a 422.
          */
         SavedSearchParameters: {
+            /** Category Id */
+            category_id?: number[] | null;
+            /** Contract Type */
+            contract_type?: components["schemas"]["ContractType"][] | null;
+            /** Group Id */
+            group_id?: number[] | null;
             /** Is Bpc */
             is_bpc?: boolean | null;
+            /** Max Me */
+            max_me?: number | null;
             /** Max Price */
             max_price?: number | null;
+            /** Max Runs */
+            max_runs?: number | null;
+            /** Max Te */
+            max_te?: number | null;
+            /** Min Me */
+            min_me?: number | null;
             /** Min Price */
             min_price?: number | null;
+            /** Min Runs */
+            min_runs?: number | null;
+            /** Min Te */
+            min_te?: number | null;
             /** Region Ids */
             region_ids?: number[] | null;
             /** Search */
@@ -583,7 +811,64 @@ export interface components {
          * @description Fields that can be used for sorting contracts.
          * @enum {string}
          */
-        SortableContractFields: "date_issued" | "date_expired" | "price" | "collateral" | "ship_name" | "volume";
+        SortableContractFields: "date_issued" | "date_expired" | "price" | "collateral" | "ship_name" | "volume" | "reward_per_volume" | "days_to_complete" | "buyout";
+        /**
+         * TaxonomyCategory
+         * @description One dogma category the filter rail can offer.
+         */
+        TaxonomyCategory: {
+            /** Category Id */
+            category_id: number;
+            /** Name */
+            name: string;
+        };
+        /**
+         * TaxonomyCoverage
+         * @description Whether the item-level surface can be opened yet.
+         *
+         *     "complete" means the corpus is enriched at the current enrichment version AND the
+         *     name cache names every category that corpus holds. Anything short of both is
+         *     "partial": a taxonomy filter offered over half-enriched items returns a page that
+         *     is missing contracts for reasons the reader cannot see, which is worse than a
+         *     control that is honestly not ready. Degrades on its own during any future
+         *     enrichment resweep and restores on its own afterwards.
+         * @enum {string}
+         */
+        TaxonomyCoverage: "partial" | "complete";
+        /**
+         * TaxonomyGroup
+         * @description One dogma group, carrying the category it belongs to so the client can scope
+         *     the group list to the selected categories without a second request.
+         */
+        TaxonomyGroup: {
+            /** Category Id */
+            category_id?: number | null;
+            /** Group Id */
+            group_id: number;
+            /** Name */
+            name: string;
+        };
+        /**
+         * TaxonomyResponse
+         * @description The option lists behind the category and group filters, plus their readiness.
+         *
+         *     Flat rather than nested (§17.6): the client filters groups down to the selected
+         *     categories locally, so changing a category selection costs no round trip.
+         */
+        TaxonomyResponse: {
+            /**
+             * Categories
+             * @description Every cached dogma category, ascending by name.
+             */
+            categories: components["schemas"]["TaxonomyCategory"][];
+            /** @description Whether the item-level filters can be trusted yet, measured from observed rows: 'complete' only when the live corpus is enriched at the current enrichment version and every category on its items has a cached name. 'partial' while either is still true, including on a cold cache. */
+            coverage: components["schemas"]["TaxonomyCoverage"];
+            /**
+             * Groups
+             * @description Every cached dogma group, ascending by name, each naming its category so the client can scope the list without refetching.
+             */
+            groups: components["schemas"]["TaxonomyGroup"][];
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -794,17 +1079,17 @@ export interface operations {
                 min_collateral?: number | null;
                 /** @description Maximum collateral. */
                 max_collateral?: number | null;
-                /** @description Minimum runs for BPCs. (NO MATCHES — filters an always-NULL column; do not expose in clients) */
+                /** @description Minimum runs for BPCs. Matches contracts with at least one offered item satisfying every bound in this family. */
                 min_runs?: number | null;
-                /** @description Maximum runs for BPCs. (NO MATCHES — filters an always-NULL column; do not expose in clients) */
+                /** @description Maximum runs for BPCs. Matches contracts with at least one offered item satisfying every bound in this family. */
                 max_runs?: number | null;
-                /** @description Minimum Material Efficiency for BPCs. (NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients) */
+                /** @description Minimum Material Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family. */
                 min_me?: number | null;
-                /** @description Maximum Material Efficiency for BPCs. (NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients) */
+                /** @description Maximum Material Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family. */
                 max_me?: number | null;
-                /** @description Minimum Time Efficiency for BPCs. (NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients) */
+                /** @description Minimum Time Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family. */
                 min_te?: number | null;
-                /** @description Maximum Time Efficiency for BPCs. (NOT IMPLEMENTED — accepted but ignored by the service; do not expose in clients) */
+                /** @description Maximum Time Efficiency for BPCs. Matches contracts with at least one offered item satisfying every bound in this family. */
                 max_te?: number | null;
                 /** @description List of region IDs to filter by. */
                 region_ids?: number[] | null;
@@ -814,6 +1099,12 @@ export interface operations {
                 station_ids?: number[] | null;
                 /** @description List of ship type IDs to filter by. */
                 type_ids?: number[] | null;
+                /** @description Contract types to include (repeatable). */
+                contract_type?: components["schemas"]["ContractType"][] | null;
+                /** @description Dogma category ids; matches contracts with at least one offered item in any of them. */
+                category_id?: number[] | null;
+                /** @description Dogma group ids, scoped within category_id when both are set (same offered item satisfies both). */
+                group_id?: number[] | null;
                 /** @description Filter for contracts containing blueprints (BPCs). */
                 is_bpc?: boolean | null;
                 /** @description Filter for contracts flagged as ship contracts (contract-level flag). */
@@ -853,6 +1144,26 @@ export interface operations {
             };
         };
     };
+    list_contract_taxonomy_contracts_taxonomy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxonomyResponse"];
+                };
+            };
+        };
+    };
     get_contract_contracts__contract_id__get: {
         parameters: {
             query?: never;
@@ -870,7 +1181,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ContractSchema"];
+                    "application/json": components["schemas"]["ContractDetailSchema"];
                 };
             };
             /** @description Validation Error */

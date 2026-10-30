@@ -2,7 +2,11 @@ import createClient from 'openapi-fetch'
 import type { QueryClient } from '@tanstack/react-query'
 import type { components, paths } from './schema'
 
-export type Contract = components['schemas']['ContractSchema']
+// A list row and a detail response are different shapes: the row carries the
+// server's derived summaries (primary_label, composition, blueprint_summary)
+// and no item array, the detail response carries both sides of the trade.
+export type Contract = components['schemas']['ContractListItemSchema']
+export type ContractDetail = components['schemas']['ContractDetailSchema']
 export type ContractItem = components['schemas']['ContractItemSchema']
 export type PaginatedContracts = components['schemas']['ContractListResponse']
 export type CurrentUser = components['schemas']['CurrentUserSchema']

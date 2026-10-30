@@ -4,17 +4,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import { axe } from 'vitest-axe'
 import * as matchers from 'vitest-axe/matchers'
-import { anonymousMe, jsonResponse } from '../../../test/http'
+import { anonymousMe, jsonResponse, taxonomyResponse, withTaxonomy } from '../../../test/http'
 import { renderApp } from '../../../test/renderApp'
-import { daysFromNow } from '../../../test/dates'
+import { daysFromNow, minutesFromNow } from '../../../test/dates'
 
 expect.extend(matchers)
 
-const CONTRACT = {
+const ROW = {
   contract_id: 101,
   issuer_id: 1,
   issuer_corporation_id: 101,
   start_location_id: 60003760,
+  collateral: 0,
   type: 'item_exchange',
   title: 'Tristan for Sale',
   for_corporation: false,
@@ -25,6 +26,23 @@ const CONTRACT = {
   issuer_name: 'Test Pilot',
   issuer_corporation_name: 'Test Corp',
   is_ship_contract: true,
+  is_blueprint_copy_contract: false,
+  primary_label: 'Tristan',
+  composition: null,
+}
+
+/** An item-less row, so the segmented view under test is one with a cleared ships-only. */
+const COURIER_ROW = {
+  ...ROW,
+  contract_id: 505,
+  type: 'courier',
+  title: 'Jita to Amarr rush',
+  is_ship_contract: false,
+  primary_label: 'Jita to Amarr rush',
+}
+
+const CONTRACT = {
+  ...ROW,
   items: [
     {
       record_id: 1011,
@@ -35,6 +53,26 @@ const CONTRACT = {
       type_name: 'Tristan',
     },
   ],
+}
+
+/** The list envelope, with the segment counts and coverage every response carries. */
+function listPage(rows: { type: string }[]) {
+  const segment_counts: Record<string, number> = {
+    item_exchange: 0,
+    auction: 0,
+    courier: 0,
+    loan: 0,
+    unknown: 0,
+  }
+  for (const row of rows) segment_counts[row.type] += 1
+  return {
+    total: rows.length,
+    page: 1,
+    size: 50,
+    items: rows,
+    segment_counts,
+    coverage: { ingested_region_ids: [10000002], as_of: minutesFromNow(-5) },
+  }
 }
 
 function stubFetch(handler: (url: string) => Response) {
@@ -49,7 +87,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('accessibility (axe)', () => {
   it('contract list view has no violations', async () => {
-    stubFetch(anonymousMe(() => jsonResponse({ total: 1, page: 1, size: 50, items: [CONTRACT] })))
+    stubFetch(anonymousMe(() => jsonResponse(listPage([ROW]))))
     const { container } = renderApp('/contracts')
     await screen.findByText('Tristan')
 
@@ -64,8 +102,68 @@ describe('accessibility (axe)', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 
+  it('the two sides of a want-to-buy contract have no violations', async () => {
+    // Two aria-labelledby regions where there was one, each with its own
+    // heading — axe checks the heading order and that both labels resolve.
+    const wtb = {
+      ...CONTRACT,
+      items: [
+        { record_id: 2001, type_id: 587, quantity: 1, is_included: true, type_name: 'Rifter', category: 'ship' },
+        { record_id: 2002, type_id: 34, quantity: 1_000_000, is_included: false, type_name: 'Tritanium' },
+      ],
+    }
+    stubFetch(anonymousMe(() => jsonResponse(wtb)))
+    const { container } = renderApp('/contracts/101')
+    await screen.findByRole('region', { name: /^Requested/ })
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('the contract-type segments have no violations with one selected', async () => {
+    // The segment toolbar exposes its selected state with aria-pressed on plain
+    // buttons inside a labelled fieldset (Criterion 12), which axe checks for
+    // name/role/value coherence as well as the surrounding grouping.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([COURIER_ROW]))))
+    const { container } = renderApp('/contracts?contract_type=courier&ships_only=false')
+    await screen.findByText('Jita to Amarr rush')
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('the uncovered-region empty state has no violations', async () => {
+    // A second heading-plus-explanation card in the results region, reached
+    // only by a region selection the corpus holds nothing for — a state the
+    // generic empty-state case above never renders.
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
+    const { container } = renderApp('/contracts?region_ids=10000043')
+    await screen.findByRole('heading', { name: 'No data for Domain yet' })
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it('the open item-level filters have no violations', async () => {
+    // Two more grouped checkbox lists, one of them carrying a described-by
+    // sentence about the other's scope (Criterion 12) — axe checks the fieldset
+    // grouping, the label association on every box, and that the description
+    // resolves to text that exists.
+    stubFetch(
+      withTaxonomy(
+        anonymousMe(() => jsonResponse(listPage([ROW]))),
+        taxonomyResponse({
+          coverage: 'complete',
+          categories: [{ category_id: 6, name: 'Ship' }],
+          groups: [{ group_id: 25, category_id: 6, name: 'Frigate' }],
+        }),
+      ),
+    )
+    const { container } = renderApp('/contracts?category_id=6')
+    await screen.findByRole('checkbox', { name: 'Frigate' })
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
   it('empty and error states have no violations', async () => {
-    stubFetch(anonymousMe(() => jsonResponse({ total: 0, page: 1, size: 50, items: [] })))
+    stubFetch(anonymousMe(() => jsonResponse(listPage([]))))
     const empty = renderApp('/contracts')
     await screen.findByText(/no contracts match/i)
     expect(await axe(empty.container)).toHaveNoViolations()

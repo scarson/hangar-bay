@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -8,11 +8,17 @@ from sqlalchemy.orm import selectinload
 from ..db import get_db
 from ..models.contracts import Contract
 from ..schemas.contracts import (
+    ContractDetailSchema,
     ContractFilters,
     ContractListResponse,
-    ContractSchema,
+    TaxonomyResponse,
 )
-from ..services.contract_service import get_contracts
+from ..services.contract_service import (
+    _category_names,
+    _detail_item,
+    get_contracts,
+    get_taxonomy,
+)
 
 router = APIRouter(
     prefix="/contracts",
@@ -38,9 +44,25 @@ async def list_public_contracts(
     return await get_contracts(db=db, filters=filters)
 
 
-@router.get("/{contract_id}", response_model=ContractSchema)
+# Subject to the same ordering rule as the route above: defined BEFORE
+# /{contract_id}, or "taxonomy" is parsed as a contract id and the request 422s.
+@router.get("/taxonomy", response_model=TaxonomyResponse)
+async def list_contract_taxonomy(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retrieves the dogma category and group option lists for the item-level filters,
+    with a readiness signal saying whether those filters can be trusted yet.
+    """
+    return await get_taxonomy(db=db)
+
+
+@router.get("/{contract_id}", response_model=ContractDetailSchema)
 async def get_contract(
-    contract_id: int,
+    # Bounded to the ids that can exist: ESI contract ids are positive int64,
+    # and an unbounded int previously rode past validation into the driver,
+    # which surfaced an out-of-range id as a 500 instead of a 422.
+    contract_id: Annotated[int, Path(ge=1, le=2**63 - 1)],
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -57,4 +79,6 @@ async def get_contract(
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
 
-    return contract
+    # The same category-name lookup the list path uses: composition is derived here
+    # too, and without the names every category on the detail page reads as null.
+    return _detail_item(contract, await _category_names(db))

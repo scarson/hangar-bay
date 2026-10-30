@@ -27,10 +27,11 @@ This document serves three audiences. Start here, then go directly to the sectio
 | § | Section | You're working on... | Entries | Checklist |
 |---|---------|---------------------|---------|-----------|
 | 1 | [API & Request Binding](#section-1-api--request-binding) | FastAPI request/query binding, filter params, dev-proxy routing | FASTAPI-1, FASTAPI-2, FASTAPI-3, PROXY-1 | §1.C |
-| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3 | §2.C |
+| 2 | [Data & Persistence](#section-2-data--persistence) | SQLAlchemy queries, pagination over joins | SQLA-1, SQLA-2, SQLA-3, SQLA-4, SQLA-5 | §2.C |
 | 3 | [Environment & Dev Loop](#section-3-environment--dev-loop) | Settings/env loading, startup ingestion, dev-server hygiene | ENV-1, ENV-2, ENV-3, ENV-4, ENV-5, ENV-6, ENV-7, ENV-8, ENV-9, ENV-10 | §3.C |
 | 4 | [External Integrations (ESI)](#section-4-external-integrations-esi) | Calling EVE's ESI API — route versions, deprecations, caching headers, upstream status, spec drift | ESI-1, ESI-2, ESI-3, ESI-4 | §4.C |
 | 5 | [Deployment & Platform](#section-5-deployment--platform) | Production config, managed-platform URLs, process topology | DEPLOY-1, DEPLOY-2, DEPLOY-3, DEPLOY-4, DEPLOY-5, DEPLOY-6 | §5.C |
+| 6 | [Frontend State & Rendering](#section-6-frontend-state--rendering) | React SPA — URL state vs cached server data, and what the screen claims while they disagree | WEB-1, WEB-2 | §6.C |
 | — | [Orchestration](#orchestration) | Parallel subagent dispatch and output persistence | ORCH-1 | §Orchestration.C |
 | A | [Historical Changelog](#appendix-a-historical-changelog) | Provenance, validation dates, review process meta-observations | — | — |
 | B | [Unified Summary Table](#appendix-b-unified-summary-table) | All pitfalls at a glance, with severity and status | — | — |
@@ -64,7 +65,7 @@ This document serves three audiences. Start here, then go directly to the sectio
 
 **The Fix:** Before exposing any filter in a client, verify the service layer actually applies it. Mark known-inert params in the schema description.
 
-**Where It Bit Us:** `min_me`/`max_me`/`min_te`/`max_te` are accepted and silently ignored (`contract_service.py` — ME/TE data not in the model).
+**Where It Bit Us:** `min_me`/`max_me`/`min_te`/`max_te` were accepted and silently ignored for as long as ME/TE were absent from the model, and `min_runs`/`max_runs` filtered `raw_quantity`, a column public ingestion never fills — three controls a client could offer that could only disappoint. Since fixed (F008): ingestion writes `runs`/`material_efficiency`/`time_efficiency`, and `_apply_item_filters` applies all three families as correlated EXISTS over offered items.
 
 ---
 
@@ -151,11 +152,57 @@ One expression negated makes the branches exact complements *by construction*, i
 
 ---
 
+### SQLA-4: A SQLAlchemy error carries the failed statement's bind values into `str()`
+
+**The Flaw:** Scrubbing a sensitive value out of a log payload while the same log record renders the exception with `str(e)`. Every `StatementError` (and so every `DBAPIError` — statement timeout, dropped connection, deadlock) appends `[SQL: ...]\n[parameters: {...}]` to its message. The SQL carries placeholders, but the parameters carry the **values**, and the statement that failed is the one holding the user's input as a bind.
+
+**Why It Matters:** It defeats the scrub completely and silently, on exactly the path nobody exercises. The success path logs the redacted dimension; the failure path re-publishes the raw value one key over, in the same record. Nothing looks wrong in review, and a test that injects a plain `RuntimeError` — the obvious way to simulate a DB failure — cannot see it, because a non-SQLAlchemy exception's `str()` has no parameters to leak. The value also escapes past the service: a re-raised exception reaches whatever global handler logs `str(exc)` and the traceback.
+
+**The Fix:** Hide at the source — `create_async_engine(..., hide_parameters=True)` — so SQLAlchemy substitutes `[SQL parameters hidden due to hide_parameters=True]` in every error the engine raises, in the service's log, in the global handler's, and in the traceback alike. Where a log site must hold the guarantee for a session built elsewhere, render through the same flag rather than dropping the message (the driver's diagnosis is why the field exists):
+
+```python
+def _error_without_bound_parameters(exc: BaseException) -> str:
+    if not isinstance(exc, StatementError):
+        return str(exc)
+    previously_hidden = exc.hide_parameters
+    exc.hide_parameters = True
+    try:
+        return str(exc)
+    finally:
+        exc.hide_parameters = previously_hidden
+```
+
+Test it by injecting a real `StatementError` constructed with the sensitive value as a bind, and assert against the WHOLE log record, not the payload key you scrubbed.
+
+**Where It Bit Us:** F008 Task B10 (2026-08-07). The four `search_terms` payloads were changed to report `search_len` instead of the user's raw query text, and the commit claimed the text "never lands in a log line" — but the failure site's `error_message=str(e)` sat in the same record, and the failing statement is the one carrying the `ILIKE '%<search text>%'` bind. Caught in review; the test that shipped with the scrub injected `RuntimeError("simulated db failure")` and was structurally unable to see it. Pairs with the universal "no PII in audit/debug logs" rule and testing-pitfalls TEST-21.
+
+---
+
+### SQLA-5: An upsert that copies supplied columns on conflict decays enrichment-derived values
+
+**The Flaw:** `bulk_upsert` copies every supplied column from the incoming row on conflict. A column whose value comes from a fallible enrichment step (external name resolution, item fetching) carries NULL or a default whenever that step degrades — and the on-conflict copy writes it over the good value already stored, for every re-sighted row in the batch.
+
+**Why It Matters:** The decay is silent: no error is raised anywhere, because the degraded step already handled its own failure (a swallowed per-chunk error, an ETag-304 skip). One transient upstream outage blanks previously-correct data corpus-wide, and it stays blank until the next fully-successful run — or forever, when the value is never re-derived. Three variants have bitten this one function: `is_ship_contract` decayed to False whenever items were ETag-304'd past re-enrichment; a station outage would have written NULL over every known `start/end_location_system_id`; and a partial `/universe/names` map blanked all four denormalized name columns for every re-sighted contract.
+
+**The Fix:** Decide per column what an absent-or-NULL value means at conflict time, and encode that decision in the row shape or the upsert call:
+
+- **Maintained by a different writer** (`is_ship_contract`, `item_processing_status`, `enrichment_version`): keep the column **absent from the row dict entirely** — `bulk_upsert` only updates supplied columns, and the uniform-keys invariant makes one row's omission everyone's.
+- **Re-derived every run, where NULL means "unknown this run"** (the four name columns): pass the column in `bulk_upsert`'s `preserve_on_null` set, which compiles the on-conflict assignment to `COALESCE(excluded.col, table.col)` — NULL keeps the stored value, a real value still overwrites.
+- **Legitimately clearable** (a title the issuer deleted): plain copy semantics are correct; do neither.
+
+A durable-cache read-back (as `_select_known_station_systems` does for station→system pairs) is the stronger alternative when the value is static and worth never re-fetching — but it protects only its own columns; new enrichment-derived columns need one of the three choices above.
+
+**Where It Bit Us:** The four contract name columns (F008 decision log D10, flagged by codex in the PR-A review; fixed in PR #142, 2026-08-07). The `is_ship_contract` decay and the station-system hazard were each fixed earlier in their own shapes — the comment blocks in `_build_contract_rows` and `_select_known_station_systems` (`services/background_aggregation.py`) carry those stories.
+
+---
+
 ### §2.C — Review Checklist
 
 - [ ] **Pagination over a one-to-many join paginates distinct parent IDs, not duplicated joined rows** — grouped subquery with aggregate-based ordering; page entities re-loaded and restored to the ID order (SQLA-1)
 - [ ] **Parent-level classification uses a correlated EXISTS, not a predicate on a joined child row** — the negative branch negates the same expression, and a mixed-child fixture proves the branches are complements (SQLA-3)
 - [ ] **`ON CONFLICT` against a partial unique index restates the index predicate** — `index_where=` matches the index's `WHERE`, and every indexed column is non-NULL on insert (Postgres NULLs never conflict) (SQLA-2)
+- [ ] **No log site renders a SQLAlchemy exception with an unscrubbed `str()`** — the engine sets `hide_parameters=True`, and any redaction claim is tested against the whole record with a real `StatementError` carrying the value as a bind (SQLA-4)
+- [ ] **Every enrichment-derived column in an upsert row decides what NULL means on conflict** — maintained-elsewhere columns are absent from the row, re-derived-each-run columns are in `preserve_on_null` (COALESCE keeps the stored value), and only genuinely clearable columns keep plain copy semantics (SQLA-5)
 
 ---
 
@@ -362,6 +409,16 @@ One expression negated makes the branches exact complements *by construction*, i
 
 **Where It Stands:** **Resolved.** Hangar Bay sends `X-Compatibility-Date: 2026-07-21`, the newest published date, chosen deliberately rather than inherited. Nothing broke in the move: every route we consume was byte-identical from the old `2020-01-01` floor through `2026-07-21`, and all nine are unauthenticated. The pin unblocks `/meta/status`, which does not exist at the old floor and which ESI-1 wants for upstream health. One consequence to carry forward: `/route/{origin}/{destination}` is a hard cutover at `2025-09-30` — `GET` with query parameters below it, `POST` with a JSON body, renamed preference values and an object envelope at or above it, with the old shape returning 404. Any future work that calls `/route/` must use the POST form. The monitor exists so that the *next* date question does not require a spike. It replaces a set of VCR cassettes that were deleted in PR #110 — they had been intended to catch this class of drift and could not, because they recorded our own app talking to itself (testing-pitfalls TEST-14) and because a live sample can only reveal drift the sample happens to contain.
 
+### JS-1: `Number()` coerces a whitespace-only string to 0, not NaN
+
+**The Flaw:** `Number('   ')` is `0`. A junk filter written as `typeof v === 'string' && v !== '' ? Number(v) : NaN` therefore lets a whitespace-only value through as a legitimate zero. Where 0 is itself a valid value for the field — every numeric query param here: `min_price`, `max_price`, `min_runs`, `min_me`, `min_te` and their maxima — nothing downstream can tell the accident from a deliberate zero.
+
+**Why It Matters:** The effect is not a crash but a filter the reader never set: an active chip in the rail, a bound in the request, and a value that travels into a saved search and a shared URL. It is reachable from any hand-edited or copy-pasted URL.
+
+**The Fix:** Trim before the emptiness check, not just compare against `''` — `typeof v === 'string' ? v.trim() : v`, then test that for emptiness. Valid input is unaffected, since `Number(' 5 ')` was already 5. Fix it in the one shared coercion helper rather than per field, because every numeric param shares the trap.
+
+**Where It Stands:** **Resolved** in `app/frontend/web/src/features/contracts/filters.ts` (`toNumber`), 2026-08-10. Found while closing a coverage row that listed `'abc'`, `''` and `Infinity` — all three already passed; whitespace was the fourth shape and the only one that failed. Pinned by a parametrized case per shape, since each fails the coercion by a different route.
+
 ### §4.C — Review Checklist
 
 - [ ] **Every ESI request names an explicit version prefix** (`/v1`, `/v3`, …), not `/latest` (ESI-1)
@@ -462,6 +519,70 @@ GitHub's Dependabot alerts cover `app/frontend/web/package-lock.json` but not th
 
 ---
 
+# Section 6: Frontend State & Rendering
+
+> **Reader context:** I'm building or reviewing the React SPA — how URL state, cached server data, and what the user actually sees line up.
+>
+> The shared theme is a screen that states something false while every individual line of code looks right. WEB-1 is a mismatch in TIME — URL state changes on click, server data changes when the request lands, and anything derived from the wrong one describes the screen wrongly for the whole gap between them. WEB-2 is a mismatch in SCALE — a formatter that cannot represent the value it was handed rounds a real measurement into a specific wrong number. Neither renders as an error, and neither is caught by a test whose fixtures were invented rather than taken from a live payload.
+
+---
+
+### WEB-1: A view shape read from live URL state describes rows fetched under the previous one
+
+**The Flaw:** The query layer holds the previous response on screen while the next one loads (`placeholderData: keepPreviousData`), but the component derives what the rows MEAN — the column set, the units, the labels, the empty-state copy — from the live URL/filter state. The URL changes on click; the rows change when the response lands. In between, the rows are described under rules that were never true of them.
+
+**Why It Matters:** This does not render as "loading" or as missing data — it renders as confident, specific falsehood, and it lasts as long as the request does (this app's unfiltered list has measured multi-second production latency; the refresh treatment is a 60% opacity fade, not a blanked table). Every honesty rule the view has can be inverted at once: a value under the wrong column header is a wrong *number*, and a placeholder like `Unknown structure` — reserved for a real field that genuinely could not be resolved — becomes a fabrication about a row that has no such field at all. Nothing in the component looks wrong in review, because each half is individually correct, and no test sees it unless a test deliberately holds a response open.
+
+**The Fix:** Derive the view key inside the query function, so it is cached with the rows it selected and travels with them through every placeholder, refetch, and cache hit. The key must be a function of the query key (which the request params already fix), or it will drift on its own:
+
+```ts
+const segment = activeSegment(search)          // a pure function of the search
+return useQuery({
+  queryKey: ['contracts', 'list', query],
+  queryFn: async () => ({ ...(await fetchPage(query)), segment }),
+  placeholderData: keepPreviousData,
+})
+// consumers read data.segment, never activeSegment(search)
+```
+
+`select` is NOT a fix: it runs against placeholder data with the current options closure, so it re-applies the incoming shape to the outgoing rows — the same bug. Controls that express the user's own *selection* (a toggle's pressed state, the heading, the document title) SHOULD keep reading the live URL: those must answer the click immediately. The rule is narrower than "never read the URL" — it is that anything **describing the rows** follows the rows.
+
+**Where It Bit Us:** F008 Task C4 (2026-08-07). Per-segment column sets landed while the page still chose them with `columnsFor(activeSegment(search))`. Before C4 the column set was segment-invariant, so reading it from the URL had been harmless for the life of the component — the defect was introduced by the feature that made the derived value vary, not by the line that was changed. Caught in review; the reproduction is a component test that never resolves the courier response and asserts the header set over the previous rows.
+
+---
+
+### WEB-2: A formatter borrowed from another quantity rounds a real measurement into a false claim
+
+**The Flaw:** Reusing a number formatter across quantities whose plausible ranges do not overlap. `formatIsk` is `maximumFractionDigits: 0`, which is exactly right for ISK — nobody prices a hull to the hundredth — and exactly wrong for m³, where a blueprint copy is **0.01**. Every sub-0.005 volume it touches comes out as `0`.
+
+**Why It Matters:** The output is not blank, not a dash, and not an error — it is a **specific wrong number**, and one that reads as a fact about the contract: `2 Blueprints · 0 m³` says this lot occupies no space. Unit tests do not catch it, because the fixture author reaches for a plausible-looking round number (120,000) drawn from the same magnitude the formatter was designed for; the failing inputs are precisely the ones nobody thinks to write down. It survives review for the same reason: the call site reads `formatIsk(volume)` and the reviewer checks that a volume is being formatted, not that this formatter can represent this volume.
+
+**The Fix:** Give each quantity a formatter chosen for **its own** range, and decide explicitly what happens below the smallest value that range can show. Where a value can be legitimately zero, a rounded-down zero and a measured zero must not render alike:
+
+```ts
+export function formatVolume(value: number | null | undefined): string {
+  if (value == null) return '—'
+  // Non-zero but unrepresentable is not zero; say so rather than round to a claim.
+  if (value !== 0 && Math.abs(value) < 0.005) return '<0.01'
+  return (Math.abs(value) < 100 ? SMALL_VOLUME : WHOLE).format(value)
+}
+```
+
+Two habits that make the class visible before production does: when adding a formatter call, state the value's actual range out loud and check the formatter against **both** ends of it; and take fixture numbers from a live payload rather than inventing round ones — the real corpus is where the small values live. `Intl.NumberFormat` also absorbs the float noise a summed value arrives with (`0.060000000000000005` → `0.06`), which a hand-rolled `toFixed`/`round` will not.
+
+**Where It Bit Us:** F008 Task D4 (2026-08-08). The composition summary took the plan's "`formatIsk`-style m³ formatting" literally. Six of the ten composition-bearing contracts in the live dev corpus measured under 1 m³ — blueprint lots, which are exactly what that line most often describes — and every one rendered `0 m³`. Caught by the Task D5 full-stack verification against real ESI data; the whole unit suite was green, and stayed green under a mutation that reverted the fix, because no test carried a small volume until one was added. The courier Volume column had the identical exposure and moved to the same formatter. Pairs with testing-pitfalls TEST-3 (fixtures must carry the values the code will actually meet).
+
+---
+
+### §6.C — Review Checklist
+
+- [ ] **Anything that describes the rows is derived from the response, not from live URL state** — column sets, units, labels, and empty-state copy come off the query result; only the user's own selection state reads the URL (WEB-1)
+- [ ] **Every formatter is checked against both ends of its value's real range, and a rounded-down zero is distinguishable from a measured one** — a formatter borrowed from another quantity renders a specific wrong number, not a blank (WEB-2)
+- [ ] **A newly-varying derived value was audited at its existing read sites** — a value that used to be constant has read sites nobody checked, because until now they could not be wrong (WEB-1)
+- [ ] **The in-flight window has a test** — one lane holds a response open across the transition rather than asserting only the settled states on either side (WEB-1)
+
+---
+
 ## Orchestration
 
 Pitfalls that arise when a session dispatches parallel subagents and consolidates their output. The canonical rules live in `docs/git-strategy.md` → §Multi-agent coordination → Output persistence. This section is the discovery hook for plan writers who arrive here via the `writing-plans-enhanced` (or equivalent) mandated-read path — it does NOT restate the rules in full.
@@ -485,6 +606,25 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 ---
 
 # Appendix A: Historical Changelog
+
+## 2026-08-08 — WEB-2 added: a borrowed formatter rounds a measurement into a false claim
+
+- Added WEB-2. Found by F008 Task D5's full-stack verification, not by any test: the new composition summary formatted total volume with `formatIsk` (`maximumFractionDigits: 0`), so `2 Blueprints · 0.02 m³` rendered as `2 Blueprints · 0 m³`. Six of the ten composition-bearing contracts in the live dev corpus measured under 1 m³, because a blueprint copy is 0.01 m³ and blueprint lots are what that line most often describes.
+- It earned an entry rather than a fix-and-move-on because the whole unit suite was green throughout and *stayed* green under a mutation reverting the fix — the fixtures carried 120,000 m³, a number drawn from the magnitude the formatter was built for. The failing inputs are the ones nobody thinks to write down, which is why the entry's fix half is as much about where fixture numbers come from as about the formatter.
+
+## 2026-08-07 — SQLA-5 added: on-conflict copy decays enrichment-derived values
+
+- Added SQLA-5 (an upsert that copies supplied columns on conflict writes a degraded run's NULLs over previously-stored enrichment values). Third variant of the same trap in one function: after the `is_ship_contract` ETag-304 decay (fixed by omitting maintained columns) and the station-system read-back, a partial `/universe/names` map blanked all four denormalized name columns for every re-sighted contract (F008 decision log D10, flagged by codex in the PR-A review, deferred there, fixed in PR #142 with `preserve_on_null`/COALESCE semantics in `bulk_upsert`).
+
+## 2026-08-07 — Section 6 opened with WEB-1: view shape must follow the rows, not the URL
+
+- Added Section 6 (Frontend State & Rendering) and WEB-1. Found in review of F008 Task C4: per-segment column sets shipped while the page still chose them from the live URL, so `keepPreviousData` rendered the previous segment's rows under the incoming segment's columns for the length of the request — reporting a sale's price as a hauling reward and inventing an unresolvable destination for a contract with no route.
+- The general shape is the reason it earned a section rather than a footnote: the read site had been correct for the life of the component and was falsified by a *different* change making the derived value vary. Phase D adds more per-segment surface against the same hook.
+
+## 2026-08-07 — SQLA-4 added: SQLAlchemy errors carry bind values into `str()`
+
+- Added SQLA-4. Found in review of F008 Task B10: the four contract-search log sites had just been changed to report the search string's LENGTH instead of its text, and the commit claimed the text never reaches a log line — but the failure site's `error_message=str(e)` sat in the same record, and a `StatementError`'s `str()` appends `[parameters: {...}]` from the statement holding that very text as an `ILIKE` bind. Closed at the source with `hide_parameters=True` on the application engine (which also covers `main.py`'s global handler and the traceback it logs) plus a render-time scrub at the log site.
+- Paired with testing-pitfalls TEST-21, the reason the shipped test could not see it: the injected failure was a `RuntimeError`, whose `str()` has no parameters to leak.
 
 ## 2026-08-06 — DEPLOY-6 added: Dependabot does not index pdm.lock
 
@@ -598,6 +738,8 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | SQLA-1 | Paginating a joined query paginates joined rows | HIGH | VALIDATED | Data & Persistence |
 | SQLA-2 | ON CONFLICT vs a partial unique index needs index_where | HIGH | VALIDATED | Data & Persistence |
 | SQLA-3 | A per-row predicate over a one-to-many join cannot classify the parent | HIGH | VALIDATED | Data & Persistence |
+| SQLA-4 | A SQLAlchemy error carries the failed statement's bind values into `str()` | HIGH | VALIDATED | Data & Persistence |
+| SQLA-5 | An on-conflict copy decays enrichment-derived values on degraded runs | HIGH | VALIDATED | Data & Persistence |
 | ENV-1 | pydantic-settings JSON-decodes complex env fields early | MEDIUM | VALIDATED | Environment & Dev Loop |
 | ENV-2 | Backend restart wipes and re-ingests all data | LOW | VALIDATED | Environment & Dev Loop |
 | ENV-3 | --reload + ingestion + Valkey lock interact badly in dev | MEDIUM | VALIDATED | Environment & Dev Loop |
@@ -618,6 +760,7 @@ Pitfalls that arise when a session dispatches parallel subagents and consolidate
 | DEPLOY-4 | Pre-deploy migrations collide with in-flight ingestion; redeploy via CD dispatch | MEDIUM | VALIDATED | Deployment & Platform |
 | DEPLOY-5 | Parallel tasks each authoring a migration leave two alembic heads; `upgrade head` aborts the deploy | HIGH | UNIMPLEMENTED | Deployment & Platform |
 | DEPLOY-6 | Dependabot does not index pdm.lock; backend deps need a direct OSV/pip-audit pass | MEDIUM | VALIDATED | Deployment & Platform |
+| WEB-1 | A view shape read from live URL state describes rows fetched under the previous one | HIGH | VALIDATED | Frontend State & Rendering |
 | ORCH-1 | Analysis Dispatches Must Persist Findings | HIGH | VALIDATED | Orchestration |
 
 Severity levels: `CRITICAL` (production data loss / security), `HIGH` (correctness bug under predictable conditions), `MEDIUM` (correctness bug under edge cases), `LOW` (cleanliness / clarity / dev-loop hazard).

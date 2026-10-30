@@ -125,12 +125,12 @@ async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 async def setup_contracts(db_session: AsyncSession):
     """Fixture to populate the DB with a diverse set of contracts for testing.
 
-    WARNING — one column below holds a value ingestion never writes, so a test that
-    depends on it proves the QUERY binds, not that the feature works on real data:
-
-    * ``raw_quantity`` does not exist on ESI's public contract-items route at all
-      (it belongs to the authenticated character/corporation routes), so ingestion
-      leaves it NULL for every real row. The min_runs/max_runs filter reads it.
+    Every column set below is one ingestion writes, so a test built on this fixture
+    exercises the feature rather than only the query binding (TEST-18). ``runs`` in
+    particular comes from ESI's public contract-items route and is written by
+    ``background_aggregation._fetch_item_rows``; the neighbouring ``raw_quantity``
+    belongs to the authenticated character/corporation routes, stays NULL under
+    public ingestion, and is therefore read by nothing here.
 
     ``start_location_system_id`` is populated here and matches production: ingestion
     resolves NPC stations through /universe/stations/, and 60003760 really does sit in
@@ -157,7 +157,7 @@ async def setup_contracts(db_session: AsyncSession):
             issuer_id=2, issuer_corporation_id=102, start_location_id=60003760, start_location_system_id=30000142, start_location_region_id=10000002,
             for_corporation=True, date_issued=datetime.now(timezone.utc), date_expired=datetime.now(timezone.utc) + timedelta(days=3),
             items=[
-                ContractItem(record_id=1021, type_id=621, type_name="Caracal Blueprint", quantity=1, is_included=True, is_singleton=True, is_blueprint_copy=True, raw_quantity=10)
+                ContractItem(record_id=1021, type_id=621, type_name="Caracal Blueprint", quantity=1, is_included=True, is_singleton=True, is_blueprint_copy=True, runs=10)
             ]
         ),
         # Contract 3: Multi-item contract in a different region (Venture, Tristan)
